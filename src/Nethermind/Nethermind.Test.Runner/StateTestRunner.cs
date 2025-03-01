@@ -74,16 +74,17 @@ namespace Nethermind.Test.Runner
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)
                 {
-                    if(_enableWarmup){ // Warm up only when benchmarking
-
-                    Parallel.For(0, 30, (i, s) =>
+                    if(_enableWarmup)
                     {
-                        _ = RunTest(test, NullTxTracer.Instance);
-                    });
+                        // Warm up only when benchmarking
+                        Parallel.For(0, 30, (i, s) =>
+                        {
+                            _ = RunTest(test, NullTxTracer.Instance);
+                        });
 
-                    // Give time to Jit optimized version
-                    Thread.Sleep(20);
-                    GC.Collect(GC.MaxGeneration);
+                        // Give time to Jit optimized version
+                        Thread.Sleep(20);
+                        GC.Collect(GC.MaxGeneration);
                     }
                     result = RunTest(test, NullTxTracer.Instance);
                 }
