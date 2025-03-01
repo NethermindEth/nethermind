@@ -14,27 +14,29 @@ namespace Nethermind.Analytics
     public class SupplyVerifier : ITreeVisitor<OldStyleTrieVisitContext>
     {
         private readonly ILogger _logger;
-        private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
+        private readonly HashSet<Hash256AsKey> _ignoreThisOne = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _ignoreThisOneLookup;
         private int _accountsVisited;
         private int _nodesVisited;
 
         public SupplyVerifier(ILogger logger)
         {
             _logger = logger;
+            _ignoreThisOneLookup = _ignoreThisOne.GetAlternateLookup<ValueHash256>();
         }
 
         public UInt256 Balance { get; set; } = UInt256.Zero;
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(in OldStyleTrieVisitContext _, Hash256 nextNode)
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
         {
             if (_ignoreThisOne.Count > 16)
             {
                 _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}");
             }
 
-            if (_ignoreThisOne.Remove(nextNode))
+            if (_ignoreThisOneLookup.Remove(nextNode))
             {
                 return false;
             }
@@ -42,11 +44,11 @@ namespace Nethermind.Analytics
             return true;
         }
 
-        public void VisitTree(in OldStyleTrieVisitContext _, Hash256 rootHash)
+        public void VisitTree(in OldStyleTrieVisitContext _, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in OldStyleTrieVisitContext _, Hash256 nodeHash)
+        public void VisitMissingNode(in OldStyleTrieVisitContext _, in ValueHash256 nodeHash)
         {
             _logger.Warn($"Missing node {nodeHash}");
         }

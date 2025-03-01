@@ -447,13 +447,13 @@ public class FullPrunerTests
         }
 
         public bool IsFullDbScan => true;
-        public bool ShouldVisit(in TreePathContextWithStorage ctx, Hash256 nextNode) => true;
+        public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode) => true;
 
-        public void VisitTree(in TreePathContextWithStorage ctx, Hash256 rootHash)
+        public void VisitTree(in TreePathContextWithStorage ctx, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in TreePathContextWithStorage ctx, Hash256 nodeHash)
+        public void VisitMissingNode(in TreePathContextWithStorage ctx, in ValueHash256 nodeHash)
         {
         }
 

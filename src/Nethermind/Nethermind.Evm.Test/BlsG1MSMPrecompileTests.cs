@@ -12,8 +12,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsG1MSMPrecompileTests
+public class BlsG1MSMPrecompileTests : PrecompileTests<BlsG1MSMPrecompileTests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/multiexp_G1_bls.json";
+        yield return "Bls/fail-multiexp_G1_bls.json";
+    }
+
+    public static IPrecompile Precompile() => G1MSMPrecompile.Instance;
+
     [Test]
     public void Test()
     {

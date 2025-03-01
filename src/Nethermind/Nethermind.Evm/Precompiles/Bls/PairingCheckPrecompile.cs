@@ -46,7 +46,6 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         var acc = GT.One(buf.AsSpan());
         GT p = new(buf.AsSpan()[GT.Sz..]);
 
-        bool hasInf = false;
         for (int i = 0; i < inputData.Length / PairSize; i++)
         {
             int offset = i * PairSize;
@@ -62,7 +61,6 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
             // x == inf || y == inf -> e(x, y) = 1
             if (x.IsInf() || y.IsInf())
             {
-                hasInf = true;
                 continue;
             }
 
@@ -70,9 +68,8 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
             acc.Mul(p);
         }
 
-        bool verified = hasInf || acc.FinalExp().IsOne();
         byte[] res = new byte[32];
-        if (verified)
+        if (acc.FinalExp().IsOne())
         {
             res[31] = 1;
         }

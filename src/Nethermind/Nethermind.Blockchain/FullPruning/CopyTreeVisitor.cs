@@ -48,9 +48,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         public ReadFlags ExtraReadFlag => ReadFlags.SkipDuplicateRead;
 
-        public bool ShouldVisit(in TContext context, Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
+        public bool ShouldVisit(in TContext context, in ValueHash256 nextNode) => !_cancellationToken.IsCancellationRequested;
 
-        public void VisitTree(in TContext nodeContext, Hash256 rootHash)
+        public void VisitTree(in TContext nodeContext, in ValueHash256 rootHash)
         {
             _stopwatch.Start();
             if (_logger.IsInfo) _logger.Info($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         [DoesNotReturn]
         [StackTraceHidden]
-        public void VisitMissingNode(in TContext ctx, Hash256 nodeHash)
+        public void VisitMissingNode(in TContext ctx, in ValueHash256 nodeHash)
         {
             if (_logger.IsWarn)
             {

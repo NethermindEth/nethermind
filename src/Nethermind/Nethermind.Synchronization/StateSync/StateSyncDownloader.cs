@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
+            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
             List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.StateSync
             foreach (var kvp in itemsGroupedByAccount)
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = kvp.Key.Bytes.ToArray();
+                group[0] = kvp.Key?.Value.Bytes.ToArray();
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {

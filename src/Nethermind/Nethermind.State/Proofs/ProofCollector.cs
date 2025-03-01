@@ -16,32 +16,35 @@ namespace Nethermind.State.Proofs
     {
         private int _pathIndex;
 
-        private readonly byte[] _key;
-
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
-        private readonly HashSet<Hash256> _visitingFilter = new();
+        private readonly HashSet<Hash256AsKey> _visitingFilter = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _visitingFilterLookup;
 
         private readonly List<byte[]> _proofBits = new();
+        private readonly byte[] _key;
 
+        /// <summary>
+        /// EIP-1186 style proof collector
+        /// </summary>
         public ProofCollector(byte[] key)
         {
             _key = key;
+            _visitingFilterLookup = _visitingFilter.GetAlternateLookup<ValueHash256>();
         }
-
 
         public byte[][] BuildResult() => _proofBits.ToArray();
 
         public bool IsFullDbScan => false;
         public bool ExpectAccounts => false;
 
-        public bool ShouldVisit(in EmptyContext _, Hash256 nextNode) => _visitingFilter.Contains(nextNode);
+        public bool ShouldVisit(in EmptyContext _, in ValueHash256 nextNode) => _visitingFilterLookup.Contains(nextNode);
 
-        public void VisitTree(in EmptyContext _, Hash256 rootHash)
+        public void VisitTree(in EmptyContext _, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash)
+        public void VisitMissingNode(in EmptyContext _, in ValueHash256 nodeHash)
         {
         }
 

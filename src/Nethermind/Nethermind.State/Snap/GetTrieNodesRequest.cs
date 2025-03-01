@@ -9,7 +9,7 @@ namespace Nethermind.State.Snap
 {
     public class GetTrieNodesRequest : IDisposable
     {
-        public ValueHash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; }
 
         public IOwnedReadOnlyList<PathGroup> AccountAndStoragePaths { get; set; }
 

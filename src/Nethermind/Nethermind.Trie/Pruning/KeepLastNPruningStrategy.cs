@@ -9,10 +9,7 @@ public class KeepLastNPruningStrategy(IPruningStrategy baseStrategy, int depth) 
 
     public int MaxDepth => depth;
 
-    public bool ShouldPrune(in long currentMemory)
-    {
-        return baseStrategy.ShouldPrune(in currentMemory);
-    }
+    public bool ShouldPrune(in long currentMemory) => baseStrategy.ShouldPrune(in currentMemory);
 
     public int TrackedPastKeyCount => baseStrategy.TrackedPastKeyCount;
 }

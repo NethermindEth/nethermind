@@ -88,7 +88,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         Hash256? address,
         TreePath startingPath,
         Hash256 startingNodeHash,
-        Hash256 queryPath,
+        ValueHash256 queryPath,
         CancellationToken cancellationToken)
     {
         if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out var snapProtocol)) return null;
@@ -116,7 +116,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             }
 
             byte[] accountRlp = [];
-            Hash256 slotPath = Hash256.Zero;
+            ValueHash256 slotPath = default;
             if (acc.PathAndAccounts.Count > 0)
             {
                 accountRlp = _accountDecoder.Encode(acc.PathAndAccounts[0].Account).Bytes;
@@ -149,7 +149,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             }
 
             byte[] slotRlp = [];
-            Hash256 slotPath = Hash256.Zero;
+            ValueHash256 slotPath = default;
             if (res.PathsAndSlots.Count > 0 && res.PathsAndSlots[0].Count > 0)
             {
                 slotRlp = res.PathsAndSlots[0][0].SlotRlpValue;
@@ -163,7 +163,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
     private IOwnedReadOnlyList<(TreePath, byte[])>? AssembleResponse(
         Hash256 startingNodeHash,
         TreePath startingPath,
-        Hash256 slotPath,
+        in ValueHash256 slotPath,
         byte[] value,
         IReadOnlyList<byte[]> proofs)
     {

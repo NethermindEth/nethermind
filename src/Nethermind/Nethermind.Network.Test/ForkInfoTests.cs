@@ -158,8 +158,10 @@ public class ForkInfoTests
 
     [TestCase(0L, 0UL, "0x50d39d7b", ChiadoSpecProvider.ShanghaiTimestamp, "Chiado genesis")]
     [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xa15a4252", ChiadoSpecProvider.CancunTimestamp, "First Shanghai timestamp")]
-    [TestCase(4_000_000, ChiadoSpecProvider.CancunTimestamp, "0x5fbc16bc", 0ul, "First Cancun timestamp")]
-    [TestCase(5_000_000, 9984930320ul, "0x5fbc16bc", 0ul, "Future Cancun timestamp")]
+    [TestCase(4_000_000, ChiadoSpecProvider.CancunTimestamp, "0x5fbc16bc", 1741254220ul, "First Cancun timestamp")]
+    [TestCase(5_000_000, 1741254219u, "0x5fbc16bc", 1741254220ul, "Future Cancun timestamp")]
+    [TestCase(5_000_000, 1741254220u, "0x8BA51786", 0ul, "First Prague timestamp")]
+    [TestCase(5_000_000, 1741254420u, "0x8BA51786", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);

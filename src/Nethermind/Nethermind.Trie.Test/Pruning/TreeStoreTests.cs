@@ -1059,8 +1059,8 @@ namespace Nethermind.Trie.Test.Pruning
             UInt256 slot = 1;
 
             INodeStorage nodeStorage = new NodeStorage(memDbProvider.StateDb, _scheme);
-            (Hash256 stateRoot, Hash256 storageRoot) = SetupStartingState();
-            nodeStorage.Get(address.ToAccountPath, TreePath.Empty, storageRoot).Should().NotBeNull();
+            (Hash256 stateRoot, ValueHash256 storageRoot) = SetupStartingState();
+            nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDbProvider.StateDb,
@@ -1073,8 +1073,8 @@ namespace Nethermind.Trie.Test.Pruning
                 LimboLogs.Instance);
 
             // Simulate some kind of cache access which causes unresolved node to remain.
-            IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address.ToAccountPath);
-            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot);
+            IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
+            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
 
             worldState.StateRoot = stateRoot;
             worldState.IncrementNonce(address, 1);
@@ -1082,11 +1082,11 @@ namespace Nethermind.Trie.Test.Pruning
             worldState.CommitTree(2);
 
             fullTrieStore.PersistCache(default);
-            nodeStorage.Get(address.ToAccountPath, TreePath.Empty, storageRoot).Should().NotBeNull();
+            nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
 
             return;
 
-            (Hash256, Hash256) SetupStartingState()
+            (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 worldState.StateRoot = Keccak.EmptyTreeHash;
