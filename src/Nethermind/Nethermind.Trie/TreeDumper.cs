@@ -21,12 +21,12 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan { get; init; } = true;
 
-        public bool ShouldVisit(in OldStyleTrieVisitContext _, Hash256 nextNode)
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(in OldStyleTrieVisitContext context, Hash256 rootHash)
+        public void VisitTree(in OldStyleTrieVisitContext context, in ValueHash256 rootHash)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
@@ -43,7 +43,7 @@ namespace Nethermind.Trie
         private static string GetIndent(int level) => new('+', level * 2);
         private static string GetChildIndex(in OldStyleTrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
 
-        public void VisitMissingNode(in OldStyleTrieVisitContext context, Hash256 nodeHash)
+        public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash)
         {
             _builder.AppendLine($"{GetIndent(context.Level)}{GetChildIndex(context)}MISSING {nodeHash}");
         }

@@ -1022,13 +1022,13 @@ public class TrieNodeTests
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(in TreePathContext nodeContext, Hash256 nextNode) => true;
+        public bool ShouldVisit(in TreePathContext nodeContext, in ValueHash256 nextNode) => true;
 
-        public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash)
+        public void VisitTree(in TreePathContext nodeContext, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash)
+        public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash)
         {
         }
 
