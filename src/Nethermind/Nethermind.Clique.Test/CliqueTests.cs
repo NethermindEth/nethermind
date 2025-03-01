@@ -59,9 +59,9 @@ public class CliqueTests
         MemDb db = new();
         CliqueConfig config = new();
 
-        _ecdsa = new EthereumEcdsa(BlockchainIds.Goerli);
+        _ecdsa = new EthereumEcdsa(BlockchainIds.Sepolia);
         _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
-        _clique = new CliqueSealer(new Signer(BlockchainIds.Goerli, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
+        _clique = new CliqueSealer(new Signer(BlockchainIds.Sepolia, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
         _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
     }
 
