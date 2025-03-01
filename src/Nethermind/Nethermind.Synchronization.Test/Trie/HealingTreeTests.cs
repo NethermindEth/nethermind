@@ -69,7 +69,7 @@ public class HealingTreeTests
     [Test]
     public void recovery_works_storage_trie([Values(true, false)] bool successfullyRecovered)
     {
-        Hash256 addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+        Hash256 addressPath = Keccak.Compute(TestItem.AddressA.Bytes);
         HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, IPathRecovery recovery) =>
             new(trieStore.GetTrieStore(addressPath), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
                 _key, recovery);
