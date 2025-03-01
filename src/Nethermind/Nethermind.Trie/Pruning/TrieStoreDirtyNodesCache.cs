@@ -64,8 +64,8 @@ internal class TrieStoreDirtyNodesCache
         if (TryAdd(key, node))
         {
             Interlocked.Increment(ref _count);
-            _trieStore.IncrementCachedNodeCount();
-            _trieStore.IncrementMemoryUsedByDirtyCache(node.GetMemorySize(false) + KeyMemoryUsage);
+            _trieStore.IncrementCachedNodeCount(node.IsPersisted);
+            _trieStore.IncrementMemoryUsedByDirtyCache(node.GetMemorySize(false) + KeyMemoryUsage, node.IsPersisted);
         }
     }
 
@@ -167,18 +167,18 @@ internal class TrieStoreDirtyNodesCache
     {
         if (_storeByHash)
         {
-            if (_byHashObjectCache.Remove(key.Keccak, out _))
+            if (_byHashObjectCache.Remove(key.Keccak, out TrieNode node))
             {
                 Interlocked.Decrement(ref _count);
-                _trieStore.DecrementCachedNodeCount();
+                _trieStore.DecrementCachedNodeCount(node.IsPersisted);
             }
 
             return;
         }
-        if (_byKeyObjectCache.Remove<Key, TrieNode>(key, out _))
+        if (_byKeyObjectCache.Remove<Key, TrieNode>(key, out TrieNode node2))
         {
             Interlocked.Decrement(ref _count);
-            _trieStore.DecrementCachedNodeCount();
+            _trieStore.DecrementCachedNodeCount(node2.IsPersisted);
         }
     }
 
@@ -206,10 +206,13 @@ internal class TrieStoreDirtyNodesCache
     /// removing ones that are either no longer referenced or already persisted.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    public long PruneCache(bool skipRecalculateMemory = false)
+    public (long totalMemory, long unpersistedMemory, long totalNode, long unpersistedNode) PruneCache(bool skipRecalculateMemory = false)
     {
         bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
         long newMemory = 0;
+        long unpersistedMemory = 0;
+        long totalNode = 0;
+        long unpersistedNode = 0;
 
         using (AcquireMapLock())
         {
@@ -269,12 +272,20 @@ internal class TrieStoreDirtyNodesCache
                 else if (!skipRecalculateMemory)
                 {
                     node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false) + KeyMemoryUsage;
+                    long memory = node.GetMemorySize(false) + KeyMemoryUsage;
+                    newMemory += memory;
+                    totalNode++;
+
+                    if (!node.IsPersisted)
+                    {
+                        unpersistedMemory += memory;
+                        unpersistedNode++;
+                    }
                 }
             }
         }
 
-        return newMemory;
+        return (newMemory, unpersistedMemory, totalNode, unpersistedNode);
 
         void TrackPersistedNode(in Key key, TrieNode node)
         {
