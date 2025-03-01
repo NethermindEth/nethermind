@@ -124,6 +124,16 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, nodeMemoryUsage);
     }
 
+    public void DecrementCachedNodeCount()
+    {
+        Metrics.CachedNodesCount = Interlocked.Decrement(ref _cachedNodesCount);
+    }
+
+    public void IncrementCachedNodeCount()
+    {
+        Metrics.CachedNodesCount = Interlocked.Increment(ref _cachedNodesCount);
+    }
+
     public int CommittedNodesCount
     {
         get => _committedNodesCount;
@@ -679,6 +689,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private BlockCommitSet? _lastCommitSet = null;
 
     private long _memoryUsedByDirtyCache;
+    private long _cachedNodesCount;
 
     private int _committedNodesCount;
 

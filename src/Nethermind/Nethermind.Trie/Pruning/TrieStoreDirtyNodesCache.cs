@@ -63,7 +63,8 @@ internal class TrieStoreDirtyNodesCache
         Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
         if (TryAdd(key, node))
         {
-            Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
+            Interlocked.Increment(ref _count);
+            _trieStore.IncrementCachedNodeCount();
             _trieStore.IncrementMemoryUsedByDirtyCache(node.GetMemorySize(false) + KeyMemoryUsage);
         }
     }
@@ -168,14 +169,16 @@ internal class TrieStoreDirtyNodesCache
         {
             if (_byHashObjectCache.Remove(key.Keccak, out _))
             {
-                Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
+                Interlocked.Decrement(ref _count);
+                _trieStore.DecrementCachedNodeCount();
             }
 
             return;
         }
         if (_byKeyObjectCache.Remove<Key, TrieNode>(key, out _))
         {
-            Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
+            Interlocked.Decrement(ref _count);
+            _trieStore.DecrementCachedNodeCount();
         }
     }
 
@@ -393,7 +396,6 @@ internal class TrieStoreDirtyNodesCache
         _byHashObjectCache.NoResizeClear();
         _byKeyObjectCache.NoResizeClear<Key, TrieNode>();
         Interlocked.Exchange(ref _count, 0);
-        Metrics.CachedNodesCount = 0;
         _trieStore.MemoryUsedByDirtyCache = 0;
     }
 
