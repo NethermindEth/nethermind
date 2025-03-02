@@ -10,11 +10,11 @@ namespace Nethermind.Trie.Pruning
     {
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
-        public static long CachedNodesCount { get; set; }
+        public static long TotalCachedNodesCount { get; set; }
 
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
-        public static long UnpersistedCachedNodesCount { get; set; }
+        public static long CachedNodesCount { get; set; }
 
         [GaugeMetric]
         [Description("Nodes that have been persisted since the session start.")]
@@ -74,10 +74,10 @@ namespace Nethermind.Trie.Pruning
 
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]
-        public static long MemoryUsedByCache { get; set; }
+        public static long TotalMemoryUsedByCache { get; set; }
 
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]
-        public static long UnpersistedMemoryUsedByCache { get; set; }
+        public static long MemoryUsedByCache { get; set; }
     }
 }

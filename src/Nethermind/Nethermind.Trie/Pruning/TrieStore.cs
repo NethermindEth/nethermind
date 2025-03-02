@@ -109,6 +109,16 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
+    public long TotalMemoryUsedByDirtyCache
+    {
+        get => _totalMemoryUsedByDirtyCache;
+        set
+        {
+            Metrics.TotalMemoryUsedByCache = value;
+            _totalMemoryUsedByDirtyCache = value;
+        }
+    }
+
     public long MemoryUsedByDirtyCache
     {
         get => _memoryUsedByDirtyCache;
@@ -119,40 +129,30 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public long UnpersistedMemoryUsedByDirtyCache
-    {
-        get => _unpersistedMemoryUsedByDirtyCache;
-        set
-        {
-            Metrics.MemoryUsedByCache = value;
-            _unpersistedMemoryUsedByDirtyCache = value;
-        }
-    }
-
     public void IncrementMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
     {
-        Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, nodeMemoryUsage);
+        Metrics.TotalMemoryUsedByCache = Interlocked.Add(ref _totalMemoryUsedByDirtyCache, nodeMemoryUsage);
         if (!persisted)
         {
-            Metrics.UnpersistedMemoryUsedByCache = Interlocked.Add(ref _unpersistedMemoryUsedByDirtyCache, nodeMemoryUsage);
+            Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, nodeMemoryUsage);
         }
     }
 
     public void DecrementCachedNodeCount(bool persisted)
     {
-        Metrics.CachedNodesCount = Interlocked.Decrement(ref _cachedNodesCount);
+        Metrics.TotalCachedNodesCount = Interlocked.Decrement(ref _totalCachedNodesCount);
         if (!persisted)
         {
-            Metrics.UnpersistedCachedNodesCount = Interlocked.Decrement(ref _unpersistedCachedNodesCount);
+            Metrics.CachedNodesCount = Interlocked.Decrement(ref _cachedNodesCount);
         }
     }
 
     public void IncrementCachedNodeCount(bool persisted)
     {
-        Metrics.CachedNodesCount = Interlocked.Increment(ref _cachedNodesCount);
+        Metrics.TotalCachedNodesCount = Interlocked.Increment(ref _totalCachedNodesCount);
         if (!persisted)
         {
-            Metrics.UnpersistedCachedNodesCount = Interlocked.Increment(ref _unpersistedCachedNodesCount);
+            Metrics.CachedNodesCount = Interlocked.Increment(ref _cachedNodesCount);
         }
     }
 
@@ -191,7 +191,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         get
         {
             int count = DirtyNodesCount();
-            Metrics.CachedNodesCount = count;
+            Metrics.TotalCachedNodesCount = count;
             return count;
         }
     }
@@ -518,8 +518,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                             // persisted node have a pretty good hit rate and tend to conflict with the persisted
                             // nodes (address,path) entry on second PruneCache. So pruning them ahead of time
                             // really helps increase nodes that can be removed.
-                            PruneCache(skipRecalculateMemory: true);
-
                             SaveSnapshot();
 
                             PruneCache();
@@ -608,7 +606,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                     _dirtyNodesTasks[index] = Task.Run(() =>
                     {
                         _dirtyNodes[i].RemovePastKeys(_persistedHashes[i], _nodeStorage);
-                        _persistedHashes[i].NoResizeClear();
                     });
                 }
 
@@ -649,24 +646,36 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     /// <exception cref="InvalidOperationException"></exception>
     private void PruneCache(bool skipRecalculateMemory = false)
     {
-        if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+        if (_logger.IsDebug) _logger.Debug($"Pruning nodes {TotalMemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
 
         long memory = 0;
-        long unpersistedMemory = 0;
+        long dirtyMemory = 0;
         long totalNodes = 0;
-        long totalUnpersistedNode = 0;
+        long totalDirtyNodes = 0;
 
         for (int index = 0; index < _dirtyNodes.Length; index++)
         {
-            TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[index];
-            _dirtyNodesTasks[index] = Task.Run(() =>
+            int closureIndex = index;
+            TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
+            _dirtyNodesTasks[closureIndex] = Task.Run(() =>
             {
-                (long shardSize, long shardUnpersistedSize, long shardNodeCount, long shardUnpersistedNodeCount) = dirtyNode.PruneCache(skipRecalculateMemory);
+                ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
+                if (_persistedHashes.Length > 0)
+                {
+                    persistedHashes = _persistedHashes[closureIndex];
+                }
+
+                (long shardSize, long shardUnpersistedSize, long shardNodeCount, long shardUnpersistedNodeCount) = dirtyNode
+                    .PruneCache(skipRecalculateMemory, prunePersisted: false,
+                        persistedHashes: persistedHashes,
+                        nodeStorage: _nodeStorage);
+                persistedHashes?.NoResizeClear();
+
                 Interlocked.Add(ref memory, shardSize);
-                Interlocked.Add(ref unpersistedMemory, shardUnpersistedSize);
+                Interlocked.Add(ref dirtyMemory, shardUnpersistedSize);
                 Interlocked.Add(ref totalNodes, shardNodeCount);
-                Interlocked.Add(ref totalUnpersistedNode, shardUnpersistedNodeCount);
+                Interlocked.Add(ref totalDirtyNodes, shardUnpersistedNodeCount);
             });
         }
 
@@ -674,14 +683,14 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         if (!skipRecalculateMemory)
         {
-            MemoryUsedByDirtyCache = memory;
-            UnpersistedMemoryUsedByDirtyCache = unpersistedMemory;
+            TotalMemoryUsedByDirtyCache = memory;
+            MemoryUsedByDirtyCache = dirtyMemory;
         }
-        Metrics.CachedNodesCount = totalNodes;
-        Metrics.UnpersistedCachedNodesCount = totalUnpersistedNode;
+        Metrics.TotalCachedNodesCount = totalNodes;
+        Metrics.CachedNodesCount = totalDirtyNodes;
         _ = CachedNodesCount; // Setter also update the count
 
-        if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+        if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {TotalMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
     }
 
     public void ClearCache()
@@ -722,10 +731,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     private BlockCommitSet? _lastCommitSet = null;
 
+    private long _totalMemoryUsedByDirtyCache;
     private long _memoryUsedByDirtyCache;
-    private long _unpersistedMemoryUsedByDirtyCache;
+    private long _totalCachedNodesCount;
     private long _cachedNodesCount;
-    private long _unpersistedCachedNodesCount;
 
     private int _committedNodesCount;
 
@@ -868,7 +877,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
 
-        if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+        if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {TotalMemoryUsedByDirtyCache})");
 
         LastPersistedBlockNumber = commitSet.BlockNumber;
     }
@@ -1017,7 +1026,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             for (int index = 0; index < candidateSets.Count; index++)
             {
                 BlockCommitSet blockCommitSet = candidateSets[index];
-                if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
+                if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {TotalMemoryUsedByDirtyCache})");
                 ParallelPersistBlockCommitSet(blockCommitSet);
             }
             writeBatch.Dispose();
