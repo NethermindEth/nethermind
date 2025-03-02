@@ -47,7 +47,7 @@ internal class Program
             new("--gnosisTest", "-g") { Description = "Set test as gnosisTest. if not, it will be by default assumed a mainnet test." };
 
         public static CliOption<bool> EnableWarmup { get; } =
-        new("--warmup","-wu") {Description = "Enable warmup for benchmarking purposes."};
+            new("--warmup", "-wu") { Description = "Enable warmup for benchmarking purposes." };
     }
 
     public static async Task<int> Main(params string[] args)

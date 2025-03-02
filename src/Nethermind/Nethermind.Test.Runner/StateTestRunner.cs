@@ -74,7 +74,7 @@ namespace Nethermind.Test.Runner
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)
                 {
-                    if(_enableWarmup)
+                    if (_enableWarmup)
                     {
                         // Warm up only when benchmarking
                         Parallel.For(0, 30, (i, s) =>
