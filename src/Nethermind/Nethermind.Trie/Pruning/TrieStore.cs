@@ -657,6 +657,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             });
         }
 
+        Task.WaitAll(_dirtyNodesTasks);
+
         for (int index = 0; index < _dirtyNodes.Length; index++)
         {
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[index];
@@ -665,8 +667,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             totalNodes += dirtyNode.Count;
             totalDirtyNodes += dirtyNode.DirtyCount;
         }
-
-        Task.WaitAll(_dirtyNodesTasks);
 
         MemoryUsedByDirtyCache = memory;
         DirtyMemoryUsedByDirtyCache = dirtyMemory;
