@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using NUnit.Framework;
@@ -52,12 +51,12 @@ public class AutoCancelTokenSourceTests
 
         Task okTask = Task.Run(async () =>
         {
-            await cts.Token.ToTask();
+            await cts.Token.AsTask();
         });
 
         Task operationCancelledTask = Task.Run(async () =>
         {
-            await cts.Token.ToTask();
+            await cts.Token.AsTask();
             cts.Token.ThrowIfCancellationRequested();
         });
 
