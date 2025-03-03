@@ -24,18 +24,19 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IReadOnlyTrieStore _trieStore;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly IBlockValidator _blockValidator;
-    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-    protected readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsMigration _receiptsMigration;
-    private readonly IConfigProvider _configProvider;
+    protected readonly IReadOnlyDbProvider _dbProvider;
     protected readonly ISpecProvider _specProvider;
     protected readonly ILogManager _logManager;
     protected readonly IBlockPreprocessorStep _recoveryStep;
-    private readonly IReadOnlyDbProvider _dbProvider;
     protected readonly IReadOnlyBlockTree _blockTree;
+    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
+    protected readonly IReceiptStorage _receiptStorage;
+    protected readonly IBlockValidator _blockValidator;
+
+    private readonly IReadOnlyTrieStore _trieStore;
+    private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly IReceiptsMigration _receiptsMigration;
+    private readonly IConfigProvider _configProvider;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
@@ -110,8 +111,10 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
     }
 
-    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        OverridableWorldStateManager worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(
+        IReadOnlyTxProcessingScope scope,
+        OverridableWorldStateManager worldStateManager,
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
         return new ReadOnlyChainProcessingEnv(
             scope,
