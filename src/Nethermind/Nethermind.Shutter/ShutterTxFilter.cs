@@ -35,9 +35,9 @@ public class ShutterTxFilter(
             return AcceptTxResult.Invalid;
         }
 
-        if (tx.GasLimit > gasLimit)
+        if (tx.GasLimit != gasLimit)
         {
-            _logger.Debug($"Decrypted Shutter transaction gas limit {tx.GasLimit} exceeds encrypted gas limit {gasLimit}");
+            _logger.Debug($"Decrypted Shutter transaction gas limit {tx.GasLimit} did not match encrypted gas limit {gasLimit}.");
             return AcceptTxResult.Invalid;
         }
 
