@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
+public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
@@ -19,12 +19,13 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3450L;
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        if (inputData.Length != 160)
-            return (null, true);
+    [LibraryImport("Binaries/secp256r1", SetLastError = true)]
+    private static unsafe partial byte VerifyBytesNoStruct(byte* data, int length);
 
-        var isValid = Secp256r1.VerifySignature(in inputData);
+    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
+    {
+        using var pin = input.Pin();
+        var isValid = VerifyBytesNoStruct((byte*)pin.Pointer, input.Length) != 0;
 
         Metrics.Secp256r1Precompile++;
 
