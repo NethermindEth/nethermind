@@ -711,26 +711,26 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
         {
+            UInt256 fees = (UInt256)spentGas * premiumPerGas;
+            UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+            UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
+
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
-                UInt256 fees = (UInt256)spentGas * premiumPerGas;
-                UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
-                UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
-
-                if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
-                {
-                    collectedFees += blobBaseFee;
-                }
-
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
-
-                if (spec.FeeCollector is not null && !collectedFees.IsZero)
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
-
-                if (tracer.IsTracingFees)
-                    tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
             }
+
+            if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
+            {
+                collectedFees += blobBaseFee;
+            }
+
+            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+
+            if (tracer.IsTracingFees)
+                tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
         }
 
         protected bool PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
