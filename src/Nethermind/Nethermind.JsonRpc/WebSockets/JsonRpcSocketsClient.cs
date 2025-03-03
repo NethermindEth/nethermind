@@ -12,6 +12,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using CommunityToolkit.HighPerformance.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Network.P2P;
@@ -43,7 +44,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonRpcLocalStats jsonRpcLocalStats,
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
-        long? maxBatchResponseBodySize = null)
+        long? maxBatchResponseBodySize = null,
+        long concurrency = 1)
         : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
@@ -51,6 +53,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
         _processChannel = Channel.CreateBounded<ProcessRequest>(1);
+        _processConcurrency = concurrency;
     }
 
     public override void Dispose()
@@ -76,9 +79,9 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         await _processChannel.Writer.WriteAsync(new ProcessRequest(memory, memoryOwner), cancellationToken);
     }
 
-    public override async Task ReceiveLoopAsync(CancellationToken ctsToken)
+    public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        using AutoCancelTokenSource cts = new();
+        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
         ArrayPoolList<Task> allTasks = new((int)(_processConcurrency + 1));
         allTasks.Add(Task.Run(async () =>
@@ -95,22 +98,23 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
         for (int i = 0; i < _processConcurrency; i++)
         {
-            allTasks.Add(WorkerLoop(cts.Token));
+            int idx = i;
+            allTasks.Add(WorkerLoop(cts.Token, idx));
         }
 
         await cts.WhenAllSucceed(allTasks);
     }
 
-    private async Task WorkerLoop(CancellationToken cancellationToken)
+    private async Task WorkerLoop(CancellationToken cancellationToken, int idx)
     {
         await foreach (ProcessRequest request in _processChannel.Reader.ReadAllAsync(cancellationToken))
         {
             using var _ = request.BufferOwner;
-            await HandleRequest(request.Buffer);
+            await HandleRequest(request.Buffer, cancellationToken);
         }
     }
 
-    public async Task HandleRequest(Memory<byte> data) {
+    public async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default) {
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         int allResponsesSize = 0;
 
@@ -118,7 +122,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             using (result)
             {
-                int singleResponseSize = await SendJsonRpcResult(result);
+                int singleResponseSize = await SendJsonRpcResult(result, cancellationToken);
                 allResponsesSize += singleResponseSize;
 
                 long startTime = Stopwatch.GetTimestamp();
@@ -165,7 +169,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         }
     }
 
-    public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
+    public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
         await _sendSemaphore.WaitAsync();
         try
@@ -175,7 +179,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                 int responseSize = 1;
                 bool isFirst = true;
                 await _stream.WriteAsync(_jsonOpeningBracket);
-                await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(cancellationToken);
                 while (await enumerator.MoveNextAsync())
                 {
                     JsonRpcResult.Entry entry = enumerator.Current;
@@ -183,7 +187,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                     {
                         if (!isFirst)
                         {
-                            await _stream.WriteAsync(_jsonComma);
+                            await _stream.WriteAsync(_jsonComma, cancellationToken);
                             responseSize += 1;
                         }
                         isFirst = false;
