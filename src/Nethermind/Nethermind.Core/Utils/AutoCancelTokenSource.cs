@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Core.Utils;
 
@@ -30,5 +33,25 @@ public readonly struct AutoCancelTokenSource(CancellationTokenSource cancellatio
     {
         cancellationTokenSource.Cancel();
         cancellationTokenSource.Dispose();
+    }
+
+    public async Task WhenAllSucceed(params IReadOnlyList<Task> allTasks)
+    {
+        var source = cancellationTokenSource;
+
+        await Task.WhenAll(allTasks.Select(CancelTokenSourceOnError));
+
+        async Task CancelTokenSourceOnError(Task innerTask)
+        {
+            try
+            {
+                await innerTask;
+            }
+            catch (Exception)
+            {
+                await source.CancelAsync();
+                throw;
+            }
+        }
     }
 }

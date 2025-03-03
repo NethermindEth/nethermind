@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using NUnit.Framework;
@@ -35,5 +38,30 @@ public class AutoCancelTokenSourceTests
         cts.Cancel();
 
         acts.Token.IsCancellationRequested.Should().BeTrue();
+    }
+
+    [Test]
+    public void When_a_task_failed_cancel_other_task_and_forward_the_right_exception()
+    {
+        using AutoCancelTokenSource cts = new AutoCancelTokenSource();
+
+        Task failedTask = Task.Run(() =>
+        {
+            throw new InvalidOperationException();
+        });
+
+        Task okTask = Task.Run(async () =>
+        {
+            await cts.Token.ToTask();
+        });
+
+        Task operationCancelledTask = Task.Run(async () =>
+        {
+            await cts.Token.ToTask();
+            cts.Token.ThrowIfCancellationRequested();
+        });
+
+        var act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
+        act.Should().ThrowAsync<InvalidOperationException>();
     }
 }

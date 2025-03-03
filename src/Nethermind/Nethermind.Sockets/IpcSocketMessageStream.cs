@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Sockets;
@@ -16,7 +17,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     private byte[] _bufferedData = [];
     private int _bufferedDataLength = 0;
 
-    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer)
+    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (!Socket.Connected)
             return null;
@@ -33,7 +34,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             catch { }
         }
 
-        int read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None);
+        int read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
 
         int delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
         bool endOfMessage;

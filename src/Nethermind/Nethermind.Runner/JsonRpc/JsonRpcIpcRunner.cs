@@ -86,7 +86,7 @@ namespace Nethermind.Runner.JsonRpc
                         _jsonSerializer,
                         maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
 
-                    await socketsClient.ReceiveLoopAsync();
+                    await socketsClient.ReceiveLoopAsync(cancellationToken);
                 }
             }
             catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })

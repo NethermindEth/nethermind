@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
@@ -28,7 +29,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         _maxRequestSize = maxRequestSize;
     }
 
-    public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
+    public virtual Task ProcessAsync(ArraySegment<byte> data, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public virtual async Task SendAsync(SocketsMessage message)
     {
@@ -45,14 +46,14 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         }
     }
 
-    public async Task ReceiveLoopAsync()
+    public virtual async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         const int standardBufferLength = 1024 * 4;
         int currentMessageLength = 0;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
         try
         {
-            ReceiveResult? result = await _stream.ReceiveAsync(buffer);
+            ReceiveResult? result = await _stream.ReceiveAsync(buffer, cancellationToken);
             while (result?.Closed == false)
             {
                 currentMessageLength += result.Read;
@@ -65,7 +66,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
                 if (result.EndOfMessage)
                 {
                     // process the already filled bytes
-                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
+                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
                     currentMessageLength = 0; // reset message length
 
                     // if we grew the buffer too big lets reset it
