@@ -77,16 +77,7 @@ namespace Nethermind.Runner.JsonRpc
                     socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                     socket.SendTimeout = _jsonRpcConfig.Timeout;
 
-                    using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
-                        string.Empty,
-                        new IpcSocketMessageStream(socket),
-                        RpcEndpoint.IPC,
-                        _jsonRpcProcessor,
-                        _jsonRpcLocalStats,
-                        _jsonSerializer,
-                        maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
-
-                    await socketsClient.ReceiveLoopAsync(cancellationToken);
+                    _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken));
                 }
             }
             catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
@@ -109,6 +100,21 @@ namespace Nethermind.Runner.JsonRpc
             {
                 Dispose();
             }
+        }
+
+        private async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
+        {
+            using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
+                string.Empty,
+                new IpcSocketMessageStream(socket),
+                RpcEndpoint.IPC,
+                _jsonRpcProcessor,
+                _jsonRpcLocalStats,
+                _jsonSerializer,
+                maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize,
+                concurrency: _jsonRpcConfig.IpcProcessingConcurrency);
+
+            await socketsClient.ReceiveLoopAsync(cancellationToken);
         }
 
         private void DeleteSocketFileIfExists(string path)
