@@ -34,9 +34,18 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             catch { }
         }
 
-        int read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
+        int delimiter = ((IList<byte>)buffer[.._bufferedDataLength]).IndexOf(Delimiter);
+        int read;
+        if (delimiter == -1)
+        {
+            read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
+            delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
+        }
+        else
+        {
+            read = _bufferedDataLength;
+        }
 
-        int delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
         bool endOfMessage;
 
         if (delimiter != -1 && (delimiter + 1) < read)

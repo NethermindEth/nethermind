@@ -152,7 +152,7 @@ public class JsonRpcSocketsClientTests
 
         [TestCase(1)]
         [TestCase(5)]
-        public async Task CanHandleMessage(int concurrencyLevel)
+        public async Task CanHandleMessageConcurrently(int concurrencyLevel)
         {
             CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
             using TempPath tmpPath = TempPath.GetTempFile();
@@ -194,8 +194,7 @@ public class JsonRpcSocketsClientTests
             TaskCompletionSource completeSource = new TaskCompletionSource();
             async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo c)
             {
-                int now = Interlocked.Increment(ref concurrentCall);
-                Console.Error.WriteLine($"Responding, now {now}");
+                Interlocked.Increment(ref concurrentCall);
                 await completeSource.Task;
                 yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
             }
@@ -210,7 +209,6 @@ public class JsonRpcSocketsClientTests
             }
 
             Assert.That(() => concurrentCall, Is.EqualTo(concurrencyLevel).After(10000, 10));
-            Console.Error.WriteLine("============== Done ====================");
             completeSource.SetResult();
 
             sendSocket.Close();
