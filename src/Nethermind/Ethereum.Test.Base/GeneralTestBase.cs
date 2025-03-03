@@ -30,6 +30,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Specs.GnosisForks;
+using Nethermind.Evm.Tracing.GethStyle;
 
 namespace Ethereum.Test.Base
 {
