@@ -62,7 +62,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Initial_memory_is_0()
         {
             using TrieStore trieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
-            trieStore.TotalMemoryUsedByDirtyCache.Should().Be(0);
+            trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
         [Test]
@@ -76,7 +76,7 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
             }
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
 
@@ -119,7 +119,7 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
             }
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(0);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
         [Test]
@@ -190,26 +190,26 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
-            trieStore.TotalMemoryUsedByDirtyCache.Should().Be(0);
+            trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
         [Test]
         public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
         {
             using TrieStore trieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
-            long startSize = trieStore.TotalMemoryUsedByDirtyCache;
+            long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize - MemorySizes.SmallObjectOverhead;
-            Assert.That(trieStore.TotalMemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
-            Assert.That(trieStore.TotalMemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
-            Assert.That(trieStore.TotalMemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakC);
-            Assert.That(trieStore.TotalMemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakD, true);
-            Assert.That(trieStore.TotalMemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
         }
 
         [Test]
@@ -225,7 +225,7 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
             }
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
@@ -255,7 +255,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 540560L : 610708L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 540560L : 610708L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -283,7 +283,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // depending on whether the node gets resolved it gives different values here in debugging and run
             // needs some attention
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().BeLessThanOrEqualTo(
+            fullTrieStore.MemoryUsedByDirtyCache.Should().BeLessThanOrEqualTo(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
@@ -319,7 +319,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(1236, trieNode2)) { }
 
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode3.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
@@ -355,7 +355,7 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
             }
 
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode3.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
@@ -382,7 +382,7 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().BeLessThan(512 * 2);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().BeLessThan(512 * 2);
         }
 
         [Test]
@@ -1020,7 +1020,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.TotalMemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 736 : 944);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 736 : 944);
         }
 
         [Test]

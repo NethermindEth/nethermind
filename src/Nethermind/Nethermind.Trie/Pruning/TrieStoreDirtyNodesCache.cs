@@ -19,11 +19,19 @@ namespace Nethermind.Trie.Pruning;
 internal class TrieStoreDirtyNodesCache
 {
     private readonly TrieStore _trieStore;
-    private int _count = 0;
+    private long _count = 0;
+    private long _dirtyCount = 0;
+    private long _totalMemory = 0;
+    private long _totalDirtyMemory = 0;
     private readonly ILogger _logger;
     private readonly bool _storeByHash;
     private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache;
     private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache;
+
+    public long Count => _count;
+    public long DirtyCount => _dirtyCount;
+    public long TotalMemory => _totalMemory;
+    public long TotalDirtyMemory => _totalDirtyMemory;
 
     // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
     // If null, disable removing key.
@@ -62,11 +70,23 @@ internal class TrieStoreDirtyNodesCache
         Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
         if (TryAdd(key, node))
         {
-            Interlocked.Increment(ref _count);
-            _trieStore.IncrementCachedNodeCount(node.IsPersisted);
-            _trieStore.IncrementMemoryUsedByDirtyCache(node.GetMemorySize(false) + KeyMemoryUsage, node.IsPersisted);
+            IncrementMemory(node);
         }
     }
+
+    private void IncrementMemory(TrieNode node)
+    {
+        long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;
+        Interlocked.Increment(ref _count);
+        Interlocked.Add(ref _totalMemory, memoryUsage);
+        if (!node.IsPersisted)
+        {
+            Interlocked.Increment(ref _dirtyCount);
+            Interlocked.Add(ref _totalDirtyMemory, memoryUsage);
+        }
+        _trieStore.IncrementMemoryUsedByDirtyCache(memoryUsage, node.IsPersisted);
+    }
+
 
     public TrieNode FindCachedOrUnknown(in Key key)
     {
@@ -153,7 +173,7 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.TryGetValue(key, out node);
     }
 
-    public bool TryAdd(in Key key, TrieNode node)
+    private bool TryAdd(in Key key, TrieNode node)
     {
         if (_storeByHash)
         {
@@ -162,22 +182,33 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.TryAdd(key, node);
     }
 
+    private void DecrementMemory(TrieNode node)
+    {
+        long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;
+        Interlocked.Decrement(ref _count);
+        Interlocked.Add(ref _totalMemory, -memoryUsage);
+        if (!node.IsPersisted)
+        {
+            Interlocked.Decrement(ref _dirtyCount);
+            Interlocked.Add(ref _totalDirtyMemory, -memoryUsage);
+        }
+        _trieStore.DecreaseMemoryUsedByDirtyCache(memoryUsage, node.IsPersisted);
+    }
+
     public void Remove(in Key key)
     {
         if (_storeByHash)
         {
             if (_byHashObjectCache.Remove(key.Keccak, out TrieNode node))
             {
-                Interlocked.Decrement(ref _count);
-                _trieStore.DecrementCachedNodeCount(node.IsPersisted);
+                DecrementMemory(node);
             }
 
             return;
         }
         if (_byKeyObjectCache.Remove<Key, TrieNode>(key, out TrieNode node2))
         {
-            Interlocked.Decrement(ref _count);
-            _trieStore.DecrementCachedNodeCount(node2.IsPersisted);
+            DecrementMemory(node2);
         }
     }
 
@@ -198,15 +229,12 @@ internal class TrieStoreDirtyNodesCache
         };
     }
 
-    public int Count => _count;
-
     /// <summary>
     /// This method is responsible for reviewing the nodes that are directly in the cache and
     /// removing ones that are either no longer referenced or already persisted.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    public (long totalMemory, long unpersistedMemory, long totalNode, long unpersistedNode) PruneCache(
-        bool skipRecalculateMemory = false,
+    public void PruneCache(
         bool prunePersisted = false,
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
         INodeStorage? nodeStorage = null)
@@ -295,8 +323,10 @@ internal class TrieStoreDirtyNodesCache
                         Remove(key);
 
                         Metrics.PrunedPersistedNodesCount++;
+                        continue;
                     }
-                    else if (_trieStore.IsNoLongerNeeded(node))
+
+                    if (_trieStore.IsNoLongerNeeded(node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
                         if (node.Keccak is null)
@@ -312,9 +342,11 @@ internal class TrieStoreDirtyNodesCache
                         Metrics.PrunedPersistedNodesCount++;
 
                         Remove(key);
+                        continue;
                     }
                 }
-                else if (!node.IsPersisted && _trieStore.IsNoLongerNeeded(node))
+
+                if (!node.IsPersisted && _trieStore.IsNoLongerNeeded(node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
                     if (node.Keccak is null)
@@ -325,26 +357,28 @@ internal class TrieStoreDirtyNodesCache
                     Metrics.PrunedTransientNodesCount++;
 
                     Remove(key);
+                    continue;
                 }
-                else if (!skipRecalculateMemory)
-                {
-                    node.PrunePersistedRecursively(1);
-                    long memory = node.GetMemorySize(false) + KeyMemoryUsage;
-                    newMemory += memory;
-                    totalNode++;
 
-                    if (!node.IsPersisted)
-                    {
-                        unpersistedMemory += memory;
-                        unpersistedNode++;
-                    }
+                node.PrunePersistedRecursively(1);
+                long memory = node.GetMemorySize(false) + KeyMemoryUsage;
+                newMemory += memory;
+                totalNode++;
+
+                if (!node.IsPersisted)
+                {
+                    unpersistedMemory += memory;
+                    unpersistedNode++;
                 }
             }
         }
 
         writeBatch?.Dispose();
 
-        return (newMemory, unpersistedMemory, totalNode, unpersistedNode);
+        _count = totalNode;
+        _dirtyCount = unpersistedNode;
+        _totalMemory = newMemory;
+        _totalDirtyMemory = unpersistedMemory;
 
         void TrackPersistedNode(in Key key, TrieNode node)
         {
@@ -392,6 +426,7 @@ internal class TrieStoreDirtyNodesCache
                             Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
                             Remove(new Key(address, fullPath, prevHash));
                             writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
+                            _pastPathHash?.Delete(key);
                             round++;
 
                             // Batches of 256
@@ -467,7 +502,7 @@ internal class TrieStoreDirtyNodesCache
         _byHashObjectCache.NoResizeClear();
         _byKeyObjectCache.NoResizeClear<Key, TrieNode>();
         Interlocked.Exchange(ref _count, 0);
-        _trieStore.TotalMemoryUsedByDirtyCache = 0;
+        _trieStore.MemoryUsedByDirtyCache = 0;
     }
 
     internal readonly struct Key : IEquatable<Key>
