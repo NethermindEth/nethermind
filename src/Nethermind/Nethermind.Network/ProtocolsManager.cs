@@ -70,6 +70,7 @@ namespace Nethermind.Network
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly Regex? _clientIdPattern;
+        private readonly string? _clientIdHiddenParts;
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
@@ -115,6 +116,8 @@ namespace Nethermind.Network
             {
                 _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
             }
+
+            _clientIdHiddenParts = networkConfig.ClientIdHiddenParts;
 
             _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
@@ -204,7 +207,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _clientIdPattern, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _clientIdPattern, _logManager, _clientIdHiddenParts);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 

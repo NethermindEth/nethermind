@@ -103,4 +103,7 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
+
+    [ConfigItem(DefaultValue = null, Description = "A comma-separated list of the part names of the client id to be masked.")]
+    string? ClientIdHiddenParts { get; set; }
 }

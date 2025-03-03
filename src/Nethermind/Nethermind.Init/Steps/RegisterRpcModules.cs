@@ -178,7 +178,7 @@ public class RegisterRpcModules : IStep
         SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
         rpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
 
-        Web3RpcModule web3RpcModule = new(_api.LogManager);
+        Web3RpcModule web3RpcModule = new(_api.LogManager, networkConfig);
         rpcModuleProvider.RegisterSingle<IWeb3RpcModule>(web3RpcModule);
 
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
