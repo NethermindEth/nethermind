@@ -4,14 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -21,15 +18,11 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Specs.GnosisForks;
 
 namespace Ethereum.Test.Base
 {
@@ -38,7 +31,6 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
-        private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
         [SetUp]
         public void Setup()
@@ -134,7 +126,7 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
+            ValidationResult txIsValid = ChainUtils.ValidateTransaction(test.Transaction, test.Fork);
             TransactionResult? txResult = null;
             if (txIsValid)
             {

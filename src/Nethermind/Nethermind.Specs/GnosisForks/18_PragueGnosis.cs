@@ -16,6 +16,7 @@ public class PragueGnosis : Forks.Prague
         BlobBaseFeeUpdateFraction = 0x10fafa;
         TargetBlobCount = 1;
         MaxBlobCount = 2;
+        FeeCollector = GnosisSpecProvider.FeeCollector;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new PragueGnosis());
