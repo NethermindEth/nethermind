@@ -327,12 +327,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         return new TaikoNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
     }
 
-    public IBlockProducerRunner CreateBlockProducerRunner()
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
     {
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
     {
         throw new NotSupportedException();
     }

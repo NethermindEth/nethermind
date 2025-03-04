@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.Blocks
         public FastSyncFeed(ISyncConfig syncConfig)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);
+            _blocksRequest = new BlocksRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;
