@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Stats;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 
 public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
 {
@@ -21,7 +21,6 @@ public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
 
         {
             writer.WriteStartObject();
-
             writer.WritePropertyName("initialBlockNumber"u8);
             JsonSerializer.Serialize(writer, value.InitialBlockNumber, options);
             writer.WritePropertyName("currentBlockNumber"u8);

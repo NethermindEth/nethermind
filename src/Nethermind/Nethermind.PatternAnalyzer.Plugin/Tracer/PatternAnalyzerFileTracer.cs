@@ -12,7 +12,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Stats;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 
 public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace, PatternAnalyzerTxTracer>
 {
@@ -30,7 +30,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     const string DefaultFile = "op_code_stats.json";
     private readonly string _fileName;
     private readonly IFileSystem _fileSystem;
-    private readonly JsonSerializerOptions _serializerOptions = new();
+    public readonly JsonSerializerOptions _serializerOptions = new();
     List<Task> _fileTracingQueue = new List<Task>();
     private ILogger _logger;
     int _fileTracingQueueSize = 1;
@@ -153,6 +153,11 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
     }
 
+
+    public void CompleteAllTasks()
+    {
+        Task.WaitAll(_fileTracingQueue.ToArray());
+    }
 
     protected override PatternAnalyzerTxTracer OnStart(Transaction? tx)
     {

@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
     <ProjectReference Include="..\Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj" />
   </ItemGroup>
 

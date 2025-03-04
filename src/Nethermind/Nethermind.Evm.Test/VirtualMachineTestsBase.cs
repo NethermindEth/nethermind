@@ -145,6 +145,7 @@ public class VirtualMachineTestsBase
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
 
+
     protected T ExecuteBlock<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : IBlockTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);

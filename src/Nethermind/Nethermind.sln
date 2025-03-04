@@ -220,9 +220,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ExternalSigner.P
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Stats", "Stats", "{01974B39-6421-4448-978D-8E6175FEF5DD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.OpcodeStats.Plugin", "Nethermind.OpcodeStats.Plugin\Nethermind.OpcodeStats.Plugin.csproj", "{149716EC-7B6C-487F-B8F9-B4D73DFF04E7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PatternAnalyzer.Plugin", "Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj", "{149716EC-7B6C-487F-B8F9-B4D73DFF04E7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.OpcodeStats.Plugin.Test", "Nethermind.OpcodeStats.Plugin.Test\Nethermind.OpcodeStats.Plugin.Test.csproj", "{59008987-9F96-4670-A945-71075D2B5A38}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PatternAnalyzer.Plugin.Test", "Nethermind.PatternAnalyzer.Plugin.Test\Nethermind.PatternAnalyzer.Plugin.Test.csproj", "{59008987-9F96-4670-A945-71075D2B5A38}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

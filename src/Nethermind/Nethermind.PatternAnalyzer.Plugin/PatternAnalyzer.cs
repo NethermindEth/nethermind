@@ -13,7 +13,7 @@ using Nethermind.KeyStore.Config;
 using System.Configuration;
 using Nethermind.Logging;
 using System.IO.Abstractions;
-using Nethermind.PatternAnalyzer.Plugin.Stats;
+using Nethermind.PatternAnalyzer.Plugin.Tracer;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.PatternAnalyzer.Plugin;

@@ -7,7 +7,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Stats;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 
 public class PatternAnalyzerTxTracer : TxTracer
 {
