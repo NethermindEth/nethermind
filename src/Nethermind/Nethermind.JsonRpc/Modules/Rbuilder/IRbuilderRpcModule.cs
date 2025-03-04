@@ -64,7 +64,7 @@ public class AccountState
     {
         Nonce = nonce;
         Balance = balance;
-        CodeHash = codeHash;
+        CodeHash = new Hash256(codeHash);
     }
 
     public AccountState()
