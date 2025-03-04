@@ -126,7 +126,7 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            ValidationResult txIsValid = ChainUtils.ValidateTransaction(test.Transaction, test.Fork);
+            ValidationResult txIsValid = new TxValidator(test.ChainId).ValidateTransaction(test.Transaction, spec);
             TransactionResult? txResult = null;
             if (txIsValid)
             {
