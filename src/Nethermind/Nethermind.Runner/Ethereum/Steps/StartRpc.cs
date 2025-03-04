@@ -64,7 +64,8 @@ public class StartRpc(INethermindApi api) : IStep
                     jsonSerializer,
                     jsonRpcUrlCollection,
                     auth,
-                    jsonRpcConfig.MaxBatchResponseBodySize);
+                    jsonRpcConfig.MaxBatchResponseBodySize,
+                    jsonRpcConfig.WebSocketsProcessingConcurrency);
 
                 _api.WebSocketsManager!.AddModule(webSocketsModule, true);
             }
