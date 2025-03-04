@@ -32,6 +32,10 @@
   <Folder Name="/Plugins/UPnP/">
     <Project Path="Nethermind.UPnP.Plugin/Nethermind.UPnP.Plugin.csproj" />
   </Folder>
+  <Folder Name="/Plugins/PatternAnalyzer/">
+    <Project Path="Nethermind.PatternAnalyzer.Plugin.Test/Nethermind.PatternAnalyzer.Plugin.Test.csproj" />
+    <Project Path="Nethermind.PatternAnalyzer.Plugin/Nethermind.PatternAnalyzer.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />

@@ -13,7 +13,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 {
     private readonly Hash256? _txHash;
 
-    protected BlockTracerBase()
+    public BlockTracerBase()
     {
         TxTraces = new DisposableResettableList<TTrace>();
     }
