@@ -58,7 +58,7 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug && decrypted is not null) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, decrypted.Select(tx => tx.Tx.ToShortString()))}");
 
-        Transaction[] filtered = decrypted is null ? [] : FilterTransactions(decrypted, parentHeader);
+        Transaction[] filtered = decrypted is null ? [] : [.. FilterTransactions(decrypted, parentHeader)];
 
         ShutterTransactions shutterTransactions = new()
         {
@@ -85,10 +85,16 @@ public class ShutterTxLoader(
         }
     }
 
-    private Transaction[] FilterTransactions(IEnumerable<(Transaction Tx, UInt256 GasLimit)> transactions, BlockHeader parentHeader)
-        => transactions
-                .Where(tx => _txFilter.IsAllowed(tx.Tx, tx.GasLimit, parentHeader) == TxPool.AcceptTxResult.Accepted)
-                .Select(tx => tx.Tx).ToArray();
+    private IEnumerable<Transaction> FilterTransactions(IEnumerable<(Transaction Tx, UInt256 GasLimit)> transactions, BlockHeader parentHeader)
+    {
+        foreach ((Transaction tx, UInt256 gasLimit) in transactions)
+        {
+            if (_txFilter.IsAllowed(tx, gasLimit, parentHeader) == TxPool.AcceptTxResult.Accepted)
+            {
+                yield return tx;
+            }
+        }
+    }
 
     private ArrayPoolList<(Transaction, UInt256)>? DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, EnumerableWithCount<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeys)
     {
