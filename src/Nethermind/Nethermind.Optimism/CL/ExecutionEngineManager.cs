@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.Rpc;
@@ -15,8 +16,8 @@ namespace Nethermind.Optimism.CL;
 
 public class ExecutionEngineManager : IExecutionEngineManager
 {
-    private IOptimismEngineRpcModule _engineRpc;
-    private IOptimismEthRpcModule _ethEngineRpc;
+    private readonly IOptimismEngineRpcModule _engineRpc;
+    private readonly IOptimismEthRpcModule _ethEngineRpc;
     private readonly ILogger _logger;
 
     private ulong _currentHead = 0;
@@ -67,9 +68,15 @@ public class ExecutionEngineManager : IExecutionEngineManager
         }
     }
 
-    public Task ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3)
+    public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3)
     {
-        throw new System.NotImplementedException();
+        if (await SendNewPayload(executionPayloadV3) && await SendForkChoiceUpdated(executionPayloadV3.BlockHash))
+        {
+            _currentHead = (ulong)executionPayloadV3.BlockNumber;
+            return true;
+        }
+
+        return false;
     }
 
     private async Task BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes)
@@ -130,5 +137,43 @@ public class ExecutionEngineManager : IExecutionEngineManager
     {
         _logger.Error($"EL manager verify old payload attributes {payloadAttributes.Number}");
         // TODO: check that payloadAttributes match ether p2p block that we already sent to EL. Or ask EL for block through rpc
+    }
+
+    private async Task<bool> SendNewPayload(ExecutionPayloadV3 executionPayload)
+    {
+        ResultWrapper<PayloadStatusV1> npResult = await _engineRpc.engine_newPayloadV3(executionPayload, [], executionPayload.ParentBeaconBlockRoot);
+
+        if (npResult.Result.ResultType == ResultType.Failure)
+        {
+            if (_logger.IsError) _logger.Error($"NewPayload request error: {npResult.Result.Error}");
+            return false;
+        }
+
+        if (npResult.Data.Status == PayloadStatus.Invalid)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Got invalid payload from p2p");
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> SendForkChoiceUpdated(Hash256 headBlockHash)
+    {
+        var result = await _engineRpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(headBlockHash, headBlockHash, headBlockHash));
+
+        if (result.Result.ResultType == ResultType.Failure)
+        {
+            if (_logger.IsError) _logger.Error($"ForkChoiceUpdated request error: {result.Result.Error}");
+            return false;
+        }
+
+        if (result.Data.PayloadStatus.Status == PayloadStatus.Invalid)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Got invalid payload from p2p");
+            return false;
+        }
+
+        return true;
     }
 }

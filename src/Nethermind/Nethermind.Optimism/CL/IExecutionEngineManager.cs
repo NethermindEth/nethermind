@@ -10,5 +10,5 @@ public interface IExecutionEngineManager
 {
     void Initialize();
     Task ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes);
-    Task ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3);
+    Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3);
 }

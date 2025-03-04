@@ -22,9 +22,6 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL;
-using Nethermind.Optimism.Rpc;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
 using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
@@ -33,31 +30,37 @@ namespace Nethermind.Optimism;
 
 public class OptimismCLP2P : IDisposable
 {
+    private const int MaxGossipSize = 10485760;
+
     private readonly ServiceProvider _serviceProvider;
-    private PubsubRouter? _router;
     private readonly CancellationToken _cancellationToken;
     private readonly ILogger _logger;
-    private readonly IOptimismEngineRpcModule _engineRpcModule;
+    private readonly IExecutionEngineManager _executionEngineManager;
     private readonly P2PBlockValidator _blockValidator;
     private readonly Multiaddress[] _staticPeerList;
     private readonly ICLConfig _config;
-    private ILocalPeer? _localPeer;
+    private readonly string _blocksV2TopicId;
     private readonly Task _mainLoopTask;
 
-    private readonly string _blocksV2TopicId;
-
+    private PubsubRouter? _router;
+    private ILocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
 
-    private const int MaxGossipSize = 10485760;
-
-    public OptimismCLP2P(ulong chainId, string[] staticPeerList, ICLConfig config, Address sequencerP2PAddress,
-        ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule, CancellationToken cancellationToken)
+    public OptimismCLP2P(
+        ulong chainId,
+        string[] staticPeerList,
+        ICLConfig config,
+        Address sequencerP2PAddress,
+        ITimestamper timestamper,
+        ILogManager logManager,
+        IExecutionEngineManager executionEngineManager,
+        CancellationToken cancellationToken)
     {
         _logger = logManager.GetClassLogger();
         _config = config;
         _cancellationToken = cancellationToken;
-        _staticPeerList = staticPeerList.Select(addr => Multiaddress.Decode(addr)).ToArray();
-        _engineRpcModule = engineRpcModule;
+        _executionEngineManager = executionEngineManager;
+        _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
@@ -82,10 +85,7 @@ public class OptimismCLP2P : IDisposable
             })
             .BuildServiceProvider();
 
-        _mainLoopTask = new(async () =>
-        {
-            await MainLoop();
-        });
+        _mainLoopTask = MainLoop();
     }
 
     private ulong _headPayloadNumber;
@@ -113,8 +113,7 @@ public class OptimismCLP2P : IDisposable
         {
             try
             {
-                ExecutionPayloadV3 payload =
-                    await _blocksP2PMessageChannel.Reader.ReadAsync(_cancellationToken);
+                ExecutionPayloadV3 payload = await _blocksP2PMessageChannel.Reader.ReadAsync(_cancellationToken);
 
                 if (_headPayloadNumber >= (ulong)payload.BlockNumber)
                 {
@@ -127,7 +126,7 @@ public class OptimismCLP2P : IDisposable
                     return;
                 }
 
-                if (await SendNewPayloadToEL(payload) && await SendForkChoiceUpdatedToEL(payload.BlockHash))
+                if (await _executionEngineManager.ProcessNewP2PExecutionPayload(payload))
                 {
                     _headPayloadNumber = (ulong)payload.BlockNumber;
                 }
@@ -180,59 +179,6 @@ public class OptimismCLP2P : IDisposable
             payload = null;
             return false;
         }
-        return true;
-    }
-
-    private async Task<bool> SendNewPayloadToEL(ExecutionPayloadV3 executionPayload)
-    {
-        _cancellationToken.ThrowIfCancellationRequested();
-        ResultWrapper<PayloadStatusV1> npResult = await _engineRpcModule.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(),
-            executionPayload.ParentBeaconBlockRoot);
-
-        _cancellationToken.ThrowIfCancellationRequested();
-
-        if (npResult.Result.ResultType == ResultType.Failure)
-        {
-            if (_logger.IsError)
-            {
-                _logger.Error($"NewPayload request error: {npResult.Result.Error}");
-            }
-            return false;
-        }
-
-        if (npResult.Data.Status == PayloadStatus.Invalid)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Got invalid payload from p2p");
-            return false;
-        }
-
-        return true;
-    }
-
-    private async Task<bool> SendForkChoiceUpdatedToEL(Hash256 headBlockHash)
-    {
-        _cancellationToken.ThrowIfCancellationRequested();
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
-            new ForkchoiceStateV1(headBlockHash, headBlockHash, headBlockHash),
-            null);
-
-        _cancellationToken.ThrowIfCancellationRequested();
-
-        if (fcuResult.Result.ResultType == ResultType.Failure)
-        {
-            if (_logger.IsError)
-            {
-                _logger.Error($"ForkChoiceUpdated request error: {fcuResult.Result.Error}");
-            }
-            return false;
-        }
-
-        if (fcuResult.Data.PayloadStatus.Status == PayloadStatus.Invalid)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Got invalid payload from p2p");
-            return false;
-        }
-
         return true;
     }
 

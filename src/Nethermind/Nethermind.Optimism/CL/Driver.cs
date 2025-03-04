@@ -18,75 +18,77 @@ namespace Nethermind.Optimism.CL;
 
 public class Driver : IDisposable
 {
-    private readonly ICLConfig _config;
-    private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
-    private readonly CLChainSpecEngineParameters _engineParameters;
     private readonly IDerivationPipeline _derivationPipeline;
-    private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly IL2BlockTree _l2BlockTree;
     private readonly IEthRpcModule _l2EthRpc;
     private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly IExecutionEngineManager _executionEngineManager;
 
-    private readonly Task _mainTask;
+    private readonly Task _mainLoopTask;
 
-    public Driver(IL1Bridge l1Bridge, IDecodingPipeline decodingPipeline, IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
+    public Driver(
+        IL1Bridge l1Bridge,
+        IDecodingPipeline decodingPipeline,
+        IOptimismEthRpcModule l2EthRpc,
+        IL2BlockTree l2BlockTree,
+        CLChainSpecEngineParameters engineParameters,
+        IExecutionEngineManager executionEngineManager,
+        ILogger logger)
     {
-        _config = config;
-        _l1Bridge = l1Bridge;
         _logger = logger;
-        _engineParameters = engineParameters;
-        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
-        PayloadAttributesDeriver payloadAttributesDeriver = new(480, _systemConfigDeriver,
-            new DepositTransactionBuilder(480, engineParameters), logger);
         _l2BlockTree = l2BlockTree;
         _l2EthRpc = l2EthRpc;
-        _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
-        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
+        _executionEngineManager = executionEngineManager;
         _decodingPipeline = decodingPipeline;
-        _executionEngineManager = new ExecutionEngineManager(engineRpc, l2EthRpc, logger);
+        _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
+        var systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        var payloadAttributesDeriver = new PayloadAttributesDeriver(
+            480,
+            systemConfigDeriver,
+            new DepositTransactionBuilder(480, engineParameters),
+            logger);
+        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, l1Bridge, _logger);
 
-        _executionEngineManager.Initialize();
-
-        _mainTask = new(async () =>
-        {
-            // TODO: cancellation
-            while (true)
-            {
-                if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
-                {
-                    await OnL2BlocksDerived(derivedPayloadAttributes);
-                }
-                else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
-                {
-                    ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
-                    // TODO: make it properly
-                    L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
-                    if (l2Parent is not null)
-                    {
-                        await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch));
-                        await _decodingPipeline.DecodedBatchesReader.ReadAsync();
-                    }
-                    else
-                    {
-                        if (_l2BlockTree.HeadBlockNumber > parentNumber)
-                        {
-                            _logger.Error($"Old batch. Skipping");
-                            await _decodingPipeline.DecodedBatchesReader.ReadAsync();
-                        }
-                    }
-                }
-            }
-        });
+        _mainLoopTask = MainLoop();
     }
 
     public void Start()
     {
-        _decodingPipeline.Start();
         _derivationPipeline.Start();
-        _mainTask.Start();
+        _mainLoopTask.Start();
+    }
+
+    private async Task MainLoop()
+    {
+        // TODO: cancellation
+        while (true)
+        {
+            if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
+            {
+                await OnL2BlocksDerived(derivedPayloadAttributes);
+            }
+            else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
+            {
+                ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
+                // TODO: make it properly
+                L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
+                if (l2Parent is not null)
+                {
+                    await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch));
+                    await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                }
+                else
+                {
+                    if (_l2BlockTree.HeadBlockNumber > parentNumber)
+                    {
+                        _logger.Error($"Old batch. Skipping");
+                        await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                    }
+                }
+            }
+        }
     }
 
     private async Task OnL2BlocksDerived(PayloadAttributesRef payloadAttributes)

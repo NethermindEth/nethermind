@@ -19,51 +19,63 @@ namespace Nethermind.Optimism.CL;
 
 public class OptimismCL : IDisposable
 {
-    private readonly ILogger _logger;
-    private readonly OptimismCLP2P _p2p;
-    private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly IOptimismEthRpcModule _l2EthRpc;
-    private readonly CLChainSpecEngineParameters _chainSpecEngineParameters;
-    private readonly IL1Bridge _l1Bridge;
     private readonly IL2BlockTree _l2BlockTree;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private readonly Driver _driver;
-
-    private readonly IBeaconApi _beaconApi;
-    private readonly IEthApi _ethApi;
+    private readonly DecodingPipeline _decodingPipeline;
+    private readonly IL1Bridge _l1Bridge;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
+    private readonly IExecutionEngineManager _executionEngineManager;
+    private readonly Driver _driver;
+    private readonly OptimismCLP2P _p2p;
 
-    public OptimismCL(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters, ICLConfig config,
-        IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ITimestamper timestamper, ILogManager logManager,
-        IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpcModule)
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+
+    public OptimismCL(
+        ISpecProvider specProvider,
+        CLChainSpecEngineParameters engineParameters,
+        ICLConfig config,
+        IJsonSerializer jsonSerializer,
+        IEthereumEcdsa ecdsa,
+        ITimestamper timestamper,
+        ILogManager logManager,
+        IOptimismEthRpcModule l2EthRpc,
+        IOptimismEngineRpcModule engineRpcModule)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.SequencerP2PAddress);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
 
-        _l2EthRpc = l2EthRpc;
-        _engineRpcModule = engineRpcModule;
-        _logger = logManager.GetClassLogger();
-        _chainSpecEngineParameters = engineParameters;
+        var logger = logManager.GetClassLogger();
 
-        _p2p = new OptimismCLP2P(specProvider.ChainId, engineParameters.Nodes, config,
-            _chainSpecEngineParameters.SequencerP2PAddress, timestamper, logManager, engineRpcModule, _cancellationTokenSource.Token);
-        _ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
-        _beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa,
-            _logger, _cancellationTokenSource.Token);
-        IDecodingPipeline decodingPipeline = new DecodingPipeline(_logger);
-        _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _chainSpecEngineParameters, decodingPipeline, _cancellationTokenSource.Token, logManager);
+        IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
+        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, logger, _cancellationTokenSource.Token);
+
+        _l2EthRpc = l2EthRpc;
         _l2BlockTree = new L2BlockTree();
-        _driver = new Driver(_l1Bridge, decodingPipeline, _l2EthRpc, engineRpcModule, _l2BlockTree, config, engineParameters, _logger);
+        _decodingPipeline = new DecodingPipeline(logger);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _cancellationTokenSource.Token, logManager);
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        _executionEngineManager = new ExecutionEngineManager(engineRpcModule, _l2EthRpc, logger);
+        _driver = new Driver(_l1Bridge, _decodingPipeline, _l2EthRpc, _l2BlockTree, engineParameters, _executionEngineManager, logger);
+        _p2p = new OptimismCLP2P(
+            specProvider.ChainId,
+            engineParameters.Nodes,
+            config,
+            engineParameters.SequencerP2PAddress,
+            timestamper,
+            logManager,
+            _executionEngineManager,
+            _cancellationTokenSource.Token);
     }
 
     public async Task Start()
     {
         await SetupTest();
+        _decodingPipeline.Start();
         _l1Bridge.Start();
+        _executionEngineManager.Initialize();
         _driver.Start();
-        // _p2p.Start();
+        await _p2p.Start();
     }
 
     public void Dispose()
