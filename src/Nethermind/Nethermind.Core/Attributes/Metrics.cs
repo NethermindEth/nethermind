@@ -36,5 +36,6 @@ public sealed class SummaryMetricAttribute : Attribute
     public string[] LabelNames { get; set; } = [];
 
     // Summary objective in quantile-epsilon pair
-    public (double, double)[] Objectives { get; set; } = [];
+    public double[] ObjectiveQuantile { get; set; } = [];
+    public double[] ObjectiveEpsilon { get; set; } = [];
 }

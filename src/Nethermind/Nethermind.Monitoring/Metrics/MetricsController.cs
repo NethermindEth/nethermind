@@ -295,7 +295,7 @@ namespace Nethermind.Monitoring.Metrics
                     new SummaryConfiguration()
                     {
                         LabelNames = attribute.LabelNames,
-                        Objectives = attribute.Objectives.Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
+                        Objectives = attribute.ObjectiveQuantile.Zip(attribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
                     });
 
                 metricUpdater = new SummaryMetricUpdater(summary);
