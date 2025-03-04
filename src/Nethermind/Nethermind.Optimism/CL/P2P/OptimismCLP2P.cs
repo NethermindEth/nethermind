@@ -35,7 +35,7 @@ public class OptimismCLP2P : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;
     private PubsubRouter? _router;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private readonly CancellationToken _cancellationToken;
     private readonly ILogger _logger;
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly P2PBlockValidator _blockValidator;
@@ -50,10 +50,12 @@ public class OptimismCLP2P : IDisposable
 
     private const int MaxGossipSize = 10485760;
 
-    public OptimismCLP2P(ulong chainId, string[] staticPeerList, ICLConfig config, Address sequencerP2PAddress, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
+    public OptimismCLP2P(ulong chainId, string[] staticPeerList, ICLConfig config, Address sequencerP2PAddress,
+        ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule, CancellationToken cancellationToken)
     {
         _logger = logManager.GetClassLogger();
         _config = config;
+        _cancellationToken = cancellationToken;
         _staticPeerList = staticPeerList.Select(addr => Multiaddress.Decode(addr)).ToArray();
         _engineRpcModule = engineRpcModule;
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
@@ -96,7 +98,7 @@ public class OptimismCLP2P : IDisposable
             if (TryValidateAndDecodePayload(msg, out var payload))
             {
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
-                await _blocksP2PMessageChannel.Writer.WriteAsync(payload, _cancellationTokenSource.Token);
+                await _blocksP2PMessageChannel.Writer.WriteAsync(payload, _cancellationToken);
             }
         }
         catch (Exception e)
@@ -107,12 +109,12 @@ public class OptimismCLP2P : IDisposable
 
     private async Task MainLoop()
     {
-        while (!_cancellationTokenSource.IsCancellationRequested)
+        while (!_cancellationToken.IsCancellationRequested)
         {
             try
             {
                 ExecutionPayloadV3 payload =
-                    await _blocksP2PMessageChannel.Reader.ReadAsync(_cancellationTokenSource.Token);
+                    await _blocksP2PMessageChannel.Reader.ReadAsync(_cancellationToken);
 
                 if (_headPayloadNumber >= (ulong)payload.BlockNumber)
                 {
@@ -183,11 +185,11 @@ public class OptimismCLP2P : IDisposable
 
     private async Task<bool> SendNewPayloadToEL(ExecutionPayloadV3 executionPayload)
     {
-        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+        _cancellationToken.ThrowIfCancellationRequested();
         ResultWrapper<PayloadStatusV1> npResult = await _engineRpcModule.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(),
             executionPayload.ParentBeaconBlockRoot);
 
-        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+        _cancellationToken.ThrowIfCancellationRequested();
 
         if (npResult.Result.ResultType == ResultType.Failure)
         {
@@ -209,12 +211,12 @@ public class OptimismCLP2P : IDisposable
 
     private async Task<bool> SendForkChoiceUpdatedToEL(Hash256 headBlockHash)
     {
-        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+        _cancellationToken.ThrowIfCancellationRequested();
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(headBlockHash, headBlockHash, headBlockHash),
             null);
 
-        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+        _cancellationToken.ThrowIfCancellationRequested();
 
         if (fcuResult.Result.ResultType == ResultType.Failure)
         {
@@ -247,13 +249,13 @@ public class OptimismCLP2P : IDisposable
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
         _blocksV2Topic.OnMessage += OnMessage;
 
-        await _localPeer.StartListenAsync([address], _cancellationTokenSource.Token);
-        await _router.StartAsync(_localPeer, _cancellationTokenSource.Token);
+        await _localPeer.StartListenAsync([address], _cancellationToken);
+        await _router.StartAsync(_localPeer, _cancellationToken);
 
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
         peerStore.Discover(_staticPeerList);
         PubsubPeerDiscoveryProtocol disc = new(_router, peerStore, new PubsubPeerDiscoverySettings(), _localPeer);
-        _ = disc.StartDiscoveryAsync([Multiaddress.Decode(address)], _cancellationTokenSource.Token);
+        _ = disc.StartDiscoveryAsync([Multiaddress.Decode(address)], _cancellationToken);
 
         _mainLoopTask.Start();
 
@@ -272,7 +274,6 @@ public class OptimismCLP2P : IDisposable
     public void Dispose()
     {
         _blocksV2Topic?.Unsubscribe();
-        _cancellationTokenSource.Cancel();
         _blocksP2PMessageChannel.Writer.Complete();
     }
 }

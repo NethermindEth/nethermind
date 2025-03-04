@@ -323,6 +323,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+        StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
 
         ICLConfig clConfig = _api.Config<ICLConfig>();
         if (clConfig.Enabled)
@@ -330,7 +331,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
+                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, _api.OptimismEthRpcModule, opEngine);
             await _cl.Start();
         }
 
