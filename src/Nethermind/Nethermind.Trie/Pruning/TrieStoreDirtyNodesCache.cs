@@ -195,7 +195,7 @@ internal class TrieStoreDirtyNodesCache
         _trieStore.DecreaseMemoryUsedByDirtyCache(memoryUsage, node.IsPersisted);
     }
 
-    public void Remove(in Key key)
+    private void Remove(in Key key)
     {
         if (_storeByHash)
         {
@@ -245,21 +245,6 @@ internal class TrieStoreDirtyNodesCache
         long totalNode = 0;
         long unpersistedNode = 0;
 
-        bool CanRemove(in ValueHash256 address, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
-        {
-            // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
-            if (currentlyPersistingKeccak is null) return false;
-
-            // The persisted hash is the same as currently persisting hash. Do nothing.
-            if ((ValueHash256)currentlyPersistingKeccak == keccak) return false;
-
-            // We have it in cache and it is still needed.
-            if (TryGetValue(new Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
-                !_trieStore.IsNoLongerNeeded(node)) return false;
-
-            return true;
-        }
-
         INodeStorage.IWriteBatch writeBatch = nodeStorage?.StartWriteBatch();
         int deleteRound = 0;
 
@@ -267,22 +252,18 @@ internal class TrieStoreDirtyNodesCache
         {
             foreach ((Key key, TrieNode node) in AllNodes)
             {
-                if (persistedHashes is not null)
+                // Remove persisted node based on `persistedHashes` if available.
+                if (persistedHashes is not null && node.IsPersisted && key.Path.Length <= TinyTreePath.MaxNibbleLength)
                 {
                     var tinyKey = new HashAndTinyPath(key.Address, new TinyTreePath(key.Path));
                     if (persistedHashes.TryGetValue(tinyKey, out Hash256? lastPersistedHash))
                     {
-                        Hash256 prevHash = node.Keccak;
-                        if (CanRemove(key.Address, key.Path, prevHash, lastPersistedHash))
+                        if (CanDelete(key.Address, key.Path, key.Keccak, lastPersistedHash))
                         {
-                            Metrics.RemovedNodeCount++;
-                            Hash256? address = key.Address.ToCommitment();
-                            Remove(key); // concurrent delete with iterator. Double check if this is allowed.
-                            _pastPathHash?.Delete(tinyKey);
-                            writeBatch.Set(address, key.Path, prevHash, default, WriteFlags.DisableWAL);
-                            deleteRound++;
+                            Delete(key, tinyKey, writeBatch);
 
                             // Batches of 256
+                            deleteRound++;
                             if (deleteRound > 256)
                             {
                                 writeBatch.Dispose();
@@ -390,24 +371,31 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
+    private void Delete(Key key, HashAndTinyPath tinyKey, INodeStorage.IWriteBatch writeBatch)
+    {
+        Metrics.RemovedNodeCount++;
+        Remove(key);
+        _pastPathHash?.Delete(tinyKey);
+        writeBatch.Set(key.AddressAsHash256, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
+    }
+
+    bool CanDelete(in ValueHash256 address, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+    {
+        // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
+        if (currentlyPersistingKeccak is null) return false;
+
+        // The persisted hash is the same as currently persisting hash. Do nothing.
+        if ((ValueHash256)currentlyPersistingKeccak == keccak) return false;
+
+        // We have it in cache and it is still needed.
+        if (TryGetValue(new Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
+            !_trieStore.IsNoLongerNeeded(node)) return false;
+
+        return true;
+    }
 
     public void RemovePastKeys(ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes, INodeStorage nodeStorage)
     {
-        bool CanRemove(in ValueHash256 address, TinyTreePath path, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
-        {
-            // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
-            if (currentlyPersistingKeccak is null) return false;
-
-            // The persisted hash is the same as currently persisting hash. Do nothing.
-            if ((ValueHash256)currentlyPersistingKeccak == keccak) return false;
-
-            // We have it in cache and it is still needed.
-            if (TryGetValue(new Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
-                !_trieStore.IsNoLongerNeeded(node)) return false;
-
-            return true;
-        }
-
         using (AcquireMapLock())
         {
             INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
@@ -420,16 +408,14 @@ internal class TrieStoreDirtyNodesCache
                     if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
                     {
                         TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
-                        if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                        if (CanDelete(key.addr, fullPath, prevHash, keyValuePair.Value))
                         {
-                            Metrics.RemovedNodeCount++;
                             Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
-                            Remove(new Key(address, fullPath, prevHash.ToCommitment()));
-                            writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
-                            _pastPathHash?.Delete(key);
-                            round++;
+                            Key fullKey = new Key(address, fullPath, prevHash.ToCommitment());
+                            Delete(fullKey, key, writeBatch);
 
                             // Batches of 256
+                            round++;
                             if (round > 256)
                             {
                                 writeBatch.Dispose();
