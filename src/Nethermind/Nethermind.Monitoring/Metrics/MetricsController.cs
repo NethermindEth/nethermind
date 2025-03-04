@@ -25,7 +25,7 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
+        private readonly Dictionary<Type, MemberMetricInfo[]> _membersCache = new();
         private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
@@ -34,13 +34,20 @@ namespace Nethermind.Monitoring.Metrics
 
         private readonly List<Action> _callbacks = new();
 
-        class DictionaryMetricInfo
+        private class DictionaryMetricInfo
         {
             internal MemberInfo MemberInfo;
             internal string DictionaryName;
             internal string[] LabelNames;
             internal string GaugeName;
             internal IDictionary Dictionary;
+        }
+
+        private class MemberMetricInfo
+        {
+            internal MemberInfo MemberInfo;
+            internal string GaugeName;
+            internal Func<double> Accessor;
         }
 
         public void RegisterMetrics(Type type)
@@ -53,14 +60,14 @@ namespace Nethermind.Monitoring.Metrics
             Meter meter = new(type.Namespace);
 
             EnsurePropertiesCached(type);
-            foreach ((MemberInfo member, string gaugeName, Func<double> observer) in _membersCache[type])
+            foreach (MemberMetricInfo metricInfo in _membersCache[type])
             {
                 if (_useCounters)
                 {
-                    CreateDiagnosticsMetricsObservableGauge(meter, member, observer);
+                    CreateDiagnosticsMetricsObservableGauge(meter, metricInfo);
                 }
 
-                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
+                _gauges[metricInfo.GaugeName] = CreateMemberInfoMetricsGauge(metricInfo.MemberInfo);
             }
 
             foreach (DictionaryMetricInfo info in _dictionaryCache[type])
@@ -100,17 +107,18 @@ namespace Nethermind.Monitoring.Metrics
             { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
         };
 
-        private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
+        private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberMetricInfo metricInfo)
         {
+            MemberInfo member = metricInfo.MemberInfo;
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
 
             if (member.GetCustomAttribute<CounterMetricAttribute>() is not null)
             {
-                return meter.CreateObservableCounter(name, observer, description: description);
+                return meter.CreateObservableCounter(name, metricInfo.Accessor, description: description);
             }
 
-            return meter.CreateObservableGauge(name, observer, description: description);
+            return meter.CreateObservableGauge(name, metricInfo.Accessor, description: description);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -146,7 +154,12 @@ namespace Nethermind.Monitoring.Metrics
                 _membersCache[type] = type.GetProperties()
                     .Where(p => NotEnumerable(p.PropertyType))
                     .Concat<MemberInfo>(type.GetFields().Where(f => NotEnumerable(f.FieldType)))
-                    .Select(member => (member, GetGaugeNameKey(type.Name, member.Name), GetValueAccessor(member)))
+                    .Select(member => new MemberMetricInfo()
+                    {
+                        MemberInfo = member,
+                        GaugeName = GetGaugeNameKey(type.Name, member.Name),
+                        Accessor = GetValueAccessor(member),
+                    })
                     .ToArray();
             }
 
@@ -213,9 +226,9 @@ namespace Nethermind.Monitoring.Metrics
         {
             EnsurePropertiesCached(type);
 
-            foreach ((MemberInfo _, string gaugeName, Func<double> accessor) in _membersCache[type])
+            foreach (MemberMetricInfo memberMetricInfo in _membersCache[type])
             {
-                ReplaceValueIfChanged(accessor(), gaugeName);
+                ReplaceValueIfChanged(memberMetricInfo.Accessor(), memberMetricInfo.GaugeName);
             }
 
             foreach (DictionaryMetricInfo info in _dictionaryCache[type])
