@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -92,7 +93,11 @@ public class WebSocketExtensionsTests
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+            "TestClient",
+            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
+            Substitute.For<IJsonSerializer>(),
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
         await webSocketsClient.ReceiveLoopAsync();
         await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 2 * 4096 + 1024));
@@ -166,7 +171,11 @@ public class WebSocketExtensionsTests
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
 
         WebSocketMock mock = new(receiveResult);
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+            "TestClient",
+            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
+            Substitute.For<IJsonSerializer>(),
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
         await webSocketsClient.ReceiveLoopAsync();
         await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 1234));
@@ -185,7 +194,12 @@ public class WebSocketExtensionsTests
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+            "TestClient",
+            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
+            Substitute.For<IJsonSerializer>(),
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+
 
         await webSocketsClient.ReceiveLoopAsync();
         await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 6 * 2000 + 1));
@@ -195,7 +209,7 @@ public class WebSocketExtensionsTests
     public async Task Throws_on_too_long_message()
     {
         Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
-        for (int i = 0; i < 128 * 1024; i++)
+        for (int i = 0; i < 2 * 1024; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, false));
         }
@@ -204,7 +218,11 @@ public class WebSocketExtensionsTests
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+            "TestClient",
+            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
+            Substitute.For<IJsonSerializer>(),
+            (int)1.MB());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync());
         await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>());
@@ -218,7 +236,11 @@ public class WebSocketExtensionsTests
         WebSocketMock mock = new(receiveResult);
         mock.ReturnTaskWithFaultOnEmptyQueue = true;
 
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+            "TestClient",
+            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
+            Substitute.For<IJsonSerializer>(),
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
         await webSocketsClient.ReceiveLoopAsync();
     }

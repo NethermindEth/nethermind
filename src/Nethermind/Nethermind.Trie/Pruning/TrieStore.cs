@@ -204,7 +204,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
     }
 
-    private void CommitAndPersistNode(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags, INodeStorage.WriteBatch? writeBatch)
+    private void CommitAndPersistNode(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags, INodeStorage.IWriteBatch? writeBatch)
     {
         Debug.Assert(!_pruningStrategy.PruningEnabled);
 
@@ -247,7 +247,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         return count;
     }
 
-    private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode node) =>
+    private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
 
     private void DirtyNodesSaveInCache(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
@@ -348,7 +348,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         {
             // For safety we prefer to commit half of the batch rather than not commit at all.
             // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-            using INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
+            using INodeStorage.IWriteBatch currentBatch = _nodeStorage.StartWriteBatch();
             ParallelPersistBlockCommitSet(set);
         }
 
@@ -586,14 +586,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             AnnounceReorgBoundaries();
             deleteTask.Wait();
 
-            if (_livePruningEnabled)
-            {
-                foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
-                {
-                    dirtyNode.CleanObsoletePersistedLastSeen();
-                }
-            }
-
             if (candidateSets.Count > 0)
             {
                 return true;
@@ -755,7 +747,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         WriteFlags writeFlags = WriteFlags.None
     )
     {
-        INodeStorage.WriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
+        INodeStorage.IWriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
         const int parallelBoundaryPathLength = 2;
 
         using ArrayPoolList<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new(ShardedDirtyNodeCount);
@@ -795,7 +787,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         // So parallel read should go there first instead of to the database for these dataset,
         // so it should be fine for these to be non atomic.
         Task[] disposeTasks = _disposeTasks;
-        Channel<INodeStorage.WriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.WriteBatch>(disposeTasks.Length * 2);
+        Channel<INodeStorage.IWriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.IWriteBatch>(disposeTasks.Length * 2);
         try
         {
             for (int index = 0; index < disposeTasks.Length; index++)
@@ -836,10 +828,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
         Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
-        WriteFlags writeFlags, Channel<INodeStorage.WriteBatch> disposeQueue)
+        WriteFlags writeFlags, Channel<INodeStorage.IWriteBatch> disposeQueue)
     {
         long persistedNodeCount = 0;
-        INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+        INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
         async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
         {
@@ -858,7 +850,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
-    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
+    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
     {
         ArgumentNullException.ThrowIfNull(currentNode);
 
@@ -974,7 +966,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+            INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
             for (int index = 0; index < candidateSets.Count; index++)
             {
                 BlockCommitSet blockCommitSet = candidateSets[index];
@@ -1073,7 +1065,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     // Used to serve node by hash
     private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        Hash256 asHash = new Hash256(key);
+        Hash256 asHash = new(key);
         return _pruningStrategy.PruningEnabled
                && DirtyNodesTryGetValue(new TrieStoreDirtyNodesCache.Key(null, TreePath.Empty, asHash), out TrieNode? trieNode)
                && trieNode is not null
@@ -1091,16 +1083,9 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         _nodeStorage.Set(address, path, keccak, rlp);
     }
 
-    private class TrieKeyValueStore : IReadOnlyKeyValueStore
+    private class TrieKeyValueStore(TrieStore trieStore) : IReadOnlyKeyValueStore
     {
-        private readonly TrieStore _trieStore;
-
-        public TrieKeyValueStore(TrieStore trieStore)
-        {
-            _trieStore = trieStore;
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => trieStore.GetByHash(key, flags);
     }
 
     public bool HasRoot(Hash256 stateRoot)
@@ -1109,7 +1094,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode node = FindCachedOrUnknown(null, TreePath.Empty, stateRoot, true);
         if (node.NodeType == NodeType.Unknown)
         {
-            return TryLoadRlp(null, TreePath.Empty, node.Keccak, ReadFlags.None) is not null;
+            return TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
         }
 
         return true;
@@ -1120,7 +1105,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         BlockCommitSet commitSet
     ) : IBlockCommitter
     {
-        internal TrieNode? StateRoot = null;
+        internal TrieNode? StateRoot;
         private int _concurrency = trieStore._pruningStrategy.PruningEnabled ? Environment.ProcessorCount : 0;
 
         public void Dispose()
@@ -1155,7 +1140,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         TrieStore trieStore,
         long blockNumber,
         Hash256? address,
-        TrieNode root
+        TrieNode? root
     ) : ICommitter
     {
         private readonly bool _needToResetRoot = root is not null && root.IsDirty;
@@ -1182,7 +1167,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private class NonPruningTrieStoreCommitter(
         TrieStore trieStore,
         Hash256? address,
-        INodeStorage.WriteBatch writeBatch,
+        INodeStorage.IWriteBatch writeBatch,
         WriteFlags writeFlags = WriteFlags.None
     ) : ICommitter
     {

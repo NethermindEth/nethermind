@@ -32,10 +32,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
-using Nethermind.State;
 using Autofac;
+using Nethermind.State;
 using Nethermind.Synchronization;
-using System.Linq;
 
 namespace Nethermind.Taiko;
 
@@ -131,7 +130,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
         ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.TransactionProcessor);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
@@ -157,7 +155,9 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
+        // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IMainProcessingContext mainScope = _api.MainProcessingContext!;
 
         BlockProcessor blockProcessor =
             new(_api.SpecProvider,
@@ -166,8 +166,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
                 scope.WorldState,
                 _api.ReceiptStorage,
-                _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldStateManager.GlobalWorldState),
+                mainScope.TransactionProcessor,
+                new BeaconBlockRootHandler(mainScope.TransactionProcessor, mainScope.WorldState),
                 new BlockhashStore(_api.SpecProvider, scope.WorldState),
                 _api.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
@@ -269,12 +269,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(_api.MainProcessingContext);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
 
-        _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
+        _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext.BlockchainProcessor);
 
         _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
@@ -327,12 +327,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         return new TaikoNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
     }
 
-    public IBlockProducerRunner CreateBlockProducerRunner()
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
     {
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
     {
         throw new NotSupportedException();
     }
