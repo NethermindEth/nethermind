@@ -260,7 +260,7 @@ internal class TrieStoreDirtyNodesCache
             return true;
         }
 
-        INodeStorage.WriteBatch writeBatch = nodeStorage.StartWriteBatch();
+        INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
         int deleteRound = 0;
 
         using (AcquireMapLock())
@@ -276,7 +276,7 @@ internal class TrieStoreDirtyNodesCache
                         if (CanRemove(key.Address, key.Path, prevHash, lastPersistedHash))
                         {
                             Metrics.RemovedNodeCount++;
-                            Hash256? address = key.Address;
+                            Hash256? address = key.Address.ToCommitment();
                             Remove(key); // concurrent delete with iterator. Double check if this is allowed.
                             _pastPathHash?.Delete(tinyKey);
                             writeBatch.Set(address, key.Path, prevHash, default, WriteFlags.DisableWAL);
@@ -424,7 +424,7 @@ internal class TrieStoreDirtyNodesCache
                         {
                             Metrics.RemovedNodeCount++;
                             Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
-                            Remove(new Key(address, fullPath, prevHash));
+                            Remove(new Key(address, fullPath, prevHash.ToCommitment()));
                             writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
                             _pastPathHash?.Delete(key);
                             round++;
@@ -508,7 +508,7 @@ internal class TrieStoreDirtyNodesCache
     internal readonly struct Key : IEquatable<Key>
     {
         internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
-        public readonly ValueHash256 Address;
+        public readonly ValueHash256 Address; // TODO: need to be Hash
         public Hash256? AddressAsHash256 => Address == default ? null : Address.ToCommitment();
         // Direct member rather than property for large struct, so members are called directly,
         // rather than struct copy through the property. Could also return a ref through property.
