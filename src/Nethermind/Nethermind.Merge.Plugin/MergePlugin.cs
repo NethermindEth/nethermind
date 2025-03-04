@@ -17,6 +17,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -54,6 +55,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
+    private InclusionListTxSource? _inclusionListTxSource = null;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -108,6 +110,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.PoSSwitcher = _poSSwitcher;
             _api.DisposeStack.Push(_invalidChainTracker);
             _blockFinalizationManager = new ManualBlockFinalizationManager();
+            _inclusionListTxSource = new InclusionListTxSource(_api.SpecProvider.ChainId);
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
@@ -293,6 +296,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
             if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
             if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
+            if (_api.TransactionComparerProvider is null) throw new ArgumentNullException(nameof(_api.TransactionComparerProvider));
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
             while (!_api.BlockProcessingQueue.IsEmpty)
@@ -320,10 +324,13 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 improvementContextFactory,
                 _api.TimerFactory,
                 _api.LogManager,
-                TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot),
+                _api.SpecProvider.ChainId);
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
+            TxPoolTxSourceFactory txPoolTxSourceFactory = new(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _blocksConfig, _api.LogManager);
+            TxPoolTxSource txPoolTxSource = txPoolTxSourceFactory.Create();
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -341,6 +348,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _invalidChainTracker,
                     _beaconSync,
                     _api.LogManager,
+                    _api.SpecProvider.ChainId,
                     TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                     _api.Config<IReceiptConfig>().StoreReceipts),
                 new ForkchoiceUpdatedHandler(
@@ -364,6 +372,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
+                new GetInclusionListTransactionsHandler(_api.BlockTree, txPoolTxSource),
+                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);

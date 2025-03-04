@@ -10,6 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.Rpc;
@@ -76,9 +77,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + sizeof(long) // gasLimit
         + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
 
-    protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
+    protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan, IEthereumEcdsa? ecdsa)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan, ecdsa);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;

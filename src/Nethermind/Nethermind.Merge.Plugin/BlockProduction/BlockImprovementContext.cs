@@ -23,9 +23,11 @@ public class BlockImprovementContext : IBlockImprovementContext
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        CancellationToken cancellationToken = default)
     {
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        using var timeoutTokenSource = new CancellationTokenSource((int)timeout.TotalMilliseconds);
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutTokenSource.Token);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = blockProducer
