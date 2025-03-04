@@ -174,5 +174,5 @@ public interface IJsonRpcConfig : IConfig
     int WebSocketsProcessingConcurrency { get; set; }
 
     [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
-    long IpcProcessingConcurrency { get; set; }
+    int IpcProcessingConcurrency { get; set; }
 }

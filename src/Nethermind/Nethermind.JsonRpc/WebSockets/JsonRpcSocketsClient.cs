@@ -83,7 +83,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
-        ArrayPoolList<Task> allTasks = new((int)(_processConcurrency + 1));
+        using ArrayPoolList<Task> allTasks = new((int)(_processConcurrency + 1));
         allTasks.Add(Task.Run(async () =>
         {
             try
