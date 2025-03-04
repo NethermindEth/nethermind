@@ -26,6 +26,8 @@ namespace Nethermind.Consensus.Processing
         private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
 
+        public event EventHandler<BlockStatistics>? NewProcessingStatistics;
+
         private bool _showBlobs;
         private long _lastBlockNumber;
         private long _lastElapsedRunningMicroseconds;
@@ -265,6 +267,22 @@ namespace Nethermind.Consensus.Processing
             string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
             string mgasColor = whiteText;
 
+            NewProcessingStatistics?.Invoke(this, new BlockStatistics()
+            {
+                BlockCount = chunkBlocks,
+                BlockFrom = block.Number - chunkBlocks + 1,
+                BlockTo = block.Number,
+
+                ProcessingMs = chunkMs,
+                SlotMs = runMs,
+                MgasPerSecond = mgasPerSecond,
+                MinGas = Evm.Metrics.BlockMinGasPrice,
+                MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
+                AveGas = Evm.Metrics.BlockAveGasPrice,
+                MaxGas = Evm.Metrics.BlockMaxGasPrice,
+                GasLimit = block.GasLimit
+            });
+            
             _lastElapsedRunningMicroseconds = data.RunningMicroseconds;
 
             if (_logger.IsInfo)
@@ -414,5 +432,20 @@ namespace Nethermind.Consensus.Processing
             public long StartSStoreOps;
             public long StartSLoadOps;
         }
+    }
+
+    public class BlockStatistics
+    {
+        public long BlockCount { get; internal set; }
+        public long BlockFrom { get; internal set; }
+        public long BlockTo { get; internal set; }
+        public double ProcessingMs { get; internal set; }
+        public double SlotMs { get; internal set; }
+        public double MgasPerSecond { get; internal set; }
+        public float MinGas { get; internal set; }
+        public float MedianGas { get; internal set; }
+        public float AveGas { get; internal set; }
+        public float MaxGas { get; internal set; }
+        public long GasLimit { get; internal set; }
     }
 }

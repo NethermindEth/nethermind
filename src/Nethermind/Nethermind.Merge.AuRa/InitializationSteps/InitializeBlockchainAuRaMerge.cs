@@ -28,12 +28,14 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         }
 
-        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
         {
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
             WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder);
+            IWorldState worldState = _api.WorldStateManager!.GlobalWorldState!;
+            ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 
             return new AuRaMergeBlockProcessor(
                 _api.SpecProvider!,
@@ -47,7 +49,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
                 transactionProcessor,
-                CreateAuRaValidator(worldState, transactionProcessor),
+                CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter,
