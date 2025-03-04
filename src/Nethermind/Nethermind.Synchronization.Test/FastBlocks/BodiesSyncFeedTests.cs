@@ -72,7 +72,6 @@ public class BodiesSyncFeedTests
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),
-            _blocksDb,
             _metadataDb,
             LimboLogs.Instance,
             flushDbInterval: 10

@@ -27,7 +27,6 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncFeed : ActivatedSyncFeed<HeadersSyncBatch?>
     {
-
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         protected readonly ISyncReport _syncReport;
@@ -638,6 +637,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (lowestInsertedHeader is not null && lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
             {
+                // Flush first, so that LowestInsertedHeader is preserved only after the headers are set
+                _blockTree.Flush(FlushReason.InsertHeaders);
                 LowestInsertedBlockHeader = lowestInsertedHeader;
             }
 

@@ -14,4 +14,9 @@ public interface IHeaderStore
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, long blockNumber);
     long? GetBlockNumber(Hash256 blockHash);
+
+    /// <summary>
+    /// Flushed the underlying db.
+    /// </summary>
+    void Flush();
 }
