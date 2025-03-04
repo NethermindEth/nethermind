@@ -104,9 +104,9 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset()
+        public void Reset(bool resetBlockCache = false)
         {
-            _stateProvider.Reset();
+            _stateProvider.Reset(resetBlockCache);
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
         }
@@ -228,13 +228,13 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.Commit(commitRoots);
             _transientStorageProvider.Commit(commitRoots);
-            _stateProvider.Commit(releaseSpec, isGenesis);
+            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
         }
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             _persistentStorageProvider.Commit(tracer, commitRoots);
             _transientStorageProvider.Commit(tracer, commitRoots);
-            _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis, tracer);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

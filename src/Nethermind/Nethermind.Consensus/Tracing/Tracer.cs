@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Tracing
             }
             catch (Exception)
             {
-                _stateProvider.Reset();
+                _stateProvider.Reset(resetBlockCache: true);
                 throw;
             }
 
