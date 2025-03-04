@@ -56,7 +56,15 @@ public class OptimismCL : IDisposable
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _cancellationTokenSource.Token, logManager);
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         _executionEngineManager = new ExecutionEngineManager(engineRpcModule, _l2EthRpc, logger);
-        _driver = new Driver(_l1Bridge, _decodingPipeline, _l2EthRpc, _l2BlockTree, engineParameters, _executionEngineManager, logger);
+        _driver = new Driver(
+            _l1Bridge,
+            _decodingPipeline,
+            _l2EthRpc,
+            _l2BlockTree,
+            engineParameters,
+            _executionEngineManager,
+            _cancellationTokenSource.Token, // TODO: Are we using the correct cancellation token here?
+            logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,
             engineParameters.Nodes,

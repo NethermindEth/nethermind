@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
@@ -28,13 +29,13 @@ public class Driver : IDisposable
 
     private readonly Task _mainLoopTask;
 
-    public Driver(
-        IL1Bridge l1Bridge,
+    public Driver(IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
         IOptimismEthRpcModule l2EthRpc,
         IL2BlockTree l2BlockTree,
         CLChainSpecEngineParameters engineParameters,
         IExecutionEngineManager executionEngineManager,
+        CancellationToken token,
         ILogger logger)
     {
         _logger = logger;
@@ -43,15 +44,13 @@ public class Driver : IDisposable
         _executionEngineManager = executionEngineManager;
         _decodingPipeline = decodingPipeline;
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
-        var systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
             480,
-            systemConfigDeriver,
+            new SystemConfigDeriver(engineParameters),
             new DepositTransactionBuilder(480, engineParameters),
             logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, l1Bridge, _logger);
-
-        _mainLoopTask = MainLoop();
+        _mainLoopTask = MainLoop(token);
     }
 
     public void Start()
@@ -60,10 +59,9 @@ public class Driver : IDisposable
         _mainLoopTask.Start();
     }
 
-    private async Task MainLoop()
+    private async Task MainLoop(CancellationToken token)
     {
-        // TODO: cancellation
-        while (true)
+        while (!token.IsCancellationRequested)
         {
             if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
             {
@@ -76,15 +74,15 @@ public class Driver : IDisposable
                 L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
                 if (l2Parent is not null)
                 {
-                    await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch));
-                    await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                    await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch), token);
+                    await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
                 }
                 else
                 {
                     if (_l2BlockTree.HeadBlockNumber > parentNumber)
                     {
                         _logger.Error($"Old batch. Skipping");
-                        await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                        await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
                     }
                 }
             }
