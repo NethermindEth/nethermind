@@ -103,6 +103,10 @@ public class BlockchainProcessorTests
                 }
             }
 
+            public void UpdateCheckpoint(long blockNumber, Hash256 stateRootCheckpoint)
+            {
+            }
+
             public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;

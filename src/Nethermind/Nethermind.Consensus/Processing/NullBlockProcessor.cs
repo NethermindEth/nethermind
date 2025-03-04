@@ -19,6 +19,10 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer) =>
             suggestedBlocks.ToArray();
 
+        public void UpdateCheckpoint(long blockNumber, Hash256 stateRootCheckpoint)
+        {
+        }
+
         public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing
         {
             add { }
