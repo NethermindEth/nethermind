@@ -3,7 +3,8 @@
 
 namespace Nethermind.Core.Metric;
 
-public class NoopSummaryMetric: ISummaryMetricObserver
+public class NoopSummaryMetric
+    : ISummaryMetricObserver
 {
     public static NoopSummaryMetric Instance = new();
 
