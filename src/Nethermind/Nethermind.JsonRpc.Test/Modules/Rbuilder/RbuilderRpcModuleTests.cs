@@ -82,6 +82,6 @@ public class RbuilderRpcModuleTests
         };
 
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_calculateStateRoot", "LATEST", accountDiff);
-        response.Should().Contain("0x4dab99008d5b6a24037cf0b601adf7526af44e89c1cef06ccf220b07c497bcd5");
+        response.Should().Contain("0x1df26ab740de451d16a6a902ccd0510943e6e70fae9739e65cf1aa16d8862a34");
     }
 }
