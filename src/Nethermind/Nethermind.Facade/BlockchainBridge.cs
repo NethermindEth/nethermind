@@ -24,7 +24,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
-using Nethermind.Core.Extensions;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -165,15 +164,26 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(
+            BlockHeader header,
+            SimulatePayload<TransactionWithSourceDetails> payload,
+            CancellationToken cancellationToken,
+            IBlockTracer? tracer = null)
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(simulateOutputTracer);
-            SimulateOutput result = new();
+            IBlockTracer<TTrace> ttracer = tracer != null ? (IBlockTracer<TTrace>)tracer : (IBlockTracer<TTrace>)new SimulateBlockTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.SetOtherTracer(ttracer);
+
+            SimulateOutput<TTrace> result = new();
+
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                if (!_simulateBridgeHelper.TrySimulate<TTrace>(
+                        header,
+                        payload,
+                        ttracer,
+                        new CancellationBlockTracer(receiptsTracer, cancellationToken),
+                        out string error))
                 {
                     result.Error = error;
                 }
@@ -187,9 +197,10 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.Items = simulateOutputTracer.Results;
+            result.Items = ttracer.BuildResult();
             return result;
         }
+
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
