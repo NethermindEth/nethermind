@@ -47,7 +47,9 @@ public class PatternAnalyzer : INethermindPlugin
             // Setup tracing
             var analyzer = new StatsAnalyzer(_config.GetStatsAnalyzerConfig());
             PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(_config.ProcessingQueueSize, _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(),  new FileSystem(), _logger,_config.WriteFrequency, _config.File);
-            _api.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
+            _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
+
+
         }
 
         return Task.CompletedTask;

@@ -1,11 +1,8 @@
-using Nethermind.Evm.Config;
-
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
     public abstract class Builder
     {
         public abstract StatsAnalyzer Build();
-        public abstract StatsAnalyzer Build(IVMConfig config);
         public abstract Builder SetSketch(CMSketch sketch);
         public abstract Builder SetTopN(int topN);
         public abstract Builder SetMinSupport(ulong support);
@@ -24,11 +21,6 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
         private int? _topN = null;
         private ulong? _minSupport = null;
 
-
-        public override StatsAnalyzer Build(IVMConfig config)
-        {
-            throw new NotImplementedException();
-        }
 
         public override StatsAnalyzer Build()
         {
