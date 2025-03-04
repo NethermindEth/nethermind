@@ -242,7 +242,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             badBlockStore, fileSystem, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-            IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+            IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
         {
             return new AuRaReadOnlyChainProcessingEnv(
                 scope,
