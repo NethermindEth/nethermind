@@ -175,10 +175,10 @@ namespace Nethermind.Monitoring.Metrics
             bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
             if (!haveTagAttributes)
             {
-                return CreateGauge(name, description, _commonStaticTags, labels);
+                return CreateGauge(name, description, null, labels);
             }
 
-            Dictionary<string, string> tags = new(_commonStaticTags);
+            Dictionary<string, string> tags = new();
             member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
                 tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
             return CreateGauge(name, description, tags, labels);
@@ -332,6 +332,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
+            Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
+
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
             _useCounters = metricsConfig.CountersEnabled;
         }
