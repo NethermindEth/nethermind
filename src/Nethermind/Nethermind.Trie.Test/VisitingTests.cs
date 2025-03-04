@@ -187,13 +187,13 @@ public class VisitingTests
 
         public bool IsFullDbScan => true;
 
-        public bool ShouldVisit(in PathGatheringContext nodeContext, Hash256 nextNode) => true;
+        public bool ShouldVisit(in PathGatheringContext nodeContext, in ValueHash256 nextNode) => true;
 
-        public void VisitTree(in PathGatheringContext nodeContext, Hash256 rootHash)
+        public void VisitTree(in PathGatheringContext nodeContext, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in PathGatheringContext nodeContext, Hash256 nodeHash)
+        public void VisitMissingNode(in PathGatheringContext nodeContext, in ValueHash256 nodeHash)
         {
             throw new System.Exception("Should not happen");
         }

@@ -152,6 +152,19 @@ public class AdminRpcModule : IAdminRpcModule
         }
     }
 
+    public async Task<ResultWrapper<bool>> admin_removeTrustedPeer(string enode)
+    {
+        Enode enodeObj = new(enode);
+
+        if (await _trustedNodesManager.RemoveAsync(enodeObj, updateFile: true))
+        {
+            return ResultWrapper<bool>.Success(true);
+        }
+        else
+        {
+            return ResultWrapper<bool>.Fail("Failed to remove trusted peer.");
+        }
+    }
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
         => ResultWrapper<PeerInfo[]>.Success(
