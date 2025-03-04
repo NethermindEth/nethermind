@@ -24,6 +24,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.State;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -48,6 +50,8 @@ public class DebugRpcModuleTests
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             var factory = new DebugModuleFactory(
                 blockchain.WorldStateManager,
                 blockchain.DbProvider,
@@ -63,7 +67,9 @@ public class DebugRpcModuleTests
                 syncModeSelector,
                 new BadBlockStore(blockchain.BlocksDb, 100),
                 new FileSystem(),
-                blockchain.LogManager
+                blockchain.LogManager,
+                stateReader,
+                blockchainBridge
             );
 
             IDebugRpcModule debugRpcModule = factory.Create();

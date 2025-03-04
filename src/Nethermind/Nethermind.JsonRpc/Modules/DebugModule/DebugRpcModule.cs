@@ -19,6 +19,9 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.State;
+using Nethermind.Facade;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -29,12 +32,16 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
     private readonly BlockDecoder _blockDecoder;
+    private readonly IStateReader _stateReader;
+    private readonly IBlockchainBridge _blockchainBridge;
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
+    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider,  IStateReader stateReader, IBlockchainBridge blockchainBridge)
     {
         _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _logger = logManager.GetClassLogger();
         _blockDecoder = new BlockDecoder();
     }
@@ -47,6 +54,14 @@ public class DebugRpcModule : IDebugRpcModule
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
+    private static ResultWrapper<T> GetStateFailureResult<T>(BlockHeader header)
+    {
+        return ResultWrapper<T>.Fail(
+            $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+            ErrorCodes.ResourceUnavailable
+        );
+    }
+
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false)
     {
         return ResultWrapper<int>.Success(_debugBridge.DeleteChainSlice(startNumber, force));
@@ -56,13 +71,57 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
-        if (transactionTrace is null)
+
+        // Get the transaction info from the blockchain bridge
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) =
+            _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
+
+        if (transaction is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail(
+                $"Transaction {transactionHash} was not found",
+                ErrorCodes.ResourceNotFound
+            );
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
+        if (receipt?.BlockHash is null)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(
+                $"Transaction {transactionHash} not in a finalized block",
+                ErrorCodes.ResourceUnavailable
+            );
+        }
+
+        // 4. Retrieve the block
+        Block? block = _blockchainBridge.GetBlock(receipt.BlockHash);
+        if (block is null)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(
+                $"Block {receipt.BlockHash} not found",
+                ErrorCodes.ResourceNotFound
+            );
+        }
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(block.Header);
+        }
+        GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(
+            transactionHash,
+            cancellationToken,
+            options
+        );
+
+        if (transactionTrace is null)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(
+                $"Cannot find transactionTrace for hash: {transactionHash}",
+                ErrorCodes.ResourceNotFound
+            );
+        }
+        if (_logger.IsTrace)
+            _logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
+
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 

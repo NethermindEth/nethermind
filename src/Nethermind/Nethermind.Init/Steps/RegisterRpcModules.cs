@@ -203,6 +203,9 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.StateReader);
+        StepDependencyException.ThrowIfNull(_api.BlockchainBridge);
+
 
         DebugModuleFactory debugModuleFactory = new(
             _api.WorldStateManager,
@@ -219,7 +222,9 @@ public class RegisterRpcModules : IStep
             _api.SyncModeSelector,
             _api.BadBlocksStore,
             _api.FileSystem,
-            _api.LogManager);
+            _api.LogManager,
+            _api.StateReader,
+            _api.BlockchainBridge);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
     }
 

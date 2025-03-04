@@ -438,5 +438,9 @@ namespace Nethermind.Facade
             if (txResult.Success) return tracerError;
             return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
         }
+        public Block? GetBlock(Hash256 blockHash)
+        {
+            return _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+        }
     }
 }

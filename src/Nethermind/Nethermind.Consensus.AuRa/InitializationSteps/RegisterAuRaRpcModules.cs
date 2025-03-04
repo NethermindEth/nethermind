@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
+using Nethermind.Facade;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -198,6 +199,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.StateReader);
+        StepDependencyException.ThrowIfNull(_api.BlockchainBridge);
 
         AuRaDebugModuleFactory debugModuleFactory = new(
             _api.WorldStateManager,
@@ -215,6 +218,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.BadBlocksStore,
             _api.FileSystem,
             _api.LogManager,
+            _api.StateReader,
+            _api.BlockchainBridge,
             _factory);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
@@ -236,10 +241,12 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager,
+        IStateReader stateReader,
+        IBlockchainBridge blockchainBridge,
         IAuRaBlockProcessorFactory factory)
         : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep,
             rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
-            badBlockStore, fileSystem, logManager)
+            badBlockStore, fileSystem, logManager, stateReader, blockchainBridge)
     {
         protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
             IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
