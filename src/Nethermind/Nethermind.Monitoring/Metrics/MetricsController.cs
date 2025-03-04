@@ -17,9 +17,12 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
 using Nethermind.Monitoring.Config;
 using Prometheus;
+
+[assembly: InternalsVisibleTo("Nethermind.Monitoring.Test")]
 
 namespace Nethermind.Monitoring.Metrics
 {
@@ -33,7 +36,7 @@ namespace Nethermind.Monitoring.Metrics
         private readonly HashSet<Type> _metricTypes = new();
 
         // Largely for testing reason
-        public readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
+        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
 
         private readonly bool _useCounters;
 
@@ -49,17 +52,7 @@ namespace Nethermind.Monitoring.Metrics
             public void Update()
             {
                 double value = accessor();
-                if (labels.Length > 0)
-                {
-                    Gauge.Child ch = gauge.WithLabels(labels);
-                    if (Math.Abs(ch.Value - value) > double.Epsilon)
-                        ch.Set(value);
-                }
-                else
-                {
-                    if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                        gauge.Set(value);
-                }
+                SetGauge(value, labels, gauge);
             }
 
             public Gauge Gauge => gauge;
@@ -93,17 +86,7 @@ namespace Nethermind.Monitoring.Metrics
             {
                 if (_gauges.TryGetValue(gaugeName, out Gauge? gauge))
                 {
-                    if (labels.Length > 0)
-                    {
-                        Gauge.Child ch = gauge.WithLabels(labels);
-                        if (Math.Abs(ch.Value - value) > double.Epsilon)
-                            ch.Set(value);
-                    }
-                    else
-                    {
-                        if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                            gauge.Set(value);
-                    }
+                    SetGauge(value, labels, gauge);
                 }
 
                 return gauge;
@@ -140,17 +123,7 @@ namespace Nethermind.Monitoring.Metrics
 
             private void Update(double value, params string[] labels)
             {
-                if (labels.Length > 0)
-                {
-                    Gauge.Child ch = gauge.WithLabels(labels);
-                    if (Math.Abs(ch.Value - value) > double.Epsilon)
-                        ch.Set(value);
-                }
-                else
-                {
-                    if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                        gauge.Set(value);
-                }
+                SetGauge(value, labels, gauge);
             }
 
             public Gauge Gauge => gauge;
@@ -250,19 +223,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private bool TryCreateMetricUpdater(Type type, Meter? meter, MemberInfo memberInfo, out IMetricUpdater metricUpdater)
         {
-            Type memberType;
-            if (memberInfo is PropertyInfo property)
-            {
-                memberType = property.PropertyType;
-            }
-            else if (memberInfo is FieldInfo field)
-            {
-                memberType = field.FieldType;
-            }
-            else
-            {
-                throw new UnreachableException();
-            }
+            Type memberType = memberInfo.GetMemberType();
 
             static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(IEnumerable));
             if (NotEnumerable(memberType))
@@ -285,27 +246,13 @@ namespace Nethermind.Monitoring.Metrics
                  memberType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary<,>)))
                )
             {
-                IDictionary dict;
-                if (memberInfo is PropertyInfo p)
-                {
-                    dict = (IDictionary)p.GetValue(null)!;
-                }
-                else if (memberInfo is FieldInfo f)
-                {
-                    dict = (IDictionary)f.GetValue(null)!;
-                }
-                else
-                {
-                    throw new UnreachableException();
-                }
-
+                IDictionary dict = memberInfo.GetValue<IDictionary>();
                 string[]? labelNames = memberInfo.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelNames;
                 metricUpdater = labelNames is null || labelNames.Length == 0
                     ? new GaugePerKeyMetricUpdater(dict, memberInfo.Name)
                     : new KeyIsLabelGaugeMetricUpdater(CreateMemberInfoMetricsGauge(memberInfo, labelNames), dict);
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
                 return true;
-                }
             }
 
             metricUpdater = null!;
@@ -370,22 +317,27 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Func<double> GetValueAccessor(MemberInfo member)
         {
-            if (member is PropertyInfo property)
-            {
-                return () => Convert.ToDouble(property.GetValue(null));
-            }
-
-            if (member is FieldInfo field)
-            {
-                return () => Convert.ToDouble(field.GetValue(null));
-            }
-
-            throw new InvalidOperationException($"Type of {member} is not handled");
+            return () => Convert.ToDouble(member.GetValue<object>());
         }
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 
         [GeneratedRegex("(\\p{Ll})(\\p{Lu})")]
         private static partial Regex GetGaugeNameRegex();
+
+        private static void SetGauge(double value, string[] labels, Gauge gauge)
+        {
+            if (labels.Length > 0)
+            {
+                Gauge.Child ch = gauge.WithLabels(labels);
+                if (Math.Abs(ch.Value - value) > double.Epsilon)
+                    ch.Set(value);
+            }
+            else
+            {
+                if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                    gauge.Set(value);
+            }
+        }
     }
 }
