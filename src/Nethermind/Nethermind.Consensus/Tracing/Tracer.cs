@@ -32,7 +32,8 @@ namespace Nethermind.Consensus.Tracing
             }
             finally
             {
-                scope.Reset();
+                _stateProvider.Reset(resetBlockCache: true);
+                throw;
             }
         }
 
