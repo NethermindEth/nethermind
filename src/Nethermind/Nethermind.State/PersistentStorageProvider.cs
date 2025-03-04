@@ -371,7 +371,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             Hash256 storageRoot = _stateProvider.GetStorageRoot(address);
             isEmpty = storageRoot == Keccak.EmptyTreeHash; // We know all lookups will be empty against this tree
-            value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), storageRoot, StateRoot, _logManager);
+            value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address), storageRoot, StateRoot, _logManager);
         }
 
         return value;
@@ -503,7 +503,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         // touched in this block, hence were not zeroed above
         // TODO: how does it work with pruning?
         _toUpdateRoots.Remove(address);
-        _storages[address] = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+        _storages[address] = new StorageTree(_trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, _logManager);
     }
 
     private class StorageTreeFactory : IStorageTreeFactory
