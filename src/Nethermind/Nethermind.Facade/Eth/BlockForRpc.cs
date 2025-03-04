@@ -30,7 +30,6 @@ public class BlockForRpc
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
-        Author = block.Author ?? block.Beneficiary;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -89,8 +88,6 @@ public class BlockForRpc
         RequestsHash = block.Header.RequestsHash;
     }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }
