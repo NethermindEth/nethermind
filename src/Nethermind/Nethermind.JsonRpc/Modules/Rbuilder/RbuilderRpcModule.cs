@@ -14,7 +14,8 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.RBuilder;
 
-public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldStateManager worldStateManager): IRbuilderRpcModule
+public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldStateManager worldStateManager)
+    : IRbuilderRpcModule
 {
     private readonly ObjectPool<IOverridableWorldScope> _overridableWorldScopePool = new DefaultObjectPool<IOverridableWorldScope>(new PooledIWorldStatePolicy(worldStateManager));
 
@@ -117,7 +118,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
     }
 
-    private class PooledIWorldStatePolicy(IWorldStateManager worldStateManager): IPooledObjectPolicy<IOverridableWorldScope>
+    private class PooledIWorldStatePolicy(IWorldStateManager worldStateManager)
+        : IPooledObjectPolicy<IOverridableWorldScope>
     {
         public IOverridableWorldScope Create()
         {

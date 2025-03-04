@@ -11,7 +11,8 @@ using Nethermind.Int256;
 namespace Nethermind.JsonRpc.Modules.RBuilder;
 
 [RpcModule(ModuleType.Rbuilder)]
-public interface IRbuilderRpcModule: IRpcModule
+public interface IRbuilderRpcModule
+    : IRpcModule
 {
     [JsonRpcMethod(IsImplemented = true,
         Description = "Returns bytecode based on hash.",
