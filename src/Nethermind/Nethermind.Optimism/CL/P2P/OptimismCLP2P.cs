@@ -255,7 +255,7 @@ public class OptimismCLP2P : IDisposable
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
         peerStore.Discover(_staticPeerList);
         PubsubPeerDiscoveryProtocol disc = new(_router, peerStore, new PubsubPeerDiscoverySettings(), _localPeer);
-        _ = disc.StartDiscoveryAsync([Multiaddress.Decode(address)], _cancellationTokenSource.Token);
+        _ = disc.StartDiscoveryAsync([Multiaddress.Decode(address)], _cancellationToken);
 
         _mainLoopTask.Start();
 

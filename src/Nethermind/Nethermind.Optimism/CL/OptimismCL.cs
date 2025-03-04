@@ -58,7 +58,7 @@ public class OptimismCL : IDisposable
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
     }
 
-    public async void Start()
+    public async Task Start()
     {
         await SetupTest();
         _l1Bridge.Start();
