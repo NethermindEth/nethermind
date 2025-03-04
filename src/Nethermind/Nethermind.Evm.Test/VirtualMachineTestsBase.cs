@@ -77,32 +77,32 @@ public class VirtualMachineTestsBase
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
-        GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default with { EnableMemory = true });
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true });
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer.BuildResult();
     }
 
     protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
     {
-        GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer.BuildResult();
     }
 
     protected GethLikeTxTrace ExecuteAndTrace(long gasLimit, params byte[] code)
     {
-        GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer.BuildResult();
     }
 
     protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
     {
-        GethLikeTxFileTracer tracer = new(dumpCallback, options);
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        GethLikeTxFileTracer tracer = new(dumpCallback, options);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer.BuildResult();
     }

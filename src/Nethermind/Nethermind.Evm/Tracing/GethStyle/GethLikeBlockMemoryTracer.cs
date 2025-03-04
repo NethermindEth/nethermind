@@ -11,7 +11,7 @@ public class GethLikeBlockMemoryTracer : BlockTracerBase<GethLikeTxTrace, GethLi
 
     public GethLikeBlockMemoryTracer(GethTraceOptions options) : base(options.TxHash) => _options = options;
 
-    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(_options);
+    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(tx, _options);
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxMemoryTracer txTracer) => txTracer.BuildResult();
 }
