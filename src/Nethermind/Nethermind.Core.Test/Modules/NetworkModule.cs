@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -25,10 +26,13 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Trie;
+using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class NetworkModule : Module
+public class NetworkModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -39,6 +43,7 @@ public class NetworkModule : Module
             .AddSingleton<IPivot, Pivot>()
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
+            .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
 
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
@@ -66,11 +71,25 @@ public class NetworkModule : Module
             .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
             .AddSingleton<ForkInfo>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
+            .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
+
+            .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
+            {
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                ctx.Resolve<IWorldStateManager>().InitializeNetwork(
+                    new PathNodeRecovery(
+                        new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
+                        new SnapRangeRecovery(peerPool!, logManager),
+                        logManager
+                    )
+                );
+            })
+
+            // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
 
             .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
             {
-                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                 ILogManager logManager = ctx.Resolve<ILogManager>();
 
                 string dbName = INetworkStorage.PeerDb;
@@ -106,8 +125,24 @@ public class NetworkModule : Module
                     });
             })
 
-            ;
+            // Some config migration
+            .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
+            {
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                if (networkConfig.DiagTracerEnabled)
+                {
+                    NetworkDiagTracer.IsEnabled = true;
+                }
+                if (NetworkDiagTracer.IsEnabled)
+                {
+                    NetworkDiagTracer.Start(logManager);
+                }
+                int maxPeersCount = networkConfig.ActivePeersMaxCount;
+                Network.Metrics.PeerLimit = maxPeersCount;
+                return networkConfig;
+            })
 
-        // TODO: Add `WorldStateManager.InitializeNetwork`.
+            ;
     }
+
 }

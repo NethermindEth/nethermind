@@ -318,7 +318,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
         }
 
-        private async Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(ValueHash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
+        private async Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {
             TrieNodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetTrieNodesMessage

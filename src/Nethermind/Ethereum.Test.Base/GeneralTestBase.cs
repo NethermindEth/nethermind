@@ -26,8 +26,10 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Specs.GnosisForks;
 
 namespace Ethereum.Test.Base
 {
@@ -62,11 +64,14 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            ISpecProvider specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Fork));
+            test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
-            if (specProvider.GenesisSpec != Frontier.Instance)
+            ISpecProvider specProvider =
+                new CustomSpecProvider(test.ChainId, test.ChainId,
+                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Fork));
+
+            if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
@@ -109,7 +114,7 @@ namespace Ethereum.Test.Base
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+                test.Transaction.ChainId = test.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
                 BlockHeader parent = new(
@@ -133,7 +138,7 @@ namespace Ethereum.Test.Base
             TransactionResult? txResult = null;
             if (txIsValid)
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
             else
             {

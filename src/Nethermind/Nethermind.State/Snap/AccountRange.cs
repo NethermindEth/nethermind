@@ -5,32 +5,28 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public class AccountRange
+    public class AccountRange(
+        Hash256 rootHash,
+        ValueHash256 startingHash,
+        ValueHash256? limitHash = null,
+        long? blockNumber = null)
     {
-        public AccountRange(ValueHash256 rootHash, ValueHash256 startingHash, ValueHash256? limitHash = null, long? blockNumber = null)
-        {
-            RootHash = rootHash;
-            StartingHash = startingHash;
-            BlockNumber = blockNumber;
-            LimitHash = limitHash;
-        }
-
-        public long? BlockNumber { get; }
+        public long? BlockNumber { get; } = blockNumber;
 
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueHash256 RootHash { get; }
+        public Hash256 RootHash { get; } = rootHash;
 
         /// <summary>
         /// Account hash of the first to retrieve
         /// </summary>
-        public ValueHash256 StartingHash { get; }
+        public ValueHash256 StartingHash { get; } = startingHash;
 
         /// <summary>
         /// Account hash after which to stop serving data
         /// </summary>
-        public ValueHash256? LimitHash { get; }
+        public ValueHash256? LimitHash { get; } = limitHash;
 
         public override string ToString()
         {

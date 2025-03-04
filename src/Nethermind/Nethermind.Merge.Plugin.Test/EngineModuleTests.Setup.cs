@@ -20,6 +20,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
@@ -38,7 +39,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -157,6 +157,18 @@ public partial class EngineModuleTests
         public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
 
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
+
+        public Task WaitForImprovedBlocck(Hash256? parentHash = null)
+        {
+            return Wait.ForEventCondition<BlockEventArgs>(default,
+                e => PayloadPreparationService!.BlockImproved += e,
+                e => PayloadPreparationService!.BlockImproved -= e,
+                b =>
+                {
+                    if (parentHash is null) return true;
+                    return b.Block.ParentHash == parentHash;
+                });
+        }
 
         public ISealValidator? SealValidator { get; set; }
 
@@ -307,8 +319,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         DelayMs = delayMs;
     }
 
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
-        IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
     {
         if (DelayMs > 0)
         {

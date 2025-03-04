@@ -123,7 +123,13 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
-        _api.WorldStateManager!.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager), new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        _api.WorldStateManager!.InitializeNetwork(
+            new PathNodeRecovery(
+                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
+                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
+                _api.LogManager
+            )
+        );
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
@@ -257,8 +263,6 @@ public class InitializeNetwork : IStep
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
             _api.NodeStatsManager, _api.IpResolver
         );
-
-        _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }
 
     private Task StartSync()
@@ -296,7 +300,6 @@ public class InitializeNetwork : IStep
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.MainBlockProcessor is null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
         if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));
@@ -335,7 +338,7 @@ public class InitializeNetwork : IStep
         _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
-            _api.Enode!,
+            _api.NodeKey!,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
@@ -347,6 +350,9 @@ public class InitializeNetwork : IStep
 
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
+
+        _api.TrustedNodesManager = new TrustedNodesManager(initConfig.TrustedNodesPath, _api.LogManager);
+        await _api.TrustedNodesManager.InitAsync();
 
         // ToDo: PeersDB is registered outside dbProvider
         string dbName = INetworkStorage.PeerDb;
@@ -360,15 +366,7 @@ public class InitializeNetwork : IStep
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
-
-        ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            // TODO: Add a proper config for the state persistence depth.
-            snapServer = new LastNRootSnapServer(_api.WorldStateManager!.SnapServer!, new LastNStateRootTracker(_api.BlockTree, 128));
-
-        }
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
@@ -385,7 +383,7 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
-            snapServer,
+            _api.WorldStateManager!,
             _api.LogManager,
             _api.TxGossipPolicy);
 
@@ -421,9 +419,9 @@ public class InitializeNetwork : IStep
         }
 
         CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
-            ? new(_api.StaticNodesManager, nodesLoader)
-            : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
-        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
+            ? new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader)
+            : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
             _api.PeerPool,

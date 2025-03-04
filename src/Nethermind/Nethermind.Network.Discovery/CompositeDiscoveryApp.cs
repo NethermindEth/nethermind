@@ -3,6 +3,7 @@
 
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -31,7 +32,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 {
     private const string DiscoveryNodesDbPath = "discoveryNodes";
 
-    private readonly ProtectedPrivateKey _nodeKey;
+    private readonly IProtectedPrivateKey _nodeKey;
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly IInitConfig _initConfig;
@@ -43,16 +44,19 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly IIPResolver _ipResolver;
     private readonly IConnectionsPool _connections;
+    private readonly IChannelFactory? _channelFactory;
 
     private IDiscoveryApp? _v4;
     private IDiscoveryApp? _v5;
     private INodeSource _compositeNodeSource = null!;
 
-    public CompositeDiscoveryApp(ProtectedPrivateKey? nodeKey,
+    public CompositeDiscoveryApp(
+        [KeyFilter(IProtectedPrivateKey.NodeKey)]
+        IProtectedPrivateKey? nodeKey,
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IChannelFactory? channelFactory = null
     )
     {
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
@@ -67,6 +71,9 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
+        _channelFactory = channelFactory;
+
+        Initialize(nodeKey.PublicKey);
     }
 
     public void Initialize(PublicKey masterPublicKey)
@@ -102,7 +109,9 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         Bootstrap bootstrap = new();
         bootstrap.Group(new MultithreadEventLoopGroup(1));
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        if (_channelFactory is not null)
+            bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
         else
             bootstrap.Channel<SocketDatagramChannel>();
@@ -118,10 +127,10 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     public Task StopAsync() => Task.WhenAll(
-        _connections.StopAsync(),
-        _v4?.StopAsync() ?? Task.CompletedTask,
-        _v5?.StopAsync() ?? Task.CompletedTask
-    );
+            _connections.StopAsync(),
+            _v4?.StopAsync() ?? Task.CompletedTask,
+            _v5?.StopAsync() ?? Task.CompletedTask
+        );
 
     public void AddNodeToDiscovery(Node node)
     {

@@ -78,12 +78,8 @@ public class MergeSynchronizerModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .RegisterType<MergeBlockDownloader>()
-            .As<BlockDownloader>()
-            .As<ISyncDownloader<BlocksRequest>>()
-            .InstancePerLifetimeScope();
-
-        builder
+            .Add<IPosTransitionHook, PosTransitionHook>()
+            .AddDecorator<BlockDownloader, MergeBlockDownloader>()
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
