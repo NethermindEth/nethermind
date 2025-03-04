@@ -7,8 +7,15 @@ public class TrackedPastKeyCountStrategy(IPruningStrategy baseStrategy, int trac
 {
     public bool PruningEnabled => baseStrategy.PruningEnabled;
     public int MaxDepth => baseStrategy.MaxDepth;
+    public bool ShouldPruneDirtyNode(in long dirtyNodeMemory)
+    {
+        return baseStrategy.ShouldPruneDirtyNode(in dirtyNodeMemory);
+    }
 
-    public bool ShouldPrune(in long currentMemory) => baseStrategy.ShouldPrune(in currentMemory);
+    public bool ShouldPrunePersistedNode(in long persistedNodeMemory)
+    {
+        return baseStrategy.ShouldPrunePersistedNode(in persistedNodeMemory);
+    }
 
     public int TrackedPastKeyCount => trackedPastKeyCount;
 }

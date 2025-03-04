@@ -260,7 +260,7 @@ internal class TrieStoreDirtyNodesCache
             return true;
         }
 
-        INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
+        INodeStorage.IWriteBatch writeBatch = nodeStorage?.StartWriteBatch();
         int deleteRound = 0;
 
         using (AcquireMapLock())

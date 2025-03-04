@@ -13,8 +13,12 @@ namespace Nethermind.Trie.Pruning
 
         public bool PruningEnabled => false;
         public int MaxDepth => (int)Reorganization.MaxDepth;
+        public bool ShouldPruneDirtyNode(in long dirtyNodeMemory)
+        {
+            return false;
+        }
 
-        public bool ShouldPrune(in long currentMemory)
+        public bool ShouldPrunePersistedNode(in long persistedNodeMemory)
         {
             return false;
         }

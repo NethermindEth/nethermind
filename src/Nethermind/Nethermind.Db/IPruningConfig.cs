@@ -19,6 +19,9 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "1024")]
     long CacheMb { get; set; }
 
+    [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "800")]
+    long DirtyCacheMb { get; set; }
+
     [ConfigItem(
         Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
         DefaultValue = "8192")]

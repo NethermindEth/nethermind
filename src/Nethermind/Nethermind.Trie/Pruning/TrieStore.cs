@@ -129,6 +129,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
+    public long PersistedMemoryUsedByDirtyCache => MemoryUsedByDirtyCache - DirtyMemoryUsedByDirtyCache;
+
     public void IncrementMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
     {
         Metrics.CachedNodesCount = Interlocked.Increment(ref _totalCachedNodesCount);
@@ -481,42 +483,18 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     public void Prune()
     {
-        if (_pruningStrategy.ShouldPrune(DirtyMemoryUsedByDirtyCache) && _pruningTask.IsCompleted)
+        if ((_pruningStrategy.ShouldPruneDirtyNode(DirtyMemoryUsedByDirtyCache) || _pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache)) && _pruningTask.IsCompleted)
         {
             _pruningTask = Task.Run(() =>
             {
-                try
+                if (_pruningStrategy.ShouldPruneDirtyNode(DirtyMemoryUsedByDirtyCache))
                 {
-                    // Flush ahead of time so that memtable is empty which prevent stalling when writing nodes.
-                    // Note, the WriteBufferSize * WriteBufferNumber need to be more than about 20% of pruning cache
-                    // otherwise, it may not fit the whole dirty cache.
-                    // Additionally, if (WriteBufferSize * (WriteBufferNumber - 1)) is already more than 20% of pruning
-                    // cache, it is likely that there are enough space for it on most time, except for syncing maybe.
-                    _nodeStorage.Flush(onlyWal: false);
-                    lock (_dirtyNodesLock)
-                    {
-                        long start = Stopwatch.GetTimestamp();
-                        if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
-
-                        long memoryUsedByDirtyCache = DirtyMemoryUsedByDirtyCache;
-                        if (!_pruningTaskCancellationTokenSource.IsCancellationRequested &&
-                            _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
-                        {
-                            SaveSnapshot();
-                            PruneCache();
-
-                            TimeSpan sw = Stopwatch.GetElapsedTime(start);
-                            long ms = (long)sw.TotalMilliseconds;
-                            Metrics.PruningTime = ms;
-                            if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {ms:0.##} ms. Dirty memory from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB");
-                        }
-                    }
-
-                    if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
+                    PersistAndPruneDirtyCache();
                 }
-                catch (Exception e)
+
+                if (_pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache))
                 {
-                    if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
+                    PrunePersistedNodes();
                 }
             });
 
@@ -527,87 +505,119 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private bool SaveSnapshot()
+    private void PersistAndPruneDirtyCache()
     {
-        if (_pruningStrategy.ShouldPrune(DirtyMemoryUsedByDirtyCache))
+        try
         {
-            if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
-
-            int count = _commitSetQueue?.Count ?? 0;
-            if (count == 0) return false;
-
-            using ArrayPoolList<BlockCommitSet> toAddBack = new(count);
-            using ArrayPoolList<BlockCommitSet> candidateSets = new(count);
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+            // Flush ahead of time so that memtable is empty which prevent stalling when writing nodes.
+            // Note, the WriteBufferSize * WriteBufferNumber need to be more than about 20% of pruning cache
+            // otherwise, it may not fit the whole dirty cache.
+            // Additionally, if (WriteBufferSize * (WriteBufferNumber - 1)) is already more than 20% of pruning
+            // cache, it is likely that there are enough space for it on most time, except for syncing maybe.
+            _nodeStorage.Flush(onlyWal: false);
+            lock (_dirtyNodesLock)
             {
-                if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _pruningStrategy.MaxDepth)
+                long start = Stopwatch.GetTimestamp();
+                if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
+
+                long memoryUsedByDirtyCache = DirtyMemoryUsedByDirtyCache;
+                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested &&
+                    _pruningStrategy.ShouldPruneDirtyNode(memoryUsedByDirtyCache))
                 {
-                    toAddBack.Add(frontSet);
-                }
-                else if (candidateSets.Count > 0 && candidateSets[0].BlockNumber == frontSet.BlockNumber)
-                {
-                    candidateSets.Add(frontSet);
-                }
-                else if (candidateSets.Count == 0 || frontSet.BlockNumber > candidateSets[0].BlockNumber)
-                {
-                    candidateSets.Clear();
-                    candidateSets.Add(frontSet);
+                    SaveSnapshot();
+                    PruneCache();
+
+                    TimeSpan sw = Stopwatch.GetElapsedTime(start);
+                    long ms = (long)sw.TotalMilliseconds;
+                    Metrics.PruningTime = ms;
+                    if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {ms:0.##} ms. Dirty memory from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB");
                 }
             }
 
-            // TODO: Find a way to not have to re-add everything
-            for (int index = 0; index < toAddBack.Count; index++)
+            if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
+        }
+    }
+
+    private void SaveSnapshot()
+    {
+        if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
+
+        int count = _commitSetQueue?.Count ?? 0;
+        if (count == 0) return;
+
+        using ArrayPoolList<BlockCommitSet> toAddBack = new(count);
+        using ArrayPoolList<BlockCommitSet> candidateSets = new(count);
+        while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+        {
+            if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _pruningStrategy.MaxDepth)
             {
-                _commitSetQueue.Enqueue(toAddBack[index]);
+                toAddBack.Add(frontSet);
             }
-
-
-            bool shouldDeletePersistedNode =
-                // Its disabled
-                _livePruningEnabled &&
-                // Full pruning need to visit all node, so can't delete anything.
-                !_persistenceStrategy.IsFullPruning &&
-                // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
-                candidateSets.Count == 1;
-
-            Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = shouldDeletePersistedNode ? _persistedNodeRecorder : null;
-
-            for (int index = 0; index < candidateSets.Count; index++)
+            else if (candidateSets.Count > 0 && candidateSets[0].BlockNumber == frontSet.BlockNumber)
             {
-                BlockCommitSet blockCommitSet = candidateSets[index];
-                if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-                ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
+                candidateSets.Add(frontSet);
             }
-
-            Task deleteTask = shouldDeletePersistedNode ? RemovePastKeys() : Task.CompletedTask;
-
-            Task RemovePastKeys()
+            else if (candidateSets.Count == 0 || frontSet.BlockNumber > candidateSets[0].BlockNumber)
             {
-                for (int index = 0; index < _dirtyNodes.Length; index++)
-                {
-                    int i = index;
-                    _dirtyNodesTasks[index] = Task.Run(() =>
-                    {
-                        _dirtyNodes[i].RemovePastKeys(_persistedHashes[i], _nodeStorage);
-                    });
-                }
-
-                return Task.WhenAll(_dirtyNodesTasks);
+                candidateSets.Clear();
+                candidateSets.Add(frontSet);
             }
-
-            AnnounceReorgBoundaries();
-            deleteTask.Wait();
-
-            if (candidateSets.Count > 0)
-            {
-                return true;
-            }
-
-            _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-            if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_pruningStrategy.MaxDepth})");
         }
 
-        return false;
+        // TODO: Find a way to not have to re-add everything
+        for (int index = 0; index < toAddBack.Count; index++)
+        {
+            _commitSetQueue.Enqueue(toAddBack[index]);
+        }
+
+
+        bool shouldDeletePersistedNode =
+            // Its disabled
+            _livePruningEnabled &&
+            // Full pruning need to visit all node, so can't delete anything.
+            !_persistenceStrategy.IsFullPruning &&
+            // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
+            candidateSets.Count == 1;
+
+        Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = shouldDeletePersistedNode ? _persistedNodeRecorder : null;
+
+        for (int index = 0; index < candidateSets.Count; index++)
+        {
+            BlockCommitSet blockCommitSet = candidateSets[index];
+            if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
+            ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
+        }
+
+        Task deleteTask = shouldDeletePersistedNode ? RemovePastKeys() : Task.CompletedTask;
+
+        Task RemovePastKeys()
+        {
+            for (int index = 0; index < _dirtyNodes.Length; index++)
+            {
+                int i = index;
+                _dirtyNodesTasks[index] = Task.Run(() =>
+                {
+                    _dirtyNodes[i].RemovePastKeys(_persistedHashes[i], _nodeStorage);
+                });
+            }
+
+            return Task.WhenAll(_dirtyNodesTasks);
+        }
+
+        AnnounceReorgBoundaries();
+        deleteTask.Wait();
+
+        if (candidateSets.Count > 0)
+        {
+            return;
+        }
+
+        _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
+        if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_pruningStrategy.MaxDepth})");
     }
 
     private void PersistedNodeRecorder(TreePath treePath, Hash256 address, TrieNode tn)
@@ -622,20 +632,60 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
+    private int _lastPrunedShardIdx = 0;
+
+    /// <summary>
+    /// Only prune persisted nodes. This method attempt to pick only some shard for pruning.
+    /// </summary>
+    private void PrunePersistedNodes()
+    {
+        try
+        {
+            // Target prune is either 10% of the persisted node memory or at least 50MiB.
+            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * 0.1);
+            targetPruneMemory = Math.Max(targetPruneMemory, 50.MiB());
+
+            int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * 256);
+            shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, 256));
+
+            if (_logger.IsWarn) _logger.Warn($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
+            long start = Stopwatch.GetTimestamp();
+
+            using ArrayPoolList<Task> pruneTask = new(shardCountToPrune);
+
+            for (int i = 0; i < shardCountToPrune; i++)
+            {
+                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
+                pruneTask.Add(Task.Run(() =>
+                {
+                    dirtyNode.PruneCache(prunePersisted: true);
+                }));
+                _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % ShardedDirtyNodeCount;
+            }
+
+            Task.WaitAll(pruneTask);
+
+            RecalculateTotalMemoryUsage();
+
+            if (_logger.IsWarn) _logger.Warn($"Finished pruning persisted nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            Metrics.PersistedNodePruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Persisted node pruning failed", e);
+        }
+    }
+
     /// <summary>
     /// This method is responsible for reviewing the nodes that are directly in the cache and
-    /// removing ones that are either no longer referenced or already persisted.
+    /// removing ones that are either no longer referenced but not for persisted nodes.
+    /// This is done after a `SaveSnapshot`.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
     private void PruneCache()
     {
-        if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+        if (_logger.IsDebug) _logger.Debug($"Pruning nodes {DirtyMemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
-
-        long memory = 0;
-        long dirtyMemory = 0;
-        long totalNodes = 0;
-        long totalDirtyNodes = 0;
 
         for (int index = 0; index < _dirtyNodes.Length; index++)
         {
@@ -659,6 +709,17 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         Task.WaitAll(_dirtyNodesTasks);
 
+        RecalculateTotalMemoryUsage();
+
+        if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {DirtyMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+    }
+
+    private void RecalculateTotalMemoryUsage()
+    {
+        long memory = 0;
+        long dirtyMemory = 0;
+        long totalNodes = 0;
+        long totalDirtyNodes = 0;
         for (int index = 0; index < _dirtyNodes.Length; index++)
         {
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[index];
@@ -674,8 +735,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         Metrics.CachedNodesCount = totalNodes;
         _dirtyCachedNodesCount = totalDirtyNodes;
         Metrics.DirtyCachedNodesCount = totalDirtyNodes;
-
-        if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
     }
 
     public void ClearCache()

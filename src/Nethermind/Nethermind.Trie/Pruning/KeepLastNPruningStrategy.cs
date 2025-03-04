@@ -8,8 +8,15 @@ public class KeepLastNPruningStrategy(IPruningStrategy baseStrategy, int depth) 
     public bool PruningEnabled => baseStrategy.PruningEnabled;
 
     public int MaxDepth => depth;
+    public bool ShouldPruneDirtyNode(in long dirtyNodeMemory)
+    {
+        return baseStrategy.ShouldPruneDirtyNode(in dirtyNodeMemory);
+    }
 
-    public bool ShouldPrune(in long currentMemory) => baseStrategy.ShouldPrune(in currentMemory);
+    public bool ShouldPrunePersistedNode(in long persistedNodeMemory)
+    {
+        return baseStrategy.ShouldPrunePersistedNode(in persistedNodeMemory);
+    }
 
     public int TrackedPastKeyCount => baseStrategy.TrackedPastKeyCount;
 }

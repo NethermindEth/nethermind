@@ -65,6 +65,10 @@ namespace Nethermind.Trie.Pruning
         public static long PruningTime { get; set; }
 
         [GaugeMetric]
+        [Description("Time taken by the last persisted node pruning.")]
+        public static long PersistedNodePruningTime { get; set; }
+
+        [GaugeMetric]
         [Description("Time taken by the last deep pruning.")]
         public static long DeepPruningTime { get; set; }
 
