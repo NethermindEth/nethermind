@@ -22,6 +22,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
 
 namespace Ethereum.Test.Base
@@ -126,7 +127,7 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            ValidationResult txIsValid = new TxValidator(test.ChainId).ValidateTransaction(test.Transaction, spec);
+            ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
             TransactionResult? txResult = null;
             if (txIsValid)
             {
