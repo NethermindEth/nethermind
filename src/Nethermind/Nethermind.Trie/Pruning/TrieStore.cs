@@ -641,8 +641,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         try
         {
-            // Target prune is either 10% of the persisted node memory or at least 50MiB.
-            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * 0.1);
+            // Target prune is either 5% of the persisted node memory or at least 50MiB.
+            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * 0.05);
             targetPruneMemory = Math.Max(targetPruneMemory, 50.MiB());
 
             int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * 256);
