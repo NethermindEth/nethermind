@@ -300,18 +300,11 @@ namespace Nethermind.Monitoring.Metrics
                 }
 
                 string[]? labelNames = memberInfo.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelNames;
-                if (labelNames is null || labelNames.Length == 0)
-                {
-                    metricUpdater = new GaugePerKeyMetricUpdater(dict, memberInfo.Name);
-                    _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
-                    return true;
-                }
-                else
-                {
-                    Gauge gauge = CreateMemberInfoMetricsGauge(memberInfo, labelNames);
-                    metricUpdater = new KeyIsLabelGaugeMetricUpdater(gauge, dict);
-                    _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
-                    return true;
+                metricUpdater = labelNames is null || labelNames.Length == 0
+                    ? new GaugePerKeyMetricUpdater(dict, memberInfo.Name)
+                    : new KeyIsLabelGaugeMetricUpdater(CreateMemberInfoMetricsGauge(memberInfo, labelNames), dict);
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
                 }
             }
 
