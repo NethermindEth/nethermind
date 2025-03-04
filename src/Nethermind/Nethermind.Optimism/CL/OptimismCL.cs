@@ -52,7 +52,7 @@ public class OptimismCL : IDisposable
 
         _l2EthRpc = l2EthRpc;
         _l2BlockTree = new L2BlockTree();
-        _decodingPipeline = new DecodingPipeline(logger);
+        _decodingPipeline = new DecodingPipeline(_cancellationTokenSource.Token, logger); // TODO: Are we using the correct cancellation token here?
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _cancellationTokenSource.Token, logManager);
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         _executionEngineManager = new ExecutionEngineManager(engineRpcModule, _l2EthRpc, logger);
