@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -13,32 +11,14 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class Secp256r1PrecompileTests : VirtualMachineTestsBase
+    public class Secp256r1PrecompileTests : PrecompileTests<Secp256r1PrecompileTests>, IPrecompileTests
     {
-        // ReSharper disable once ClassNeverInstantiated.Local
-        public record TestCase(string Input, string Expected, string Name);
-
-        private static IEnumerable<TestCase> TestSource()
+        public static IEnumerable<string> TestFiles()
         {
-            // https://github.com/ethereum-optimism/op-geth/blob/7017b54770d480b5c8be63dc40eac9da166150f5/core/vm/testdata/precompiles/p256Verify.json
-            var data = File.ReadAllText("TestFiles/p256Verify.json");
-            return JsonSerializer.Deserialize<TestCase[]>(data);
+            yield return "p256Verify.json";
         }
 
-        [TestCaseSource(nameof(TestSource))]
-        public void Produces_Correct_Outputs(TestCase testCase)
-        {
-            var input = Bytes.FromHexString(testCase.Input);
-            var expected = Bytes.FromHexString(testCase.Expected);
-
-            (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(input, Prague.Instance);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EquivalentTo(expected));
-            }
-        }
+        public static IPrecompile Precompile() => Secp256r1Precompile.Instance;
 
         [Test]
         [TestCase(
@@ -53,8 +33,7 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             var bytes = Bytes.FromHexString(input);
-
-            (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
 
             using (Assert.EnterMultipleScope())
             {
