@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -15,32 +17,116 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
 using Nethermind.Monitoring.Config;
 using Prometheus;
+
+[assembly: InternalsVisibleTo("Nethermind.Monitoring.Test")]
 
 namespace Nethermind.Monitoring.Metrics
 {
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
-        private Timer _timer;
-        private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
-        private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
+        private Timer _timer = null!;
+        private static bool _staticLabelsInitialized = false;
+
+        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
         private readonly HashSet<Type> _metricTypes = new();
 
-        public readonly Dictionary<string, Gauge> _gauges = new();
+        // Largely for testing reason
+        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
+
         private readonly bool _useCounters;
 
         private readonly List<Action> _callbacks = new();
 
-        class DictionaryMetricInfo
+        public interface IMetricUpdater
         {
-            internal MemberInfo MemberInfo;
-            internal string DictionaryName;
-            internal string[] LabelNames;
-            internal string GaugeName;
-            internal IDictionary Dictionary;
+            void Update();
+        }
+
+        public class GaugeMetricUpdater(Gauge gauge, Func<double> accessor, params string[] labels) : IMetricUpdater
+        {
+            public void Update()
+            {
+                double value = accessor();
+                SetGauge(value, labels, gauge);
+            }
+
+            public Gauge Gauge => gauge;
+        }
+
+        public class GaugePerKeyMetricUpdater(IDictionary dict, string dictionaryName) : IMetricUpdater
+        {
+            public readonly Dictionary<string, Gauge> _gauges = new();
+
+            public void Update()
+            {
+                // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
+                // impact the performance of whatever is updating the metrics.
+                foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
+                {
+                    string keyStr = keyObj.ToString()!;
+                    double value = Convert.ToDouble(dict[keyObj]);
+                    string gaugeName = GetGaugeNameKey(dictionaryName, keyStr);
+
+                    if (ReplaceValueIfChanged(value, gaugeName) is null)
+                    {
+                        // Don't know why it does not prefix with dictionary name or class name. Not gonna change behaviour now.
+                        Gauge gauge = CreateGauge(BuildGaugeName(keyStr));
+                        _gauges[gaugeName] = gauge;
+                        gauge.Set(value);
+                    }
+                }
+            }
+
+            Gauge? ReplaceValueIfChanged(double value, string gaugeName, params string[] labels)
+            {
+                if (_gauges.TryGetValue(gaugeName, out Gauge? gauge))
+                {
+                    SetGauge(value, labels, gauge);
+                }
+
+                return gauge;
+            }
+        }
+
+        public class KeyIsLabelGaugeMetricUpdater(Gauge gauge, IDictionary dict) : IMetricUpdater
+        {
+            public void Update()
+            {
+                foreach (object key in dict.Keys)
+                {
+                    double value = Convert.ToDouble(dict[key]);
+                    switch (key)
+                    {
+                        case IMetricLabels label:
+                            Update(value, label.Labels);
+                            break;
+                        case ITuple keyAsTuple:
+                            string[] labels = new string[keyAsTuple.Length];
+                            for (int i = 0; i < keyAsTuple.Length; i++)
+                            {
+                                labels[i] = keyAsTuple[i]!.ToString()!;
+                            }
+
+                            Update(value, labels);
+                            break;
+                        default:
+                            Update(value, key.ToString()!);
+                            break;
+                    }
+                }
+            }
+
+            private void Update(double value, params string[] labels)
+            {
+                SetGauge(value, labels, gauge);
+            }
+
+            public Gauge Gauge => gauge;
         }
 
         public void RegisterMetrics(Type type)
@@ -50,38 +136,21 @@ namespace Nethermind.Monitoring.Metrics
                 return;
             }
 
-            Meter meter = new(type.Namespace);
-
             EnsurePropertiesCached(type);
-            foreach ((MemberInfo member, string gaugeName, Func<double> observer) in _membersCache[type])
-            {
-                if (_useCounters)
-                {
-                    CreateDiagnosticsMetricsObservableGauge(meter, member, observer);
-                }
-
-                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
-            }
-
-            foreach (DictionaryMetricInfo info in _dictionaryCache[type])
-            {
-                if (info.LabelNames is null || info.LabelNames.Length == 0) continue; // Old behaviour creates new metric as it is created
-                _gauges[info.GaugeName] = CreateMemberInfoMetricsGauge(info.MemberInfo, info.LabelNames);
-            }
         }
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
             string name = BuildGaugeName(member);
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
 
             bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
             if (!haveTagAttributes)
             {
-                return CreateGauge(name, description, _commonStaticTags, labels);
+                return CreateGauge(name, description, null, labels);
             }
 
-            Dictionary<string, string> tags = new(_commonStaticTags);
+            Dictionary<string, string> tags = new();
             member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
                 tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
             return CreateGauge(name, description, tags, labels);
@@ -102,7 +171,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
 
             if (member.GetCustomAttribute<CounterMetricAttribute>() is not null)
@@ -119,56 +188,75 @@ namespace Nethermind.Monitoring.Metrics
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName) ?? throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
             object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
-            return value.ToString();
+            return value.ToString()!;
         }
 
         private void EnsurePropertiesCached(Type type)
         {
-            static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(System.Collections.IEnumerable));
-
-            static Func<double> GetValueAccessor(MemberInfo member)
+            if (!_metricUpdaters.ContainsKey(type))
             {
-                if (member is PropertyInfo property)
+                Meter? meter = null;
+                if (_useCounters)
                 {
-                    return () => Convert.ToDouble(property.GetValue(null));
+                    meter = new(type.Namespace!);
                 }
 
-                if (member is FieldInfo field)
+                IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
+                foreach (var propertyInfo in type.GetProperties())
                 {
-                    return () => Convert.ToDouble(field.GetValue(null));
-                }
-
-                throw new NotImplementedException($"Type of {member} is not handled");
-            }
-
-            if (!_membersCache.ContainsKey(type))
-            {
-                _membersCache[type] = type.GetProperties()
-                    .Where(p => NotEnumerable(p.PropertyType))
-                    .Concat<MemberInfo>(type.GetFields().Where(f => NotEnumerable(f.FieldType)))
-                    .Select(member => (member, GetGaugeNameKey(type.Name, member.Name), GetValueAccessor(member)))
-                    .ToArray();
-            }
-
-            if (!_dictionaryCache.ContainsKey(type))
-            {
-                _dictionaryCache[type] = type.GetProperties()
-                    .Where(p =>
-                        p.PropertyType.IsGenericType &&
-                        (
-                            p.PropertyType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary))
-                            || p.PropertyType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary<,>))
-                        ))
-                    .Select(p => new DictionaryMetricInfo()
+                    if (TryCreateMetricUpdater(type, meter, propertyInfo, out IMetricUpdater updater))
                     {
-                        MemberInfo = p,
-                        DictionaryName = p.Name,
-                        LabelNames = p.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelNames,
-                        GaugeName = GetGaugeNameKey(type.Name, p.Name),
-                        Dictionary = (IDictionary)p.GetValue(null)
-                    })
-                    .ToArray();
+                        metricUpdaters.Add(updater);
+                    }
+                }
+                foreach (var fieldInfo in type.GetFields())
+                {
+                    if (TryCreateMetricUpdater(type, meter, fieldInfo, out IMetricUpdater updater))
+                    {
+                        metricUpdaters.Add(updater);
+                    }
+                }
+
+                _metricUpdaters[type] = metricUpdaters.ToArray();
             }
+        }
+
+        private bool TryCreateMetricUpdater(Type type, Meter? meter, MemberInfo memberInfo, out IMetricUpdater metricUpdater)
+        {
+            Type memberType = memberInfo.GetMemberType();
+
+            static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(IEnumerable));
+            if (NotEnumerable(memberType))
+            {
+                Func<double> accessor = GetValueAccessor(memberInfo);
+
+                if (meter is not null)
+                {
+                    CreateDiagnosticsMetricsObservableGauge(meter, memberInfo, accessor);
+                }
+
+                Gauge gauge = CreateMemberInfoMetricsGauge(memberInfo);
+                metricUpdater = new GaugeMetricUpdater(gauge, accessor);
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            if (memberType.IsGenericType &&
+                (memberType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary)) ||
+                 memberType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary<,>)))
+               )
+            {
+                IDictionary dict = memberInfo.GetValue<IDictionary>();
+                string[]? labelNames = memberInfo.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelNames;
+                metricUpdater = labelNames is null || labelNames.Length == 0
+                    ? new GaugePerKeyMetricUpdater(dict, memberInfo.Name)
+                    : new KeyIsLabelGaugeMetricUpdater(CreateMemberInfoMetricsGauge(memberInfo, labelNames), dict);
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            metricUpdater = null!;
+            return false;
         }
 
         private static string BuildGaugeName(MemberInfo propertyInfo) =>
@@ -177,21 +265,29 @@ namespace Nethermind.Monitoring.Metrics
         private static string BuildGaugeName(string propertyName) =>
             $"nethermind_{GetGaugeNameRegex().Replace(propertyName, "$1_$2").ToLowerInvariant()}";
 
-        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> staticLabels = null, params string[] labels) => staticLabels is null
+        private static Gauge CreateGauge(string name, string? help = null, IDictionary<string, string>? staticLabels = null, params string[] labels) => staticLabels is null
             ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty, labels)
             : Prometheus.Metrics.WithLabels(staticLabels).CreateGauge(name, help ?? string.Empty, labels);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
+            if (!_staticLabelsInitialized)
+            {
+                _staticLabelsInitialized = true;
+                Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
+            }
+
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
             _useCounters = metricsConfig.CountersEnabled;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+        public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
 
         public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
 
-        public void UpdateMetrics(object state)
+        private void UpdateAllMetrics(object? state) => UpdateAllMetrics();
+
+        public void UpdateAllMetrics()
         {
             foreach (Action callback in _callbacks)
             {
@@ -213,88 +309,35 @@ namespace Nethermind.Monitoring.Metrics
         {
             EnsurePropertiesCached(type);
 
-            foreach ((MemberInfo _, string gaugeName, Func<double> accessor) in _membersCache[type])
+            foreach (IMetricUpdater metricUpdater in _metricUpdaters[type])
             {
-                ReplaceValueIfChanged(accessor(), gaugeName);
+                metricUpdater.Update();
             }
+        }
 
-            foreach (DictionaryMetricInfo info in _dictionaryCache[type])
-            {
-                if (info.LabelNames is null)
-                {
-                    IDictionary dict = info.Dictionary;
-                    // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
-                    // impact the performance of whatever is updating the metrics.
-                    foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
-                    {
-                        string keyStr = keyObj.ToString();
-                        double value = Convert.ToDouble(dict[keyObj]);
-                        string gaugeName = GetGaugeNameKey(info.DictionaryName, keyStr);
-
-                        if (ReplaceValueIfChanged(value, gaugeName) is null)
-                        {
-                            // Don't know why it does not prefix with dictionary name or class name. Not gonna change behaviour now.
-                            Gauge gauge = CreateGauge(BuildGaugeName(keyStr));
-                            _gauges[gaugeName] = gauge;
-                            gauge.Set(value);
-                        }
-                    }
-                }
-                else
-                {
-                    IDictionary dict = info.Dictionary;
-                    string gaugeName = info.GaugeName;
-                    foreach (object key in dict.Keys)
-                    {
-                        double value = Convert.ToDouble(dict[key]);
-                        switch (key)
-                        {
-                            case IMetricLabels label:
-                                ReplaceValueIfChanged(value, gaugeName, label.Labels);
-                                break;
-                            case ITuple keyAsTuple:
-                                {
-                                    string[] labels = new string[keyAsTuple.Length];
-                                    for (int i = 0; i < keyAsTuple.Length; i++)
-                                    {
-                                        labels[i] = keyAsTuple[i].ToString();
-                                    }
-
-                                    ReplaceValueIfChanged(value, gaugeName, labels);
-                                    break;
-                                }
-                            default:
-                                ReplaceValueIfChanged(value, gaugeName, key.ToString());
-                                break;
-                        }
-                    }
-                }
-            }
-
-            Gauge ReplaceValueIfChanged(double value, string gaugeName, params string[] labels)
-            {
-                if (_gauges.TryGetValue(gaugeName, out Gauge gauge))
-                {
-                    if (labels.Length > 0)
-                    {
-                        Gauge.Child ch = gauge.WithLabels(labels);
-                        if (Math.Abs(ch.Value - value) > double.Epsilon)
-                            ch.Set(value);
-                    }
-                    else
-                    {
-                        if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                            gauge.Set(value);
-                    }
-                }
-
-                return gauge;
-            }
+        private static Func<double> GetValueAccessor(MemberInfo member)
+        {
+            return () => Convert.ToDouble(member.GetValue<object>());
         }
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 
         [GeneratedRegex("(\\p{Ll})(\\p{Lu})")]
         private static partial Regex GetGaugeNameRegex();
+
+        private static void SetGauge(double value, string[] labels, Gauge gauge)
+        {
+            if (labels.Length > 0)
+            {
+                Gauge.Child ch = gauge.WithLabels(labels);
+                if (Math.Abs(ch.Value - value) > double.Epsilon)
+                    ch.Set(value);
+            }
+            else
+            {
+                if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                    gauge.Set(value);
+            }
+        }
     }
 }
