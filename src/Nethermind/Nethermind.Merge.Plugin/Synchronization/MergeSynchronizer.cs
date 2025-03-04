@@ -78,11 +78,11 @@ public class MergeSynchronizerModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .Add<IPosTransitionHook, PosTransitionHook>()
-            .AddDecorator<BlockDownloader, MergeBlockDownloader>()
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
+            .AddScoped<BlockDownloader, MergeBlockDownloader>()
+            .AddScoped<IForwardHeaderProvider, PosForwardHeaderProvider>()
 
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
     }
