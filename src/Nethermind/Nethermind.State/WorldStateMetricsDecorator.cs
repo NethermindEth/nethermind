@@ -30,10 +30,10 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue) => innerState.SetTransientState(in storageCell, newValue);
 
-    public void Reset(bool resizeCollections = false)
+    public void Reset()
     {
         StateMerkleizationTime = 0d;
-        innerState.Reset(resizeCollections);
+        innerState.Reset();
     }
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false) => innerState.TakeSnapshot(newTransactionStart);
