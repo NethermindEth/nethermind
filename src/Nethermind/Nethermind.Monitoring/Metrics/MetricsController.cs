@@ -123,7 +123,6 @@ namespace Nethermind.Monitoring.Metrics
                             Update(value, label.Labels);
                             break;
                         case ITuple keyAsTuple:
-                        {
                             string[] labels = new string[keyAsTuple.Length];
                             for (int i = 0; i < keyAsTuple.Length; i++)
                             {
@@ -132,7 +131,6 @@ namespace Nethermind.Monitoring.Metrics
 
                             Update(value, labels);
                             break;
-                        }
                         default:
                             Update(value, key.ToString()!);
                             break;
