@@ -27,6 +27,7 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private Timer _timer = null!;
+        private static bool _staticLabelsInitialized = false;
 
         private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
         private readonly HashSet<Type> _metricTypes = new();
@@ -122,7 +123,6 @@ namespace Nethermind.Monitoring.Metrics
                             Update(value, label.Labels);
                             break;
                         case ITuple keyAsTuple:
-                        {
                             string[] labels = new string[keyAsTuple.Length];
                             for (int i = 0; i < keyAsTuple.Length; i++)
                             {
@@ -131,7 +131,6 @@ namespace Nethermind.Monitoring.Metrics
 
                             Update(value, labels);
                             break;
-                        }
                         default:
                             Update(value, key.ToString()!);
                             break;
@@ -384,7 +383,11 @@ namespace Nethermind.Monitoring.Metrics
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
-            Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
+            if (!_staticLabelsInitialized)
+            {
+                _staticLabelsInitialized = true;
+                Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
+            }
 
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
             _useCounters = metricsConfig.CountersEnabled;
