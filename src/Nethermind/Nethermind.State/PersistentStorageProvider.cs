@@ -73,7 +73,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// Reset the storage state
     /// </summary>
-    public override void Reset(bool resizeCollections = true)
+    public override void Reset()
     {
         base.Reset();
         _blockCache.Clear();

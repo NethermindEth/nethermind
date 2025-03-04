@@ -821,7 +821,7 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resizeCollections = true)
+        public void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _blockCache.Clear();

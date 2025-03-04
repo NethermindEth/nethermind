@@ -177,7 +177,7 @@ public partial class BlockProcessor(
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
                 preWarmTask = null;
-                _stateProvider.Reset(resizeCollections: true);
+                _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
