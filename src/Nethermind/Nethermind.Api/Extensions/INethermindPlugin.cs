@@ -23,4 +23,5 @@ public interface INethermindPlugin : IAsyncDisposable
     Task InitRpcModules() => Task.CompletedTask;
 
     bool MustInitialize => false;
+    bool Enabled { get; }
 }

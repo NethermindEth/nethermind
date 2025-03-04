@@ -20,8 +20,8 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Init_when_not_AuRa_doesnt_trow()
         {
-            AuRaPlugin auRaPlugin = new();
             ChainSpec chainSpec = new();
+            AuRaPlugin auRaPlugin = new(chainSpec);
             chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
             Action init = () => auRaPlugin.Init(new AuRaNethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), new TestLogManager(), chainSpec));
             init.Should().NotThrow();
