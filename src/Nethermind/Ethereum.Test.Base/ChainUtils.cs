@@ -13,7 +13,8 @@ public static class ChainUtils
     public static IReleaseSpec? ResolveSpec(IReleaseSpec? spec, ulong chainId)
     {
         return chainId == GnosisSpecProvider.Instance.ChainId
-            ? spec == Cancun.Instance ? CancunGnosis.Instance
+            ? spec == London.Instance ? LondonGnosis.Instance
+            : spec == Cancun.Instance ? CancunGnosis.Instance
             : spec == Prague.Instance ? PragueGnosis.Instance
             : spec
             : spec;
