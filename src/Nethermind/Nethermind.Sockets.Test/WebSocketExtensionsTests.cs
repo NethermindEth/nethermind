@@ -144,7 +144,8 @@ public class WebSocketExtensionsTests
             localStats,
             Substitute.For<IJsonSerializer>(),
             null,
-            30.MB());
+            30.MB(),
+            1);
 
         webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
         {
