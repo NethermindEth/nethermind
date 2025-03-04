@@ -25,7 +25,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         delegationAddress = null;
         return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
-            : codeInfoRepository.GetCachedCodeInfoFollowsDelegation(worldState, codeSource, vmSpec);
+            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
     }
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
@@ -40,7 +40,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         if (redirectAddress is not null)
         {
-            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfoFollowsDelegation(worldState, key, vmSpec);
+            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(worldState, key, vmSpec);
         }
 
         _codeOverwrites[key] = value;

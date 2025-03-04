@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.Config;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -32,7 +31,6 @@ namespace Nethermind.Api
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
-        IVMConfig? VMConfig { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; set; }
         IFileSystem FileSystem { get; set; }

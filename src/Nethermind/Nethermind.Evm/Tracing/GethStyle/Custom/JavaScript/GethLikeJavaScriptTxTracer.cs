@@ -12,7 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();

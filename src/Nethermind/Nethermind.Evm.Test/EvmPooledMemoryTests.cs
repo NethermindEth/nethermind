@@ -232,8 +232,6 @@ public class MyTracer : ITxTracer, IDisposable
                              || IsTracingFees
                              || IsTracingLogs;
 
-    bool IILVMTracer.IsTracingIlEvmCalls => true;
-
     public string lastmemline;
 
     public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -391,9 +389,4 @@ public class MyTracer : ITxTracer, IDisposable
     }
 
     public void Dispose() { }
-
-    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-    {
-        throw new NotImplementedException();
-    }
 }

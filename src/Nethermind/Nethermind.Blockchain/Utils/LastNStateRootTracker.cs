@@ -80,7 +80,8 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         }
 
         _availableStateRoots = newStateRootSet;
-        _stateRootQueue = new Queue<Hash256>(stateRoots.Reverse());
+        stateRoots.Reverse();
+        _stateRootQueue = new Queue<Hash256>(stateRoots);
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 

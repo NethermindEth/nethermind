@@ -82,7 +82,7 @@ public static class StateOverridesExtensions
                 stateProvider,
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code, address),
+                new CodeInfo(accountOverride.Code),
                 accountOverride.MovePrecompileToAddress);
         }
     }

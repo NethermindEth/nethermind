@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "Nethermind.Benchmark.Runner": {
-      "commandName": "Project",
-      "commandLineArgs": "-m evm"
-    }
-  }
-}

@@ -205,7 +205,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
-    public bool IsTracingIlEvmCalls => _currentTxTracer.IsTracingIlEvmCalls;
     public int TakeSnapshot() => _txReceipts.Count;
 
     public void Restore(int snapshot)
@@ -273,10 +272,5 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void Dispose()
     {
         _currentTxTracer.Dispose();
-    }
-
-    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-    {
-        _currentTxTracer.ReportIlEvmChunkExecution(gas, pc, segmentID, in env);
     }
 }

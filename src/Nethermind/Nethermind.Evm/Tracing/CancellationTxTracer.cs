@@ -27,7 +27,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
-    private readonly bool _isTracingIlEvmCalls;
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -118,11 +117,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingOpLevelLogs = value;
     }
 
-    public bool IsTracingIlEvmCalls
-    {
-        get => _isTracingIlEvmCalls || innerTracer.IsTracingIlEvmCalls;
-        init => _isTracingIlEvmCalls = value;
-    }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -460,13 +454,5 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     public void Dispose()
     {
         innerTracer.Dispose();
-    }
-    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingIlEvmCalls)
-        {
-            InnerTracer.ReportIlEvmChunkExecution(gas, pc, segmentId, in env);
-        }
     }
 }

@@ -62,8 +62,6 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
-    public bool IsTracingIlEvmCalls => InnerTracer.IsTracingIlEvmCalls;
-
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
@@ -290,9 +288,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         => InnerTracer.ReportStorageRead(storageCell);
 
     public void Dispose()
-        => _autoResetEvent.Dispose();
-
-    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-        => InnerTracer.ReportIlEvmChunkExecution(gas, pc, segmentID, in env);
+    {
+        _autoResetEvent.Dispose();
+    }
 }
 #endif

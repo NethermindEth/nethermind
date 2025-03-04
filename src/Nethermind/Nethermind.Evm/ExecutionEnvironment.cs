@@ -58,7 +58,6 @@ namespace Nethermind.Evm
         /// </summary>
         public readonly ReadOnlyMemory<byte> InputData;
 
-
         /// <summary>
         /// Transaction originator
         /// </summary>
