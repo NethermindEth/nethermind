@@ -242,6 +242,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
+        ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
 
         ArgumentNullException.ThrowIfNull(_beaconSync);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -303,6 +304,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
+                _api.WorldStateManager.GlobalWorldState,
                 _api.LogManager,
                 _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
