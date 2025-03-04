@@ -33,7 +33,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     protected readonly IReceiptStorage _receiptStorage;
     protected readonly IBlockValidator _blockValidator;
 
-    private readonly IReadOnlyTrieStore _trieStore;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly IConfigProvider _configProvider;
@@ -112,8 +111,10 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
     }
 
-    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
+    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(
+        IReadOnlyTxProcessingScope scope,
+        IOverridableWorldScope worldStateManager,
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
         return new ReadOnlyChainProcessingEnv(
             scope,

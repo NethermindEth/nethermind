@@ -27,7 +27,7 @@ class TaikoDebugModuleFactory :
     DebugModuleFactory
 {
     public TaikoDebugModuleFactory(
-        IReadOnlyTrieStore trieStore,
+        IWorldStateManager stateManager,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -41,13 +41,13 @@ class TaikoDebugModuleFactory :
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
-        ILogManager logManager) : base(trieStore, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep, rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector, badBlockStore, fileSystem, logManager)
+        ILogManager logManager) : base(stateManager, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep, rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector, badBlockStore, fileSystem, logManager)
     {
     }
 
     protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(
     IReadOnlyTxProcessingScope scope,
-    OverridableWorldStateManager worldStateManager,
+    IOverridableWorldScope worldStateManager,
     IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
         return new ReadOnlyChainProcessingEnv(
