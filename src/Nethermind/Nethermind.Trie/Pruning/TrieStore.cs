@@ -491,11 +491,13 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     PersistAndPruneDirtyCache();
                 }
-
-                if (_pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache))
+                // Note: This tend to get triggered after `PersistAndPruneDirtyCache` as `PersistedMemoryUsedByDirtyCache`
+                // increases but we don't want to do it in the same task in case a block is waiting to be processed.
+                else if (_pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache))
                 {
                     PrunePersistedNodes();
                 }
+
             });
 
             _pruningTask.ContinueWith((_) =>
@@ -648,7 +650,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * 256);
             shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, 256));
 
-            if (_logger.IsWarn) _logger.Warn($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
+            if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
             long start = Stopwatch.GetTimestamp();
 
             using ArrayPoolList<Task> pruneTask = new(shardCountToPrune);
@@ -667,7 +669,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
             RecalculateTotalMemoryUsage();
 
-            if (_logger.IsWarn) _logger.Warn($"Finished pruning persisted nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            if (_logger.IsWarn) _logger.Debug($"Finished pruning persisted nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Metrics.PersistedNodePruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
         catch (Exception e)

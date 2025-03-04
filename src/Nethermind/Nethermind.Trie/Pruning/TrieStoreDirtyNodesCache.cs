@@ -276,10 +276,10 @@ internal class TrieStoreDirtyNodesCache
                     }
                 }
 
-                // If its persisted and has last seen meaning it was recommitted,
-                // we keep it to prevent key removal from removing it from DB.
                 if (prunePersisted && node.IsPersisted)
                 {
+                    // If its persisted and has last seen meaning it was recommitted,
+                    // we keep it to prevent key removal from removing it from DB.
                     if (node.LastSeen == -1)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
