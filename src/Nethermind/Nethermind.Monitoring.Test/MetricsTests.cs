@@ -38,6 +38,11 @@ public class MetricsTests
         public static ConcurrentDictionary<CustomLabelType, long> WithCustomLabelType { get; set; } = new();
 
         public static IDictionary<string, long> OldDictionaryMetrics { get; set; } = new ConcurrentDictionary<string, long>();
+
+        [System.ComponentModel.Description("summary metric")]
+        [SummaryMetric]
+        public static ISummaryMetricObserver SomeObservation { get; set; } = NoopSummaryMetric.Instance;
+
     }
 
     public enum SomeEnum
@@ -78,6 +83,7 @@ public class MetricsTests
         var keyOldDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OldDictionaryMetrics)}";
         var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
         var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
+        var keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
 
         Assert.That(updater.Keys, Has.Member(keyDefault));
         Assert.That(updater.Keys, Has.Member(keySpecial));
@@ -87,6 +93,8 @@ public class MetricsTests
         Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater)._gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater)._gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
+        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
 
         Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(123));
         Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(1234));
