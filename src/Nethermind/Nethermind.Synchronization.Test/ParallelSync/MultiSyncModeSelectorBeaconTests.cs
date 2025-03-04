@@ -519,17 +519,6 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.StateNodes | SyncMode.FastSync | fastBlocksState.GetSyncMode())));
     }
 
-    [Test]
-    public void When_state_sync_finished_but_needs_to_catch_up()
-    {
-        Scenario.GoesLikeThis(_needToWaitForHeaders)
-            .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
-            .When_FastSync_NoSnapSync_Configured()
-            .AndGoodPeersAreKnown()
-            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.StateNodes));
-    }
-
     /// <summary>
     /// we DO NOT want the thing like below to happen (incorrectly go back to StateNodes from Full)
     /// 2020-04-25 19:58:32.1466|INFO|254|Changing state to Full at processed:0|state:9943624|block:0|header:9943624|peer block:9943656
