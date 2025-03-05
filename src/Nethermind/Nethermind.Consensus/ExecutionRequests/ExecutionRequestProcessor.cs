@@ -27,7 +27,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private const long GasLimit = 30_000_000L;
 
-    private Hash256 DepositTopic  = new ("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5");
+    private Hash256 DepositTopic = new("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5");
 
     private readonly ITransactionProcessor _transactionProcessor;
 
