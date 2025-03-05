@@ -134,52 +134,27 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
     {
-
-        //Console.WriteLine($"Getting account {address}");
-        //var stopwatch = Stopwatch.StartNew();
-
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            //stopwatch.Stop();
-            //Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Getting account {address}: block not found");
             return ResultWrapper<AccountState>.Fail("Block not found");
         }
 
-
-        try
-        {
             if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                     out AccountStruct account))
             {
-            //    stopwatch.Stop();
-            //    Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Got account: {address}");
                 return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
                     account.CodeHash));
             }
 
-        }
-        catch (Exception e)
-        {
-            var _e = e;
-            //Console.WriteLine(e);
-        }
-
-       // stopwatch.Stop();
-        //Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Account not found: {address}");
-        return ResultWrapper<AccountState>.Success(new AccountState());
+        return ResultWrapper<AccountState>.Success(null);
     }
 
     public ResultWrapper<Hash256> rbuilder_getBlockHash(BlockParameter block)
     {
 
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
-        if (blockHeader is null)
-        {
-            return ResultWrapper<Hash256>.Fail("Block not found");
-        }
-
-        return ResultWrapper<Hash256>.Success(blockHeader.Hash);
+        return ResultWrapper<Hash256>.Success(blockHeader?.Hash);
     }
 
 
