@@ -187,8 +187,18 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         get
         {
-            long count = DirtyNodesCount();
+            long count = NodesCount();
             Metrics.CachedNodesCount = count;
+            return count;
+        }
+    }
+
+    public long DirtyCachedNodesCount
+    {
+        get
+        {
+            long count = DirtyNodesCount();
+            Metrics.DirtyCachedNodesCount = count;
             return count;
         }
     }
@@ -266,12 +276,22 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key)];
 
-    private long DirtyNodesCount()
+    private long NodesCount()
     {
         long count = 0;
         foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
         {
             count += dirtyNode.Count;
+        }
+        return count;
+    }
+
+    private long DirtyNodesCount()
+    {
+        long count = 0;
+        foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
+        {
+            count += dirtyNode.DirtyCount;
         }
         return count;
     }
@@ -1150,7 +1170,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
             PruneCache();
 
-            long dirtyNodesCount = DirtyNodesCount();
+            long dirtyNodesCount = NodesCount();
             if (dirtyNodesCount != 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"{dirtyNodesCount} cache entry remains.");
