@@ -84,7 +84,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
         using ArrayPoolList<Task> allTasks = new((int)(_processConcurrency + 1));
-        allTasks.Add(Task.Run(async () =>
+
+        allTasks.Add(Task.Factory.StartNew(async () =>
         {
             try
             {
@@ -94,12 +95,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             {
                 _processChannel.Writer.Complete();
             }
-        }));
+        }, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap());
 
         for (int i = 0; i < _processConcurrency; i++)
         {
-            int idx = i;
-            allTasks.Add(WorkerLoop(cts.Token, idx));
+            allTasks.Add(Task.Factory.StartNew(_ => WorkerLoop(cts.Token, i), cancellationToken, TaskCreationOptions.LongRunning));
         }
 
         await cts.WhenAllSucceed(allTasks);

@@ -91,6 +91,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
 
                 // receive only new bytes, leave already filled buffer alone
                 result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength), cancellationToken);
+
             }
         }
         finally
