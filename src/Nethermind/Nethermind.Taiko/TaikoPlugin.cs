@@ -33,7 +33,9 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
-using Nethermind.State;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Taiko;
@@ -135,6 +137,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
+        ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -149,11 +152,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
+        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+            new(_api.WorldStateManager!, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
@@ -250,7 +254,33 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             txDecoder
         );
 
-        _api.RpcModuleProvider.RegisterSingle(engine);
+        IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
+        apiRpcModuleProvider.RegisterSingle(engine);
+        if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
+        {
+            TaikoTraceModuleFactory traceModuleFactory = new(
+                _api.WorldStateManager,
+                readonlyBlockTree,
+                jsonRpcConfig,
+                _api.BlockPreprocessor,
+                _api.RewardCalculatorSource,
+                _api.ReceiptStorage,
+                _api.SpecProvider,
+                _api.PoSSwitcher,
+                _api.LogManager);
+            apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, jsonRpcConfig.Timeout);
+        }
+        if (apiRpcModuleProvider.GetPool(ModuleType.Proof) is IRpcModulePool<IProofRpcModule> proofModulePool)
+        {
+            TaikoProofModuleFactory proofModuleFactory = new(
+                _api.WorldStateManager,
+                readonlyBlockTree,
+                _api.BlockPreprocessor,
+                _api.ReceiptStorage,
+                _api.SpecProvider,
+                _api.LogManager);
+            apiRpcModuleProvider.RegisterBoundedByCpuCount(proofModuleFactory, jsonRpcConfig.Timeout);
+        }
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }
