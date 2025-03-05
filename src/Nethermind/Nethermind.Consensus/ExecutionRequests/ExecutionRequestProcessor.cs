@@ -89,13 +89,15 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private void DecodeDepositRequest(LogEntry log, Span<byte> buffer)
     {
-        const int pubkeyOffset = 0;
-        const int withdrawalCredOffset = pubkeyOffset + 48;
-        const int amountOffset = withdrawalCredOffset + 32;
-        const int signatureOffset = amountOffset + 8;
-        const int indexOffset = signatureOffset + 96;
-
         const int chunk = 32;
+        const int pubkeyOffset = 0;
+        const int pubkeyLength = 48;
+        const int withdrawalCredOffset = pubkeyOffset + pubkeyLength;
+        const int amountOffset = withdrawalCredOffset + chunk;
+        const int numberLength = 8;
+        const int signatureOffset = amountOffset + numberLength;
+        const int signatureLength = 96;
+        const int indexOffset = signatureOffset + signatureLength;
 
         if (log.Data.Length != 576)
         {
@@ -105,19 +107,19 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         Span<byte> span = log.Data.AsSpan();
 
         // PublicKey is the first element
-        span.Slice(6 * chunk, 48).CopyTo(buffer.Slice(pubkeyOffset));
+        span.Slice(6 * chunk, pubkeyLength).CopyTo(buffer.Slice(pubkeyOffset));
 
         // WithdrawalCredentials is 32 bytes
-        span.Slice(9 * chunk, 32).CopyTo(buffer.Slice(withdrawalCredOffset));
+        span.Slice(9 * chunk, chunk).CopyTo(buffer.Slice(withdrawalCredOffset));
 
         // Amount is 8 bytes
-        span.Slice(11 * chunk, 8).CopyTo(buffer.Slice(amountOffset));
+        span.Slice(11 * chunk, numberLength).CopyTo(buffer.Slice(amountOffset));
 
         // Signature is 96 bytes
-        span.Slice(13 * chunk, 96).CopyTo(buffer.Slice(signatureOffset));
+        span.Slice(13 * chunk, signatureLength).CopyTo(buffer.Slice(signatureOffset));
 
         // Index is 8 bytes
-        span.Slice(17 * chunk, 8).CopyTo(buffer.Slice(indexOffset));
+        span.Slice(17 * chunk, numberLength).CopyTo(buffer.Slice(indexOffset));
 
         // Make sure the flattened result is of the correct size
         if (buffer.Length != ExecutionRequestExtensions.DepositRequestsBytesSize)
