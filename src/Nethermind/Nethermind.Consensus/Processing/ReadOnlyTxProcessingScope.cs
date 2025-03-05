@@ -16,7 +16,7 @@ public class ReadOnlyTxProcessingScope(
     public void Dispose()
     {
         worldState.StateRoot = originalStateRoot;
-        worldState.Reset();
+        worldState.Reset(resetBlockCache: true);
     }
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;

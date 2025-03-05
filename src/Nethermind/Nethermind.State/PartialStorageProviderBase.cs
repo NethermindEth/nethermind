@@ -150,29 +150,11 @@ namespace Nethermind.State
             Commit(NullStateTracer.Instance, commitStorageRoots);
         }
 
-        protected readonly struct ChangeTrace
-        {
-            public ChangeTrace(byte[]? before, byte[]? after)
-            {
-                After = after ?? _zeroValue;
-                Before = before ?? _zeroValue;
-            }
-
-            public ChangeTrace(byte[]? after)
-            {
-                After = after ?? _zeroValue;
-                Before = _zeroValue;
-            }
-
-            public byte[] Before { get; }
-            public byte[] After { get; }
-        }
-
         /// <summary>
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitStorageRoots = true)
+        public void Commit(IStorageTracer tracer, bool commitRoots = true)
         {
             if (_changes.Count == 0)
             {
@@ -183,7 +165,7 @@ namespace Nethermind.State
                 CommitCore(tracer);
             }
 
-            if (commitStorageRoots)
+            if (commitRoots)
             {
                 CommitStorageRoots();
             }
@@ -209,7 +191,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resizeCollections = true)
+        public virtual void Reset(bool resetBlockCache = false)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
@@ -288,6 +270,27 @@ namespace Nethermind.State
                     Set(cellByAddress.Key, _zeroValue);
                 }
             }
+        }
+
+        protected struct ChangeTrace
+        {
+            public static readonly ChangeTrace _emptyBytes = new(StorageTree.EmptyBytes, StorageTree.EmptyBytes);
+            public static ref readonly ChangeTrace EmptyBytes => ref _emptyBytes;
+
+            public ChangeTrace(byte[]? before, byte[]? after)
+            {
+                After = after ?? _zeroValue;
+                Before = before ?? _zeroValue;
+            }
+
+            public ChangeTrace(byte[]? after)
+            {
+                After = after ?? _zeroValue;
+                Before = _zeroValue;
+            }
+
+            public byte[] Before;
+            public byte[] After;
         }
 
         /// <summary>
