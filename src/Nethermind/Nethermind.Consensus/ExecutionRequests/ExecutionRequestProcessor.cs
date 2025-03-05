@@ -8,6 +8,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -74,9 +75,9 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     LogEntry log = logEntries[j];
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
-                        Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
+                        byte[] depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer.ToArray());
+                        depositRequests.AddRange(depositRequestBuffer);
                     }
                 }
             }
@@ -94,31 +95,29 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         const int signatureOffset = amountOffset + 8;
         const int indexOffset = signatureOffset + 96;
 
+        const int chunk = 32;
+
         if (log.Data.Length != 576)
         {
             throw new InvalidOperationException($"Deposit wrong length: want 576, have {log.Data.Length}");
         }
 
-        int b = 32 * 5 + 32; // Skip over positional data and length values
+        Span<byte> span = log.Data.AsSpan();
 
         // PublicKey is the first element
-        log.Data.AsSpan(b, 48).CopyTo(buffer.Slice(pubkeyOffset, 48));
-        b += 48 + 16 + 32;
+        span.Slice(6 * chunk, 48).CopyTo(buffer.Slice(pubkeyOffset));
 
         // WithdrawalCredentials is 32 bytes
-        log.Data.AsSpan(b, 32).CopyTo(buffer.Slice(withdrawalCredOffset, 32));
-        b += 32 + 32;
+        span.Slice(9 * chunk, 32).CopyTo(buffer.Slice(withdrawalCredOffset));
 
         // Amount is 8 bytes
-        log.Data.AsSpan(b, 8).CopyTo(buffer.Slice(amountOffset, 8));
-        b += 8 + 24 + 32;
+        span.Slice(11 * chunk, 8).CopyTo(buffer.Slice(amountOffset));
 
         // Signature is 96 bytes
-        log.Data.AsSpan(b, 96).CopyTo(buffer.Slice(signatureOffset, 96));
-        b += 96 + 32;
+        span.Slice(13 * chunk, 96).CopyTo(buffer.Slice(signatureOffset));
 
         // Index is 8 bytes
-        log.Data.AsSpan(b, 8).CopyTo(buffer.Slice(indexOffset, 8));
+        span.Slice(17 * chunk, 8).CopyTo(buffer.Slice(indexOffset));
 
         // Make sure the flattened result is of the correct size
         if (buffer.Length != ExecutionRequestExtensions.DepositRequestsBytesSize)
