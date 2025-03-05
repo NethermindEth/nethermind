@@ -109,6 +109,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 HealthHintService = Substitute.For<IHealthHintService>(),
                 TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
                 UnclesValidator = Substitute.For<IUnclesValidator>(),
+                WithdrawalValidator = Substitute.For<IWithdrawalValidator>(),
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
