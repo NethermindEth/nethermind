@@ -26,5 +26,5 @@ class TaikoProofModuleFactory(
         => new TaikoReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LogManager);
 
     protected override IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new TaikoBlockValidationTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
+        => new TaikoRpcBlockTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
 }
