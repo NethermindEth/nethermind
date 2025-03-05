@@ -571,7 +571,7 @@ namespace Nethermind.State
         private void WriteToTree()
         {
             int writes = 0;
-
+            int skipped = 0;
             foreach (var key in _blockCache.Keys)
             {
                 ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockCache, key);
@@ -581,9 +581,16 @@ namespace Nethermind.State
                     _tree.Set(key, change.After);
                     writes++;
                 }
+                else
+                {
+                    skipped++;
+                }
             }
 
-            Metrics.StateTreeWrites += writes;
+            if (writes > 0)
+                Metrics.IncrementStateTreeWrites(writes);
+            if (skipped > 0)
+                Metrics.IncrementStateSkippedWrites(skipped);
         }
 
         private void ReportChanges(IStateTracer stateTracer, Dictionary<AddressAsKey, ChangeTrace> trace)
