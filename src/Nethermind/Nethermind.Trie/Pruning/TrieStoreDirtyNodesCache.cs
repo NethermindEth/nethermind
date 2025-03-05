@@ -245,7 +245,8 @@ internal class TrieStoreDirtyNodesCache
         long totalNode = 0;
         long dirtyNode = 0;
 
-        ConcurrentNodeWriteBatcher? writeBatcher = nodeStorage is not null? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
+        ConcurrentNodeWriteBatcher? writeBatcher = nodeStorage is not null
+            ? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
 
         using (AcquireMapLock())
         {
