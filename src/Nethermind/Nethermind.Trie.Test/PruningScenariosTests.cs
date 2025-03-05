@@ -75,6 +75,12 @@ namespace Nethermind.Trie.Test
                 get => new(new TestPruningStrategy(true), No.Persistence);
             }
 
+            public static PruningContext InMemoryWithPastKeyTracking
+            {
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true, trackedPastKeyCount: 1000), No.Persistence);
+            }
+
             public static PruningContext InMemoryAlwaysPrune
             {
                 [DebuggerStepThrough]
@@ -881,6 +887,36 @@ namespace Nethermind.Trie.Test
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
                 .AssertThatTotalMemoryUsedIs(819292L);
+        }
+
+        [Test]
+        public void Keep_DeleteCachedPersistedNode_IfReplaced()
+        {
+            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
+                .WithMaxDepth(1)
+                .WithPersistedMemoryLimit(100.MiB())
+                .TurnOnPrune()
+                .TurnOffAlwaysPrunePersistedNode();
+
+            ctx
+                .SetAccountBalance(0, (UInt256)1)
+                .Commit()
+                .WaitForPruning()
+                .AssertThatDirtyNodeCountIs(1)
+                .AssertThatCachedNodeCountIs(1);
+
+            for (int i = 1; i < 256; i++)
+            {
+                ctx
+                    .SetAccountBalance(0, (UInt256)(i + 1))
+                    .Commit()
+                    .WaitForPruning();
+            }
+
+            ctx
+                .AssertThatDirtyNodeCountIs(2)
+                .AssertThatCachedNodeCountIs(3)
+                .AssertThatTotalMemoryUsedIs(1572);
         }
 
         [Test]
