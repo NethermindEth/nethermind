@@ -112,8 +112,7 @@ public class ExecutionProcessorTests
             });
     }
 
-
-    public static Hash256 CalculateHash(
+    private static Hash256 CalculateHash(
         TestExecutionRequest[] depositRequests,
         TestExecutionRequest[] withdrawalRequests,
         TestExecutionRequest[] consolidationRequests
