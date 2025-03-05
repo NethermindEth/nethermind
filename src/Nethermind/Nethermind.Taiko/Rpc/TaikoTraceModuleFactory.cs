@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -21,5 +22,12 @@ class TaikoTraceModuleFactory(
     ISpecProvider specProvider, IPoSSwitcher poSSwitcher, ILogManager logManager) :
     TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource, receiptFinder, specProvider, poSSwitcher, logManager)
 {
-    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) => new TaikoReadOnlyTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
+    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager)
+        => new TaikoOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
+
+    protected override IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
+        => new TaikoBlockValidationTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
+
+    protected override IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
+        => new TaikoBlockValidationTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
 }
