@@ -89,16 +89,16 @@ namespace Nethermind.Monitoring.Metrics
                             Update(value, label.Labels);
                             break;
                         case ITuple keyAsTuple:
-                        {
-                            using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length);
-                            for (int i = 0; i < keyAsTuple.Length; i++)
                             {
-                                labels[i] = keyAsTuple[i]!.ToString()!;
-                            }
+                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length);
+                                for (int i = 0; i < keyAsTuple.Length; i++)
+                                {
+                                    labels[i] = keyAsTuple[i]!.ToString()!;
+                                }
 
-                            Update(value, labels.AsSpan());
-                            break;
-                        }
+                                Update(value, labels.AsSpan());
+                                break;
+                            }
                         default:
                             Update(value, key.ToString()!);
                             break;
@@ -284,11 +284,7 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private static Func<double> GetValueAccessor(MemberInfo member)
-        {
-
-            return () => Convert.ToDouble(member.GetValue<object>());
-        }
+        private static Func<double> GetValueAccessor(MemberInfo member) => () => Convert.ToDouble(member.GetValue<object>());
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 
