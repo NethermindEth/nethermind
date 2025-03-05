@@ -20,18 +20,21 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly CLChainSpecEngineParameters _engineParameters;
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
-    private readonly Task _headUpdateTask;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ILogger _logger;
-    private readonly CancellationToken _cancellationToken;
 
     private ulong _currentHeadNumber = 0;
     private Hash256? _currentHeadHash = null;
     private ulong _currentFinalizedNumber;
     private Hash256? _currentFinalizedHash = null;
 
-    public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config, CLChainSpecEngineParameters engineParameters,
-        IDecodingPipeline decodingPipeline, CancellationToken cancellationToken, ILogManager logManager)
+    public EthereumL1Bridge(
+        IEthApi ethL1Rpc,
+        IBeaconApi beaconApi,
+        ICLConfig config,
+        CLChainSpecEngineParameters engineParameters,
+        IDecodingPipeline decodingPipeline,
+        ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         _engineParameters = engineParameters;
@@ -39,16 +42,12 @@ public class EthereumL1Bridge : IL1Bridge
         _config = config;
         _ethL1Api = ethL1Rpc;
         _beaconApi = beaconApi;
-        _cancellationToken = cancellationToken;
-        _headUpdateTask = new Task(() =>
-        {
-            HeadUpdateLoop();
-        });
     }
 
-    private async void HeadUpdateLoop()
+    public async Task Run(CancellationToken token)
     {
-        while (!_cancellationToken.IsCancellationRequested)
+        _logger.Error("Starting L1Bridge");
+        while (!token.IsCancellationRequested)
         {
             // TODO: can we do it with subscription?
             L1Block newHead = await GetHead();
@@ -69,20 +68,20 @@ public class EthereumL1Bridge : IL1Bridge
                 {
                     // Reorg currentHead
                     await BuildUp(_currentFinalizedNumber, newFinalized.Number);
-                    await RollBack(newHead.Hash, newHeadNumber, newFinalized.Number);
+                    await RollBack(newHead.Hash, newHeadNumber, newFinalized.Number, token);
                 }
                 else
                 {
                     // CurrentHead is ok
                     await BuildUp(_currentHeadNumber, newFinalized.Number); // Will build up if _currentHead < newFinalized
-                    await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber);
+                    await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber, token);
                 }
 
                 SetFinalized(newFinalized);
             }
             else if (numberOfMissingBlocks > 0)
             {
-                await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber);
+                await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber, token);
             }
 
             // TODO we can have reorg here
@@ -92,7 +91,7 @@ public class EthereumL1Bridge : IL1Bridge
             await TryUpdateFinalized();
 
             // TODO: fix number
-            await Task.Delay(50000, _cancellationToken);
+            await Task.Delay(50000, token);
         }
     }
 
@@ -176,7 +175,7 @@ public class EthereumL1Bridge : IL1Bridge
     }
 
     // Gets all blocks from range [{segmentStartNumber}, {headNumber})
-    private async Task RollBack(Hash256 headHash, ulong headNumber, ulong segmentStartNumber)
+    private async Task RollBack(Hash256 headHash, ulong headNumber, ulong segmentStartNumber, CancellationToken token)
     {
         Hash256 currentHash = headHash;
         L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber + 1];
@@ -185,7 +184,7 @@ public class EthereumL1Bridge : IL1Bridge
             _logger.Info($"Rolling back L1 head. {i} to go. Block {currentHash}");
             chainSegment[i] = await GetBlockByHash(currentHash);
             currentHash = chainSegment[i].ParentHash;
-            if (_cancellationToken.IsCancellationRequested)
+            if (token.IsCancellationRequested)
             {
                 return;
             }
@@ -209,12 +208,6 @@ public class EthereumL1Bridge : IL1Bridge
         {
             await ProcessBlock(await GetBlock(i));
         }
-    }
-
-    public void Start()
-    {
-        _logger.Error($"Starting L1Bridge");
-        _headUpdateTask.Start();
     }
 
     public Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo)

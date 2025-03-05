@@ -13,25 +13,17 @@ public class DecodingPipeline : IDecodingPipeline
     private readonly Channel<byte[]> _inputChannel = Channel.CreateUnbounded<byte[]>();
     private readonly Channel<BatchV1> _outputChannel = Channel.CreateUnbounded<BatchV1>();
     private readonly IChannelStorage _channelStorage = new ChannelStorage();
-
-    private readonly Task _mainTask;
     private readonly ILogger _logger;
 
     public ChannelWriter<byte[]> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<BatchV1> DecodedBatchesReader => _outputChannel.Reader;
 
-    public DecodingPipeline(CancellationToken token, ILogger logger)
+    public DecodingPipeline(ILogger logger)
     {
         _logger = logger;
-        _mainTask = MainLoop(token);
     }
 
-    public void Start()
-    {
-        _mainTask.Start();
-    }
-
-    private async Task MainLoop(CancellationToken token)
+    public async Task Run(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {

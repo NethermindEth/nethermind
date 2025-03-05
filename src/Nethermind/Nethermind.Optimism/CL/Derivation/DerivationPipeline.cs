@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -22,29 +22,26 @@ public class DerivationPipeline : IDerivationPipeline
     private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
 
-    private readonly Task _mainTask;
 
-    public DerivationPipeline(IPayloadAttributesDeriver payloadAttributesDeriver, IL2BlockTree l2BlockTree,
-        IL1Bridge l1Bridge, ILogger logger)
+    public DerivationPipeline(
+        IPayloadAttributesDeriver payloadAttributesDeriver,
+        IL2BlockTree l2BlockTree,
+        IL1Bridge l1Bridge,
+        ILogger logger)
     {
         _payloadAttributesDeriver = payloadAttributesDeriver;
         _l2BlockTree = l2BlockTree;
         _l1Bridge = l1Bridge;
         _logger = logger;
-        _mainTask = new Task(async () =>
-        {
-            // TODO: cancellation
-            while (true)
-            {
-                (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync();
-                await ConsumeV1Batches(l2Parent, batch);
-            }
-        });
     }
 
-    public void Start()
+    public async Task Run(CancellationToken token)
     {
-        _mainTask.Start();
+        while (!token.IsCancellationRequested)
+        {
+            (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync(token);
+            await ConsumeV1Batches(l2Parent, batch);
+        }
     }
 
     private readonly Channel<(L2Block L2Parent, BatchV1 Batch)> _inputChannel = Channel.CreateBounded<(L2Block, BatchV1)>(20);

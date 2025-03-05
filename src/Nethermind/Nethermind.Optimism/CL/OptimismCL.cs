@@ -52,8 +52,8 @@ public class OptimismCL : IDisposable
 
         _l2EthRpc = l2EthRpc;
         _l2BlockTree = new L2BlockTree();
-        _decodingPipeline = new DecodingPipeline(_cancellationTokenSource.Token, logger); // TODO: Are we using the correct cancellation token here?
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _cancellationTokenSource.Token, logManager);
+        _decodingPipeline = new DecodingPipeline(logger);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, logManager);
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         _executionEngineManager = new ExecutionEngineManager(engineRpcModule, _l2EthRpc, logger);
         _driver = new Driver(
@@ -63,7 +63,6 @@ public class OptimismCL : IDisposable
             _l2BlockTree,
             engineParameters,
             _executionEngineManager,
-            _cancellationTokenSource.Token, // TODO: Are we using the correct cancellation token here?
             logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,
@@ -72,18 +71,26 @@ public class OptimismCL : IDisposable
             engineParameters.SequencerP2PAddress,
             timestamper,
             logManager,
-            _executionEngineManager,
-            _cancellationTokenSource.Token);
+            _executionEngineManager);
     }
 
     public async Task Start()
     {
         await SetupTest();
-        _decodingPipeline.Start();
-        _l1Bridge.Start();
-        _executionEngineManager.Initialize();
-        _driver.Start();
-        await _p2p.Start();
+
+        try
+        {
+            _executionEngineManager.Initialize();
+            await Task.WhenAll(
+                _decodingPipeline.Run(_cancellationTokenSource.Token),
+                _l1Bridge.Run(_cancellationTokenSource.Token),
+                _driver.Run(_cancellationTokenSource.Token),
+                _p2p.Run(_cancellationTokenSource.Token)
+            );
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     public void Dispose()

@@ -330,9 +330,18 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
-            _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, _api.OptimismEthRpcModule, opEngine);
-            await _cl.Start();
+            _cl = new OptimismCL(
+                _api.SpecProvider,
+                chainSpecEngineParameters,
+                clConfig,
+                _api.EthereumJsonSerializer,
+                _api.EthereumEcdsa,
+                _api.Timestamper,
+                _api!.LogManager,
+                _api.OptimismEthRpcModule,
+                opEngine);
+            _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
+            _api.DisposeStack.Push(_cl);
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");

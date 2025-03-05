@@ -27,15 +27,12 @@ public class Driver : IDisposable
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly IExecutionEngineManager _executionEngineManager;
 
-    private readonly Task _mainLoopTask;
-
     public Driver(IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
         IOptimismEthRpcModule l2EthRpc,
         IL2BlockTree l2BlockTree,
         CLChainSpecEngineParameters engineParameters,
         IExecutionEngineManager executionEngineManager,
-        CancellationToken token,
         ILogger logger)
     {
         _logger = logger;
@@ -50,13 +47,14 @@ public class Driver : IDisposable
             new DepositTransactionBuilder(480, engineParameters),
             logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, l1Bridge, _logger);
-        _mainLoopTask = MainLoop(token);
     }
 
-    public void Start()
+    public async Task Run(CancellationToken token)
     {
-        _derivationPipeline.Start();
-        _mainLoopTask.Start();
+        await Task.WhenAll(
+            _derivationPipeline.Run(token),
+            MainLoop(token)
+        );
     }
 
     private async Task MainLoop(CancellationToken token)
