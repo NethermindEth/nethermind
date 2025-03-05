@@ -1,0 +1,156 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
+using Nethermind.Optimism.CL.Decoding;
+using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Optimism.Rpc;
+
+namespace Nethermind.Optimism.CL;
+
+public class Driver : IDisposable
+{
+    private readonly ICLConfig _config;
+    private readonly IL1Bridge _l1Bridge;
+    private readonly ILogger _logger;
+    private readonly CLChainSpecEngineParameters _engineParameters;
+    private readonly IDerivationPipeline _derivationPipeline;
+    private readonly ISystemConfigDeriver _systemConfigDeriver;
+    private readonly IL2BlockTree _l2BlockTree;
+    private readonly IEthRpcModule _l2EthRpc;
+    private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
+    private readonly IDecodingPipeline _decodingPipeline;
+    private readonly IExecutionEngineManager _executionEngineManager;
+
+    private readonly Task _mainTask;
+
+    public Driver(IL1Bridge l1Bridge, IDecodingPipeline decodingPipeline, IOptimismEthRpcModule l2EthRpc,
+        IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config,
+        CLChainSpecEngineParameters engineParameters, ulong chainId, ILogger logger)
+    {
+        _config = config;
+        _l1Bridge = l1Bridge;
+        _logger = logger;
+        _engineParameters = engineParameters;
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        PayloadAttributesDeriver payloadAttributesDeriver = new(chainId, _systemConfigDeriver,
+            new DepositTransactionBuilder(chainId, engineParameters), logger);
+        _l2BlockTree = l2BlockTree;
+        _l2EthRpc = l2EthRpc;
+        _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
+        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
+        _decodingPipeline = decodingPipeline;
+        _executionEngineManager = new ExecutionEngineManager(engineRpc, l2EthRpc, logger);
+
+        _executionEngineManager.Initialize();
+
+        _mainTask = new(async () =>
+        {
+            // TODO: cancellation
+            while (true)
+            {
+                if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
+                {
+                    await OnL2BlocksDerived(derivedPayloadAttributes);
+                }
+                else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
+                {
+                    ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
+                    // TODO: make it properly
+                    L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
+                    if (l2Parent is not null)
+                    {
+                        await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch));
+                        await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                    }
+                    else
+                    {
+                        if (_l2BlockTree.HeadBlockNumber > parentNumber)
+                        {
+                            _logger.Error($"Old batch. Skipping");
+                            await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    public void Start()
+    {
+        _decodingPipeline.Start();
+        _derivationPipeline.Start();
+        _mainTask.Start();
+    }
+
+    private async Task OnL2BlocksDerived(PayloadAttributesRef payloadAttributes)
+    {
+        await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
+
+        var blockResult = _l2EthRpc.eth_getBlockByNumber(new((long)payloadAttributes.Number), true);
+
+        if (blockResult.Result != Result.Success)
+        {
+            _logger.Error($"Unable to get block by number: {(long)payloadAttributes.Number}");
+            return;
+        }
+
+        var block = blockResult.Data;
+        var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
+
+        bool success = _l2BlockTree.TryAddBlock(new L2Block()
+        {
+            Hash = block.Hash,
+            Number = (ulong)block.Number!.Value,
+            PayloadAttributes = expectedPayloadAttributes,
+            ParentHash = block.ParentHash,
+            SystemConfig = payloadAttributes.SystemConfig,
+            L1BlockInfo = payloadAttributes.L1BlockInfo,
+        });
+
+        if (!success)
+        {
+            _logger.Error($"Unable to put block into block tree");
+            return;
+        }
+        else
+        {
+            _logger.Error($"Adding block into l2blockTree: {block.Number}, {block.Hash}");
+        }
+
+        _derivedBlocksVerifier.ComparePayloadAttributes(expectedPayloadAttributes,
+            payloadAttributes.PayloadAttributes, payloadAttributes.Number);
+    }
+
+    private OptimismPayloadAttributes PayloadAttributesFromBlockForRpc(BlockForRpc block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        OptimismPayloadAttributes result = new()
+        {
+            NoTxPool = true,
+            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
+            GasLimit = block.GasLimit,
+            ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
+            PrevRandao = block.MixHash,
+            SuggestedFeeRecipient = block.Miner,
+            Timestamp = block.Timestamp.ToUInt64(null),
+            Withdrawals = block.Withdrawals?.ToArray()
+        };
+        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t => t.ToTransaction()).ToArray();
+        result.SetTransactions(txs);
+
+        return result;
+    }
+
+    public void Dispose()
+    {
+    }
+}
