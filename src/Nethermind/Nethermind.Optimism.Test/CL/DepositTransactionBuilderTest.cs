@@ -31,7 +31,7 @@ public class DepositTransactionBuilderTest
 
     public DepositTransactionBuilderTest()
     {
-        var parameters = new CLChainSpecEngineParameters { DepositAddress = DepositAddress };
+        var parameters = new CLChainSpecEngineParameters { OptimismPortalProxy = DepositAddress };
         _builder = new DepositTransactionBuilder(TestBlockchainIds.ChainId, parameters);
     }
 

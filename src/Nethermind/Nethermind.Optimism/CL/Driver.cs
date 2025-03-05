@@ -32,15 +32,17 @@ public class Driver : IDisposable
 
     private readonly Task _mainTask;
 
-    public Driver(IL1Bridge l1Bridge, IDecodingPipeline decodingPipeline, IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
+    public Driver(IL1Bridge l1Bridge, IDecodingPipeline decodingPipeline, IOptimismEthRpcModule l2EthRpc,
+        IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config,
+        CLChainSpecEngineParameters engineParameters, ulong chainId, ILogger logger)
     {
         _config = config;
         _l1Bridge = l1Bridge;
         _logger = logger;
         _engineParameters = engineParameters;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
-        PayloadAttributesDeriver payloadAttributesDeriver = new(480, _systemConfigDeriver,
-            new DepositTransactionBuilder(480, engineParameters), logger);
+        PayloadAttributesDeriver payloadAttributesDeriver = new(chainId, _systemConfigDeriver,
+            new DepositTransactionBuilder(chainId, engineParameters), logger);
         _l2BlockTree = l2BlockTree;
         _l2EthRpc = l2EthRpc;
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);

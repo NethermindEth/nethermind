@@ -108,7 +108,7 @@ public class EthereumL1Bridge : IL1Bridge
             if (transaction.Type == TxType.Blob)
             {
                 if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                    _engineParameters.BatcherAddress == transaction.From)
+                    _engineParameters.BatchSubmitter == transaction.From)
                 {
                     ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
                     await ProcessBlobBatcherTransaction(transaction,
@@ -119,7 +119,7 @@ public class EthereumL1Bridge : IL1Bridge
             else
             {
                 if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                    _engineParameters.BatcherAddress == transaction.From)
+                    _engineParameters.BatchSubmitter == transaction.From)
                 {
                     ProcessCalldataBatcherTransaction(transaction);
                 }

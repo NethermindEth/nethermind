@@ -91,7 +91,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             if (receipt.Status != 1) continue;
             foreach (var log in receipt.Logs)
             {
-                if (log.Address != engineParameters.DepositAddress) continue;
+                if (log.Address != engineParameters.OptimismPortalProxy) continue;
                 if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
 
                 try
