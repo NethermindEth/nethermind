@@ -944,11 +944,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             if (_scheme == INodeStorage.KeyScheme.Hash)
             {
-                memDb.Count.Should().NotBe(2);
+                memDb.Count.Should().NotBe(1);
             }
             else
             {
-                memDb.Count.Should().Be(2);
+                memDb.Count.Should().Be(1);
             }
         }
 

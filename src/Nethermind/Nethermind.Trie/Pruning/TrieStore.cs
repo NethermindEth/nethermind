@@ -491,9 +491,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     PersistAndPruneDirtyCache();
                 }
-                // Note: This tend to get triggered after `PersistAndPruneDirtyCache` as `PersistedMemoryUsedByDirtyCache`
-                // increases but we don't want to do it in the same task in case a block is waiting to be processed.
-                else if (_pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache))
+
+                if (_pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache))
                 {
                     PrunePersistedNodes();
                 }
@@ -643,34 +642,36 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         try
         {
-            // Target prune is either 5% of the persisted node memory or at least 50MiB.
-            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * 0.05);
-            targetPruneMemory = Math.Max(targetPruneMemory, 50.MiB());
-
-            int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * 256);
-            shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, 256));
-
-            if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
-            long start = Stopwatch.GetTimestamp();
-
-            using ArrayPoolList<Task> pruneTask = new(shardCountToPrune);
-
-            for (int i = 0; i < shardCountToPrune; i++)
+            lock (_dirtyNodesLock)
             {
-                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
-                pruneTask.Add(Task.Run(() =>
+                long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _pruningStrategy.PrunePersistedNodePortion);
+                targetPruneMemory = Math.Max(targetPruneMemory, _pruningStrategy.PrunePersistedNodeMinimumTarget);
+
+                int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * 256);
+                shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, 256));
+
+                if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
+                long start = Stopwatch.GetTimestamp();
+
+                using ArrayPoolList<Task> pruneTask = new(shardCountToPrune);
+
+                for (int i = 0; i < shardCountToPrune; i++)
                 {
-                    dirtyNode.PruneCache(prunePersisted: true);
-                }));
-                _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % ShardedDirtyNodeCount;
+                    TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
+                    pruneTask.Add(Task.Run(() =>
+                    {
+                        dirtyNode.PruneCache(prunePersisted: true);
+                    }));
+                    _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % ShardedDirtyNodeCount;
+                }
+
+                Task.WaitAll(pruneTask);
+
+                RecalculateTotalMemoryUsage();
+
+                if (_logger.IsWarn) _logger.Debug($"Finished pruning persisted nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+                Metrics.PersistedNodePruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             }
-
-            Task.WaitAll(pruneTask);
-
-            RecalculateTotalMemoryUsage();
-
-            if (_logger.IsWarn) _logger.Debug($"Finished pruning persisted nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-            Metrics.PersistedNodePruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
         catch (Exception e)
         {
