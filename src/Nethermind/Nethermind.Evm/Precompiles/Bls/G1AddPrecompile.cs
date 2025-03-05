@@ -45,6 +45,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
             return IPrecompile.Failure;
         }
 
+        // adding to infinity point has no effect
         if (x.IsInf())
         {
             return (inputData[BlsConst.LenG1..].ToArray(), true);
