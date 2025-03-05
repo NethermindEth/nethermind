@@ -50,7 +50,7 @@ public class CliqueBlockProducerTests
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
-        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
+        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
         private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
         private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -87,13 +87,13 @@ public class CliqueBlockProducerTests
             MemDb stateDb = new();
             MemDb codeDb = new();
 
-            ISpecProvider specProvider = GoerliSpecProvider.Instance;
+            ISpecProvider specProvider = SepoliaSpecProvider.Instance;
 
             var trieStore = new TrieStore(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-            GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
+            SepoliaSpecProvider goerliSpecProvider = SepoliaSpecProvider.Instance;
             stateProvider.Commit(goerliSpecProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
@@ -110,7 +110,7 @@ public class CliqueBlockProducerTests
             CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(goerliSpecProvider.ChainId),
                 _logManager,
@@ -122,7 +122,7 @@ public class CliqueBlockProducerTests
 
             SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
             _snapshotManager[privateKey] = snapshotManager;
-            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
             _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
