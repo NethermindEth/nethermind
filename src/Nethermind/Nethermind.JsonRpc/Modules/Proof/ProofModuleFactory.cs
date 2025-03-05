@@ -46,9 +46,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LogManager);
         }
 
-        protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
+        protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
         {
-            return new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+            return new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
         }
 
         public override IProofRpcModule Create()
@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-            IBlockProcessor.IBlockTransactionsExecutor traceExecutor = CreateBlockTransactionsExecutor(scope);
+            IBlockProcessor.IBlockTransactionsExecutor traceExecutor = CreateRpcBlockTransactionsExecutor(scope);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 scope,
