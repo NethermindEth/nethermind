@@ -107,8 +107,8 @@ namespace Nethermind.State
         public void Reset(bool resetBlockCache = false)
         {
             _stateProvider.Reset(resetBlockCache);
-            _persistentStorageProvider.Reset();
-            _transientStorageProvider.Reset();
+            _persistentStorageProvider.Reset(resetBlockCache);
+            _transientStorageProvider.Reset(resetBlockCache);
         }
         public void WarmUp(AccessList? accessList)
         {

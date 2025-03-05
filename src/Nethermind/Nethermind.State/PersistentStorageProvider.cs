@@ -43,7 +43,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
-    private readonly Dictionary<AddressAsKey, DefaultableDictionary<byte[]>> _blockCache = new(4_096);
+    private readonly Dictionary<AddressAsKey, DefaultableDictionary<ChangeTrace>> _blockCache = new(4_096);
     private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
     private readonly Func<StorageCell, byte[]> _loadFromTree;
 
@@ -73,14 +73,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// Reset the storage state
     /// </summary>
-    public override void Reset()
+    public override void Reset(bool resetBlockCache = false)
     {
         base.Reset();
-        _blockCache.Clear();
-        _storages.Clear();
+        if (resetBlockCache)
+        {
+            _blockCache.Clear();
+            _storages.Clear();
+            _toUpdateRoots.Clear();
+        }
         _originalValues.Clear();
         _committedThisRound.Clear();
-        _toUpdateRoots.Clear();
     }
 
     /// <summary>
@@ -240,7 +243,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         // Is overhead of parallel foreach worth it?
-        if (_toUpdateRoots.Count <= 4)
+        if (_toUpdateRoots.Count < 3)
         {
             UpdateRootHashesSingleThread();
         }
@@ -260,6 +263,23 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 }
 
                 StorageTree storageTree = kvp.Value;
+
+                ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(_blockCache, kvp.Key);
+                int writes = 0;
+
+                foreach (var key in dict.Keys)
+                {
+                    ref var change = ref dict.GetValueRefOrNullRef(key);
+                    if (!Bytes.AreEqual(change.Before, change.After))
+                    {
+                        change.Before = change.After;
+                        storageTree.Set(key, change.After);
+                        writes++;
+                    }
+                }
+
+                Db.Metrics.StorageTreeWrites += writes;
+
                 storageTree.UpdateRootHash(canBeParallel: true);
                 _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
             }
@@ -273,7 +293,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 0,
                 storages.Count,
                 RuntimeInformation.ParallelOptionsLogicalCores,
-                (storages, toUpdateRoots: _toUpdateRoots),
+                (storages, toUpdateRoots: _toUpdateRoots, changes: _blockCache),
                 static (i, state) =>
             {
                 ref var kvp = ref state.storages.GetRef(i);
@@ -283,6 +303,23 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     return state;
                 }
                 StorageTree storageTree = kvp.Value;
+
+                ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(state.changes, kvp.Key);
+                int writes = 0;
+
+                foreach (var key in dict.Keys)
+                {
+                    ref var change = ref dict.GetValueRefOrNullRef(key);
+                    if (!Bytes.AreEqual(change.Before, change.After))
+                    {
+                        change.Before = change.After;
+                        storageTree.Set(key, change.After);
+                        writes++;
+                    }
+                }
+
+                Db.Metrics.StorageTreeWrites += writes;
+
                 storageTree.UpdateRootHash(canBeParallel: false);
                 return state;
             });
@@ -311,17 +348,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address, out _);
-        Db.Metrics.StorageTreeWrites++;
         toUpdateRoots.Add(change.StorageCell.Address);
-        tree.Set(change.StorageCell.Index, change.Value);
 
-        ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+        ref DefaultableDictionary<ChangeTrace>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
         if (!exists)
         {
-            dict = new DefaultableDictionary<byte[]>(StorageTree.EmptyBytes);
+            dict = new DefaultableDictionary<ChangeTrace>(ChangeTrace.EmptyBytes);
         }
 
-        dict[change.StorageCell.Index] = change.Value;
+        ref ChangeTrace valueChanges = ref dict.GetValueRefOrAddDefault(change.StorageCell.Index, out _);
+        valueChanges.After = change.Value;
     }
 
     /// <summary>
@@ -394,26 +430,28 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
-        ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+        ref DefaultableDictionary<ChangeTrace>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
         if (!exists)
         {
-            dict = new DefaultableDictionary<byte[]>(StorageTree.EmptyBytes);
+            dict = new DefaultableDictionary<ChangeTrace>(ChangeTrace.EmptyBytes);
         }
 
-        ref byte[]? value = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
+        ref ChangeTrace valueChange = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
         if (!exists)
         {
-            value = !_populatePreBlockCache ?
+            byte[] value = !_populatePreBlockCache ?
                 LoadFromTreeReadPreWarmCache(in storageCell) :
                 LoadFromTreePopulatePrewarmCache(in storageCell);
+
+            valueChange = new(value, value);
         }
         else
         {
             Db.Metrics.IncrementStorageTreeCache();
         }
 
-        if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
-        return value;
+        if (!storageCell.IsHash) PushToRegistryOnly(storageCell, valueChange.After);
+        return valueChange.After;
     }
 
     private byte[] LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)
@@ -489,10 +527,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         base.ClearStorage(address);
 
-        ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+        ref DefaultableDictionary<ChangeTrace>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
         if (!exists)
         {
-            dict = new DefaultableDictionary<byte[]>(StorageTree.EmptyBytes);
+            dict = new DefaultableDictionary<ChangeTrace>(ChangeTrace.EmptyBytes);
         }
 
         // We know all lookups will be empty against this tree
@@ -537,10 +575,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return ref value;
         }
 
+        public ref TValue GetValueRefOrNullRef(UInt256 storageCellIndex)
+        {
+            return ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
+        }
+
         public TValue? this[UInt256 key]
         {
             set => _dictionary[key] = value;
         }
+
+        public Dictionary<UInt256, TValue>.KeyCollection Keys => _dictionary.Keys;
 
         private sealed class Comparer : IEqualityComparer<UInt256>
         {
