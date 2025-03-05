@@ -62,6 +62,7 @@ public class PerTableDbConfig
     public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
+    public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
 
     private T? ReadConfig<T>(string propertyName)
     {

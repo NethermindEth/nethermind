@@ -32,6 +32,7 @@ public interface IDbConfig : IConfig
     bool? VerifyChecksum { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
+    bool FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }

@@ -61,11 +61,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     private long _maxThisDbSize;
 
-    protected IntPtr? _rowCache = null;
+    private IntPtr? _rowCache = null;
 
     private readonly DbSettings _settings;
 
-    protected readonly PerTableDbConfig _perTableDbConfig;
+    private readonly PerTableDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -1330,7 +1330,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             dbMetricsUpdater.Dispose();
         }
 
-        InnerFlush(false);
+        if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);
