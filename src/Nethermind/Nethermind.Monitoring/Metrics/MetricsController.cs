@@ -3,6 +3,7 @@
 
 #nullable enable
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -11,6 +12,7 @@ using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -49,18 +51,14 @@ namespace Nethermind.Monitoring.Metrics
 
         public class GaugeMetricUpdater(Gauge gauge, Func<double> accessor, params string[] labels) : IMetricUpdater
         {
-            public void Update()
-            {
-                double value = accessor();
-                SetGauge(value, labels, gauge);
-            }
-
+            public void Update() => SetGauge(accessor(), gauge, labels);
             public Gauge Gauge => gauge;
         }
 
         public class GaugePerKeyMetricUpdater(IDictionary dict, string dictionaryName) : IMetricUpdater
         {
-            public readonly Dictionary<string, Gauge> _gauges = new();
+            private readonly Dictionary<string, Gauge> _gauges = new();
+            public IReadOnlyDictionary<string, Gauge> Gauges => _gauges;
 
             public void Update()
             {
@@ -71,25 +69,10 @@ namespace Nethermind.Monitoring.Metrics
                     string keyStr = keyObj.ToString()!;
                     double value = Convert.ToDouble(dict[keyObj]);
                     string gaugeName = GetGaugeNameKey(dictionaryName, keyStr);
-
-                    if (ReplaceValueIfChanged(value, gaugeName) is null)
-                    {
-                        // Don't know why it does not prefix with dictionary name or class name. Not gonna change behaviour now.
-                        Gauge gauge = CreateGauge(BuildGaugeName(keyStr));
-                        _gauges[gaugeName] = gauge;
-                        gauge.Set(value);
-                    }
+                    ref Gauge? gauge = ref CollectionsMarshal.GetValueRefOrAddDefault(_gauges, gaugeName, out _);
+                    gauge ??= CreateGauge(BuildGaugeName(keyStr));
+                    SetGauge(value, gauge);
                 }
-            }
-
-            Gauge? ReplaceValueIfChanged(double value, string gaugeName, params string[] labels)
-            {
-                if (_gauges.TryGetValue(gaugeName, out Gauge? gauge))
-                {
-                    SetGauge(value, labels, gauge);
-                }
-
-                return gauge;
             }
         }
 
@@ -106,14 +89,16 @@ namespace Nethermind.Monitoring.Metrics
                             Update(value, label.Labels);
                             break;
                         case ITuple keyAsTuple:
-                            string[] labels = new string[keyAsTuple.Length];
-                            for (int i = 0; i < keyAsTuple.Length; i++)
                             {
-                                labels[i] = keyAsTuple[i]!.ToString()!;
-                            }
+                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length);
+                                for (int i = 0; i < keyAsTuple.Length; i++)
+                                {
+                                    labels[i] = keyAsTuple[i]!.ToString()!;
+                                }
 
-                            Update(value, labels);
-                            break;
+                                Update(value, labels.AsSpan());
+                                break;
+                            }
                         default:
                             Update(value, key.ToString()!);
                             break;
@@ -121,11 +106,7 @@ namespace Nethermind.Monitoring.Metrics
                 }
             }
 
-            private void Update(double value, params string[] labels)
-            {
-                SetGauge(value, labels, gauge);
-            }
-
+            private void Update(double value, params ReadOnlySpan<string> labels) => SetGauge(value, gauge, labels);
             public Gauge Gauge => gauge;
         }
 
@@ -144,12 +125,10 @@ namespace Nethermind.Monitoring.Metrics
 
         public void RegisterMetrics(Type type)
         {
-            if (_metricTypes.Add(type) == false)
+            if (_metricTypes.Add(type))
             {
-                return;
+                EnsurePropertiesCached(type);
             }
-
-            EnsurePropertiesCached(type);
         }
 
         internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
@@ -159,16 +138,12 @@ namespace Nethermind.Monitoring.Metrics
             string name = BuildGaugeName(member);
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
 
-            bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
-            if (!haveTagAttributes)
-            {
-                return new CommonMetricInfo(name, description, []);
-            }
+            Dictionary<string, string> CreateTags() =>
+                member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ToDictionary(
+                    attribute => attribute.Label,
+                    attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
-            Dictionary<string, string> tags = new();
-            member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
-                tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
-            return new CommonMetricInfo(name, description, tags);
+            return new CommonMetricInfo(name, description, CreateTags());
         }
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
@@ -195,12 +170,9 @@ namespace Nethermind.Monitoring.Metrics
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
 
-            if (member.GetCustomAttribute<CounterMetricAttribute>() is not null)
-            {
-                return meter.CreateObservableCounter(name, observer, description: description);
-            }
-
-            return meter.CreateObservableGauge(name, observer, description: description);
+            return member.GetCustomAttribute<CounterMetricAttribute>() is not null
+                ? meter.CreateObservableCounter(name, observer, description: description)
+                : meter.CreateObservableGauge(name, observer, description: description);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -277,8 +249,7 @@ namespace Nethermind.Monitoring.Metrics
                 return true;
             }
 
-            static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(IEnumerable));
-            if (NotEnumerable(memberType))
+            if (!memberType.IsEnumerable())
             {
                 Func<double> accessor = GetValueAccessor(memberInfo);
 
@@ -293,16 +264,13 @@ namespace Nethermind.Monitoring.Metrics
                 return true;
             }
 
-            if (memberType.IsGenericType &&
-                (memberType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary)) ||
-                 memberType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary<,>)))
-               )
+            if (memberType.IsDictionary())
             {
                 IDictionary dict = memberInfo.GetValue<IDictionary>();
                 string[]? labelNames = memberInfo.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelNames;
-                metricUpdater = labelNames is null || labelNames.Length == 0
-                    ? new GaugePerKeyMetricUpdater(dict, memberInfo.Name)
-                    : new KeyIsLabelGaugeMetricUpdater(CreateMemberInfoMetricsGauge(memberInfo, labelNames), dict);
+                metricUpdater = labelNames?.Length > 0
+                    ? new KeyIsLabelGaugeMetricUpdater(CreateMemberInfoMetricsGauge(memberInfo, labelNames), dict)
+                    : new GaugePerKeyMetricUpdater(dict, memberInfo.Name);
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
                 return true;
             }
@@ -367,29 +335,18 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private static Func<double> GetValueAccessor(MemberInfo member)
-        {
-            return () => Convert.ToDouble(member.GetValue<object>());
-        }
+        private static Func<double> GetValueAccessor(MemberInfo member) => () => Convert.ToDouble(member.GetValue<object>());
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 
         [GeneratedRegex("(\\p{Ll})(\\p{Lu})")]
         private static partial Regex GetGaugeNameRegex();
 
-        private static void SetGauge(double value, string[] labels, Gauge gauge)
+        private static void SetGauge(double value, Gauge gauge, params ReadOnlySpan<string> labels)
         {
-            if (labels.Length > 0)
-            {
-                Gauge.Child ch = gauge.WithLabels(labels);
-                if (Math.Abs(ch.Value - value) > double.Epsilon)
-                    ch.Set(value);
-            }
-            else
-            {
-                if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                    gauge.Set(value);
-            }
+            IGauge gaugeToSet = labels.Length > 0 ? gauge.WithLabels(labels) : gauge;
+            if (Math.Abs(gaugeToSet.Value - value) > double.Epsilon)
+                gaugeToSet.Set(value);
         }
     }
 }

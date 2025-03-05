@@ -91,8 +91,8 @@ public class MetricsTests
         Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_one_two_three"));
         Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("one_two_three"));
         Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater)._gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater)._gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
         Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
         Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
 
@@ -101,8 +101,8 @@ public class MetricsTests
         Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
         Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
         Assert.That((updater[keyDictionary2] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater)._gauges[keyOldDictionary0].Value, Is.EqualTo(4));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater)._gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Value, Is.EqualTo(4));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Value, Is.EqualTo(5));
     }
 
     [Test]

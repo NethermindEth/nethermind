@@ -9,33 +9,19 @@ namespace Nethermind.Core.Extensions;
 
 public static class MemberInfoExtensions
 {
-    public static T GetValue<T>(this MemberInfo memberInfo)
-    {
-        if (memberInfo is PropertyInfo p)
+    public static T GetValue<T>(this MemberInfo memberInfo) =>
+        memberInfo switch
         {
-            return (T)p.GetValue(null)!;
-        }
-        else if (memberInfo is FieldInfo f)
-        {
-            return (T)f.GetValue(null)!;
-        }
+            PropertyInfo p => (T)p.GetValue(null)!,
+            FieldInfo f => (T)f.GetValue(null)!,
+            _ => throw new NotSupportedException("Should be use for field and property only")
+        };
 
-        throw new UnreachableException("Should be use for field and property only");
-    }
-
-    public static Type GetMemberType(this MemberInfo memberInfo)
-    {
-        if (memberInfo is PropertyInfo property)
+    public static Type GetMemberType(this MemberInfo memberInfo) =>
+        memberInfo switch
         {
-            return property.PropertyType;
-        }
-        else if (memberInfo is FieldInfo field)
-        {
-            return field.FieldType;
-        }
-        else
-        {
-            throw new UnreachableException();
-        }
-    }
+            PropertyInfo property => property.PropertyType,
+            FieldInfo field => field.FieldType,
+            _ => throw new NotSupportedException("Should be use for field and property only")
+        };
 }
