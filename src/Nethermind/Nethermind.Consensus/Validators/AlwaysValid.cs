@@ -8,7 +8,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
 
-public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
+public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator, IWithdrawalValidator
 {
     private readonly bool _result;
     private readonly ValidationResult _validationResult;
@@ -110,4 +110,9 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
+    public bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
+    {
+        error = null;
+        return _result;
+    }
 }

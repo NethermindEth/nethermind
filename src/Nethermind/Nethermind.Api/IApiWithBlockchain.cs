@@ -44,6 +44,8 @@ namespace Nethermind.Api
         IFilterManager? FilterManager { get; set; }
         IUnclesValidator? UnclesValidator { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
+        IWithdrawalValidator? WithdrawalValidator { get; set; }
+
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         /// <summary>

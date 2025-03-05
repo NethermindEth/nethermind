@@ -98,6 +98,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             new TxValidator(SpecProvider!.ChainId),
             headerValidator,
             Always.Valid,
+            new WithdrawalValidator(_logManager),
             SpecProvider,
             _logManager);
 

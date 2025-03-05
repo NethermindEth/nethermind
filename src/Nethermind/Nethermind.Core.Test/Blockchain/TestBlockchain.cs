@@ -107,6 +107,8 @@ public class TestBlockchain : IDisposable
     private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
     public IHeaderValidator HeaderValidator { get; set; } = null!;
 
+    public IWithdrawalValidator WithdrawalValidator { get; set; } = null!;
+
     private ReceiptCanonicalityMonitor? _canonicalityMonitor;
 
     public IBlockValidator BlockValidator { get; set; } = null!;
@@ -198,6 +200,7 @@ public class TestBlockchain : IDisposable
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
+        WithdrawalValidator = new WithdrawalValidator(LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
         BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, State);
@@ -206,6 +209,7 @@ public class TestBlockchain : IDisposable
             new TxValidator(SpecProvider.ChainId),
             HeaderValidator,
             Always.Valid,
+            WithdrawalValidator,
             SpecProvider,
             LogManager);
 

@@ -135,6 +135,7 @@ namespace Nethermind.Api
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
         public IUnclesValidator? UnclesValidator { get; set; }
+        public IWithdrawalValidator? WithdrawalValidator { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
 

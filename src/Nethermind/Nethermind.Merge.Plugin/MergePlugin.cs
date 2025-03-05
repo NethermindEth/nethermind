@@ -254,7 +254,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
             _api.BlockValidator = new InvalidBlockInterceptor(
-                new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
+                new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator, _api.WithdrawalValidator,
                     _api.SpecProvider, _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
@@ -420,6 +420,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _api.TxValidator,
                     _api.HeaderValidator,
                     _api.UnclesValidator,
+                    _api.WithdrawalValidator,
                     _api.SpecProvider,
                     _api.LogManager),
                 _invalidChainTracker,

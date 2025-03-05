@@ -27,11 +27,13 @@ public class BlockValidatorTests
         releaseSpec.MaximumUncleCount = 0;
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, Always.Valid, specProvider,
+            LimboLogs.Instance);
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
         Assert.That(noiseRemoved, Is.True);
 
-        bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject).TestObject);
+        bool result =
+            blockValidator.ValidateSuggestedBlock(Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject).TestObject);
         Assert.That(result, Is.False);
     }
 
@@ -96,7 +98,8 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, Always.Valid, specProvider,
+            LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
 
@@ -111,7 +114,8 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, Always.Valid, specProvider,
+            LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
         string? error;
@@ -129,7 +133,8 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, Always.Valid, specProvider,
+            LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
 
@@ -144,7 +149,8 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, Always.Valid, specProvider,
+            LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
         string? error;
@@ -162,38 +168,38 @@ public class BlockValidatorTests
         KzgPolynomialCommitments.InitializeAsync().Wait();
 
         yield return new TestCaseData(
-        Build.A.Block.WithHeader(Build.A.BlockHeader.WithUnclesHash(Keccak.Zero).TestObject).TestObject,
-        Substitute.For<ISpecProvider>(),
-        "InvalidUnclesHash");
+            Build.A.Block.WithHeader(Build.A.BlockHeader.WithUnclesHash(Keccak.Zero).TestObject).TestObject,
+            Substitute.For<ISpecProvider>(),
+            "InvalidUnclesHash");
 
         yield return new TestCaseData(
-        Build.A.Block.WithHeader(Build.A.BlockHeader.WithTransactionsRoot(Keccak.Zero).TestObject).TestObject,
-        Substitute.For<ISpecProvider>(),
-        "InvalidTxRoot");
+            Build.A.Block.WithHeader(Build.A.BlockHeader.WithTransactionsRoot(Keccak.Zero).TestObject).TestObject,
+            Substitute.For<ISpecProvider>(),
+            "InvalidTxRoot");
 
         yield return new TestCaseData(
-        Build.A.Block.WithBlobGasUsed(131072)
-        .WithExcessBlobGas(1)
-        .WithTransactions(
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
-            .WithMaxFeePerBlobGas(0)
-            .WithMaxFeePerGas(1000000)
-            .Signed()
-            .TestObject)
-        .TestObject,
-        new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-        "InsufficientMaxFeePerBlobGas");
+            Build.A.Block.WithBlobGasUsed(131072)
+                .WithExcessBlobGas(1)
+                .WithTransactions(
+                    Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
+                        .WithMaxFeePerBlobGas(0)
+                        .WithMaxFeePerGas(1000000)
+                        .Signed()
+                        .TestObject)
+                .TestObject,
+            new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
+            "InsufficientMaxFeePerBlobGas");
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
-    public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, ISpecProvider specProvider, string expectedError)
+    public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock,
+        ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        string? error;
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, Always.Valid, specProvider,
+            LimboLogs.Instance);
 
-        sut.ValidateSuggestedBlock(
-            suggestedBlock, out error);
+        sut.ValidateSuggestedBlock(suggestedBlock, out var error);
 
         Assert.That(error, Does.StartWith(expectedError));
     }
