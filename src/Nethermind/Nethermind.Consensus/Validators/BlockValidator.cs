@@ -21,6 +21,7 @@ public class BlockValidator(
     ITxValidator? txValidator,
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
+    IWithdrawalValidator? withdrawalValidator,
     ISpecProvider? specProvider,
     ILogManager? logManager)
     : IBlockValidator
@@ -28,6 +29,7 @@ public class BlockValidator(
     private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
+    private readonly IWithdrawalValidator _withdrawalValidator = withdrawalValidator ?? throw new ArgumentNullException(nameof(withdrawalValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -130,7 +132,7 @@ public class BlockValidator(
                 return false;
             }
 
-            if (!ValidateWithdrawals(block, spec, out errorMessage))
+            if (!_withdrawalValidator.ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out errorMessage))
             {
                 return false;
             }
@@ -235,43 +237,19 @@ public class BlockValidator(
         return false;
     }
 
-    public bool ValidateWithdrawals(Block block, out string? error) =>
-        ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out error);
-
-    private bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
+    public bool ValidateWithdrawals(Block block, out string? error)
     {
-        if (spec.WithdrawalsEnabled && block.Withdrawals is null)
-        {
-            error = BlockErrorMessages.MissingWithdrawals;
+        return _withdrawalValidator.ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out error);
+    }
 
-            if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
+    public bool ValidateBody(Block block)
+    {
+        _specProvider.GetSpec(block.Header);
 
-            return false;
-        }
-
-        if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
-        {
-            error = BlockErrorMessages.WithdrawalsNotEnabled;
-
-            if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
-
-            return false;
-        }
-
-        if (block.Withdrawals is not null)
-        {
-            if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
-            {
-                error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
-
-                return false;
-            }
-        }
-
-        error = null;
-
-        return true;
+        return
+            ValidateTxRootMatchesTxs(block, out _) &&
+            ValidateUnclesHashMatches(block, out _) &&
+            _withdrawalValidator.ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out _);
     }
 
     protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
@@ -358,33 +336,19 @@ public class BlockValidator(
     public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateTxRootMatchesTxs(header, toBeValidated, out _)
         && ValidateUnclesHashMatches(header, toBeValidated, out _)
-        && ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
+        && WithdrawalValidator.ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
 
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
-    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
+    private static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
         (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
 
     public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
         ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
 
-    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
+    private static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
         (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
-
-    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
-        ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
-
-    public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
-    {
-        if (body.Withdrawals is null)
-        {
-            withdrawalsRoot = null;
-            return header.WithdrawalsRoot is null;
-        }
-
-        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
-    }
 
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";

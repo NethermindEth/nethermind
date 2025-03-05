@@ -78,6 +78,11 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
+    public bool ValidateBody(Block block)
+    {
+        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+    }
+
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
     {
         error = null;

@@ -10,6 +10,8 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
     public bool ValidateWithdrawals(Block block, out string? error) =>
         baseBlockValidator.ValidateWithdrawals(block, out error);
 
+    public bool ValidateBody(Block block) => baseBlockValidator.ValidateBody(block);
+
     public bool ValidateOrphanedBlock(Block block, out string? error) =>
         baseBlockValidator.ValidateOrphanedBlock(block, out error);
 

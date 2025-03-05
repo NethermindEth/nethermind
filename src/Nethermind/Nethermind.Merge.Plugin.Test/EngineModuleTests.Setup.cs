@@ -284,11 +284,13 @@ public partial class EngineModuleTests
             SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
             HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
             HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
+            WithdrawalValidator = new WithdrawalValidator(LogManager);
 
             return new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
                 HeaderValidator,
                 Always.Valid,
+                WithdrawalValidator,
                 SpecProvider,
                 LogManager);
         }

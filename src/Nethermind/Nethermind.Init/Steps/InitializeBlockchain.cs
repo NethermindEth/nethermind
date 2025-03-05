@@ -85,6 +85,7 @@ namespace Nethermind.Init.Steps
 
             setApi.HeaderValidator = CreateHeaderValidator();
             setApi.UnclesValidator = CreateUnclesValidator();
+            setApi.WithdrawalValidator = CreateWithdrawalValidator();
             setApi.BlockValidator = CreateBlockValidator();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -179,6 +180,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator,
                 _api.HeaderValidator,
                 _api.UnclesValidator,
+                _api.WithdrawalValidator,
                 _api.SpecProvider,
                 _api.LogManager);
         }
@@ -189,6 +191,11 @@ namespace Nethermind.Init.Steps
                 _api.BlockTree,
                 _api.HeaderValidator,
                 _api.LogManager);
+        }
+
+        protected virtual IWithdrawalValidator CreateWithdrawalValidator()
+        {
+            return new WithdrawalValidator(_api.LogManager);
         }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)

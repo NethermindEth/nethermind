@@ -36,6 +36,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<ITxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
+            .AddSingleton<IWithdrawalValidator, WithdrawalValidator>()
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
