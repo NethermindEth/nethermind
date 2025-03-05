@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Init.Steps;
