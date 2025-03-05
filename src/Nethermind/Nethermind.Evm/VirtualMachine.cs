@@ -75,7 +75,23 @@ public class VirtualMachine : IVirtualMachine
         IVMConfig vmConfig = null)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _vmConfig = vmConfig ?? new VMConfig();
+
+        _vmConfig = new VMConfig
+        {
+            BakeInTracingInAotModes = false,
+            AggressivePartialAotMode = false,
+            AnalysisQueueMaxSize = 4,
+
+            FullAotThreshold = 4,
+            IsFullAotEnabled = true,
+
+            PartialAotThreshold = int.MaxValue,
+            IsPartialAotEnabled = false,
+
+            PatternMatchingThreshold = int.MaxValue,
+            IsPatternMatchingEnabled = false,
+        };
+
         _evm = logger.IsTrace
             ? _vmConfig.IsVmOptimizationEnabled
                 ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
@@ -725,7 +741,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         return CallResult.Empty;
                 }
             }
-        }
+        } 
 
         // Struct generic parameter is used to burn out all the if statements
         // and inner code by typeof(TTracing) == typeof(NotTracing)
