@@ -88,26 +88,42 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private void DecodeDepositRequest(LogEntry log, Span<byte> buffer)
     {
-        object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
-        int offset = 0;
+        const int pubkeyOffset = 0;
+        const int withdrawalCredOffset = pubkeyOffset + 48;
+        const int amountOffset = withdrawalCredOffset + 32;
+        const int signatureOffset = amountOffset + 8;
+        const int indexOffset = signatureOffset + 96;
 
-        foreach (var item in result)
+        if (log.Data.Length != 576)
         {
-            if (item is byte[] byteArray)
-            {
-                byteArray.CopyTo(buffer.Slice(offset, byteArray.Length));
-                offset += byteArray.Length;
-            }
-            else
-            {
-                throw new InvalidOperationException("Decoded ABI result contains non-byte array elements.");
-            }
+            throw new InvalidOperationException($"Deposit wrong length: want 576, have {log.Data.Length}");
         }
 
-        // make sure the flattened result is of the correct size
-        if (offset != ExecutionRequestExtensions.DepositRequestsBytesSize)
+        int b = 32 * 5 + 32; // Skip over positional data and length values
+
+        // PublicKey is the first element
+        log.Data.AsSpan(b, 48).CopyTo(buffer.Slice(pubkeyOffset, 48));
+        b += 48 + 16 + 32;
+
+        // WithdrawalCredentials is 32 bytes
+        log.Data.AsSpan(b, 32).CopyTo(buffer.Slice(withdrawalCredOffset, 32));
+        b += 32 + 32;
+
+        // Amount is 8 bytes
+        log.Data.AsSpan(b, 8).CopyTo(buffer.Slice(amountOffset, 8));
+        b += 8 + 24 + 32;
+
+        // Signature is 96 bytes
+        log.Data.AsSpan(b, 96).CopyTo(buffer.Slice(signatureOffset, 96));
+        b += 96 + 32;
+
+        // Index is 8 bytes
+        log.Data.AsSpan(b, 8).CopyTo(buffer.Slice(indexOffset, 8));
+
+        // Make sure the flattened result is of the correct size
+        if (buffer.Length != ExecutionRequestExtensions.DepositRequestsBytesSize)
         {
-            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes.");
+            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {buffer.Length} bytes.");
         }
     }
 

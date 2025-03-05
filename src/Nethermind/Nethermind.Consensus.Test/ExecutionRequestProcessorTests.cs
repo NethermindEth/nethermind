@@ -167,7 +167,7 @@ public class ExecutionProcessorTests
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
-           CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
+           new Hash256("0xd22e5f27e5d0d5bdfb4e8c071b3b348d6a882be578c9716e9c68d7a66a838f02")
        ));
 
 
