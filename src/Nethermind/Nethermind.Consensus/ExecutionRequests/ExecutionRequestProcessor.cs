@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -25,6 +26,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     private const long GasLimit = 30_000_000L;
+
+    private Hash256 DepositTopic  = new ("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5");
 
     private readonly ITransactionProcessor _transactionProcessor;
 
@@ -73,7 +76,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                 for (var j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
-                    if (log.Address == spec.DepositContractAddress)
+                    if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositTopic)
                     {
                         Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(log, depositRequestBuffer);
