@@ -42,7 +42,7 @@ public class WithdrawalValidator : IWithdrawalValidator
 
         if (block.Withdrawals is not null)
         {
-            if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+            if (!ValidateWithdrawalsHashMatches(block.Header, block.Body, out var withdrawalsRoot))
             {
                 error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
@@ -57,9 +57,6 @@ public class WithdrawalValidator : IWithdrawalValidator
     }
 
     // TODO: make them private
-    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
-        ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
-
     public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
         if (body.Withdrawals is null)

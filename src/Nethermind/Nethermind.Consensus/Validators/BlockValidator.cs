@@ -242,6 +242,16 @@ public class BlockValidator(
         return _withdrawalValidator.ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out error);
     }
 
+    public bool ValidateBody(Block block)
+    {
+        _specProvider.GetSpec(block.Header);
+
+        return
+            ValidateTxRootMatchesTxs(block, out _) &&
+            ValidateUnclesHashMatches(block, out _) &&
+            _withdrawalValidator.ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out _);
+    }
+
     protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
@@ -331,13 +341,13 @@ public class BlockValidator(
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
-    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
+    private static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
         (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
 
     public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
         ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
 
-    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
+    private static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
         (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
 
     private static string Invalid(Block block) =>
