@@ -8,24 +8,15 @@ using Nethermind.Specs.GnosisForks;
 
 namespace Ethereum.Test.Base;
 
-public class ChainUtils
+public static class ChainUtils
 {
     public static IReleaseSpec? ResolveSpec(IReleaseSpec? spec, ulong chainId)
     {
-        if (chainId != GnosisSpecProvider.Instance.ChainId)
-        {
-            return spec;
-        }
-
-        if (spec == Cancun.Instance)
-        {
-            return CancunGnosis.Instance;
-        }
-        if (spec == Prague.Instance)
-        {
-            return PragueGnosis.Instance;
-        }
-
-        return spec;
+        return chainId == GnosisSpecProvider.Instance.ChainId
+            ? spec == London.Instance ? LondonGnosis.Instance
+            : spec == Cancun.Instance ? CancunGnosis.Instance
+            : spec == Prague.Instance ? PragueGnosis.Instance
+            : spec
+            : spec;
     }
 }

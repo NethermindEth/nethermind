@@ -345,6 +345,48 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task Test_admin_removeTrustedPeer()
+    {
+        // Setup dependencies
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        IPeerPool peerPool = Substitute.For<IPeerPool>();
+
+        ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
+        Enode testEnode = new(_enodeString);
+
+        // Mock RemoveAsync to return true for any enode (to simplify)
+        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
+
+        // Create the adminRpcModule as IAdminRpcModule (important for RpcTest)
+        IAdminRpcModule adminRpcModule = new AdminRpcModule(
+            _blockTree,
+            _networkConfig,
+            peerPool,
+            Substitute.For<IStaticNodesManager>(),
+            Substitute.For<IVerifyTrieStarter>(),
+            Substitute.For<IStateReader>(),
+            new Enode(_enodeString),
+            Substitute.For<IAdminEraService>(),
+            _exampleDataDir,
+            new ManualPruningTrigger(),
+            chainSpec.Parameters,
+            trustedNodesManager,
+            _subscriptionManager);
+
+        // Call admin_removeTrustedPeer via the RPC test helper
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removeTrustedPeer", _enodeString);
+
+        // Deserialize the response
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        response.Should().NotBeNull("Response should not be null");
+        bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
+        result.Should().BeTrue("The RPC call should succeed and return true");
+
+        // Verify that RemoveAsync was called once with any Enode
+        await trustedNodesManager.Received(1).RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>());
+    }
+
+    [Test]
     public async Task Smoke_solc()
     {
         _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");

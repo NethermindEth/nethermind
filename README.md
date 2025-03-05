@@ -9,9 +9,9 @@
 # Nethermind Ethereum client
 
 [![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
+[![Follow us on X](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow%20us)](https://x.com/nethermindeth)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
-[![Follow us on Twitter](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow)](https://twitter.com/nethermindeth)
-[![Ask on Discourse](https://img.shields.io/discourse/posts?style=social&label=Community&logo=discourse&server=https%3A%2F%2Fcommunity.nethermind.io)](https://community.nethermind.io/c/nethermind-client)
+[![GitHub Discussions](https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social)](https://github.com/nethermindeth/nethermind/discussions)
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 The Nethermind Ethereum execution client, built on .NET, delivers industry-leading performance in syncing and tip-of-chain processing. With its modular design and plugin system, it offers extensibility and features for new chains. As one of the most adopted execution clients on Ethereum, Nethermind plays a crucial role in enhancing the diversity and resilience of the Ethereum ecosystem.
@@ -88,7 +88,7 @@ This is the easiest and fastest way to build Nethermind if you don't want to clo
 docker build https://github.com/nethermindeth/nethermind.git -t nethermind
 ```
 
-For more info, see [Building Docker image](https://docs.nethermind.io/developers/building-from-source#bulding-docker-image).
+For more info, see [Building Docker image](https://docs.nethermind.io/developers/building-from-source#building-docker-image).
 
 ### Standalone binaries
 

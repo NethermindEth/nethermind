@@ -3,18 +3,25 @@
 
 using System.Threading;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.GnosisForks;
 
-public class CancunGnosis : Forks.Cancun
+public class CancunGnosis : Cancun
 {
+    private static IReleaseSpec? _instance;
 
-    private static IReleaseSpec _instance;
-    protected CancunGnosis() : base()
+    private CancunGnosis()
     {
-        MaxBlobCount = 2;
-        TargetBlobCount = 1;
-        BlobBaseFeeUpdateFraction = 1112826;
+        SetGnosis(this);
+    }
+
+    public static void SetGnosis(Cancun spec)
+    {
+        LondonGnosis.SetGnosis(spec);
+        spec.MaxBlobCount = 2;
+        spec.TargetBlobCount = 1;
+        spec.BlobBaseFeeUpdateFraction = 1112826;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new CancunGnosis());
