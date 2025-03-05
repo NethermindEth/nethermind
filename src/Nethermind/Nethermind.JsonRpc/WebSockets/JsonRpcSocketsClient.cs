@@ -34,7 +34,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly Channel<ProcessRequest> _processChannel;
     private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner);
 
-    private readonly long _processConcurrency = 1;
+    private readonly int _processConcurrency = 1;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -45,14 +45,14 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
-        long concurrency = 1)
+        int concurrency = 1)
         : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
-        _processChannel = Channel.CreateBounded<ProcessRequest>(1);
+        _processChannel = Channel.CreateBounded<ProcessRequest>(concurrency);
         _processConcurrency = concurrency;
     }
 
@@ -83,8 +83,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
-        using ArrayPoolList<Task> allTasks = new((int)(_processConcurrency + 1));
-        allTasks.Add(Task.Run(async () =>
+        using ArrayPoolList<Task> allTasks = new(_processConcurrency + 1);
+        allTasks.Add(Task.Factory.StartNew(async () =>
         {
             try
             {
@@ -94,18 +94,17 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             {
                 _processChannel.Writer.Complete();
             }
-        }));
+        }, TaskCreationOptions.LongRunning));
 
         for (int i = 0; i < _processConcurrency; i++)
         {
-            int idx = i;
-            allTasks.Add(WorkerLoop(cts.Token, idx));
+            allTasks.Add(Task.Factory.StartNew(async () => await WorkerLoop(cts.Token), TaskCreationOptions.LongRunning));
         }
 
         await cts.WhenAllSucceed(allTasks);
     }
 
-    private async Task WorkerLoop(CancellationToken cancellationToken, int idx)
+    private async Task WorkerLoop(CancellationToken cancellationToken)
     {
         await foreach (ProcessRequest request in _processChannel.Reader.ReadAllAsync(cancellationToken))
         {
