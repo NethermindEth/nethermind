@@ -2,12 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -22,8 +20,6 @@ namespace Nethermind.Db.Test
         private ColumnsDb<LogIndexColumns> _columnsDb;
         private ILogger _logger;
         private string _dbPath;
-        private string _tempFilePath;
-        private string _finalFilePath;
 
         [SetUp]
         public void Setup()
@@ -47,8 +43,6 @@ namespace Nethermind.Db.Test
             _logger = LimboLogs.Instance.GetClassLogger();
 
             _logIndexStorage = new(_columnsDb, _logger, _dbPath, 8);
-            _tempFilePath = _logIndexStorage.TempFilePath;
-            _finalFilePath = _logIndexStorage.FinalFilePath;
         }
 
         [TearDown]
@@ -91,6 +85,35 @@ namespace Nethermind.Db.Test
                 .Should().BeEquivalentTo([address1, address2]);
         }
 
+        [Test]
+        public async Task SetReceipts_SavesLogsWithDifferentTopics()
+        {
+            // Arrange
+            var topic1 = new Hash256("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+            var topic2 = new Hash256("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
+            int blockNumber = 100;
+            var receipts = new[]
+            {
+                new TxReceipt
+                {
+                    Logs = new List<LogEntry>
+                    {
+                        new(Address.Zero, [], [topic1]),
+                        new(Address.Zero, [], [topic2])
+                    }.ToArray()
+                }
+            };
+
+            // Act
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+
+            // Assert
+            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
+            Enumerate(topicDb)
+                .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
+                .Should().BeEquivalentTo([topic1, topic2]);
+        }
+
         [TestCase(7)]
         [TestCase(8)]
         [TestCase(15)]
@@ -124,35 +147,6 @@ namespace Nethermind.Db.Test
             // Assert
             var resultBlocks = _logIndexStorage.GetBlockNumbersFor(address, 1, batchSize * batchCount).ToList();
             resultBlocks.Should().BeEquivalentTo(Enumerable.Range(1, batchSize * batchCount), "The blocks returned should match the blocks that were saved.");
-        }
-
-        [Test]
-        public async Task SetReceipts_SavesLogsWithDifferentTopics()
-        {
-            // Arrange
-            var topic1 = new Hash256("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
-            var topic2 = new Hash256("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
-            int blockNumber = 100;
-            var receipts = new[]
-            {
-                new TxReceipt
-                {
-                    Logs = new List<LogEntry>
-                    {
-                        new(Address.Zero, [], [topic1]),
-                        new(Address.Zero, [], [topic2])
-                    }.ToArray()
-                }
-            };
-
-            // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
-
-            // Assert
-            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
-            Enumerate(topicDb)
-                .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
-                .Should().BeEquivalentTo([topic1, topic2]);
         }
 
         [Test]
@@ -222,42 +216,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public async Task SetReceipts_MovesToFinalizedFile()
-        {
-            // Arrange
-            var address1 = new Address("0x0000000000000000000000000000000000001234");
-            var topic1 = new Hash256("0x0000000000000000000000000000000000000000000000000000000000000001");
-            var address2 = new Address("0x0000000000000000000000000000000000005678");
-            var receipt = new TxReceipt
-            {
-                Logs = new List<LogEntry>
-                {
-                    new(address1, [], [topic1]),
-                    new(address2, [], [])
-                }.ToArray()
-            };
-
-            // Act
-            const int batchSize = 50;
-            TxReceipt[] receipts = Enumerable.Repeat(receipt, 10).ToArray();
-            for (int batchNum = 1; batchNum <= batchSize; batchNum++)
-            {
-                BlockReceipts[] batch = Enumerable.Range(batchSize * batchNum, batchSize)
-                    .Select(blockNum => new BlockReceipts(blockNum, receipts))
-                    .ToArray();
-
-                await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
-            }
-
-            await _logIndexStorage.TryDisposeAsync();
-
-            // Assert
-            File.Exists(_finalFilePath).Should().BeTrue("The finalized file should be created and contain the data.");
-            await using var finalFileStream = new FileStream(_finalFilePath, FileMode.Open, FileAccess.Read);
-            finalFileStream.Length.Should().BeGreaterThan(0, "The finalized file should not be empty.");
-        }
-
-        [Test]
         public async Task SetReceipts_MixedAddressAndTopicEntriesInSameBlock()
         {
             // Arrange
@@ -266,9 +224,9 @@ namespace Nethermind.Db.Test
             var receipt = new TxReceipt
             {
                 Logs = new List<LogEntry>
-        {
-            new(address1, [], [topic1])
-        }.ToArray()
+                {
+                    new(address1, [], [topic1])
+                }.ToArray()
             };
 
             // Act
@@ -293,10 +251,10 @@ namespace Nethermind.Db.Test
             var receipt = new TxReceipt
             {
                 Logs = new List<LogEntry>
-        {
-            new(address1, [], [topic1]),
-            new(address2, [], [topic2])
-        }.ToArray()
+                {
+                    new(address1, [], [topic1]),
+                    new(address2, [], [topic2])
+                }.ToArray()
             };
 
             // Act

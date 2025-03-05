@@ -12,21 +12,20 @@ public class SetReceiptsStats
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
     public long LastBlockNumber { get; set; } = -1;
+    public long NewDBKeys;
 
     public ExecTimeStats SeekForPrevHit { get; } = new();
     public ExecTimeStats SeekForPrevMiss { get; } = new();
     public ExecTimeStats BuildingDictionary { get; } = new();
     public ExecTimeStats ProcessingData { get; } = new();
-    public ExecTimeStats WaitingPage { get; } = new();
-    public ExecTimeStats StoringIndex { get; } = new();
-    public ExecTimeStats WritingTemp { get; } = new();
-    public ExecTimeStats WaitingForFinalization { get; } = new();
-    public ExecTimeStats FlushingDbs { get; } = new();
-    public ExecTimeStats FlushingTemp { get; } = new();
+
+    public long AddressMerges { get; set; }
+    public long TopicMerges { get; set; }
+    public ExecTimeStats CallingMerge { get; } = new();
+    public ExecTimeStats CompactingDbs { get; } = new();
+    public ExecTimeStats CreatingPostMergeKeys { get; } = new();
+
     public AverageStats KeysCount { get; } = new();
-    public AverageStats BytesWritten { get; } = new();
-    public long NewTempIndexes;
-    public long NewFinalIndexes;
 
     public void Combine(SetReceiptsStats other)
     {
@@ -34,21 +33,18 @@ public class SetReceiptsStats
         TxAdded += other.TxAdded;
         LogsAdded += other.LogsAdded;
         TopicsAdded += other.TopicsAdded;
+        AddressMerges += other.AddressMerges;
+        TopicMerges += other.TopicMerges;
+        NewDBKeys += other.NewDBKeys;
 
         SeekForPrevHit.Combine(other.SeekForPrevHit);
         SeekForPrevMiss.Combine(other.SeekForPrevMiss);
         BuildingDictionary.Combine(other.BuildingDictionary);
         ProcessingData.Combine(other.ProcessingData);
-        WaitingPage.Combine(other.WaitingPage);
-        StoringIndex.Combine(other.StoringIndex);
-        WritingTemp.Combine(other.WritingTemp);
-        WaitingForFinalization.Combine(other.WaitingForFinalization);
-        FlushingDbs.Combine(other.FlushingDbs);
-        FlushingTemp.Combine(other.FlushingTemp);
+        CallingMerge.Combine(other.CallingMerge);
+        CompactingDbs.Combine(other.CompactingDbs);
+        CreatingPostMergeKeys.Combine(other.CreatingPostMergeKeys);
         KeysCount.Combine(other.KeysCount);
-        BytesWritten.Combine(other.BytesWritten);
-        NewTempIndexes += other.NewTempIndexes;
-        NewFinalIndexes += other.NewFinalIndexes;
         LastBlockNumber = Math.Max(LastBlockNumber, other.LastBlockNumber);
     }
 }

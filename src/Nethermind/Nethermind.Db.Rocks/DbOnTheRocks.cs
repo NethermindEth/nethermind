@@ -1841,8 +1841,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             { "Concatenate", MergeOperators.Create("Concatenate", ConcatenatePartialMerge, ConcatenateFullMerge) }
         };
 
-        private static byte[] ConcatenateMerge(ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
+        private static unsafe ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> data, Span<byte> buffer)
         {
+            int length;
+            var blockNumbers = MemoryMarshal.Cast<byte, int>(data);
+
+            fixed (int* blockNumbersPtr = blockNumbers)
+            fixed (byte* compressedPtr = buffer)
+            {
+                length = TurboPFor.p4nd1enc256v32(blockNumbersPtr, blockNumbers.Length, compressedPtr);
+            }
+
+            return buffer[..length];
+        }
+
+        private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            success = true;
+
             // TODO: does Get involve IO request? if yes - use single Get per operand
             var resultLength = existingValue.Length;
             for (int i = 0; i < operands.Count; i++)
@@ -1858,12 +1874,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             for (int i = 0; i < operands.Count; i++)
             {
                 ReadOnlySpan<byte> operand = operands.Get(i);
+
+                if (shift + operand.Length > result.Length)
+                    operand = operand[..^(result.Length - shift)];
+
                 operand.CopyTo(result.AsSpan(shift..));
                 shift += operand.Length;
             }
 
-            success = true;
-            return result;
+            return result.Length <= LogIndexStorage.MaxUncompressedLength
+                ? result
+                : LogIndexStorage.Compress(key, result);
         }
 
         private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
@@ -1871,12 +1892,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             if (!hasExistingValue)
                 existingValue = ReadOnlySpan<byte>.Empty;
 
-            return ConcatenateMerge(existingValue, operands, out success);
+            return ConcatenateMerge(key, existingValue, operands, out success);
         }
 
         private static byte[] ConcatenatePartialMerge(ReadOnlySpan<byte> key, MergeOperators.OperandsEnumerator operands, out bool success)
         {
-            return ConcatenateMerge(ReadOnlySpan<byte>.Empty, operands, out success);
+            return ConcatenateMerge(key, ReadOnlySpan<byte>.Empty, operands, out success);
         }
     }
 }

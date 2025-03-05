@@ -22,7 +22,7 @@ public interface ILogIndexStorage : IAsyncDisposable
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
     Task StopAsync();
 
-    PagesStats PagesStats { get; }
-    string TempFilePath { get; }
-    string FinalFilePath { get; }
+    PagesStats PagesStats => default;
+    string TempFilePath => "";
+    string FinalFilePath => "";
 }
