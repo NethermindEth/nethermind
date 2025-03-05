@@ -266,7 +266,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(_blockCache, kvp.Key);
                 int writes = 0;
-
+                int skipped = 0;
                 foreach (var key in dict.Keys)
                 {
                     ref var change = ref dict.GetValueRefOrNullRef(key);
@@ -276,9 +276,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         storageTree.Set(key, change.After);
                         writes++;
                     }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
 
-                Db.Metrics.StorageTreeWrites += writes;
+                if (writes > 0)
+                    Db.Metrics.IncrementStorageTreeWrites(writes);
+                if (skipped > 0)
+                    Db.Metrics.IncrementStorageSkippedWrites(skipped);
 
                 storageTree.UpdateRootHash(canBeParallel: true);
                 _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
@@ -306,7 +313,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(state.changes, kvp.Key);
                 int writes = 0;
-
+                int skipped = 0;
                 foreach (var key in dict.Keys)
                 {
                     ref var change = ref dict.GetValueRefOrNullRef(key);
@@ -316,9 +323,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         storageTree.Set(key, change.After);
                         writes++;
                     }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
 
-                Db.Metrics.StorageTreeWrites += writes;
+                Db.Metrics.IncrementStorageTreeWrites(writes);
+                if (skipped > 0)
+                    Db.Metrics.IncrementStorageSkippedWrites(skipped);
 
                 storageTree.UpdateRootHash(canBeParallel: false);
                 return state;
