@@ -143,6 +143,7 @@ public class ExecutionProcessorTests
         static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
             Build.A.LogEntry
                 .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+                .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
                 .WithAddress(DepositContractAddress).TestObject;
     }
 
