@@ -34,7 +34,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly Channel<ProcessRequest> _processChannel;
     private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner);
 
-    private readonly uint _processConcurrency = 1;
+    private readonly int _processConcurrency = 1;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -45,14 +45,14 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
-        uint concurrency = 1)
+        int concurrency = 1)
         : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
-        _processChannel = Channel.CreateBounded<ProcessRequest>((int)concurrency);
+        _processChannel = Channel.CreateBounded<ProcessRequest>(concurrency);
         _processConcurrency = concurrency;
     }
 
