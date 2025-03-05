@@ -41,7 +41,7 @@ public class MetricsTests
 
         [System.ComponentModel.Description("summary metric")]
         [SummaryMetric]
-        public static ISummaryMetricObserver SomeObservation { get; set; } = NoopSummaryMetric.Instance;
+        public static IMetricObserver SomeObservation { get; set; } = NoopMetricObserver.Instance;
 
     }
 
@@ -93,8 +93,8 @@ public class MetricsTests
         Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
-        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
-        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.MetricUpdater>());
+        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.MetricUpdater>());
 
         Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(123));
         Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(1234));

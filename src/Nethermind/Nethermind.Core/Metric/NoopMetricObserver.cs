@@ -3,10 +3,10 @@
 
 namespace Nethermind.Core.Metric;
 
-public class NoopSummaryMetric
-    : ISummaryMetricObserver
+public class NoopMetricObserver
+    : IMetricObserver
 {
-    public static NoopSummaryMetric Instance = new();
+    public static NoopMetricObserver Instance = new();
 
     public void Observe(IMetricLabels labels, double value)
     {

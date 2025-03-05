@@ -3,7 +3,7 @@
 
 namespace Nethermind.Core.Metric;
 
-public interface ISummaryMetricObserver
+public interface IMetricObserver
 {
     public void Observe(IMetricLabels labels, double value);
 }

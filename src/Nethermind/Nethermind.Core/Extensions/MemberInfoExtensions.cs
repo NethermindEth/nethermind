@@ -24,4 +24,19 @@ public static class MemberInfoExtensions
             FieldInfo field => field.FieldType,
             _ => throw new NotSupportedException("Should be use for field and property only")
         };
+
+    public static void SetValue(this MemberInfo memberInfo, object value)
+    {
+        switch (memberInfo)
+        {
+            case PropertyInfo p:
+                p.SetValue(null, value);
+                break;
+            case FieldInfo f:
+                f.SetValue(null, value);
+                break;
+            default:
+                throw new UnreachableException();
+        }
+    }
 }

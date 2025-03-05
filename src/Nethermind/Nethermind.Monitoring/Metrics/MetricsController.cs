@@ -3,11 +3,9 @@
 
 #nullable enable
 using System;
-using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -110,7 +108,7 @@ namespace Nethermind.Monitoring.Metrics
             public Gauge Gauge => gauge;
         }
 
-        public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, ISummaryMetricObserver
+        public class MetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
             public void Update()
             {
@@ -218,7 +216,7 @@ namespace Nethermind.Monitoring.Metrics
         {
             Type memberType = memberInfo.GetMemberType();
 
-            if (memberType.IsAssignableTo(typeof(ISummaryMetricObserver)))
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)))
             {
                 SummaryMetricAttribute attribute = memberInfo.GetCustomAttribute<SummaryMetricAttribute>()!;
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
@@ -230,20 +228,8 @@ namespace Nethermind.Monitoring.Metrics
                         Objectives = attribute.ObjectiveQuantile.Zip(attribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
                     });
 
-                metricUpdater = new SummaryMetricUpdater(summary);
-
-                if (memberInfo is PropertyInfo p)
-                {
-                    p.SetValue(null, metricUpdater);
-                }
-                else if (memberInfo is FieldInfo f)
-                {
-                    f.SetValue(null, metricUpdater);
-                }
-                else
-                {
-                    throw new UnreachableException();
-                }
+                metricUpdater = new MetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
 
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
                 return true;
