@@ -2454,10 +2454,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string[] desiredTracePattern = new[]
             {
-                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"ILEVM_PRECOMPILED_({main})[0..48]",
                 $"ILEVM_PRECOMPILED_({aux})[0..5]",
                 $"ILEVM_PRECOMPILED_({main})[49..60]",
-                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"ILEVM_PRECOMPILED_({main})[0..48]",
                 $"ILEVM_PRECOMPILED_({main})[49..60]",
             };
 
@@ -2530,10 +2530,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string[] desiredTracePattern = new[]
             {
-                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"ILEVM_PRECOMPILED_({main})[0..48]",
                 $"ILEVM_PRECOMPILED_({aux})[0..5]",
                 $"ILEVM_PRECOMPILED_({main})[49..60]",
-                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"ILEVM_PRECOMPILED_({main})[0..48]",
                 $"AbortDestinationPattern",
             };
 
