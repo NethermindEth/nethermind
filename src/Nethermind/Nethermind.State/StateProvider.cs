@@ -659,7 +659,7 @@ namespace Nethermind.State
                     GetStateReadPreWarmCache(addressAsKey) :
                     GetStatePopulatePrewarmCache(addressAsKey);
 
-                accountChanges = new (account, account);
+                accountChanges = new(account, account);
             }
             else
             {
