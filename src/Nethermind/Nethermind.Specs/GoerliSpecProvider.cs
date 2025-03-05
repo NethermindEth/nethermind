@@ -8,8 +8,10 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
+[System.Obsolete("Goerli testnet has been deprecated. Use SepoliaSpecProvider instead.")]
 public class GoerliSpecProvider : ISpecProvider
 {
+    // Constants preserved for backward compatibility
     public const long IstanbulBlockNumber = 1_561_651;
     public const long BerlinBlockNumber = 4_460_644;
     public const long LondonBlockNumber = 5_062_605;
@@ -19,47 +21,29 @@ public class GoerliSpecProvider : ISpecProvider
 
     private GoerliSpecProvider() { }
 
+    // Delegate to SepoliaSpecProvider for all operations
+    private readonly ISpecProvider _sepoliaProvider = SepoliaSpecProvider.Instance;
+
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        return forkActivation.BlockNumber switch
-        {
-            < IstanbulBlockNumber => GenesisSpec,
-            < BerlinBlockNumber => Istanbul.Instance,
-            < LondonBlockNumber => Berlin.Instance,
-            _ => forkActivation.Timestamp switch
-            {
-                null or < ShanghaiTimestamp => London.Instance,
-                < CancunTimestamp => Shanghai.Instance,
-                _ => Cancun.Instance
-            }
-        };
+        return _sepoliaProvider.GetSpec(forkActivation);
     }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
-        if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
-        if (terminalTotalDifficulty is not null)
-            TerminalTotalDifficulty = terminalTotalDifficulty;
+        _sepoliaProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
     }
 
     public ulong NetworkId => BlockchainIds.Sepolia;
     public ulong ChainId => BlockchainIds.Sepolia;
-    public string SealEngine => SealEngineType.Clique;
-    public long? DaoBlockNumber => null;
-    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public ForkActivation? MergeBlockNumber { get; private set; }
-    public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = 10790000;
-    public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
-    public ForkActivation[] TransitionActivations { get; } =
-    {
-        (ForkActivation)IstanbulBlockNumber,
-        (ForkActivation)BerlinBlockNumber,
-        (ForkActivation)LondonBlockNumber,
-        (LondonBlockNumber + 1, ShanghaiTimestamp),
-        (LondonBlockNumber + 2, CancunTimestamp)
-    };
+    public string SealEngine => _sepoliaProvider.SealEngine;
+    public long? DaoBlockNumber => _sepoliaProvider.DaoBlockNumber;
+    public ulong? BeaconChainGenesisTimestamp => _sepoliaProvider.BeaconChainGenesisTimestamp;
+    public ForkActivation? MergeBlockNumber => _sepoliaProvider.MergeBlockNumber;
+    public ulong TimestampFork => _sepoliaProvider.TimestampFork;
+    public UInt256? TerminalTotalDifficulty => _sepoliaProvider.TerminalTotalDifficulty;
+    public IReleaseSpec GenesisSpec => _sepoliaProvider.GenesisSpec;
+    public ForkActivation[] TransitionActivations => _sepoliaProvider.TransitionActivations;
 
     public static readonly GoerliSpecProvider Instance = new();
 }

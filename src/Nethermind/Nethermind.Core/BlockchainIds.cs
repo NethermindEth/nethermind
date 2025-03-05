@@ -20,6 +20,7 @@ namespace Nethermind.Core
         public const int Olympic = 0;
         public const int Mainnet = 1;
         public const int Morden = 2;
+        [System.Obsolete("Goerli testnet has been deprecated. Use Sepolia or Holesky instead.")]
         public const int Goerli = 5;
         public const int RootstockMainnet = 30;
         public const int RootstockTestnet = 31;
@@ -45,7 +46,9 @@ namespace Nethermind.Core
                 Olympic => nameof(Olympic),
                 Mainnet => nameof(Mainnet),
                 Morden => nameof(Morden),
-                Goerli => nameof(Goerli),
+#pragma warning disable CS0618 // Type or member is obsolete
+                Goerli => nameof(Sepolia), // Redirecting Goerli to Sepolia
+#pragma warning restore CS0618 // Type or member is obsolete
                 RootstockMainnet => nameof(RootstockMainnet),
                 RootstockTestnet => nameof(RootstockTestnet),
                 EthereumClassicMainnet => nameof(EthereumClassicMainnet),

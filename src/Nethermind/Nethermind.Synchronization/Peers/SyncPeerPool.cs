@@ -422,7 +422,7 @@ namespace Nethermind.Synchronization.Peers
                     else
                     {
                         UpgradeAllocations();
-                        // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
+                        // cases when we want other nodes to resolve the impasse (check discussion on validator impasse situations)
                         if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);

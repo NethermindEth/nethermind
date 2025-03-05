@@ -35,14 +35,14 @@ for i in $(seq 1 $validators); do mkdir -p node_$i; done
 # Create genesis folder that will store chainspec file
 mkdir -p genesis
 
-echo "Downloading goerli chainspec from Nethermind GitHub repository"
-# Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
-wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
+echo "Downloading sepolia chainspec from Nethermind GitHub repository"
+# Download chainspec file with clique engine and place it in genesis folder (we will be using sepolia chainspec in this example)
+wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/sepolia.json
 
 # Remove all post merge EIPs
-sed -i '/TransitionTimestamp/d' goerli.json
+sed -i '/TransitionTimestamp/d' sepolia.json
 
-cp goerli.json genesis/goerli.json
+cp sepolia.json genesis/sepolia.json
 
 for i in $(seq 1 $validators); do mkdir -p node_$i/configs node_$i/staticNodes; done
 
@@ -134,7 +134,7 @@ cat <<EOF > node_$1/configs/config.json
         "StoreReceipts" : true,
         "EnableUnsecuredDevWallet": true,
         "IsMining": true,
-        "ChainSpecPath": "/config/genesis/goerli.json",
+        "ChainSpecPath": "/config/genesis/sepolia.json",
         "BaseDbPath": "nethermind_db/clique",
         "LogFileName": "clique.logs.txt",
         "StaticNodesPath": "Data/static-nodes.json"
@@ -221,7 +221,7 @@ function writeExtraData() {
     EXTRA_SEAL="0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     EXTRA_DATA=${EXTRA_VANITY}${SIGNERS}${EXTRA_SEAL}
     echo "EXTRA_DATA: $EXTRA_DATA"
-    cat goerli.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"' | .params.chainID = "0x12341234" | .params.networkID = "0x12341234" | .nodes = [] | .engine.clique.params.period = 3' > genesis/goerli.json
+    cat sepolia.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"' | .params.chainID = "0x12341234" | .params.networkID = "0x12341234" | .nodes = [] | .engine.clique.params.period = 3' > genesis/sepolia.json
 }
 
 function clearDbs() {

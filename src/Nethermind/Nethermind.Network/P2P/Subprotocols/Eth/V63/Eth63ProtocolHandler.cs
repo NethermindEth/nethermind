@@ -140,7 +140,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
             // could use more array pooled lists (pooled memmory) here.
-            // maybe remeasure allocations on another network since goerli has been phased out.
+            // TODO: remeasure allocations on Sepolia network
             IOwnedReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
             return nodeData;
         }
