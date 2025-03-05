@@ -35,10 +35,42 @@ public static class ProductInfo
             Version = Version[..Math.Min(index + 9, Version.Length - 1)];
         }
 
-        ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]}";
+        ClientIdParts =
+        [
+            Name,
+            $"v{Version}",
+            $"{OS.ToLowerInvariant()}-{OSArchitecture}",
+            $"dotnet{Runtime[5..]}"
+        ];
+
+        ClientId = string.Join("/", ClientIdParts);
     }
 
     public static DateTimeOffset BuildTimestamp { get; }
+
+    public static string FormatClientId(string? hiddenPartsName = null)
+    {
+        if (string.IsNullOrEmpty(hiddenPartsName))
+        {
+            return ClientId;
+        }
+
+        var hiddenPartsNameList =
+            hiddenPartsName.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var formattedClientId = new System.Text.StringBuilder();
+        var firstPart = true;
+
+        for (var i = 0; i < ClientIdPartNames.Length; i++)
+        {
+            if (hiddenPartsNameList.Contains(ClientIdPartNames[i])) continue;
+            if (!firstPart) formattedClientId.Append('/');
+            formattedClientId.Append(ClientIdParts[i]);
+            firstPart = false;
+        }
+
+        return formattedClientId.ToString();
+    }
 
     public static string ClientId { get; }
 
@@ -63,4 +95,9 @@ public static class ProductInfo
     public static string SyncType { get; set; } = string.Empty;
 
     public static string PruningMode { get; set; } = string.Empty;
+
+    private static string[] ClientIdParts { get; }
+
+    private static readonly string[] ClientIdPartNames = ["name", "version", "os", "runtime"];
+
 }

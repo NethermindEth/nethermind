@@ -30,7 +30,8 @@ public class P2PProtocolHandler(
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
     Regex? clientIdPattern,
-    ILogManager logManager)
+    ILogManager logManager,
+    string? clientIdHiddenParts)
     : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
 {
     private TaskCompletionSource<Packet> _pongCompletionSource;
@@ -296,16 +297,18 @@ public class P2PProtocolHandler(
 
     private void SendHello()
     {
+        string clientId = ProductInfo.FormatClientId(clientIdHiddenParts);
+
         if (Logger.IsTrace)
         {
-            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.ClientId}, " +
+            Logger.Trace($"{Session} {Name} sending hello with Client ID {clientId}, " +
                          $"protocol {Name}, listen port {ListenPort}");
         }
 
         HelloMessage helloMessage = new()
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
-            ClientId = ProductInfo.ClientId,
+            ClientId = clientId,
             NodeId = LocalNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
