@@ -1,4 +1,3 @@
-using Nethermind.Config;
 using Nethermind.Evm;
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {

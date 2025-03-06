@@ -1,16 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-using System;
-using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Core;
-using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc;
-using Nethermind.Network;
-using Nethermind.Consensus;
-using Nethermind.KeyStore.Config;
-using System.Configuration;
 using Nethermind.Logging;
 using System.IO.Abstractions;
 using Nethermind.PatternAnalyzer.Plugin.Tracer;

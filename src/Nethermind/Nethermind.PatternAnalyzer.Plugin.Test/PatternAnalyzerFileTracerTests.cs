@@ -2,29 +2,17 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.Test;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.State;
-using System.Linq;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using Nethermind.PatternAnalyzer.Plugin;
 using System.IO.Abstractions.TestingHelpers;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 using Nethermind.PatternAnalyzer.Plugin.Tracer;
-using System.Threading.Tasks;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using System.Threading;
-using System.Text;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.Specs;
 
