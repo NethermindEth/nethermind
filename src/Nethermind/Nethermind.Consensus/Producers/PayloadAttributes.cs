@@ -13,8 +13,6 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using System.Collections.Generic;
 using Nethermind.Crypto;
-using Nethermind.Consensus.Decoders;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -196,7 +194,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { InclusionListTransactions: not null } => EngineApiVersions.Osaka,
+            // { InclusionListTransactions: not null } => EngineApiVersions.Osaka,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
@@ -205,7 +203,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
-            { IsEip7805Enabled: true } => EngineApiVersions.Osaka,
+            // { IsEip7805Enabled: true } => EngineApiVersions.Osaka,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

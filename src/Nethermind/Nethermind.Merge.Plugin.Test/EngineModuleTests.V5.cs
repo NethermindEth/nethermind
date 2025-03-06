@@ -27,7 +27,7 @@ public partial class EngineModuleTests
         "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
         "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
         "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0xa90e8b68e4923ef7")]
+        "0x2fc07c25edadc149")]
     public virtual async Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -45,7 +45,7 @@ public partial class EngineModuleTests
         Transaction[] inclusionListTransactions = [];
 
         string?[] @params = InitForkchoiceParams(chain, inclusionListRaw, withdrawals);
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         Assert.Multiple(() =>
@@ -95,7 +95,7 @@ public partial class EngineModuleTests
         };
         @params = [chain.JsonSerializer.Serialize(fcuState), null];
 
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         Assert.Multiple(() =>
@@ -147,7 +147,7 @@ public partial class EngineModuleTests
     [TestCase(
         "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
         "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b")]
-    public virtual async Task NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(
+    public virtual async Task NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(
         string blockHash,
         string stateRoot)
     {
@@ -188,9 +188,8 @@ public partial class EngineModuleTests
             Id = responseId,
             Result = new PayloadStatusV1
             {
-                LatestValidHash = Keccak.Zero,
-                Status = PayloadStatus.Invalid,
-                ValidationError = "Block excludes valid inclusion list transaction"
+                LatestValidHash = new(blockHash),
+                Status = PayloadStatus.InvalidInclusionList
             }
         });
 
@@ -205,7 +204,7 @@ public partial class EngineModuleTests
         "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
         "0x6ee90247ca4b3cc8092f032a1c4b30e878797eb12c9852a598aa561410eb31bf",
         "0x3c3e0bb8ade764491e6073541192a076b10e0f550c3ba6635a8f48cc9cc96996",
-        "0x17812ce24578c28c",
+        "0x8a0d7d85cb3ac65e",
         "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
         "0x2632e314a000",
         "0x5208")]
@@ -233,13 +232,28 @@ public partial class EngineModuleTests
         Transaction[] inclusionListTransactions = [tx];
 
         string?[] @params = InitForkchoiceParams(chain, inclusionListRaw);
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         Assert.Multiple(() =>
         {
             Assert.That(successResponse, Is.Not.Null);
             Assert.That(response, Is.EqualTo(ExpectedValidForkchoiceResponse(chain, payloadId, latestValidHash)));
+        });
+
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_updatePayloadWithInclusionListV1", payloadId, inclusionListRaw);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+
+        string expectedUpdatePayloadWithInclusionListResponse = chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        {
+            Id = responseId,
+            Result = payloadId
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(expectedUpdatePayloadWithInclusionListResponse));
         });
 
         Block block = ExpectedBlock(
@@ -283,7 +297,7 @@ public partial class EngineModuleTests
             suggestedFeeRecipient = feeRecipient.ToString(),
             withdrawals = withdrawals ?? [],
             parentBeaconBlockRoot = Keccak.Zero,
-            inclusionListTransactions
+            // inclusionListTransactions
         };
 
         string?[] @params =
