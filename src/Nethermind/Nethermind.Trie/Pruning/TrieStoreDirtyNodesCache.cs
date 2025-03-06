@@ -39,20 +39,22 @@ internal class TrieStoreDirtyNodesCache
         // If the nodestore indicated that path is not required,
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
-        int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, Environment.ProcessorCount * 16));
+        // NOTE: DirtyNodesCache is already sharded.
+        int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
+        int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
         if (_storeByHash)
         {
-            _byHashObjectCache = new(CollectionExtensions.LockPartitions, initialBuckets);
+            _byHashObjectCache = new(concurrencyLevel, initialBuckets);
         }
         else
         {
-            _byKeyObjectCache = new(CollectionExtensions.LockPartitions, initialBuckets);
+            _byKeyObjectCache = new(concurrencyLevel, initialBuckets);
         }
         KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
         if (trackedPastKeyCount > 0 && !storeByHash)
         {
-            _pastPathHash = new(trackedPastKeyCount);
+            _pastPathHash = new(trackedPastKeyCount, concurrencyLevel);
         }
     }
 
@@ -301,7 +303,7 @@ internal class TrieStoreDirtyNodesCache
 
         using (AcquireMapLock())
         {
-            INodeStorage.WriteBatch writeBatch = nodeStorage.StartWriteBatch();
+            INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
             try
             {
                 int round = 0;
@@ -347,6 +349,7 @@ internal class TrieStoreDirtyNodesCache
         void PersistNode(TrieNode n, Hash256? address, TreePath path)
         {
             if (n.Keccak is null) return;
+            if (n.NodeType == NodeType.Unknown) return;
             Key key = new Key(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {

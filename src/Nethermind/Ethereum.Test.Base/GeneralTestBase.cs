@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Tracing;
@@ -34,7 +35,6 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new NUnitLogger(LogLevel.Info));
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
-        private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
         [SetUp]
         public void Setup()
@@ -60,10 +60,12 @@ namespace Ethereum.Test.Base
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             EofValidator.Logger = _logger;
-            ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
-                ? GnosisSpecProvider.Instance
-                : new CustomSpecProvider(
-                    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+            
+            test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
+
+            ISpecProvider specProvider =
+                new CustomSpecProvider(test.ChainId, test.ChainId,
+                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
 
             if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
@@ -109,7 +111,7 @@ namespace Ethereum.Test.Base
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+                test.Transaction.ChainId = test.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
                 BlockHeader parent = new(
@@ -129,7 +131,7 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
+            ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
             TransactionResult? txResult = null;
             if (txIsValid)
             {

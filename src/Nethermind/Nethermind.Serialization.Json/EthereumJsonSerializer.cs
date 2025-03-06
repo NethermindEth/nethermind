@@ -63,6 +63,7 @@ namespace Nethermind.Serialization.Json
             var options = new JsonSerializerOptions
             {
                 WriteIndented = indented,
+                NewLine = "\n",
                 IncludeFields = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

@@ -5,11 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -159,7 +164,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                                                  Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
 
             Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
-            DepositContractAddress = chainSpecJson.Params.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
+            DepositContractAddress = LoadDependentParam(chainSpecJson.Params.Eip6110TransitionTimestamp, chainSpecJson.Params.DepositContractAddress,
+                () => chainSpecJson.Params.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
             Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
             Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
             Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
@@ -188,6 +194,21 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
+
+    private TValue? LoadDependentParam<TTransition, TValue>(
+        TTransition? transition,
+        TValue? value,
+        Func<TValue?>? fallback = null,
+        [CallerArgumentExpression("transition")] string transitionPropertyName = "",
+        [CallerArgumentExpression("value")] string valuePropertyName = "")
+        where TTransition : struct, IBinaryInteger<TTransition> =>
+        transition is not null
+            ? value is null
+                ? (fallback is not null ? fallback() : default) ?? throw new InvalidConfigurationException(
+                    $"Chainspec contains configuration for {transitionPropertyName}, but doesn't contain it for connected parameter {valuePropertyName}",
+                    ExitCodes.MissingChainspecEipConfiguration)
+                : value
+            : default;
 
     private static void ValidateParams(ChainSpecParamsJson parameters)
     {

@@ -15,6 +15,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -1151,7 +1152,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_accept_only_when_synced([Values(false, true)] bool isSynced)
+        public void should_accept_only_when_synced([Values(false, true)] bool isSynced, [Values(false, true)] bool isLocal)
         {
             if (!isSynced)
             {
@@ -1165,9 +1166,9 @@ namespace Nethermind.TxPool.Test
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactionsCount().Should().Be(isSynced ? 1 : 0);
-            result.Should().Be(isSynced ? AcceptTxResult.Accepted : AcceptTxResult.Syncing);
+            AcceptTxResult result = _txPool.SubmitTx(tx, isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
+            _txPool.GetPendingTransactionsCount().Should().Be((isSynced || isLocal) ? 1 : 0);
+            result.Should().Be((isSynced || isLocal) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing);
         }
 
         [Test]
@@ -2194,6 +2195,23 @@ namespace Nethermind.TxPool.Test
             {
                 await semaphoreSlim.WaitAsync(10);
             }
+        }
+
+        private async Task RaiseBlockAddedToMainAndWaitForNewHead(Block block, Block previousBlock = null)
+        {
+            BlockReplacementEventArgs blockReplacementEventArgs = previousBlock is null
+                ? new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject)
+                : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
+
+            Task waitTask = Wait.ForEventCondition<Block>(
+                default,
+                e => _txPool.TxPoolHeadChanged += e,
+                e => _txPool.TxPoolHeadChanged -= e,
+                e => e.Number == block.Number
+            );
+
+            _blockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
+            await waitTask;
         }
     }
 }

@@ -24,7 +24,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
     public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
 
-    public IEnumerable<IEthereumTest> Load(string testsDir, string wildcard = null)
+    public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
     {
         string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", ArchiveVersion, ArchiveName.Split('.')[0]);
         if (!Directory.Exists(testsDirectoryName)) // Prevent redownloading the fixtures if they already exists with this version and archive name
@@ -57,7 +57,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
     private IEnumerable<IEthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, TestType testType)
     {
-        List<IEthereumTest> testsByName = new();
+        List<EthereumTest> testsByName = new();
         IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
         foreach (string testFile in testFiles)
@@ -65,14 +65,14 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             FileTestsSource fileTestsSource = new(testFile, wildcard);
             try
             {
-                IEnumerable<IEthereumTest> tests = testType switch
+                IEnumerable<EthereumTest> tests = testType switch
                 {
                     TestType.Eof => fileTestsSource.LoadEofTests(),
                     TestType.GeneralState => fileTestsSource.LoadGeneralStateTests(),
                     _ => fileTestsSource.LoadBlockchainTests()
                 };
 
-                foreach (IEthereumTest test in tests)
+                foreach (EthereumTest test in tests)
                 {
                     test.Category ??= testDir;
                 }
@@ -80,7 +80,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
             catch (Exception e)
             {
-                IEthereumTest failedTest = testType switch
+                EthereumTest failedTest = testType switch
                 {
                     TestType.Eof => new EofTest(),
                     TestType.GeneralState => new GeneralStateTest(),
