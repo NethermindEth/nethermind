@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.SnapSync;
@@ -317,7 +318,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
         }
 
-        private async Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(ValueHash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
+        private async Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {
             TrieNodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetTrieNodesMessage

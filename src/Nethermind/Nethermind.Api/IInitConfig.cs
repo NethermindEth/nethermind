@@ -45,6 +45,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
     string StaticNodesPath { get; set; }
 
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "Data/trusted-nodes.json")]
+    string TrustedNodesPath { get; set; }
+
     [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
     string LogFileName { get; set; }
 
@@ -89,6 +92,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "65536", HiddenFromDocs = true)]
+    int BackgroundTaskMaxNumber { get; set; }
 }
 
 public enum DiagnosticMode

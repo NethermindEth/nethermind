@@ -8,7 +8,7 @@ using Nethermind.Blockchain.FullPruning;
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 [RpcModule(ModuleType.Admin)]
-public interface IAdminRpcModule : IRpcModule
+public interface IAdminRpcModule : IContextAwareRpcModule
 {
     [JsonRpcMethod(Description = "Adds given node.",
         EdgeCaseHint = "",
@@ -62,6 +62,40 @@ public interface IAdminRpcModule : IRpcModule
         IsImplemented = false)]
     ResultWrapper<bool> admin_setSolc();
 
+    [JsonRpcMethod(Description = "Runs full pruning if enabled.",
+        EdgeCaseHint = "",
+        ExampleResponse = "\"Starting\"",
+        IsImplemented = true)]
+    ResultWrapper<PruningStatus> admin_prune();
+
+    [JsonRpcMethod(Description = "Exports a range of historic block in era1 format.",
+    EdgeCaseHint = "",
+    ExampleResponse = "\"Export task started.\"",
+    IsImplemented = true)]
+    Task<ResultWrapper<string>> admin_exportHistory(
+        [JsonRpcParameter(Description = "Destination path to export to.", ExampleValue = "/tmp/eraexportdir")]
+        string destinationPath,
+        [JsonRpcParameter(Description = "Start block to export from.", ExampleValue = "0")]
+        int from,
+        [JsonRpcParameter(Description = "Last block to export to. Set to 0 to export to head.", ExampleValue = "1000000")]
+        int to
+    );
+
+    [JsonRpcMethod(Description = "Import a range of historic block from era1 directory.",
+    EdgeCaseHint = "",
+    ExampleResponse = "\"Export task started.\"",
+    IsImplemented = true)]
+    Task<ResultWrapper<string>> admin_importHistory(
+        [JsonRpcParameter(Description = "Source path to import from.", ExampleValue = "/tmp/eradir")]
+        string sourcePath,
+        [JsonRpcParameter(Description = "Start block to import from the era directory. Set to 0 to import from the first available block.", ExampleValue = "0")]
+        int from = 0,
+        [JsonRpcParameter(Description = "End block to import from the era directory. Set to 0 to import until last block.", ExampleValue = "0")]
+        int to = 0,
+        [JsonRpcParameter(Description = "Accumulator file to trust. Set to null to trust the era archive without accumulator file verification.", ExampleValue = "null")]
+        string? accumulatorFile = null
+    );
+
     [JsonRpcMethod(Description = "True if state root for the block is available",
         EdgeCaseHint = "",
         ExampleResponse = "\"Starting\"",
@@ -73,4 +107,29 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<string> admin_verifyTrie(BlockParameter block);
+
+    [JsonRpcMethod(Description = "Adds given node as a trusted peer, allowing the node to always connect even if slots are full.",
+        EdgeCaseHint = "",
+        ResponseDescription = "Boolean indicating success",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_addTrustedPeer(
+        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
+        string enode
+);
+
+    [JsonRpcMethod(Description = "Removes the given node from the trusted peers list.",
+        EdgeCaseHint = "",
+        ResponseDescription = "Boolean indicating success",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_removeTrustedPeer(
+        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
+        string enode
+);
+
+    [JsonRpcMethod(Description = "Subscribes to a particular event over WebSocket. For every event that matches the subscription, a notification with event details and subscription id is sent to a client.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null);
+    [JsonRpcMethod(Description = "Unsubscribes from a subscription.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    ResultWrapper<bool> admin_unsubscribe(string subscriptionId);
 }

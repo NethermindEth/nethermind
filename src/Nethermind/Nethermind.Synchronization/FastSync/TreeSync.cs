@@ -406,6 +406,11 @@ namespace Nethermind.Synchronization.FastSync
 
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
+            if (currentState == SyncFeedState.Dormant)
+            {
+                _stateSyncPivot.UpdateHeaderForcefully();
+            }
+
             BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
 
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
@@ -925,7 +930,7 @@ namespace Nethermind.Synchronization.FastSync
                             TreePath finalStorageRoot = currentStateSyncItem.Path.Append(trieNode.Key);
                             Debug.Assert(finalStorageRoot.Length == 64);
 
-                            Hash256 address = finalStorageRoot.Path;
+                            Hash256 address = finalStorageRoot.Path.ToCommitment();
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)

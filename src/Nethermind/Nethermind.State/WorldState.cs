@@ -201,11 +201,6 @@ namespace Nethermind.State
             return _stateProvider.GetCodeHash(address);
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
-        {
-            _stateProvider.Accept(visitor, stateRoot, visitingOptions);
-        }
-
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
@@ -263,8 +258,7 @@ namespace Nethermind.State
             Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
         }
 
-        // Needed for benchmarks
-        internal void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in UInt256 nonce)
         {
             _stateProvider.SetNonce(address, nonce);
         }

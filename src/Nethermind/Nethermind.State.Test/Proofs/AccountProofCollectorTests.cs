@@ -269,7 +269,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Set(UInt256.One, Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Commit();
@@ -293,7 +293,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Set(UInt256.One, Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Commit();
@@ -321,7 +321,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -357,7 +357,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -397,7 +397,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -437,7 +437,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -501,7 +501,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -605,7 +605,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             addressWithStorage.StorageCells = new StorageCell[storageCount];
             addressWithStorage.Address = address;
 
-            StorageTree storageTree = new(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < storageCount; j++)
             {
                 UInt256 index = UInt256.Parse(lines[j + 2].Replace("storage: ", string.Empty));
@@ -685,7 +685,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             for (int i = 0; i < accountsCount; i++)
             {
                 Account account = Build.An.Account.WithBalance((UInt256)i).TestObject;
-                StorageTree storageTree = new(trieStore.GetTrieStore(addressesWithStorage[i].Address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+                StorageTree storageTree = new(trieStore.GetTrieStore(addressesWithStorage[i].Address), Keccak.EmptyTreeHash, LimboLogs.Instance);
                 for (int j = 0; j < i; j++)
                 {
                     storageTree.Set(addressesWithStorage[i].StorageCells[j].Index, new byte[1] { 1 });

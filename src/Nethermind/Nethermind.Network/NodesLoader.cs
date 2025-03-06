@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -28,7 +29,7 @@ namespace Nethermind.Network
         public NodesLoader(
             INetworkConfig networkConfig,
             INodeStatsManager stats,
-            INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             IRlpxHost rlpxHost,
             ILogManager logManager)
         {

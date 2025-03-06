@@ -5,7 +5,7 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie
 {
-    internal static class TrieNodeFactory
+    public static class TrieNodeFactory
     {
         public static TrieNode CreateBranch()
         {

@@ -8,12 +8,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24517.1" />
+      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24528.1" />
+      <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.0" Aliases="BouncyCastle"/>
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Cli\Nethermind.Cli.csproj" />
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+      <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
     </ItemGroup>
 
 </Project>

@@ -73,7 +73,6 @@ public class ShutterApiSimulator(
     {
         var receipts = new TxReceipt[logs.Length];
         block.Header.Bloom = new(logs);
-
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
@@ -130,7 +129,7 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {
         return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }
