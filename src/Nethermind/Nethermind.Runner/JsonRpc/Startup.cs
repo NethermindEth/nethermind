@@ -155,6 +155,7 @@ public class Startup
             var method = ctx.Request.Method;
             if (method is not "POST" and not "GET")
             {
+                ctx.Response.StatusCode = (int)HttpStatusCode.MethodNotAllowed;
                 return;
             }
 
@@ -164,9 +165,9 @@ public class Startup
                 return;
             }
 
-            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
-                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
             {
+                ctx.Response.StatusCode = (int)HttpStatusCode.NotFound;
                 return;
             }
 
@@ -183,7 +184,11 @@ public class Startup
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
-            else if (ctx.Request.ContentType?.Contains("application/json") ?? false)
+            else if (ctx.Request.ContentType?.Contains("application/json") == false)
+            {
+                await PushErrorResponse(StatusCodes.Status415UnsupportedMediaType, ErrorCodes.InvalidRequest, "Missing 'application/json' Content-Type header");
+            }
+            else
             {
                 if (jsonRpcUrl.MaxRequestBodySize is not null)
                     ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
@@ -316,7 +321,7 @@ public class Startup
     }
 
     /// <summary>
-    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1) 
+    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1)
     /// </summary>
     /// <param name="remoteIp">Request source</param>
     private static bool IsLocalhost(IPAddress remoteIp)

@@ -30,3 +30,12 @@ public sealed class KeyIsLabelAttribute : Attribute
         LabelNames = labelNames;
     }
 }
+
+public sealed class SummaryMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; set; } = [];
+
+    // Summary objective in quantile-epsilon pair
+    public double[] ObjectiveQuantile { get; set; } = [];
+    public double[] ObjectiveEpsilon { get; set; } = [];
+}

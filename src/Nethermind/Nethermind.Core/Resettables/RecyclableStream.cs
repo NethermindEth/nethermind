@@ -9,5 +9,4 @@ public class RecyclableStream
 {
     private static readonly RecyclableMemoryStreamManager _manager = new RecyclableMemoryStreamManager();
     public static RecyclableMemoryStream GetStream(string tag) => _manager.GetStream(tag);
-    public static RecyclableMemoryStream GetStream(string tag, long requiredSize) => _manager.GetStream(tag, requiredSize);
 }
