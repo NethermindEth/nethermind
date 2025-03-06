@@ -3,14 +3,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -18,20 +19,18 @@ namespace Nethermind.Api.Extensions;
 
 public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger logger, params Type[] embedded) : IPluginLoader
 {
-    private readonly ILogger _logger = logger;
     private readonly List<Type> _pluginTypes = [];
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-    private readonly Type[] _embedded = embedded;
     private readonly string _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
 
     public IEnumerable<Type> PluginTypes => _pluginTypes;
 
     public void Load()
     {
-        if (_logger.IsInfo) _logger.Info("Loading embedded plugins");
-        foreach (Type embeddedPlugin in _embedded)
+        if (logger.IsInfo) logger.Info("Loading embedded plugins");
+        foreach (Type embeddedPlugin in embedded)
         {
-            if (_logger.IsInfo) _logger.Info($"  Found plugin type {embeddedPlugin}");
+            if (logger.IsInfo) logger.Info($"  Found plugin type {embeddedPlugin}");
             _pluginTypes.Add(embeddedPlugin);
         }
 
@@ -39,14 +38,14 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
         if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
         {
-            if (_logger.IsWarn) _logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
+            if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
             return;
         }
 
         string[] assemblies = _fileSystem.Directory.GetFiles(pluginAssembliesDir, "*.dll");
         if (assemblies.Length > 0)
         {
-            if (_logger.IsInfo) _logger.Info($"Loading {assemblies.Length} assemblies from {pluginAssembliesDir}");
+            if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} assemblies from {pluginAssembliesDir}");
         }
 
         foreach (string assemblyName in assemblies)
@@ -55,7 +54,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
             try
             {
-                if (_logger.IsInfo) _logger.Info($"Loading assembly {pluginAssembly}");
+                if (logger.IsInfo) logger.Info($"Loading assembly {pluginAssembly}");
                 string assemblyPath = _fileSystem.Path.Combine(pluginAssembliesDir, assemblyName);
                 Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
                 AssemblyLoadContext.Default.Resolving += (_, name) =>
@@ -77,7 +76,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                     {
                         if (!PluginTypes.Contains(type))
                         {
-                            if (_logger.IsInfo) _logger.Info($"  Found plugin type {pluginAssembly}");
+                            if (logger.IsInfo) logger.Info($"  Found plugin type {pluginAssembly}");
                             _pluginTypes.Add(type);
                         }
                     }
@@ -85,7 +84,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception e)
             {
-                _logger.Error($"Failed to load plugin {pluginAssembly}", e);
+                logger.Error($"Failed to load plugin {pluginAssembly}", e);
             }
         }
     }
@@ -130,58 +129,34 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         });
     }
 
-    private bool TryResolveParameter(IConfigProvider configProvider, ChainSpec chainSpec, Type parameterType, [NotNullWhen(true)] out object? parameter)
-    {
-        if (parameterType == typeof(ChainSpec))
-        {
-            parameter = chainSpec;
-            return true;
-        }
-
-        if (parameterType.IsAssignableTo(typeof(IConfig)))
-        {
-            parameter = configProvider.GetConfig(parameterType);
-            return true;
-        }
-
-        parameter = null;
-        return false;
-    }
-
-    private INethermindPlugin CreatePluginInstance(IConfigProvider configProvider, ChainSpec chainSpec, Type plugin)
-    {
-        ConstructorInfo[] constructors = plugin.GetConstructors();
-        // For simplicity and to prevent mistake, only one constructor should be defined.
-        if (constructors.Length != 1) throw new Exception($"Plugin {plugin.Name} has more than one constructor");
-
-        ConstructorInfo constructor = constructors[0];
-        object[] parameters = new object[constructor.GetParameters().Length];
-        for (int i = 0; i < constructor.GetParameters().Length; i++)
-        {
-            ParameterInfo parameter = constructor.GetParameters()[i];
-
-            if (!TryResolveParameter(configProvider, chainSpec, parameter.ParameterType, out parameters[i]!))
-            {
-                throw new Exception($"Failed to resolve parameter {parameter.ParameterType} for plugin {plugin.Name} construction");
-            }
-        }
-
-        return (INethermindPlugin)constructor.Invoke(parameters);
-    }
-
     public async Task<IList<INethermindPlugin>> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
     {
-        List<INethermindPlugin> plugins = new List<INethermindPlugin>();
-        if (_logger.IsInfo) _logger.Info($"Detected {PluginTypes.Count()} plugins");
-        foreach (Type pluginType in PluginTypes)
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddSingleton(configProvider)
+            .AddSingleton(chainSpec)
+            .AddSource(new ConfigRegistrationSource());
+
+        foreach (var pluginType in PluginTypes)
+        {
+            builder
+                .RegisterType(pluginType)
+                .ExternallyOwned()
+                .As<INethermindPlugin>()
+                .SingleInstance();
+        }
+
+        await using IContainer container = builder.Build();
+        IList<INethermindPlugin> allPlugins = container.Resolve<IList<INethermindPlugin>>();
+        IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
+        if (logger.IsInfo) logger.Info($"Detected {PluginTypes.Count()} plugins");
+        foreach (INethermindPlugin plugin in allPlugins)
         {
             try
             {
-                INethermindPlugin plugin = CreatePluginInstance(configProvider, chainSpec, pluginType);
-                if (_logger.IsInfo)
+                if (logger.IsInfo)
                 {
                     string pluginName = $"{plugin.Name} by {plugin.Author}";
-                    _logger.Info($"  {pluginName,-30} {(plugin.Enabled ? "Enabled" : "Disabled")}");
+                    logger.Info($"  {pluginName,-30} {(plugin.Enabled ? "Enabled" : "Disabled")}");
                 }
                 if (plugin.Enabled)
                 {
@@ -194,7 +169,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", ex);
+                if (logger.IsError) logger.Error($"Failed to load plugin {plugin.Name}", ex);
             }
         }
 
