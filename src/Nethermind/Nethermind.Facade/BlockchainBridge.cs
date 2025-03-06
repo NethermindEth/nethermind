@@ -164,24 +164,23 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput<TTrace> Simulate<TTrace>(
+        public SimulateOutput<TTrace> Simulate<TTracer, TTrace>(
             BlockHeader header,
             SimulatePayload<TransactionWithSourceDetails> payload,
-            CancellationToken cancellationToken,
-            IBlockTracer? tracer = null)
+            CancellationToken cancellationToken) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>>
         {
-            IBlockTracer<TTrace> ttracer = tracer != null ? (IBlockTracer<TTrace>)tracer : (IBlockTracer<TTrace>)new SimulateBlockTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            IBlockTracer<SimulateBlockResult<TTrace>> tracer = (TTracer)Activator.CreateInstance(typeof(TTracer), payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
             BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(ttracer);
+            receiptsTracer.SetOtherTracer(tracer);
 
             SimulateOutput<TTrace> result = new();
 
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate<TTrace>(
+                if (!_simulateBridgeHelper.TrySimulate<TTracer, TTrace>(
                         header,
                         payload,
-                        ttracer,
+                        tracer,
                         new CancellationBlockTracer(receiptsTracer, cancellationToken),
                         out string error))
                 {
@@ -197,7 +196,7 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.Items = ttracer.BuildResult();
+            result.Items = tracer.BuildResult();
             return result;
         }
 

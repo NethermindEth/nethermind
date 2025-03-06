@@ -27,8 +27,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
     public virtual ResultWrapper<TResult> Execute(
         TRequest call,
         BlockParameter? blockParameter,
-        Dictionary<Address, AccountOverride>? stateOverride = null,
-        IBlockTracer? tracer = null)
+        Dictionary<Address, AccountOverride>? stateOverride = null)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError) return ResultWrapper<TResult>.Fail(searchResult);
@@ -45,7 +44,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
     protected abstract TProcessing Prepare(TRequest call);
 
-    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token, IBlockTracer? tracer = null);
+    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
     protected ResultWrapper<TResult>? TryGetInputError(CallOutput result)
     {

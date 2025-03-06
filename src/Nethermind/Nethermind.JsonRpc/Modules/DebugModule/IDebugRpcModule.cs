@@ -118,6 +118,6 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
     [JsonRpcMethod(Description = "Retrieves the simulated blocks")]
-    ResultWrapper<IReadOnlyList<GethLikeTxTrace>> debug_simulateV1(
+    ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null);
 }

@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
+using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -388,11 +389,10 @@ public class DebugRpcModule : IDebugRpcModule
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _jsonRpcConfig.BuildTimeoutCancellationToken();
 
-    public ResultWrapper<IReadOnlyList<GethLikeTxTrace>> debug_simulateV1(
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
     {
-        GethLikeBlockMemoryTracer tracer = new(GethTraceOptions.Default);
-        return new SimulateTxExecutor<GethLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
-            .Execute(payload, blockParameter, tracer: tracer);
+        return new SimulateTxExecutor<GethLikeSimulateBlockTracer, GethLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
+            .Execute(payload, blockParameter);
     }
 }

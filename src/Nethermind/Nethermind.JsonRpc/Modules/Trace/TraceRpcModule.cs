@@ -24,6 +24,7 @@ using Nethermind.State;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -327,12 +328,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Simulate transactions using ParityLikeBlockTracer
         /// </summary>
-        public ResultWrapper<IReadOnlyList<ParityLikeTxTrace>> trace_simulateV1(
+        public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
         {
-            ParityLikeBlockTracer tracer = new(ParityTraceTypes.All);
-            return new SimulateTxExecutor<ParityLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
-                .Execute(payload, blockParameter, tracer: tracer);
+            return new SimulateTxExecutor<ParityLikeSimulateBlockTracer, ParityLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
+                .Execute(payload, blockParameter);
         }
 
     }

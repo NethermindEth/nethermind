@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx;
             }
 
-            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token, IBlockTracer? tracer = null)
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
                 if (NoBaseFee)
@@ -50,8 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
-                Dictionary<Address, AccountOverride>? stateOverride = null,
-                IBlockTracer? tracer = null)
+                Dictionary<Address, AccountOverride>? stateOverride = null)
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);

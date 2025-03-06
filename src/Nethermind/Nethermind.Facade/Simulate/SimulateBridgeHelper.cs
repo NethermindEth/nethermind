@@ -56,22 +56,22 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate<TTrace>(
+    public bool TrySimulate<TTracer, TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        IBlockTracer<TTrace> simulateOutputTracer,
+        IBlockTracer<SimulateBlockResult<TTrace>>  simulateOutputTracer,
         IBlockTracer tracer,
-        [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
+        [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>>  =>
+        TrySimulate<TTracer, TTrace>(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
 
 
-    private bool TrySimulate<TTrace>(
+    private bool TrySimulate<TTracer, TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        IBlockTracer<TTrace> ttracer,
+        IBlockTracer<SimulateBlockResult<TTrace>>  simulateOutputTracer,
         IBlockTracer tracer,
         SimulateReadOnlyBlocksProcessingEnv env,
-        [NotNullWhen(false)] out string? error)
+        [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>>
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -109,7 +109,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                CheckMisssingAndSetTracedDefaults(ttracer, processedBlock);
+                CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
                 parent = processedBlock.Header;
             }
@@ -121,9 +121,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
     private static void CheckMisssingAndSetTracedDefaults<TTrace>(IBlockTracer<TTrace> tracer, Block processedBlock)
     {
-        if (tracer is SimulateBlockTracer simulateBlockTracer)
+        if (tracer is SimulateBlockTracerBase<TxTracer, TTrace> simulateBlockTracer)
         {
-            SimulateBlockResult current = simulateBlockTracer.Results.Last();
+            SimulateBlockResult<TTrace> current = simulateBlockTracer.Results.Last();
             current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
             current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
             current.TransactionsRoot = processedBlock.Header.TxRoot;
