@@ -329,8 +329,8 @@ public sealed unsafe partial class VirtualMachine(
     private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
     {
         Address callCodeOwner = previousState.Env.ExecutingAccount;
-        // ReturnContract was called with a container index and auxdata
-        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+        // ReturnCode was called with a container index and auxdata
+        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
         ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
         EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
 

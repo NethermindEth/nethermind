@@ -180,7 +180,7 @@ namespace Nethermind.Evm
 
         EOFCREATE = 0xec,
 
-        RETURNCONTRACT = 0xee,
+        RETURNCODE = 0xee,
 
 
         CREATE = 0xf0,
@@ -214,7 +214,7 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            Instruction.JUMPF or Instruction.RETURNCONTRACT => true,
+            Instruction.JUMPF or Instruction.RETURNCODE => true,
             Instruction.RJUMP => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
@@ -232,7 +232,7 @@ namespace Nethermind.Evm
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
                 Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
-                Instruction.RETURNCONTRACT or Instruction.EOFCREATE => IsEofContext,
+                Instruction.RETURNCODE or Instruction.EOFCREATE => IsEofContext,
                 Instruction.DATACOPY or Instruction.DATASIZE or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
                 Instruction.EXTSTATICCALL or Instruction.EXTDELEGATECALL or Instruction.EXTCALL => IsEofContext,
                 Instruction.RETURNDATALOAD => IsEofContext,
@@ -354,7 +354,7 @@ namespace Nethermind.Evm
             Instruction.BLOBBASEFEE => (0, 1, 0),
 
             Instruction.EOFCREATE => (4, 1, 1),
-            Instruction.RETURNCONTRACT => (2, 2, 1),
+            Instruction.RETURNCODE => (2, 2, 1),
             Instruction.DATALOAD => (1, 1, 0),
             Instruction.DATALOADN => (0, 1, 2),
             Instruction.DATASIZE => (0, 1, 0),

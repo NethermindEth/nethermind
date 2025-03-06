@@ -701,7 +701,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     if (tx.IsEofContractCreation)
                     {
-                        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+                        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
                         ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
                         EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
 

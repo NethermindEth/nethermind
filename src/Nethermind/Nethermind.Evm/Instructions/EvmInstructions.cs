@@ -256,7 +256,7 @@ internal unsafe static partial class EvmInstructions
             lookup[(int)Instruction.SWAPN] = &InstructionSwapN;
             lookup[(int)Instruction.EXCHANGE] = &InstructionExchange;
             lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate<TTracingInstructions>;
-            lookup[(int)Instruction.RETURNCONTRACT] = &InstructionReturnContract;
+            lookup[(int)Instruction.RETURNCODE] = &InstructionReturnCode;
         }
 
         // Contract creation and call opcodes.

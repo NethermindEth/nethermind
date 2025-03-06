@@ -1030,10 +1030,10 @@ internal class Eof1 : IEofVersionHandler
                         }
                     }
                 }
-                else if (opcode == Instruction.RETURNCONTRACT)
+                else if (opcode == Instruction.RETURNCODE)
                 {
-                    // Validate the RETURNCONTRACT branch.
-                    if (!ValidateReturnContract(ref nextPosition, strategy, containersWorklist, eofContainer, code, invalidJumpDestinations))
+                    // Validate the RETURNCODE branch.
+                    if (!ValidateReturnCode(ref nextPosition, strategy, containersWorklist, eofContainer, code, invalidJumpDestinations))
                         return false;
                 }
                 else if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
@@ -1194,7 +1194,7 @@ internal class Eof1 : IEofVersionHandler
     }
 
     /// <summary>
-    /// Validates the RETURNCONTRACT instruction branch.
+    /// Validates the RETURNCODE instruction branch.
     /// This branch verifies that the container mode is switched properly and that the immediate argument is valid.
     /// </summary>
     /// <param name="pos">A reference to the current position pointer (advanced on success).</param>
@@ -1203,8 +1203,8 @@ internal class Eof1 : IEofVersionHandler
     /// <param name="eofContainer">The entire EOF container.</param>
     /// <param name="code">The entire code span.</param>
     /// <param name="invalidJumpDestinations">The bitmap tracking invalid jump locations.</param>
-    /// <returns>True if the RETURNCONTRACT branch is valid; otherwise, false.</returns>
-    private static bool ValidateReturnContract(
+    /// <returns>True if the RETURNCODE branch is valid; otherwise, false.</returns>
+    private static bool ValidateReturnCode(
         ref int pos,
         ValidationStrategy strategy,
         in QueueManager containersWorklist,
@@ -1215,7 +1215,7 @@ internal class Eof1 : IEofVersionHandler
         if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
         {
             if (Logger.IsTrace)
-                Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {Instruction.RETURNCONTRACT} opcode");
+                Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {Instruction.RETURNCODE} opcode");
             return false;
         }
         else
@@ -1223,7 +1223,7 @@ internal class Eof1 : IEofVersionHandler
             if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateRuntimeMode)
             {
                 if (Logger.IsTrace)
-                    Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {Instruction.RETURNCONTRACT} opcode");
+                    Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {Instruction.RETURNCODE} opcode");
                 return false;
             }
             else
@@ -1236,7 +1236,7 @@ internal class Eof1 : IEofVersionHandler
         if (pos + ONE_BYTE_LENGTH > code.Length)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT} Argument underflow");
+                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCODE} Argument underflow");
             return false;
         }
 
@@ -1245,7 +1245,7 @@ internal class Eof1 : IEofVersionHandler
         if (eofContainer.Header.ContainerSections is null || runtimeContainerId >= eofContainer.Header.ContainerSections.Value.Count)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containerSection.Count i.e.: {eofContainer.Header.ContainerSections?.Count}");
+                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCODE}'s immediate argument must be less than containerSection.Count i.e.: {eofContainer.Header.ContainerSections?.Count}");
             return false;
         }
 
@@ -1253,7 +1253,7 @@ internal class Eof1 : IEofVersionHandler
             containersWorklist.VisitedContainers[runtimeContainerId + 1] != ValidationStrategy.ValidateRuntimeMode)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s target container can only be a runtime mode bytecode");
+                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCODE}'s target container can only be a runtime mode bytecode");
             return false;
         }
 

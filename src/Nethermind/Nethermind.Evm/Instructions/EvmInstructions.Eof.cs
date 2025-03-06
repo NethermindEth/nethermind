@@ -758,13 +758,13 @@ internal static partial class EvmInstructions
     /// Extracts the deployment code from a specified container section and prepares the return data.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnContract(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnCode(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // This instruction is only valid in create contexts.
         if (!vm.EvmState.ExecutionType.IsAnyCreateEof())
             goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable))
+        if (!UpdateGas(GasCostOf.ReturnCode, ref gasAvailable))
             goto OutOfGas;
 
         IReleaseSpec spec = vm.Spec;

@@ -115,7 +115,7 @@ namespace Nethermind.Evm.Test
                     Instruction.RETF,
                     Instruction.JUMPF,
                     Instruction.EOFCREATE,
-                    Instruction.RETURNCONTRACT,
+                    Instruction.RETURNCODE,
                     Instruction.DATASIZE,
                     Instruction.DATACOPY,
                     Instruction.DATALOAD,
@@ -195,7 +195,7 @@ namespace Nethermind.Evm.Test
                 if (InstructionExtensions.IsValid(opcode, IsEofContext: true) && !InstructionExtensions.IsValid(opcode, IsEofContext: false))
                 {
                     // will be tested in EOFCREATE container validations
-                    if (opcode is Instruction.RETURNCONTRACT) continue;
+                    if (opcode is Instruction.RETURNCODE) continue;
 
                     var opcodeMetadata = InstructionExtensions.StackRequirements(opcode);
                     opcodeMetadata.InputCount ??= 1;
