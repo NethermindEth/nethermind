@@ -11,6 +11,6 @@ Rules-Requires-Root: no
 
 Package: nethermind
 Architecture: amd64 arm64
-Depends: ${misc:Depends}, ${shlibs:Depends}, unzip
+Depends: ${misc:Depends}, ${shlibs:Depends}, curl, unzip
 Description: A robust execution client for Ethereum node operators.
- Nethermind is a high-performance, highly configurable Ethereum execution client built on .NET that runs on Linux, Windows, and macOS and supports Clique, Aura, and Ethash. With breakneck sync speeds and support for external plugins, it provides reliable access to rich on-chain data thanks to a high-performance JSON-RPC interface and node health monitoring with Grafana and Seq.
+ The Nethermind Ethereum execution client, built on .NET, delivers industry-leading performance in syncing and tip-of-chain processing. With its modular design and plugin system, it offers extensibility and features for new chains. As one of the most adopted execution clients on Ethereum, Nethermind plays a crucial role in enhancing the diversity and resilience of the Ethereum ecosystem.

@@ -6,10 +6,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -18,18 +17,16 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
-using Nethermind.Stats;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -43,50 +40,26 @@ namespace Nethermind.Synchronization.Test
         private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(4000);
 
         [SetUp]
-        public async Task Setup()
+        public void Setup()
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
-            _stateDb = dbProvider.StateDb;
-            _codeDb = dbProvider.CodeDb;
-            _receiptStorage = Substitute.For<IReceiptStorage>();
-            _ = new SyncConfig() { FastSync = false };
+            ConfigProvider configProvider = new ConfigProvider();
+            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = false;
 
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
-            SyncConfig syncConfig = new TestSyncConfig();
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
 
-            NodeStorage nodeStorage = new NodeStorage(_stateDb);
-            TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
-            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            Pivot pivot = new(syncConfig);
+            IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
+            pruningConfig.Mode = PruningMode.Full;
 
-            IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
-
-            ContainerBuilder builder = new ContainerBuilder()
-                .AddModule(new SynchronizerModule(syncConfig))
-                .AddModule(new DbModule())
-                .AddSingleton(dbProvider)
-                .AddSingleton(nodeStorage)
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton(_blockTree)
-                .AddSingleton(_receiptStorage)
-                .AddSingleton<INodeStatsManager>(stats)
-                .AddSingleton<ISyncConfig>(syncConfig)
+            IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IBlockTree>(_blockTree)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton<IPivot>(pivot)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
-                .AddSingleton(new ChainSpec())
-                .AddSingleton(stateReader)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-                .AddSingleton<ILogManager>(LimboLogs.Instance);
-
-            IContainer container = builder.Build();
-
+                .Build();
             _container = container;
         }
 
@@ -96,11 +69,9 @@ namespace Nethermind.Synchronization.Test
             await _container.DisposeAsync();
         }
 
-        private IDb _stateDb = null!;
-        private IDb _codeDb = null!;
+        private IDb _stateDb => _container.Resolve<IDbProvider>().StateDb;
         private IBlockTree _blockTree = null!;
         private IBlockTree _remoteBlockTree = null!;
-        private IReceiptStorage _receiptStorage = null!;
         private Block _genesisBlock = null!;
         private ISyncPeerPool SyncPeerPool => _container.Resolve<ISyncPeerPool>();
         private ISyncServer SyncServer => _container.Resolve<ISyncServer>();
@@ -229,7 +200,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
+            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, options => options.Excluding(h => h!.MaybeParent), "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)

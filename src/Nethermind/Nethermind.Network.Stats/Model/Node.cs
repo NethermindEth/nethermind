@@ -53,6 +53,9 @@ namespace Nethermind.Stats.Model
         /// </summary>
         public bool IsStatic { get; set; }
 
+        public bool IsTrusted { get; set; }
+
+
         public string ClientId
         {
             get => _clientId;
@@ -212,6 +215,14 @@ namespace Nethermind.Stats.Model
             else if (clientId.Contains(nameof(NodeClientType.Reth), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Reth;
+            }
+            else if (clientId.Contains(nameof(NodeClientType.Nimbus), StringComparison.OrdinalIgnoreCase))
+            {
+                return NodeClientType.Nimbus;
+            }
+            else if (clientId.Contains(nameof(NodeClientType.EthereumJS), StringComparison.OrdinalIgnoreCase))
+            {
+                return NodeClientType.EthereumJS;
             }
             else if (clientId.Contains(nameof(NodeClientType.Parity), StringComparison.OrdinalIgnoreCase))
             {

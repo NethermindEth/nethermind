@@ -54,14 +54,7 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (!CanMigrate(_api.SyncModeSelector.Current))
-                    {
-                        await Wait.ForEventCondition<SyncModeChangedEventArgs>(
-                            cancellationToken,
-                            (d) => _api.SyncModeSelector.Changed += d,
-                            (d) => _api.SyncModeSelector.Changed -= d,
-                            (arg) => CanMigrate(arg.Current));
-                    }
+                    await _api.SyncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
 
                     _stopwatch = Stopwatch.StartNew();
                     try

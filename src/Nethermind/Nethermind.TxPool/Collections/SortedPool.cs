@@ -530,6 +530,13 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
+        {
+            using var lockRelease = Lock.Acquire();
+            return _buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket)
+                && bucket.Any(predicate);
+        }
+
         protected void EnsureCapacity(int? expectedCapacity = null)
         {
             expectedCapacity ??= _capacity; // expectedCapacity is added for testing purpose. null should be used in production code

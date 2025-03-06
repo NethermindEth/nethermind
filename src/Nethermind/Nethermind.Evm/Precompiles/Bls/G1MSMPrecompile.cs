@@ -36,7 +36,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public const int ItemSize = 160;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1MSMPrecompile++;
 
@@ -45,11 +45,12 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             return IPrecompile.Failure;
         }
 
+        // use Mul to optimise single point multiplication
         int nItems = inputData.Length / ItemSize;
         return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
     }
 
-    private (ReadOnlyMemory<byte>, bool) Mul(ReadOnlyMemory<byte> inputData)
+    private (byte[], bool) Mul(ReadOnlyMemory<byte> inputData)
     {
         G1 x = new(stackalloc long[G1.Sz]);
         if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
@@ -57,8 +58,10 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             return IPrecompile.Failure;
         }
 
-        bool scalarIsInfinity = !inputData.Span[BlsConst.LenG1..].ContainsAnyExcept((byte)0);
-        if (scalarIsInfinity || x.IsInf())
+        // multiplying by zero gives infinity point
+        // any scalar multiplied by infinity point is infinity point
+        bool scalarIsZero = !inputData.Span[BlsConst.LenG1..].ContainsAnyExcept((byte)0);
+        if (scalarIsZero || x.IsInf())
         {
             return (BlsConst.G1Inf, true);
         }
@@ -71,12 +74,13 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         return (res.EncodeRaw(), true);
     }
 
-    private (ReadOnlyMemory<byte>, bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    private (byte[], bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
     {
         using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
+        // calculate where in rawPoints buffer decoded points should go
         int npoints = 0;
         for (int i = 0; i < nItems; i++)
         {
@@ -88,6 +92,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             pointDestinations.Add(dest);
         }
 
+        // only infinity points so return infinity
         if (npoints == 0)
         {
             return (BlsConst.G1Inf, true);
@@ -95,6 +100,8 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 
         bool fail = false;
 
+        // decode points to rawPoints buffer
+        // n.b. subgroup checks carried out as part of decoding
 #pragma warning disable CS0162 // Unreachable code detected
         if (BlsConst.DisableConcurrency)
         {
@@ -126,6 +133,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             return IPrecompile.Failure;
         }
 
+        // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
         return (res.EncodeRaw(), true);
     }

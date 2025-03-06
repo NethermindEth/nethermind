@@ -85,6 +85,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void DecrementNonce(Address address, UInt256 delta) => innerState.DecrementNonce(address, delta);
 
+    public void SetNonce(Address address, in UInt256 nonce) => innerState.SetNonce(address, nonce);
+
     public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
     {
         long start = Stopwatch.GetTimestamp();
@@ -118,7 +120,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool IsContract(Address address) => innerState.IsContract(address);
 
-    public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) =>
+    public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx> =>
         innerState.Accept(visitor, stateRoot, visitingOptions);
 
     public bool AccountExists(Address address) => innerState.AccountExists(address);

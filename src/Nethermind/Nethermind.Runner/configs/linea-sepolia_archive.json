@@ -9,6 +9,9 @@
   "Merge": {
     "Enabled": false
   },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
   "Pruning": {
     "Mode": "None"
   },
