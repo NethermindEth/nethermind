@@ -56,22 +56,22 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate(
+    public bool TrySimulate<TTracer, TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
+        IBlockTracer<SimulateBlockResult<TTrace>> simulateOutputTracer,
         IBlockTracer tracer,
-        [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
+        [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>> =>
+        TrySimulate<TTracer, TTrace>(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
 
 
-    private bool TrySimulate(
+    private bool TrySimulate<TTracer, TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
+        IBlockTracer<SimulateBlockResult<TTrace>> simulateOutputTracer,
         IBlockTracer tracer,
         SimulateReadOnlyBlocksProcessingEnv env,
-        [NotNullWhen(false)] out string? error)
+        [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>>
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -119,16 +119,19 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         return true;
     }
 
-    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
+    private static void CheckMisssingAndSetTracedDefaults<TTrace>(IBlockTracer<TTrace> tracer, Block processedBlock)
     {
-        SimulateBlockResult current = simulateOutputTracer.Results.Last();
-        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-        current.TransactionsRoot = processedBlock.Header.TxRoot;
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
-        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-        current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.Author = null;
+        if (tracer is SimulateBlockTracerBase<TxTracer, TTrace> simulateBlockTracer)
+        {
+            SimulateBlockResult<TTrace> current = simulateBlockTracer.Results.Last();
+            current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
+            current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
+            current.TransactionsRoot = processedBlock.Header.TxRoot;
+            current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
+            current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
+            current.Withdrawals = processedBlock.Withdrawals ?? [];
+            current.Author = null;
+        }
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)

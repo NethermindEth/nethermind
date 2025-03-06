@@ -30,6 +30,8 @@ using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using Nethermind.Facade;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
@@ -87,7 +89,8 @@ public class ParityStyleTracerTests
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
         _tracer = new Tracer(stateProvider, _processor, _processor);
-        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource);
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource, blockchainBridge, new BlocksConfig().SecondsPerSlot);
     }
 
     [TearDown]
