@@ -20,7 +20,6 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Microsoft.CodeAnalysis;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -28,7 +27,7 @@ using Nethermind.Evm.Tracing;
 namespace Nethermind.Merge.Plugin.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public partial class EngineModuleTests: BaseEngineModuleTests
+    public partial class EngineModuleTests : BaseEngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
