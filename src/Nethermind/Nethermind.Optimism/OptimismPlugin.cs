@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -34,7 +32,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
@@ -266,7 +263,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             improvementContextFactory,
             _api.TimerFactory,
             _api.LogManager,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot),
+            _api.SpecProvider.ChainId);
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -288,6 +286,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _invalidChainTracker,
                 _beaconSync,
                 _api.LogManager,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
             new ForkchoiceUpdatedHandler(
@@ -311,6 +310,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetInclusionListTransactionsHandler(_api.BlockTree, null),
+            new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

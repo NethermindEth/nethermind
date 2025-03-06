@@ -15,5 +15,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         ValueTask<IBlockProductionContext?> GetPayload(string payloadId);
 
         event EventHandler<BlockEventArgs>? BlockImproved;
+
+        void ForceRebuildPayload(string payloadId);
     }
 }
