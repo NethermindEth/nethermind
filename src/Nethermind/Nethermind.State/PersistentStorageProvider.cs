@@ -282,13 +282,20 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                if (writes > 0)
-                    Db.Metrics.IncrementStorageTreeWrites(writes);
                 if (skipped > 0)
+                {
                     Db.Metrics.IncrementStorageSkippedWrites(skipped);
-
-                storageTree.UpdateRootHash(canBeParallel: true);
-                _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                }
+                if (writes > 0)
+                {
+                    Db.Metrics.IncrementStorageTreeWrites(writes);
+                    storageTree.UpdateRootHash(canBeParallel: true);
+                    _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                }
+                else
+                {
+                    _toUpdateRoots.Remove(kvp.Key);
+                }
             }
         }
 
@@ -329,11 +336,25 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                Db.Metrics.IncrementStorageTreeWrites(writes);
                 if (skipped > 0)
+                {
                     Db.Metrics.IncrementStorageSkippedWrites(skipped);
+                }
+                if (writes > 0)
+                {
+                    Db.Metrics.IncrementStorageTreeWrites(writes);
+                    // Don't need to update root if no updates
+                    storageTree.UpdateRootHash(canBeParallel: true);
+                }
+                else
+                {
+                    lock (state.toUpdateRoots)
+                    {
+                        // No updates, remove from roots to update
+                        state.toUpdateRoots.Remove(kvp.Key);
+                    }
+                }
 
-                storageTree.UpdateRootHash(canBeParallel: false);
                 return state;
             });
 
