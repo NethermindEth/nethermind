@@ -39,6 +39,7 @@ namespace Nethermind.Monitoring.Metrics
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
 
         private readonly bool _useCounters;
+        private readonly bool _enableDetailedMetric;
 
         private readonly List<Action> _callbacks = new();
 
@@ -88,7 +89,7 @@ namespace Nethermind.Monitoring.Metrics
                             break;
                         case ITuple keyAsTuple:
                             {
-                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length);
+                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length, keyAsTuple.Length);
                                 for (int i = 0; i < keyAsTuple.Length; i++)
                                 {
                                     labels[i] = keyAsTuple[i]!.ToString()!;
@@ -193,21 +194,15 @@ namespace Nethermind.Monitoring.Metrics
                 }
 
                 IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
-                foreach (var propertyInfo in type.GetProperties())
+                IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
+                foreach (var member in members)
                 {
-                    if (TryCreateMetricUpdater(type, meter, propertyInfo, out IMetricUpdater updater))
+                    if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
+                    if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
                         metricUpdaters.Add(updater);
                     }
                 }
-                foreach (var fieldInfo in type.GetFields())
-                {
-                    if (TryCreateMetricUpdater(type, meter, fieldInfo, out IMetricUpdater updater))
-                    {
-                        metricUpdaters.Add(updater);
-                    }
-                }
-
                 _metricUpdaters[type] = metricUpdaters.ToArray();
             }
         }
@@ -285,6 +280,7 @@ namespace Nethermind.Monitoring.Metrics
 
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
             _useCounters = metricsConfig.CountersEnabled;
+            _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
 
         public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));

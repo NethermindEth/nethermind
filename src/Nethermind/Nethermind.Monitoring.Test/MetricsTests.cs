@@ -43,6 +43,9 @@ public class MetricsTests
         [SummaryMetric]
         public static IMetricObserver SomeObservation { get; set; } = NoopMetricObserver.Instance;
 
+        [System.ComponentModel.Description("A test description")]
+        [DetailedMetric]
+        public static long DetailedMetric { get; set; }
     }
 
     public enum SomeEnum
@@ -103,6 +106,24 @@ public class MetricsTests
         Assert.That((updater[keyDictionary2] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Value, Is.EqualTo(4));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Load_DetailedMetric(bool enableDetailedMetric)
+    {
+        MetricsConfig metricsConfig = new()
+        {
+            Enabled = true,
+            EnableDetailedMetric = enableDetailedMetric
+        };
+        MetricsController metricsController = new(metricsConfig);
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        metricsController.UpdateAllMetrics();
+
+        var updater = metricsController._individualUpdater;
+        var metricName = "TestMetrics.DetailedMetric";
+        Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
     }
 
     [Test]
