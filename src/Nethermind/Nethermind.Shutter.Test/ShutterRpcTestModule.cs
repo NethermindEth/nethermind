@@ -25,7 +25,7 @@ public class ShutterRpcTestModule(ShutterTestBlockchain chain): Module
         builder
             .AddModule(new MergeRpcModule())
             .AddSource(new FallbackToFieldFromApi<ShutterTestBlockchain>(interfaceOnly: false,
-                allowDuplicatedRegistration: true))
+                allowRedundantRegistration: true))
             .AddSingleton(chain)
             .AddSingleton<EngineModuleTestHelpers>()
 

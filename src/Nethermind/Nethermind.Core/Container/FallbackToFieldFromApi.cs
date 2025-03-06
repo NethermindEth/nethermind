@@ -19,11 +19,11 @@ namespace Nethermind.Core.Container;
 public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : notnull
 {
     private readonly Dictionary<Type, PropertyInfo> _availableTypes;
-    private readonly bool _allowDuplicatedRegistration;
+    private readonly bool _allowRedundantRegistration;
 
-    public FallbackToFieldFromApi(bool interfaceOnly = true, bool allowDuplicatedRegistration = false)
+    public FallbackToFieldFromApi(bool interfaceOnly = true, bool allowRedundantRegistration = false)
     {
-        _allowDuplicatedRegistration = allowDuplicatedRegistration;
+        _allowRedundantRegistration = allowRedundantRegistration;
 
         Type tApi = typeof(TApi);
 
@@ -66,7 +66,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
         if (registrationAccessor(service).Any())
         {
             // Already have registration
-            if (!_allowDuplicatedRegistration && _availableTypes.TryGetValue(serviceType, out property) && property.SetMethod != null)
+            if (!_allowRedundantRegistration && _availableTypes.TryGetValue(serviceType, out property) && property.SetMethod != null)
             {
                 // To prevent mistake, a service that already have registration via dependency injection must not also
                 // have a setter in api. This is to prevent the assumption that the setter will caause the service
@@ -93,7 +93,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
                 throw new MissingFieldException($"Property {property.Name} in {baseT.GetType().Name} is null");
             }
             return value!;
-        });
+        }).ExternallyOwned();
 
         return new[] { builder.CreateRegistration() };
     }

@@ -30,18 +30,26 @@ public class FallbackToFieldFromApiTests
         container.Resolve<TargetService>().Should().NotBeNull();
     }
 
-    [Test]
-    public void ThrowExceptionIfTargetIsAlsoRegistered()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ThrowExceptionIfTargetIsAlsoRegistered(bool allowRedundantRegistrations)
     {
         ContainerBuilder containerBuilder = new ContainerBuilder();
         containerBuilder.AddSingleton<Api>();
         containerBuilder.AddSingleton<TargetService>();
-        containerBuilder.RegisterSource(new FallbackToFieldFromApi<Api>());
+        containerBuilder.RegisterSource(new FallbackToFieldFromApi<Api>(allowRedundantRegistration: allowRedundantRegistrations));
 
         IContainer container = containerBuilder.Build();
 
         Action act = (() => container.Resolve<TargetService>());
-        act.Should().Throw<InvalidConfigurationException>();
+        if (allowRedundantRegistrations)
+        {
+            act.Should().NotThrow<InvalidConfigurationException>();
+        }
+        else
+        {
+            act.Should().Throw<InvalidConfigurationException>();
+        }
     }
 
     [TestCase(true)]
