@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -462,4 +463,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
+
+    public virtual IEnumerable<StepInfo> GetSteps() => [];
 }

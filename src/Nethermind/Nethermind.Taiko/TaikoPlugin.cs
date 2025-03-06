@@ -39,7 +39,7 @@ using Nethermind.Api.Steps;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
 {
     public const string Taiko = "Taiko";
     private const string L1OriginDbName = "L1Origin";

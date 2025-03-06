@@ -10,7 +10,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -22,7 +21,7 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+    public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;

@@ -21,7 +21,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
 
-public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin, IInitializationPlugin
+public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin
 {
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";

@@ -5,7 +5,7 @@ using Nethermind.Init.Steps;
 
 namespace Nethermind.Init.Snapshot;
 
-public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : IInitializationPlugin
+public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : INethermindPlugin
 {
     public string Name => "Snapshot";
 

@@ -62,7 +62,7 @@ public class EthereumStepsLoaderTests
             ]);
     }
 
-    private void CheckPlugin(IInitializationPlugin plugin)
+    private void CheckPlugin(INethermindPlugin plugin)
     {
         plugin.GetSteps().ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
     }

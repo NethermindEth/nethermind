@@ -77,11 +77,9 @@ public class EthereumRunner(INethermindApi api)
             yield return buildInStep;
         }
 
-        IEnumerable<IInitializationPlugin> enabledInitializationPlugins = _api.Plugins.OfType<IInitializationPlugin>();
-
-        foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
+        foreach (INethermindPlugin plugin in _api.Plugins)
         {
-            foreach (StepInfo stepInfo in initializationPlugin.GetSteps())
+            foreach (StepInfo stepInfo in plugin.GetSteps())
             {
                 yield return stepInfo;
             }
