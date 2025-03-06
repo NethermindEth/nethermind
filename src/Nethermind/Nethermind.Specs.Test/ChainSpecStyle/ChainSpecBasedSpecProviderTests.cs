@@ -8,8 +8,10 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -70,6 +72,21 @@ public class ChainSpecBasedSpecProviderTests
         CompareSpecs(testProvider, provider, (blockNumber, timestamp));
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
+    }
+
+    [Test]
+    public void Missing_dependent_property()
+    {
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/holesky_missing_deposit_contract.json");
+        InvalidDataException? exception = Assert.Throws<InvalidDataException>(() => loader.LoadEmbeddedOrFromFile(path));
+        Assert.Multiple(() =>
+        {
+            Assert.That(exception, Is.Not.Null);
+            Assert.That(exception.InnerException, Is.TypeOf<InvalidConfigurationException>());
+            Assert.That(((InvalidConfigurationException?)exception.InnerException)?.ExitCode, Is.EqualTo(ExitCodes.MissingChainspecEipConfiguration));
+        });
     }
 
 
@@ -165,7 +182,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
 
         IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
-        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x7f02c3e3c98b133055b8b348b2ac625669ed295d")));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.SepoliaDepositContractAddress));
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -201,7 +218,7 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
         IReleaseSpec postPragueSpec = provider.GetSpec((2, HoleskySpecProvider.PragueTimestamp));
-        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x4242424242424242424242424242424242424242")));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.HoleskyDepositContractAddress));
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());

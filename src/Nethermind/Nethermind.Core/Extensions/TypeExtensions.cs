@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -67,4 +68,11 @@ public static class TypeExtensions
         type.IsGenericType
             ? $"{type.Name[..type.Name.IndexOf("`", StringComparison.OrdinalIgnoreCase)]}<{string.Join(",", type.GetGenericArguments().Select(NameWithGenerics))}>"
             : type.Name;
+
+    public static bool IsDictionary(this Type type) =>
+        type.IsGenericType &&
+        (type.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary)) ||
+         type.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary<,>)));
+
+    public static bool IsEnumerable(this Type t) => t.IsAssignableTo(typeof(IEnumerable));
 }
