@@ -180,6 +180,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
             public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
 
+            private bool _isDisposed;
+
             public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
             {
                 Block newBlock = Build.A.Block
@@ -198,6 +200,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public void Dispose()
             {
+                if (_isDisposed) return;
+                _isDisposed = true;
                 _autoCancelTokenSource.Dispose();
             }
         }

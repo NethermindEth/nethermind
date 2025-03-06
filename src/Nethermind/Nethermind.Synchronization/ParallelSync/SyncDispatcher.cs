@@ -64,7 +64,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-
         public async Task Start(CancellationToken cancellationToken)
         {
             UpdateState(Feed.CurrentState);
@@ -166,6 +165,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 catch (OperationCanceledException)
                 {
                     Feed.Finish();
+                    break;
                 }
             }
         }
@@ -306,22 +306,21 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
             if (Interlocked.CompareExchange(ref _disposed, true, false))
             {
-                return ValueTask.CompletedTask;
+                return;
             }
 
-            _cancellationTokenSource.Cancel();
-            _cancellationTokenSource.Dispose();
+            await _cancellationTokenSource.CancelAsync();
             _activeTasks.Signal();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
             {
                 if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");
             }
+            _cancellationTokenSource.Dispose();
             _concurrentProcessingSemaphore.Dispose();
-            return ValueTask.CompletedTask;
         }
     }
 }

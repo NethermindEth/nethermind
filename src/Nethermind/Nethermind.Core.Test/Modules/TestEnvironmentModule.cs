@@ -16,8 +16,6 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
@@ -29,7 +27,7 @@ namespace Nethermind.Core.Test.Modules;
 /// Module that set up test environment which should make nethermind works without doing any actual IO.
 /// </summary>
 /// <param name="nodeKey"></param>
-public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : Module
+public partial class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : Module
 {
     public const string NodeKey = "NodeKey";
 
