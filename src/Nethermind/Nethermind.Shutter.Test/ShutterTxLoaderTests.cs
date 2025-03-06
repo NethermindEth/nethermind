@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
@@ -15,7 +16,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterTxLoaderTests : EngineModuleTests
+class ShutterTxLoaderTests
 {
     private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
     {
@@ -61,8 +62,11 @@ class ShutterTxLoaderTests : EngineModuleTests
         Random rnd = new(ShutterTestsCommon.Seed);
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(20, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         for (int i = 0; i < 20; i++)
@@ -71,7 +75,7 @@ class ShutterTxLoaderTests : EngineModuleTests
 
             Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(20));
 
-            IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+            IReadOnlyList<ExecutionPayload> payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
             lastPayload = payloads[0];
         }
     }
@@ -90,8 +94,11 @@ class ShutterTxLoaderTests : EngineModuleTests
         );
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(20, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         chain.Api!.AdvanceSlot(20);
@@ -106,8 +113,11 @@ class ShutterTxLoaderTests : EngineModuleTests
         Random rnd = new(ShutterTestsCommon.Seed);
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(20, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         chain.Api!.AdvanceSlot(40);
@@ -119,7 +129,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         });
 
 
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
         chain.Api.AdvanceSlot(0);
@@ -131,7 +141,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         });
 
 
-        payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
         chain.Api.AdvanceSlot(0);
@@ -150,8 +160,11 @@ class ShutterTxLoaderTests : EngineModuleTests
         Random rnd = new(ShutterTestsCommon.Seed);
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(20, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         chain.Api!.AdvanceSlot(5);
@@ -163,7 +176,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         });
 
 
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
         chain.Api.NextEon();
@@ -182,8 +195,11 @@ class ShutterTxLoaderTests : EngineModuleTests
         Random rnd = new(ShutterTestsCommon.Seed);
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(20, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         Assert.DoesNotThrow(() => chain.Api!.AdvanceSlot(0));
@@ -203,8 +219,11 @@ class ShutterTxLoaderTests : EngineModuleTests
         );
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(20, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         chain.Api!.AdvanceSlot(20);
@@ -215,7 +234,7 @@ class ShutterTxLoaderTests : EngineModuleTests
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
         });
 
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
         chain.Api.NextEon();

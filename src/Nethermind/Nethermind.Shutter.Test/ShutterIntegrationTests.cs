@@ -6,17 +6,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using System.Threading;
+using Autofac;
 using Nethermind.Merge.Plugin.Test;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-public class ShutterIntegrationTests : EngineModuleTests
+public class ShutterIntegrationTests
 {
     private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private const ulong BuildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
@@ -32,8 +32,12 @@ public class ShutterIntegrationTests : EngineModuleTests
         };
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(BuildingSlot - 2, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[^1];
 
         // keys arrive 5 seconds before slot start
@@ -51,7 +55,7 @@ public class ShutterIntegrationTests : EngineModuleTests
         Assert.That(txs, Has.Count.EqualTo(20));
 
         // late block arrives, then next block should contain loaded transactions
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> payloads = await testHelpers.ProduceBranchV1(2, lastPayload, true, null, 5);
         lastPayload = payloads[^1];
         lastPayload.TryGetBlock(out Block? b);
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
@@ -69,8 +73,11 @@ public class ShutterIntegrationTests : EngineModuleTests
         };
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
+        IReadOnlyList<ExecutionPayload> executionPayloads = await testHelpers.ProduceBranchV1(BuildingSlot - 2, testHelpers.CreateParentBlockRequestOnHead(), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         // no events loaded initially
@@ -79,13 +86,13 @@ public class ShutterIntegrationTests : EngineModuleTests
 
         chain.Api.AdvanceSlot(20);
 
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
         txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(20));
 
-        payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        payloads = await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
         lastPayload.TryGetBlock(out Block? b);
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
@@ -102,18 +109,20 @@ public class ShutterIntegrationTests : EngineModuleTests
         Metrics.ShutterKeysMissed = 0;
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new ShutterRpcTestModule(chain))
+            .Build();
+        EngineModuleTestHelpers testHelpers = container.Resolve<EngineModuleTestHelpers>();
 
-        ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
+        ExecutionPayload lastPayload = testHelpers.CreateParentBlockRequestOnHead();
         for (int i = 0; i < 5; i++)
         {
             // KeysMissed will be incremented when get_payload is called
-            lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
+            lastPayload = (await testHelpers.ProduceBranchV1(1, lastPayload, true, null, 5))[0];
 
             time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
         }
 
         Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
     }
-
 }

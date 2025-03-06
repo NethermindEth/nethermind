@@ -3,7 +3,6 @@
 
 using System;
 using System.Net.Http;
-using System.Runtime.CompilerServices;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
@@ -46,6 +45,7 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
 
         builder
             .AddModule(new MergeSynchronizerModule())
+            .AddModule(new MergeRpcModule())
 
             .AddSingleton<IBlockCacheService, BlockCacheService>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()

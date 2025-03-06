@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterBlockHandlerTests : EngineModuleTests
+class ShutterBlockHandlerTests
 {
     [Test]
     public void Can_wait_for_valid_block()
