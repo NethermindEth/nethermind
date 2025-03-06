@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Utils;
 
@@ -37,9 +39,10 @@ public readonly struct AutoCancelTokenSource(CancellationTokenSource cancellatio
 
     public async Task WhenAllSucceed(params IReadOnlyList<Task> allTasks)
     {
-        var source = cancellationTokenSource;
+        CancellationTokenSource source = cancellationTokenSource;
 
-        await Task.WhenAll(allTasks.Select(CancelTokenSourceOnError));
+        using ArrayPoolList<Task> tasks = allTasks.Select(CancelTokenSourceOnError).ToPooledList(allTasks.Count);
+        await Task.WhenAll(tasks.AsSpan());
 
         async Task CancelTokenSourceOnError(Task innerTask)
         {

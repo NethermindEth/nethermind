@@ -113,7 +113,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         }
     }
 
-    public async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
+    private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         int allResponsesSize = 0;

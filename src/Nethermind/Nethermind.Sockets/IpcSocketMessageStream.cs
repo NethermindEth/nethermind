@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Sockets;
 
@@ -34,12 +35,12 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             catch { }
         }
 
-        int delimiter = ((IList<byte>)buffer[.._bufferedDataLength]).IndexOf(Delimiter);
+        int delimiter = buffer[.._bufferedDataLength].IndexOf(Delimiter);
         int read;
         if (delimiter == -1)
         {
             read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
-            delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
+            delimiter = buffer[..read].IndexOf(Delimiter);
         }
         else
         {
