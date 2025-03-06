@@ -134,8 +134,6 @@ public class BlockProcessingModule : Module
 
                 // And finally, to wrap things up.
                 .AddScoped<MainBlockProcessingContext>()
-                .Bind<IBlockchainProcessor, BlockchainProcessor>()
-                .Bind<IBlockProcessingQueue, BlockchainProcessor>()
                 ;
 
             if (blocksConfig.PreWarmStateOnBlockProcessing)
