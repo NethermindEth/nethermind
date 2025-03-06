@@ -6,4 +6,5 @@ namespace Nethermind.Core.Metric;
 public interface IMetricObserver
 {
     public void Observe(IMetricLabels labels, double value);
+    public void Observe(double value);
 }

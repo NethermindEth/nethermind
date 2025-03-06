@@ -41,6 +41,15 @@ public sealed class SummaryMetricAttribute : Attribute
     public double[] ObjectiveEpsilon { get; set; } = [];
 }
 
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class ExponentialPowerHistogramMetric : Attribute
+{
+    public string[] LabelNames { get; } = [];
+    public double Start { get; set; }
+    public double Factor { get; set; }
+    public int Count { get; set; }
+}
+
 /// <summary>
 /// Mark a metric as detailed
 /// </summary>

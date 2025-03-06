@@ -109,7 +109,7 @@ namespace Nethermind.Monitoring.Metrics
             public Gauge Gauge => gauge;
         }
 
-        public class MetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
+        public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
             public void Update()
             {
@@ -119,6 +119,29 @@ namespace Nethermind.Monitoring.Metrics
             public void Observe(IMetricLabels labels, double value)
             {
                 summary.WithLabels(labels.Labels).Observe(value);
+            }
+
+            public void Observe(double value)
+            {
+                summary.Observe(value);
+            }
+        }
+
+        public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
+        {
+            public void Update()
+            {
+                // Noop: Updated when `Observe` is called.
+            }
+
+            public void Observe(IMetricLabels labels, double value)
+            {
+                histogram.WithLabels(labels.Labels).Observe(value);
+            }
+
+            public void Observe(double value)
+            {
+                histogram.Observe(value);
             }
         }
 
@@ -211,19 +234,35 @@ namespace Nethermind.Monitoring.Metrics
         {
             Type memberType = memberInfo.GetMemberType();
 
-            if (memberType.IsAssignableTo(typeof(IMetricObserver)))
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<SummaryMetricAttribute>() is SummaryMetricAttribute summaryAttribute)
             {
-                SummaryMetricAttribute attribute = memberInfo.GetCustomAttribute<SummaryMetricAttribute>()!;
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
 
                 Summary summary = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateSummary(metricInfo.Name, metricInfo.Description,
                     new SummaryConfiguration()
                     {
-                        LabelNames = attribute.LabelNames,
-                        Objectives = attribute.ObjectiveQuantile.Zip(attribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
+                        LabelNames = summaryAttribute.LabelNames,
+                        Objectives = summaryAttribute.ObjectiveQuantile.Zip(summaryAttribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
                     });
 
-                metricUpdater = new MetricUpdater(summary);
+                metricUpdater = new SummaryMetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<ExponentialPowerHistogramMetric>() is ExponentialPowerHistogramMetric histogramAttribute)
+            {
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description, new HistogramConfiguration()
+                    {
+                        LabelNames = histogramAttribute.LabelNames,
+                        Buckets = Histogram.ExponentialBuckets(histogramAttribute.Start, histogramAttribute.Factor, histogramAttribute.Count)
+                    });
+
+                metricUpdater = new HistogramMetricUpdater(histogram);
                 memberInfo.SetValue(metricUpdater);
 
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
