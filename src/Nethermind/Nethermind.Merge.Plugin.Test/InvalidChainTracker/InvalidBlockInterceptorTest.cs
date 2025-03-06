@@ -44,6 +44,8 @@ public class InvalidBlockInterceptorTest
     {
         Block block = Build.A.Block.TestObject;
         _baseValidator.ValidateSuggestedBlock(block, out _).Returns(baseReturnValue);
+        _baseValidator.ValidateBody(block).Returns(true);
+
         _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
 
         _tracker.Received().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
@@ -65,6 +67,7 @@ public class InvalidBlockInterceptorTest
         Block suggestedBlock = Build.A.Block.WithExtraData(new byte[] { 1 }).TestObject;
         TxReceipt[] txs = [];
         _baseValidator.ValidateProcessedBlock(block, txs, suggestedBlock, out _).Returns(baseReturnValue);
+        _baseValidator.ValidateBody(block).Returns(true);
         _invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock);
 
         _tracker.Received().SetChildParent(suggestedBlock.GetOrCalculateHash(), suggestedBlock.ParentHash!);
@@ -126,5 +129,4 @@ public class InvalidBlockInterceptorTest
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
     }
-
 }
