@@ -28,7 +28,7 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules;
 
 [Parallelizable(ParallelScope.Self)]
-public class DebugRpcModuleTests
+public partial class DebugRpcModuleTests
 {
     private class Context : IDisposable
     {
