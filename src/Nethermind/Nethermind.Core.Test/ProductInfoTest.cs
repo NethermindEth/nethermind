@@ -26,7 +26,7 @@ public class ProductInfoTest
     }
 
     [Test]
-    public void Client_id_not_showing_os_and_runtime_when_hidden()
+    public void Public_client_id_not_showing_os_and_runtime_when_hidden()
     {
         ProductInfo.InitializePublicClientId("{name}/{version}");
         Assert.That(ProductInfo.PublicClientId,
