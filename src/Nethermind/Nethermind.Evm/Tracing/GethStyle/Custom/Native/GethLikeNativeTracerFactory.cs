@@ -26,8 +26,8 @@ public static class GethLikeNativeTracerFactory
 
     private static void RegisterNativeTracers()
     {
-        RegisterTracer(Native4ByteTracer.FourByteTracer, static (options, _, _, _) => new Native4ByteTracer(options));
-        RegisterTracer(NativePrestateTracer.PrestateTracer, static (options, block, transaction, worldState) => new NativePrestateTracer(worldState, options, transaction.SenderAddress, transaction.To, block.Beneficiary));
+        RegisterTracer(Native4ByteTracer.FourByteTracer, static (options, _, transaction, _) => new Native4ByteTracer(transaction, options));
+        RegisterTracer(NativePrestateTracer.PrestateTracer, static (options, block, transaction, worldState) => new NativePrestateTracer(worldState, options, transaction.Hash, transaction.SenderAddress, transaction.To, block.Beneficiary));
         RegisterTracer(NativeCallTracer.CallTracer, static (options, _, transaction, _) => new NativeCallTracer(transaction, options));
     }
 

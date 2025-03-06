@@ -112,8 +112,7 @@ public class ExecutionProcessorTests
             });
     }
 
-
-    public static Hash256 CalculateHash(
+    private static Hash256 CalculateHash(
         TestExecutionRequest[] depositRequests,
         TestExecutionRequest[] withdrawalRequests,
         TestExecutionRequest[] consolidationRequests
@@ -141,11 +140,16 @@ public class ExecutionProcessorTests
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
-
-
         static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
             Build.A.LogEntry
                 .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+                .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
                 .WithAddress(DepositContractAddress).TestObject;
+    }
+
+    [Test]
+    public void ShouldUseCorrectDepositTopic()
+    {
+        Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
     }
 }
