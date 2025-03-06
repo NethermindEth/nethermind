@@ -59,16 +59,16 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
     public bool TrySimulate<TTracer, TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        IBlockTracer<SimulateBlockResult<TTrace>>  simulateOutputTracer,
+        IBlockTracer<SimulateBlockResult<TTrace>> simulateOutputTracer,
         IBlockTracer tracer,
-        [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>>  =>
+        [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>> =>
         TrySimulate<TTracer, TTrace>(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
 
 
     private bool TrySimulate<TTracer, TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        IBlockTracer<SimulateBlockResult<TTrace>>  simulateOutputTracer,
+        IBlockTracer<SimulateBlockResult<TTrace>> simulateOutputTracer,
         IBlockTracer tracer,
         SimulateReadOnlyBlocksProcessingEnv env,
         [NotNullWhen(false)] out string? error) where TTracer : class, IBlockTracer<SimulateBlockResult<TTrace>>

@@ -26,7 +26,8 @@ public class GethLikeSimulateBlockTracer(bool isTracingLogs, bool includeFullTxD
         return NullTxTracer.Instance;
     }
 
-    protected override IReadOnlyList<GethLikeTxTrace> getCalls(){
+    protected override IReadOnlyList<GethLikeTxTrace> getCalls()
+    {
         return _txTracers.Select(t => t.BuildResult()).ToList();
     }
 }

@@ -27,12 +27,13 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
         return NullTxTracer.Instance;
     }
 
-    protected override IReadOnlyList<SimulateCallResult> getCalls(){
+    protected override IReadOnlyList<SimulateCallResult> getCalls()
+    {
         return _txTracers.Select(t => t.TraceResult).ToList();
     }
 }
 
-public class SimulateBlockTracerFactory: ISimulateBlockTracerBaseFactory<SimulateBlockTracer, SimulateTxMutatorTracer, SimulateCallResult>
+public class SimulateBlockTracerFactory : ISimulateBlockTracerBaseFactory<SimulateBlockTracer, SimulateTxMutatorTracer, SimulateCallResult>
 {
     public SimulateBlockTracer Create(bool isTracingLogs, bool includeFullTxData, ISpecProvider spec) => new(isTracingLogs, includeFullTxData, spec);
 }
