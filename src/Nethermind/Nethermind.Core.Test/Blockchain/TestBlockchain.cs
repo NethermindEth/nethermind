@@ -33,7 +33,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
@@ -63,7 +62,6 @@ public class TestBlockchain : IDisposable
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree { get; set; } = null!;
-    public GCKeeper GCKeeper { get; } = new GCKeeper(NoGCStrategy.Instance, LimboLogs.Instance);
 
     public Action<IWorldState>? InitialStateMutator { get; set; }
 

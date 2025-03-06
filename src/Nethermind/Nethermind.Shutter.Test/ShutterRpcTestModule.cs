@@ -7,6 +7,8 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -40,6 +42,7 @@ public class ShutterRpcTestModule(ShutterTestBlockchain chain): Module
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
             .AddSingleton<IBlockCacheService, BlockCacheService>()
             .AddSingleton<IInvalidChainTracker, InvalidChainTracker>()
+            .AddSingleton<GCKeeper>(new GCKeeper(NoGCStrategy.Instance, LimboLogs.Instance))
             .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>());
     }
 }
