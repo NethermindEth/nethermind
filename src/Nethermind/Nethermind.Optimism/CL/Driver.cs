@@ -33,6 +33,7 @@ public class Driver : IDisposable
         IL2BlockTree l2BlockTree,
         CLChainSpecEngineParameters engineParameters,
         IExecutionEngineManager executionEngineManager,
+        ulong chainId,
         ILogger logger)
     {
         _logger = logger;
@@ -42,9 +43,9 @@ public class Driver : IDisposable
         _decodingPipeline = decodingPipeline;
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
-            480,
+            chainId,
             new SystemConfigDeriver(engineParameters),
-            new DepositTransactionBuilder(480, engineParameters),
+            new DepositTransactionBuilder(chainId, engineParameters),
             logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, l1Bridge, _logger);
     }

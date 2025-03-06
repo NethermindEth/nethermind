@@ -41,7 +41,7 @@ public class OptimismCL : IDisposable
         IOptimismEthRpcModule l2EthRpc,
         IOptimismEngineRpcModule engineRpcModule)
     {
-        ArgumentNullException.ThrowIfNull(engineParameters.SequencerP2PAddress);
+        ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
 
@@ -63,12 +63,13 @@ public class OptimismCL : IDisposable
             _l2BlockTree,
             engineParameters,
             _executionEngineManager,
+            specProvider.ChainId,
             logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,
             engineParameters.Nodes,
             config,
-            engineParameters.SequencerP2PAddress,
+            engineParameters.UnsafeBlockSigner,
             timestamper,
             logManager,
             _executionEngineManager);

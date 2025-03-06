@@ -25,7 +25,7 @@ public class L1BlockInfoBuilderTests
         l1BlockInfo.Number.Should().Be(21670913);
         l1BlockInfo.BaseFee.Should().Be(6278383865);
 
-        var parameters = new CLChainSpecEngineParameters { DepositAddress = TestItem.AddressA };
+        var parameters = new CLChainSpecEngineParameters { OptimismPortalProxy = TestItem.AddressA };
         var depositTransactionBuilder = new DepositTransactionBuilder(1, parameters);
         Transaction tx = depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
 
