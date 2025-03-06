@@ -15,7 +15,7 @@ namespace Nethermind.Init.Steps
         private readonly IEnumerable<StepInfo> _stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
 
-        public EthereumStepsLoader(IEnumerable<StepInfo> stepsInfo)
+        public EthereumStepsLoader(params IEnumerable<StepInfo> stepsInfo)
         {
             _stepsInfo = stepsInfo;
         }

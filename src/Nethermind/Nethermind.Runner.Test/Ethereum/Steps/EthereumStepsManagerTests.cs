@@ -26,7 +26,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             NethermindApi runnerContext = CreateNethermindApi();
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(Array.Empty<StepInfo>());
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader();
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,
                 runnerContext,
@@ -36,43 +36,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await stepsManager.InitializeAll(source.Token);
         }
 
-        /*
-        [Test]
-        public async Task With_steps_from_here()
-        {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
-
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            try
-            {
-                await stepsManager.InitializeAll(source.Token);
-            }
-            catch (Exception e)
-            {
-                if (!(e is OperationCanceledException))
-                {
-                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
-                }
-            }
-        }
-        */
-
         [Test]
         [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
             AuRaNethermindApi runnerContext = CreateAuraApi();
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader([
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(
                 typeof(StepCStandard),
-                typeof(StepCAuRa),
-            ]);
+                typeof(StepCAuRa)
+            );
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,
                 runnerContext,
@@ -95,9 +68,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             NethermindApi runnerContext = CreateNethermindApi();
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader([
-                new StepInfo(typeof(StepForever)),
-            ]);
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(
+                new StepInfo(typeof(StepForever))
+            );
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,
                 runnerContext,

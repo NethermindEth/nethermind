@@ -26,7 +26,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";
     public string Author => "Nethermind";
-    public bool Enabled => shutterConfig!.Enabled && mergeConfig!.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
+    public bool Enabled => shutterConfig.Enabled && mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
     public int Priority => PluginPriorities.Shutter;
 
     private INethermindApi? _api;
