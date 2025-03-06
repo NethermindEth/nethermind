@@ -21,7 +21,6 @@ public class ContainerBuilderExtensionsTests
         sp.ResolveOptional<DeclaredService>().Should().NotBeNull();
         sp.ResolveOptional<DeclaredInBase>().Should().BeNull();
         sp.ResolveOptional<Ignored>().Should().BeNull();
-        sp.ResolveOptional<DeclaredButNullService>().Should().BeNull();
     }
 
     [Test]

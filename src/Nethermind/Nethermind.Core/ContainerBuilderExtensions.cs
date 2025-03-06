@@ -10,6 +10,7 @@ using Autofac.Builder;
 using Autofac.Core;
 using Autofac.Core.Resolving.Pipeline;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Container;
 
 namespace Nethermind.Core;
 
@@ -30,23 +31,9 @@ public static class ContainerBuilderExtensions
     /// <returns></returns>
     public static ContainerBuilder AddPropertiesFrom<T>(this ContainerBuilder configuration, T source) where T : class
     {
-        Type t = typeof(T);
-
-        IEnumerable<PropertyInfo> properties = t
-            .GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
-            .Where(static p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
-
-        foreach (PropertyInfo propertyInfo in properties)
-        {
-            object? val = propertyInfo.GetValue(source);
-            if (val != null)
-            {
-                configuration.RegisterInstance(val)
-                    .As(propertyInfo.PropertyType)
-                    .ExternallyOwned();
-            }
-        }
-
+        configuration
+            .AddSource(new FallbackToFieldFromApi<T>())
+            .AddSingleton(source);
         return configuration;
     }
 

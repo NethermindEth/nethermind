@@ -21,22 +21,19 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
     private readonly Dictionary<Type, PropertyInfo> _availableTypes;
     private readonly bool _allowRedundantRegistration;
 
-    public FallbackToFieldFromApi(bool interfaceOnly = true, bool allowRedundantRegistration = false)
+    public FallbackToFieldFromApi(bool directlyDeclaredOnly = true, bool allowRedundantRegistration = false)
     {
         _allowRedundantRegistration = allowRedundantRegistration;
 
         Type tApi = typeof(TApi);
 
-        IEnumerable<PropertyInfo> properties;
-        if (interfaceOnly)
-            properties = tApi
-                .GetInterfaces()
-                .SelectMany(i => i.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public))
-                .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
-        else
-            properties = tApi
-                .GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public)
-                .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
+        BindingFlags flag = BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public;
+        if (directlyDeclaredOnly)
+            flag |= BindingFlags.DeclaredOnly;
+
+        IEnumerable<PropertyInfo> properties = tApi
+            .GetProperties(flag)
+            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
 
         Dictionary<Type, PropertyInfo> availableTypes = new Dictionary<Type, PropertyInfo>();
 
