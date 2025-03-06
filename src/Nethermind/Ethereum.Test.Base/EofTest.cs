@@ -18,12 +18,9 @@ public class VectorTest
     public ValidationStrategy ContainerKind { get; set; }
 }
 
-public class EofTest : IEthereumTest
+public class EofTest : EthereumTest
 {
-    public string Name { get; set; }
     public VectorTest Vector { get; set; }
-    public string? Category { get; set; }
-    public string? LoadFailure { get; set; }
     public Result Result { get; internal set; }
     public string? Description { get; set; }
     public string? Url { get; set; }

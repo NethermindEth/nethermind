@@ -55,7 +55,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
 
-    private IEnumerable<IEthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, TestType testType)
+    private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, TestType testType)
     {
         List<EthereumTest> testsByName = new();
         IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
