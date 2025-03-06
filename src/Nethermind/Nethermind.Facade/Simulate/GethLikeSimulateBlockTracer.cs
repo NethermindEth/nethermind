@@ -18,7 +18,7 @@ public class GethLikeSimulateBlockTracer(bool isTracingLogs, bool includeFullTxD
 
         if (tx?.Hash is not null)
         {
-            GethLikeTxMemoryTracer result = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer result = new(tx, GethTraceOptions.Default);
             _txTracers.Add(result);
             return result;
         }
