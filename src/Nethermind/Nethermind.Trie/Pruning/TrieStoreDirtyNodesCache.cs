@@ -151,23 +151,13 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
-    public bool TryGetValue(in Key key, out TrieNode node)
-    {
-        if (_storeByHash)
-        {
-            return _byHashObjectCache.TryGetValue(key.Keccak, out node);
-        }
-        return _byKeyObjectCache.TryGetValue(key, out node);
-    }
+    public bool TryGetValue(in Key key, out TrieNode node) => _storeByHash
+        ? _byHashObjectCache.TryGetValue(key.Keccak, out node)
+        : _byKeyObjectCache.TryGetValue(key, out node);
 
-    private bool TryAdd(in Key key, TrieNode node)
-    {
-        if (_storeByHash)
-        {
-            return _byHashObjectCache.TryAdd(key.Keccak, node);
-        }
-        return _byKeyObjectCache.TryAdd(key, node);
-    }
+    private bool TryAdd(in Key key, TrieNode node) => _storeByHash
+        ? _byHashObjectCache.TryAdd(key.Keccak, node)
+        : _byKeyObjectCache.TryAdd(key, node);
 
     private void IncrementMemory(TrieNode node)
     {

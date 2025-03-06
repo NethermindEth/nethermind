@@ -415,7 +415,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     // Used in testing to not have to wait for condition.
-    public event EventHandler OnMemoryPruneCompleted;
+    public event EventHandler? OnMemoryPruneCompleted;
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
     {
@@ -516,10 +516,9 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     PrunePersistedNodes();
                 }
-
             });
 
-            _pruningTask.ContinueWith((_) =>
+            _pruningTask.ContinueWith(_ =>
             {
                 OnMemoryPruneCompleted?.Invoke(this, EventArgs.Empty);
             });
@@ -574,7 +573,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
             using ArrayPoolList<BlockCommitSet> toAddBack = new(count);
             using ArrayPoolList<BlockCommitSet> candidateSets = new(count);
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+            while (_commitSetQueue!.TryDequeue(out BlockCommitSet frontSet))
             {
                 if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _pruningStrategy.MaxDepth)
                 {
@@ -596,7 +595,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             {
                 _commitSetQueue.Enqueue(toAddBack[index]);
             }
-
 
             bool shouldDeletePersistedNode =
                 // Its disabled
@@ -726,7 +724,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                     _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % ShardedDirtyNodeCount;
                 }
 
-                Task.WaitAll(pruneTask);
+                Task.WaitAll(pruneTask.AsSpan());
 
                 RecalculateTotalMemoryUsage();
 
@@ -784,7 +782,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         _pruningTask.Wait();
     }
 
-    protected readonly INodeStorage _nodeStorage;
+    private readonly INodeStorage _nodeStorage;
 
     private readonly TrieKeyValueStore _publicStore;
 
@@ -794,10 +792,9 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private ConcurrentQueue<BlockCommitSet> _commitSetQueue;
+    private ConcurrentQueue<BlockCommitSet>? _commitSetQueue;
 
-    private ConcurrentQueue<BlockCommitSet> CommitSetQueue =>
-        (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue));
+    private ConcurrentQueue<BlockCommitSet> CommitSetQueue => _commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue);
 
     private BlockCommitSet? _lastCommitSet = null;
 
@@ -813,7 +810,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private long _latestPersistedBlockNumber;
 
     private BlockCommitter? _currentBlockCommitter = null;
-
 
     private long LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
@@ -920,7 +916,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             {
                 disposeTasks[index] = Task.Run(async () =>
                 {
-                    await foreach (IDisposable disposable in disposeQueue.Reader.ReadAllAsync())
+                    await foreach (INodeStorage.IWriteBatch disposable in disposeQueue.Reader.ReadAllAsync())
                     {
                         disposable.Dispose();
                     }
@@ -1004,7 +1000,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         return IsNoLongerNeeded(node.LastSeen);
     }
 
-    public bool IsNoLongerNeeded(long lastSeen)
+    private bool IsNoLongerNeeded(long lastSeen)
     {
         Debug.Assert(lastSeen >= 0, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
         return lastSeen < LastPersistedBlockNumber
@@ -1123,15 +1119,17 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             long start = Stopwatch.GetTimestamp();
             // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
+            ConcurrentQueue<BlockCommitSet> commitSetQueue = CommitSetQueue;
+
             void ClearCommitSetQueue()
             {
-                while (CommitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+                while (commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
                 {
-                    if (!CommitSetQueue.TryDequeue(out commitSet)) break;
+                    if (!commitSetQueue.TryDequeue(out commitSet)) break;
                     if (!commitSet.IsSealed)
                     {
                         // Oops
-                        CommitSetQueue.Enqueue(commitSet);
+                        commitSetQueue.Enqueue(commitSet);
                         break;
                     }
 
@@ -1140,7 +1138,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            if (!CommitSetQueue.IsEmpty)
+            if (!commitSetQueue.IsEmpty)
             {
                 // We persist outside of lock first.
                 ClearCommitSetQueue();
