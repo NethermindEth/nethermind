@@ -85,7 +85,7 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         Assert.That(fileContent, Is.EqualTo(expectedTrace));
     }
 
-    [TestCaseSource(nameof(GetIgnoreSetCases))]
+   [TestCaseSource(nameof(GetIgnoreSetCases))]
     public void Test_File_Tracer_With_Ignore_Set(byte[][] codes, string expectedTrace)
     {
 
