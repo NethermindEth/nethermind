@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -114,6 +115,11 @@ public class PruningTrieStateFactory(
                 long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
 
                 if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
+            }
+
+            if (pruningConfig.CacheMb <= pruningConfig.DirtyCacheMb)
+            {
+                throw new InvalidConfigurationException("Dirty pruning cache size must be less than persisted pruning cache size.", -1);
             }
 
             pruningStrategy = Prune

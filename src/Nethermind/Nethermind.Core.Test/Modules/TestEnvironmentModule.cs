@@ -110,7 +110,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             })
             .AddDecorator<IPruningConfig>((_, pruningConfig) =>
             {
-                pruningConfig.CacheMb = 4;
+                pruningConfig.CacheMb = 8;
+                pruningConfig.DirtyCacheMb = 4;
                 return pruningConfig;
             })
             ;
