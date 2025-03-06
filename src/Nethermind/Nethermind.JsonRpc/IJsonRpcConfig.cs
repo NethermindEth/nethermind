@@ -169,4 +169,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    bool EnablePerMethodMetrics { get; set; }
 }
