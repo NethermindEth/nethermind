@@ -15,6 +15,10 @@ EXPOSE 8545 8551 30303
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 
+RUN apt-get install -y nodejs
+RUN npm install -g yarn
+
 WORKDIR /src
 
 COPY Directory.*.props .

@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.TransactionProcessing;
@@ -21,13 +20,14 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="GenesisLoader"></param>
 public record MainBlockProcessingContext(
     ILifetimeScope LifetimeScope,
-    IBlockProcessingQueue BlockProcessingQueue,
-    IBlockchainProcessor BlockchainProcessor,
+    BlockchainProcessor BlockchainProcessor,
     IWorldState WorldState,
     IBlockProcessor BlockProcessor,
     ITransactionProcessor TransactionProcessor,
-    GenesisLoader GenesisLoader) : IMainProcessingContext, IAsyncDisposable
+    GenesisLoader GenesisLoader) : IAsyncDisposable
 {
+    public IBlockProcessingQueue BlockProcessingQueue => BlockchainProcessor;
+
     public async ValueTask DisposeAsync()
     {
         await LifetimeScope.DisposeAsync();
