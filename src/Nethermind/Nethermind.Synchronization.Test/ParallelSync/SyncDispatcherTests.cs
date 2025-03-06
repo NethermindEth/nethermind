@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -42,16 +43,18 @@ public class SyncDispatcherTests
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            await Task.Yield();
             await _peerSemaphore.WaitAsync(cancellationToken);
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.ClientId.Returns("Nethermind");
-            syncPeer.TotalDifficulty.Returns(UInt256.One);
+            ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
             SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
-            allocation.AllocateBestPeer(
-                Substitute.For<IEnumerable<PeerInfo>>(),
-                Substitute.For<INodeStatsManager>(),
-                Substitute.For<IBlockTree>());
+            allocation.AllocateBestPeer([], Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
             return allocation;
+        }
+
+        private class MockSyncPeer(string clientId, UInt256 totalDifficulty) : BaseMockSyncPeer
+        {
+            public override string ClientId => clientId;
+            public override UInt256 TotalDifficulty => totalDifficulty;
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)
@@ -271,7 +274,6 @@ public class SyncDispatcherTests
         }
     }
 
-    [Retry(tryCount: 5)]
     [Test]
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
@@ -292,7 +294,8 @@ public class SyncDispatcherTests
 
         // Load some requests
         syncFeed.Activate();
-        await Task.Delay(100, cts.Token);
+        await Task.Delay(200, cts.Token);
+        Console.Error.WriteLine("Assume allocated");
         syncFeed.Finish();
 
         // Dispose
