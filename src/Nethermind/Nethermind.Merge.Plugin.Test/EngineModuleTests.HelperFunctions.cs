@@ -28,7 +28,7 @@ using Nethermind.Evm.Tracing;
 namespace Nethermind.Merge.Plugin.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public partial class EngineModuleTests
+    public partial class EngineModuleTests: BaseEngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
@@ -82,21 +82,6 @@ namespace Nethermind.Merge.Plugin.Test
             accountFrom = account;
 
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
-        }
-
-        protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
-        {
-            Block? head = blockTree.Head ?? throw new NotSupportedException();
-            return new ExecutionPayload()
-            {
-                BlockNumber = head.Number,
-                BlockHash = head.Hash!,
-                StateRoot = head.StateRoot!,
-                ReceiptsRoot = head.ReceiptsRoot!,
-                GasLimit = head.GasLimit,
-                Timestamp = head.Timestamp,
-                BaseFeePerGas = head.BaseFeePerGas,
-            };
         }
 
         private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
