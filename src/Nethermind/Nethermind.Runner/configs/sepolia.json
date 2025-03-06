@@ -26,7 +26,7 @@
     "AncientBodiesBarrier": 1450408
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 60000000
   },
   "JsonRpc": {
     "Enabled": true,
