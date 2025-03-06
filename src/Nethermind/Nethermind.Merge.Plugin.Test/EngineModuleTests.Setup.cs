@@ -39,7 +39,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -320,8 +319,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         DelayMs = delayMs;
     }
 
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
-        IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
     {
         if (DelayMs > 0)
         {

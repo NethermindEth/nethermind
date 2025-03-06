@@ -8,7 +8,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -48,6 +47,7 @@ namespace Nethermind.Network
         }
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        public IEnumerable<ISession> Sessions => _sessions.Values;
 
         public void AddSession(ISession session)
         {

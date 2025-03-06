@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-mainnet.json",
+    "ChainSpecPath": "chainspec/worldchain-mainnet.json.zst",
     "GenesisHash": "0x70d316d2e0973b62332ba2e9768dd7854298d7ffe77f0409ffdb8d859f2d3fa3",
-    "BaseDbPath": "nethermind_db/worldchain-mainnet-archive",
-    "LogFileName": "worldchain-mainnet-archive.logs.txt",
+    "BaseDbPath": "nethermind_db/worldchain-mainnet_archive",
+    "LogFileName": "worldchain-mainnet_archive.logs.txt",
     "DisableGcOnNewPayload": false
   },
   "TxPool": {
@@ -13,16 +13,22 @@
   "Discovery": {
     "DiscoveryVersion": "V5"
   },
-  "Receipt": {
-    "TxLookupLimit": 0
-  },
-  "Pruning": {
-    "Mode": "None"
-  },
   "JsonRpc": {
     "Enabled": true,
     "Port": 8545,
     "EnginePort": 8551
+  },
+  "Pruning": {
+    "Mode": "None"
+  },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
   },
   "Optimism": {
     "SequencerUrl": "https://worldchain-mainnet-sequencer.g.alchemy.com"
