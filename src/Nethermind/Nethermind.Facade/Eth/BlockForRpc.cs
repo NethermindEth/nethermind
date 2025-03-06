@@ -45,6 +45,7 @@ public class BlockForRpc
         }
         else
         {
+            Author = block.Author;
             Step = block.Header.AuRaStep;
             Signature = block.Header.AuRaSignature;
         }
@@ -88,6 +89,8 @@ public class BlockForRpc
         RequestsHash = block.Header.RequestsHash;
     }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }
