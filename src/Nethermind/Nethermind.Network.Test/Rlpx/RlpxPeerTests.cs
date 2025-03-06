@@ -6,7 +6,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
@@ -24,16 +26,19 @@ namespace Nethermind.Network.Test.Rlpx
         {
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
-                TestItem.PublicKeyA,
-                1,
-                GegAvailableLocalPort(),
-                null,
-                2000,
+                new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,
-                LimboLogs.Instance,
-                TimeSpan.Zero);
+                new NetworkConfig()
+                {
+                    ProcessingThreadCount = 1,
+                    P2PPort = GegAvailableLocalPort(),
+                    LocalIp = null,
+                    ConnectTimeoutMs = 200,
+                    SimulateSendLatencyMs = 0,
+                },
+                LimboLogs.Instance);
             await host.Init();
             await host.Shutdown();
         }

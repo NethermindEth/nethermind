@@ -19,6 +19,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp.TxDecoders;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -37,20 +38,19 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
         await base.InitBlockchain();
 
-        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
+    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
     {
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.L1CostHelper is null) throw new StepDependencyException(nameof(api.L1CostHelper));
-        if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
 
         return new OptimismTransactionProcessor(
             api.SpecProvider,
-            api.WorldState,
+            worldState,
             virtualMachine,
             api.LogManager,
             api.L1CostHelper,
@@ -84,16 +84,13 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         return new InvalidBlockInterceptor(base.CreateBlockValidator(), api.InvalidChainTracker, api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        ITransactionProcessor? transactionProcessor = api.TransactionProcessor;
         if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
-        if (transactionProcessor is null) throw new StepDependencyException(nameof(transactionProcessor));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-        if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
 
         Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
 
@@ -101,12 +98,12 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, api.WorldState),
-            api.WorldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            worldState,
             api.ReceiptStorage,
             transactionProcessor,
-            new BlockhashStore(api.SpecProvider, api.WorldState),
-            new BeaconBlockRootHandler(transactionProcessor, api.WorldState),
+            new BlockhashStore(api.SpecProvider, worldState),
+            new BeaconBlockRootHandler(transactionProcessor, worldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,

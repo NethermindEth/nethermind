@@ -9,6 +9,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 
 public static class BlsExtensions
 {
+    // decodes and checks point is on curve
     public static bool TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != BlsConst.LenG1)
@@ -21,6 +22,7 @@ public static class BlsExtensions
             return false;
         }
 
+        // set to infinity point by default
         p.Zero();
 
         ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
@@ -41,6 +43,7 @@ public static class BlsExtensions
         return true;
     }
 
+    // decodes and checks point is on curve
     public static bool TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != BlsConst.LenG2)
@@ -56,6 +59,7 @@ public static class BlsExtensions
             return false;
         }
 
+        // set to infinity point by default
         p.Zero();
 
         ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
@@ -82,13 +86,14 @@ public static class BlsExtensions
         return true;
     }
 
-    public static ReadOnlyMemory<byte> EncodeRaw(this G1 p)
+    public static byte[] EncodeRaw(this G1 p)
     {
         if (p.IsInf())
         {
             return BlsConst.G1Inf;
         }
 
+        // copy serialized point to buffer with padding bytes
         byte[] raw = new byte[BlsConst.LenG1];
         ReadOnlySpan<byte> trimmed = p.Serialize();
         trimmed[..BlsConst.LenFpTrimmed].CopyTo(raw.AsSpan()[BlsConst.LenFpPad..BlsConst.LenFp]);
@@ -96,13 +101,14 @@ public static class BlsExtensions
         return raw;
     }
 
-    public static ReadOnlyMemory<byte> EncodeRaw(this G2 p)
+    public static byte[] EncodeRaw(this G2 p)
     {
         if (p.IsInf())
         {
             return BlsConst.G2Inf;
         }
 
+        // copy serialized point to buffer with padding bytes
         byte[] raw = new byte[BlsConst.LenG2];
         ReadOnlySpan<byte> trimmed = p.Serialize();
         trimmed[..BlsConst.LenFpTrimmed].CopyTo(raw.AsSpan()[(BlsConst.LenFp + BlsConst.LenFpPad)..]);
@@ -130,18 +136,18 @@ public static class BlsExtensions
     }
 
     public static bool TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
-        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckG1);
+        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckSubgroupG1);
 
     public static bool TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
-        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckG2);
+        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckSubgroupG2);
 
-    private static bool DecodeAndCheckG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
+    private static bool DecodeAndCheckSubgroupG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
         G1 p = new(pointBuffer.Span[(dest * G1.Sz)..]);
         return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
     }
 
-    private static bool DecodeAndCheckG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
+    private static bool DecodeAndCheckSubgroupG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
         G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
         return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
@@ -157,6 +163,7 @@ public static class BlsExtensions
         int itemSize,
         Func<ReadOnlyMemory<byte>, Memory<long>, int, bool> decodeAndCheckPoint)
     {
+        // skip points at infinity
         if (dest == -1)
         {
             return true;

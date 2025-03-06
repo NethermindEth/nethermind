@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -13,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore(IDb blockDb) : IBlockStore
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
 {
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;

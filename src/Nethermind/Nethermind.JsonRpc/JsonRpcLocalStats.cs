@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Metric;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc;
@@ -18,6 +19,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 {
     private readonly ITimestamper _timestamper;
     private readonly TimeSpan _reportingInterval;
+    private readonly bool _enablePerMethodMetrics;
     private ConcurrentDictionary<string, MethodStats> _currentStats = new();
     private ConcurrentDictionary<string, MethodStats> _previousStats = new();
     private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
@@ -30,6 +32,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
+        _enablePerMethodMetrics = jsonRpcConfig.EnablePerMethodMetrics;
         _lastReport = timestamper.UtcNow;
     }
 
@@ -53,10 +56,20 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
         return ReportCallInternal(report, elapsedMicroseconds, size);
     }
 
+    private record MetricLabel(string method, bool success) : IMetricLabels
+    {
+        public string[] Labels => [method, success ? "success" : "fail"];
+    }
+
     private async Task ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
     {
         // we don't want to block RPC calls any longer than required
         await Task.Yield();
+
+        if (_enablePerMethodMetrics)
+        {
+            Metrics.JsonRpcCallLatencyMicros.Observe(new MetricLabel(report.Method, report.Success), elapsedMicroseconds);
+        }
 
         BuildReport();
 
