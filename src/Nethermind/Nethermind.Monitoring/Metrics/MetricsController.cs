@@ -3,11 +3,9 @@
 
 #nullable enable
 using System;
-using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -110,6 +108,19 @@ namespace Nethermind.Monitoring.Metrics
             public Gauge Gauge => gauge;
         }
 
+        public class MetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
+        {
+            public void Update()
+            {
+                // Noop: Updated when `Observe` is called.
+            }
+
+            public void Observe(IMetricLabels labels, double value)
+            {
+                summary.WithLabels(labels.Labels).Observe(value);
+            }
+        }
+
         public void RegisterMetrics(Type type)
         {
             if (_metricTypes.Add(type))
@@ -118,18 +129,25 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
+        internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
+
+        private static CommonMetricInfo DetermineMetricInfo(MemberInfo member)
         {
             string name = BuildGaugeName(member);
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description!;
-
-            bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
-            return CreateGauge(name, description, !haveTagAttributes ? null : CreateTags(), labels);
 
             Dictionary<string, string> CreateTags() =>
                 member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ToDictionary(
                     attribute => attribute.Label,
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
+
+            return new CommonMetricInfo(name, description, CreateTags());
+        }
+
+        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
+        {
+            var metricInfo = DetermineMetricInfo(member);
+            return CreateGauge(metricInfo.Name, metricInfo.Description, metricInfo.Tags, labels);
         }
 
         // Tags that all metrics share
@@ -197,6 +215,25 @@ namespace Nethermind.Monitoring.Metrics
         private bool TryCreateMetricUpdater(Type type, Meter? meter, MemberInfo memberInfo, out IMetricUpdater metricUpdater)
         {
             Type memberType = memberInfo.GetMemberType();
+
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)))
+            {
+                SummaryMetricAttribute attribute = memberInfo.GetCustomAttribute<SummaryMetricAttribute>()!;
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Summary summary = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateSummary(metricInfo.Name, metricInfo.Description,
+                    new SummaryConfiguration()
+                    {
+                        LabelNames = attribute.LabelNames,
+                        Objectives = attribute.ObjectiveQuantile.Zip(attribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
+                    });
+
+                metricUpdater = new MetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
 
             if (!memberType.IsEnumerable())
             {
