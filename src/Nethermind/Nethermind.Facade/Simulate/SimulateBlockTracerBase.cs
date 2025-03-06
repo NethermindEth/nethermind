@@ -39,7 +39,7 @@ public class SimulateBlockTracerBase<TxTracer, TTrace> : IBlockTracer<SimulateBl
         _currentBlock = block;
     }
 
-    public virtual ITxTracer StartNewTxTrace(Transaction? tx) =>  NullTxTracer.Instance;
+    public virtual ITxTracer StartNewTxTrace(Transaction? tx) => NullTxTracer.Instance;
 
     protected virtual IReadOnlyList<TTrace> getCalls() => [];
 
