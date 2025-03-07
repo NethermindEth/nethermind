@@ -196,8 +196,8 @@ public class StorageProviderTests
         ctx.StateProvider.Commit(Frontier.Instance);
 
         // revert
-        ctx.StateProvider.Reset();
-        storageProvider.Reset();
+        ctx.StateProvider.Reset(resetBlockCache: true);
+        storageProvider.Reset(resetBlockCache: true);
         ctx.StateProvider.StateRoot = stateRoot;
 
         byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
