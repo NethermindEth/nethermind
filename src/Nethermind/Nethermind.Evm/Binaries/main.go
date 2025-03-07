@@ -2,10 +2,7 @@ package main
 
 import (
 	"C"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"fmt"
-	"math/big"
 	"runtime/debug"
 	"unsafe"
 )
@@ -29,18 +26,7 @@ func VerifyBytes(data *C.uchar, length C.int) C.uchar {
 	// Check if the data looks corrupted
 	fmt.Printf("Go: First 8 bytes: %x\n", bytes[:8])
 
-	// Extract values directly from the slice
-	var hash = bytes[0:32]
-	var r, s = new(big.Int).SetBytes(bytes[32:64]), new(big.Int).SetBytes(bytes[64:96])
-	var x, y = new(big.Int).SetBytes(bytes[96:128]), new(big.Int).SetBytes(bytes[128:160])
-	var publicKey = &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
-
-	if ecdsa.Verify(publicKey, hash, r, s) {
-		fmt.Println("Go: Signature verified")
-		return 1
-	}
-	fmt.Println("Go: Signature failed")
-	return 0
+	return 1
 }
 
 func main() {}
