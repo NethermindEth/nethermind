@@ -171,7 +171,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
-        await _sendSemaphore.WaitAsync();
+        await _sendSemaphore.WaitAsync(cancellationToken);
         try
         {
             if (result.IsCollection)
