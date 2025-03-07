@@ -25,7 +25,7 @@ public class TaikoBlockValidationTransactionExecutor(
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
         if ((currentTx.SenderAddress?.Equals(TaikoBlockValidator.GoldenTouchAccount) ?? false) && i == 0)
-                currentTx.IsAnchorTx = true;
+            currentTx.IsAnchorTx = true;
         base.ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
     }
 }
