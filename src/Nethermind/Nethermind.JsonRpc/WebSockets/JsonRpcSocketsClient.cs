@@ -3,19 +3,16 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using CommunityToolkit.HighPerformance.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
@@ -34,7 +31,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly Channel<ProcessRequest> _processChannel;
     private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner);
 
-    private readonly int _processConcurrency = 1;
+    private readonly int _workerTaskCount = 1;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -52,8 +49,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
-        _processChannel = Channel.CreateBounded<ProcessRequest>(concurrency);
-        _processConcurrency = concurrency;
+        _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
+        {
+            SingleWriter = true
+        });
+        _workerTaskCount = concurrency;
     }
 
     public override void Dispose()
@@ -83,7 +83,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
-        using ArrayPoolList<Task> allTasks = new(_processConcurrency + 1);
+        using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
         allTasks.Add(Task.Factory.StartNew(async () =>
         {
             try
@@ -96,7 +96,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
         }, TaskCreationOptions.LongRunning));
 
-        for (int i = 0; i < _processConcurrency; i++)
+        for (int i = 0; i < _workerTaskCount; i++)
         {
             allTasks.Add(Task.Factory.StartNew(async () => await WorkerLoop(cts.Token), TaskCreationOptions.LongRunning));
         }
