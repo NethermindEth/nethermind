@@ -31,9 +31,13 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
-        using MemoryHandle pin = input.Pin();
-        GoSlice slice = new((nint)pin.Pointer, input.Length);
-        var isValid = VerifyBytes(slice) != 0;
+        bool isValid;
+        var copy = input.ToArray();
+        fixed (byte* ptr = copy)
+        {
+            GoSlice slice = new((nint)ptr, input.Length);
+            isValid = VerifyBytes(slice) != 0;
+        }
 
         Metrics.Secp256r1Precompile++;
 
