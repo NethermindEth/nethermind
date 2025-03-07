@@ -69,4 +69,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string[] CorsOrigins { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 1;
     public int IpcProcessingConcurrency { get; set; } = 1;
+    public bool EnablePerMethodMetrics { get; set; } = false;
 };

@@ -99,7 +99,7 @@ namespace Nethermind.Init.Steps
             BlockHeader genesis = _api.BlockTree.Genesis ?? throw new NullReferenceException("Genesis block is null");
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsWarn) _logger.Warn(worldState.DumpState());
+                if (_logger.IsTrace) _logger.Trace(worldState.DumpState());
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

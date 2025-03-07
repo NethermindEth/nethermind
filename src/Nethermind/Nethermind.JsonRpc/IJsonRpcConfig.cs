@@ -175,4 +175,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
     int IpcProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    bool EnablePerMethodMetrics { get; set; }
 }
