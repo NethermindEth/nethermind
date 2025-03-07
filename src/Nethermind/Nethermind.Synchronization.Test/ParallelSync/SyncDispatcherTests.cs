@@ -281,7 +281,6 @@ public class SyncDispatcherTests
         }
     }
 
-    [Retry(tryCount: 5)]
     [Test]
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
@@ -306,7 +305,10 @@ public class SyncDispatcherTests
         syncFeed.Finish();
 
         // Dispose
-        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync());
+        Task disposeTask = Task.Run(async () =>
+        {
+            await dispatcher.DisposeAsync();
+        });
         await Task.Delay(100, cts.Token);
 
         disposeTask.IsCompletedSuccessfully.Should().BeFalse();
