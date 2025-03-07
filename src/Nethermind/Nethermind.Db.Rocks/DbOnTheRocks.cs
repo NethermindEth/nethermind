@@ -1592,6 +1592,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         private readonly ColumnFamilyHandle? _cf;
         private readonly ReadOptions? _readOptions;
         private readonly Timer _timer;
+        private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
@@ -1607,6 +1608,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         private void OnTimer(object? state)
         {
+            if (_isDisposed) return;
             _readaheadIterators.ClearIterators();
             _readaheadIterators2.ClearIterators();
             _readaheadIterators3.ClearIterators();
@@ -1614,6 +1616,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
             _timer.Dispose();
             _readaheadIterators.DisposeAll();
             _readaheadIterators2.DisposeAll();
@@ -1690,7 +1694,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             public void ClearIterators()
             {
                 if (_disposed) return;
-
+                if (Values is null) return;
                 foreach (IteratorHolder iterator in Values)
                 {
                     iterator.Dispose();
