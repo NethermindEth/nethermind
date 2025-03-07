@@ -295,7 +295,7 @@ public class SyncDispatcherTests
 
         // Load some requests
         syncFeed.Activate();
-        await Task.Delay(100, cts.Token);
+        await Task.Delay(200, cts.Token);
         syncFeed.Finish();
 
         // Dispose
