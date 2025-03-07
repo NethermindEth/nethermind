@@ -1884,7 +1884,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
             return result.Length <= LogIndexStorage.MaxUncompressedLength
                 ? result
-                : LogIndexStorage.Compress(key, result);
+                : LogIndexStorage.CompressDbValue(result);
         }
 
         private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
