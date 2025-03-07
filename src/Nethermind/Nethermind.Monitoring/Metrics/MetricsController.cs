@@ -116,14 +116,16 @@ namespace Nethermind.Monitoring.Metrics
                 // Noop: Updated when `Observe` is called.
             }
 
-            public void Observe(IMetricLabels labels, double value)
+            public void Observe(double value, IMetricLabels? labels = null)
             {
-                summary.WithLabels(labels.Labels).Observe(value);
-            }
-
-            public void Observe(double value)
-            {
-                summary.Observe(value);
+                if (labels is not null)
+                {
+                    summary.WithLabels(labels.Labels).Observe(value);
+                }
+                else
+                {
+                    summary.Observe(value);
+                }
             }
         }
 
@@ -134,14 +136,16 @@ namespace Nethermind.Monitoring.Metrics
                 // Noop: Updated when `Observe` is called.
             }
 
-            public void Observe(IMetricLabels labels, double value)
+            public void Observe(double value, IMetricLabels? labels = null)
             {
-                histogram.WithLabels(labels.Labels).Observe(value);
-            }
-
-            public void Observe(double value)
-            {
-                histogram.Observe(value);
+                if (labels is not null)
+                {
+                    histogram.WithLabels(labels.Labels).Observe(value);
+                }
+                else
+                {
+                    histogram.Observe(value);
+                }
             }
         }
 
