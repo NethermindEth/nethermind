@@ -46,12 +46,7 @@ public class NativeCallTracerCallFrame : IDisposable
             Input?.Dispose();
             Output?.Dispose();
             Logs?.Dispose();
-            foreach (NativeCallTracerCallFrame childCallFrame in Calls)
-            {
-                childCallFrame.Dispose();
-            }
-
-            Calls.Dispose();
+            Calls.DisposeRecursive();
         }
     }
 }
