@@ -5,7 +5,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class BlockInvalidTxExecutorFactory : IBlockTransactionsExecutorFactory
 {

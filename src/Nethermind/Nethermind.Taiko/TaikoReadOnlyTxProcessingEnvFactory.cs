@@ -9,7 +9,7 @@ using Nethermind.State;
 namespace Nethermind.Taiko;
 
 public class TaikoReadOnlyTxProcessingEnvFactory(
-    OverridableWorldStateManager worldStateManager,
+    IWorldStateManager worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
     ILogManager logManager)
