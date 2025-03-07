@@ -178,7 +178,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             {
                 int responseSize = 1;
                 bool isFirst = true;
-                await _stream.WriteAsync(_jsonOpeningBracket);
+                await _stream.WriteAsync(_jsonOpeningBracket, cancellationToken);
                 await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(cancellationToken);
                 while (await enumerator.MoveNextAsync())
                 {
