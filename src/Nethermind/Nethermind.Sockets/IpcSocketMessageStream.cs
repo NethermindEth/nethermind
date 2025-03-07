@@ -35,12 +35,12 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             catch { }
         }
 
-        int delimiter = buffer[.._bufferedDataLength].IndexOf(Delimiter);
+        int delimiter = ((IList<byte>)buffer[.._bufferedDataLength]).IndexOf(Delimiter);
         int read;
         if (delimiter == -1)
         {
             read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
-            delimiter = buffer[..read].IndexOf(Delimiter);
+            delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
         }
         else
         {
