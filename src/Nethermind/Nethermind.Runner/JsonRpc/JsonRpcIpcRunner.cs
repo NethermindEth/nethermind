@@ -60,42 +60,52 @@ namespace Nethermind.Runner.JsonRpc
 
         private async Task StartServer(string path, CancellationToken cancellationToken)
         {
+            DeleteSocketFileIfExists(path);
+
+            _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            _server.Bind(new UnixDomainSocketEndPoint(path));
+            _server.Listen(0);
+
+            while (true)
+            {
+                if (_logger.IsInfo) _logger.Info($"Waiting for an IPC connection...");
+
+                Socket socket = await _server.AcceptAsync(cancellationToken);
+
+                socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
+                socket.SendTimeout = _jsonRpcConfig.Timeout;
+
+                _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken));
+            }
+        }
+
+        private async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
+        {
+            using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
+                string.Empty,
+                new IpcSocketMessageStream(socket),
+                RpcEndpoint.IPC,
+                _jsonRpcProcessor,
+                _jsonRpcLocalStats,
+                _jsonSerializer,
+                maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize,
+                concurrency: _jsonRpcConfig.IpcProcessingConcurrency);
+
             try
             {
-                DeleteSocketFileIfExists(path);
-
-                _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                _server.Bind(new UnixDomainSocketEndPoint(path));
-                _server.Listen(0);
-
-                while (true)
-                {
-                    if (_logger.IsInfo) _logger.Info("Waiting for an IPC connection...");
-
-                    Socket socket = await _server.AcceptAsync(cancellationToken);
-
-                    socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
-                    socket.SendTimeout = _jsonRpcConfig.Timeout;
-
-                    using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
-                        string.Empty,
-                        new IpcSocketMessageStream(socket),
-                        RpcEndpoint.IPC,
-                        _jsonRpcProcessor,
-                        _jsonRpcLocalStats,
-                        _jsonSerializer,
-                        maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
-
-                    await socketsClient.ReceiveLoopAsync();
-                }
+                await socketsClient.ReceiveLoopAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Connection was cancelled.");
             }
             catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
             {
-                _logger.Debug("IPC client disconnected.");
+                if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == OperationCancelledError)
             {
-                _logger.Debug("IPC client disconnected.");
+                if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex)
             {
@@ -104,10 +114,6 @@ namespace Nethermind.Runner.JsonRpc
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error($"IPC server error:", ex);
-            }
-            finally
-            {
-                Dispose();
             }
         }
 
