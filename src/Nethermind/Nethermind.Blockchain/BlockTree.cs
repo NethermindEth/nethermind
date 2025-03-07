@@ -629,17 +629,6 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
-        {
-            BlockHeader? result = header;
-            while (result is not null && result.Number < number)
-            {
-                result = this.FindParentHeader(result, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return header;
-        }
-
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
         {
             if (blockNumber < 0)
