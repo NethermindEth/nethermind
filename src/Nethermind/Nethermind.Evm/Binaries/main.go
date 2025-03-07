@@ -6,12 +6,15 @@ import (
 	"crypto/elliptic"
 	"fmt"
 	"math/big"
+	"runtime"
 	"unsafe"
 )
 
 //export VerifyBytes
 func VerifyBytes(data *C.uchar, length C.int) C.uchar {
 	fmt.Printf("VerifyBytes called with data=%p length=%d\n", data, length)
+
+	runtime.LockOSThread() // Prevent Go scheduler from moving this thread
 
 	if length != 160 {
 		fmt.Println("Invalid length")
