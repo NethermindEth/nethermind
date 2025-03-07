@@ -64,7 +64,7 @@ public class LongDisposeTracker : IResolveMiddleware
 
     public override string ToString() => nameof(LongDisposeTracker);
 
-    private class DisposableTracker(IDisposable disposable): IDisposable
+    private class DisposableTracker(IDisposable disposable) : IDisposable
     {
         public void Dispose()
         {
@@ -77,7 +77,7 @@ public class LongDisposeTracker : IResolveMiddleware
         }
     }
 
-    private class AsyncDisposableTracker(IAsyncDisposable disposable): IAsyncDisposable
+    private class AsyncDisposableTracker(IAsyncDisposable disposable) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
@@ -90,7 +90,7 @@ public class LongDisposeTracker : IResolveMiddleware
         }
     }
 
-    private class DisposableAndAsyncDisposableTracker(IAsyncDisposable disposable): IAsyncDisposable, IDisposable
+    private class DisposableAndAsyncDisposableTracker(IAsyncDisposable disposable) : IAsyncDisposable, IDisposable
     {
         public ValueTask DisposeAsync()
         {

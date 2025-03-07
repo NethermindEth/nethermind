@@ -15,7 +15,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
 
-public class BaseSyncPeerMock: ISyncPeer, ISnapSyncPeer
+public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
 {
     public virtual PublicKey Id { get; } = null!;
     public long HeadNumber { get; set; }
