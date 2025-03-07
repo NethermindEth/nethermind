@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -24,17 +25,22 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe partial byte VerifyBytes(byte* data, int length);
 
+    private static readonly Lock Lock = new();
+
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
-        bool isValid;
-        var copy = input.ToArray();
-        fixed (byte* ptr = copy)
+        lock (Lock)
         {
-            isValid = VerifyBytes(ptr, input.Length) != 0;
+            bool isValid;
+            var copy = input.ToArray();
+            fixed (byte* ptr = copy)
+            {
+                isValid = VerifyBytes(ptr, input.Length) != 0;
+            }
+
+            Metrics.Secp256r1Precompile++;
+
+            return (isValid ? ValidResult : null, true);
         }
-
-        Metrics.Secp256r1Precompile++;
-
-        return (isValid ? ValidResult : null, true);
     }
 }
