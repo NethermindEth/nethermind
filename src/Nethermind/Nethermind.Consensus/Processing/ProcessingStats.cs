@@ -159,6 +159,12 @@ namespace Nethermind.Consensus.Processing
             _lastBlockNumber = blockNumber;
             double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
 
+            // We want the rate here
+            double mgas = block.GasUsed / 1_000_000.0;
+            double timeSec = data.ProcessingMicroseconds / 1_000_000.0;
+            Metrics.BlockMGasPerSec.Observe(mgas / timeSec);
+            Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+
             Metrics.Mgas += block.GasUsed / 1_000_000.0;
             Transaction[] txs = block.Transactions;
             double chunkMicroseconds = (_chunkProcessingMicroseconds += data.ProcessingMicroseconds);
