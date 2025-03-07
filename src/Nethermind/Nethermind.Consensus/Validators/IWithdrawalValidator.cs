@@ -9,15 +9,11 @@ namespace Nethermind.Consensus.Validators;
 public interface IWithdrawalValidator
 {
     /// <summary>
-    /// Validates the block specified for withdrawals against
-    /// the <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
+    /// Validates the specified block for withdrawals, if they are available at <paramref name="spec"/>.
     /// </summary>
     /// <param name="block">The block to validate.</param>
-    /// <param name="spec"></param>
+    /// <param name="spec">The current spec.</param>
     /// <param name="error">The validation error message if any.</param>
-    /// <returns>
-    /// <c>true</c> if <see cref="Block.Withdrawals"/> are not <c>null</c> when EIP-4895 is activated;
-    /// otherwise, <c>false</c>.
-    /// </returns>
+    /// <returns>Whether withdrawals are valid. </returns>
     bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error);
 }

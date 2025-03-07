@@ -13,15 +13,11 @@ public interface IBlockValidator : IHeaderValidator
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
 
     /// <summary>
-    /// Validates the block specified for withdrawals against
-    /// the <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
+    /// Validates the specified block against the underlying <see cref="IWithdrawalValidator"/>.
     /// </summary>
     /// <param name="block">The block to validate.</param>
     /// <param name="error">The validation error message if any.</param>
-    /// <returns>
-    /// <c>true</c> if <see cref="Block.Withdrawals"/> are not <c>null</c> when EIP-4895 is activated;
-    /// otherwise, <c>false</c>.
-    /// </returns>
+    /// <returns>Whether the block has valid withdrawals.</returns>
     bool ValidateWithdrawals(Block block, out string? error);
 
     bool ValidateBody(Block block);

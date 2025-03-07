@@ -11,6 +11,10 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Validators;
 
+
+/// <summary>
+/// Validates a block for withdrawals against the <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
+/// </summary>
 public class WithdrawalValidator : IWithdrawalValidator
 {
     private readonly ILogger _logger;
