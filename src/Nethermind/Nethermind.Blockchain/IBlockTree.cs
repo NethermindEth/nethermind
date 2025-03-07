@@ -65,15 +65,25 @@ namespace Nethermind.Blockchain
         /// <param name="header">Header to add</param>
         /// <param name="headerOptions"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
+        AddBlockResult Insert(BlockHeader header,
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
+        /// <param name="blockWriteFlags">The write flags overrides to be used for this insert operation.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
-            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
+        AddBlockResult Insert(Block block,
+            BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
+            WriteFlags blockWriteFlags = WriteFlags.None);
+
+        /// <summary>
+        /// Flushes underlying storages for the specific <paramref name="reason"/>.
+        /// </summary>
+        /// <param name="reason">The reason for flushing, showing what changes should be persisted.</param>
+        void Flush(FlushReason reason);
 
         void UpdateHeadBlock(Hash256 blockHash);
 
@@ -83,7 +93,8 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="options">Options for suggesting block, whether a block should be processed or just added to the store.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
+        AddBlockResult SuggestBlock(Block block,
+            BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
@@ -91,7 +102,8 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="options">Options for suggesting block, whether a block should be processed or just added to the store.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
+        ValueTask<AddBlockResult> SuggestBlockAsync(Block block,
+            BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
 
         /// <summary>
         /// Suggests a block header (without body)
@@ -178,5 +190,19 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+    }
+
+    public enum FlushReason
+    {
+        /// <summary>
+        /// Flush after <see cref="IBlockTree.Insert" for a header is called/>
+        /// is called
+        /// </summary>
+        InsertHeaders,
+
+        /// <summary>
+        /// Flush after <see cref="IBlockTree.Insert"/> for a block is called.
+        /// </summary>
+        InsertBlocks,
     }
 }

@@ -273,6 +273,22 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        public void Flush(FlushReason reason)
+        {
+            switch (reason)
+            {
+                case FlushReason.InsertHeaders:
+                    _headerStore.Flush();
+                    _chainLevelInfoRepository.Flush();
+                    break;
+                case FlushReason.InsertBlocks:
+                    _blockStore.Flush();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(reason), reason, null);
+            }
+        }
+
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None)
         {
