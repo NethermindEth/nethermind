@@ -20,7 +20,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -28,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain
 {
@@ -55,7 +55,8 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-
+        private readonly IHistoryConfig _historyConfig;
+        private readonly IBlocksConfig _blocksConfig;
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
 
@@ -115,6 +116,8 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
+            IHistoryConfig? historyConfig,
+            IBlocksConfig? blocksConfig,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -128,11 +131,13 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _historyConfig = historyConfig ?? throw new ArgumentNullException(nameof(historyConfig));
+            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
             {
-                DeleteBlocks(new Hash256(deletePointer));
+                DeleteInvalidBranch(new Hash256(deletePointer));
             }
 
             // Need to be here because it still need to run even if there are no genesis to store the null entry.
@@ -624,17 +629,6 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
-        {
-            BlockHeader? result = header;
-            while (result is not null && result.Number < number)
-            {
-                result = this.FindParentHeader(result, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return header;
-        }
-
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
         {
             if (blockNumber < 0)
@@ -694,7 +688,7 @@ namespace Nethermind.Blockchain
 
             try
             {
-                DeleteBlocks(invalidBlock.Hash!);
+                DeleteInvalidBranch(invalidBlock.Hash!);
             }
             finally
             {
@@ -702,7 +696,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void DeleteBlocks(Hash256 deletePointer)
+        private void DeleteInvalidBranch(Hash256 deletePointer)
         {
             BlockHeader? deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (deleteHeader is null)
@@ -728,40 +722,14 @@ namespace Nethermind.Blockchain
                 ChainLevelInfo? currentLevel = nextLevel ?? LoadLevel(currentNumber);
                 nextLevel = LoadLevel(currentNumber + 1);
 
-                bool shouldRemoveLevel = false;
-                if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
-                {
-                    if (currentLevel.BlockInfos.Length == 1)
-                    {
-                        shouldRemoveLevel = true;
-                    }
-                    else
-                    {
-                        currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
-                    }
-                }
-
                 // just finding what the next descendant will be
                 if (nextLevel is not null)
                 {
                     nextHash = FindChild(nextLevel, currentHash);
                 }
 
-                UpdateDeletePointer(nextHash);
-
-                if (shouldRemoveLevel)
-                {
-                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
-                    _chainLevelInfoRepository.Delete(currentNumber, batch);
-                }
-                else if (currentLevel is not null)
-                {
-                    _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
-                }
-
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockStore.Delete(currentNumber, currentHash);
-                _headerStore.Delete(currentHash);
+                DeleteBlock(currentNumber, currentHash, nextHash, batch, currentLevel);
 
                 if (nextHash is null)
                 {
@@ -772,6 +740,39 @@ namespace Nethermind.Blockchain
                 currentHash = nextHash;
                 nextHash = null;
             }
+        }
+
+        private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null)
+        {
+            currentLevel ??= LoadLevel(currentNumber);
+
+            bool shouldRemoveLevel = false;
+            if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
+            {
+                if (currentLevel.BlockInfos.Length == 1)
+                {
+                    shouldRemoveLevel = true;
+                }
+                else
+                {
+                    currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                }
+            }
+
+            UpdateDeletePointer(nextHash);
+
+            if (shouldRemoveLevel)
+            {
+                BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
+                _chainLevelInfoRepository.Delete(currentNumber, batch);
+            }
+            else if (currentLevel is not null)
+            {
+                _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+            }
+
+            _blockStore.Delete(currentNumber, currentHash);
+            _headerStore.Delete(currentHash);
         }
 
         private Hash256? FindChild(ChainLevelInfo level, Hash256 parentHash)
@@ -1462,35 +1463,43 @@ namespace Nethermind.Blockchain
                 newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
             }
 
-            using (_chainLevelInfoRepository.StartBatch())
+            BlockAcceptingNewBlocks();
+            try
             {
-                for (long i = endNumber.Value; i >= startNumber; i--)
+                using (_chainLevelInfoRepository.StartBatch())
                 {
-                    ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
-                    if (chainLevelInfo is null)
+                    for (long i = endNumber.Value; i >= startNumber; i--)
                     {
-                        continue;
-                    }
+                        ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
+                        if (chainLevelInfo is null)
+                        {
+                            continue;
+                        }
 
-                    _chainLevelInfoRepository.Delete(i);
-                    deleted++;
+                        _chainLevelInfoRepository.Delete(i);
+                        deleted++;
 
-                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                    {
-                        Hash256 blockHash = blockInfo.BlockHash;
-                        _blockInfoDb.Delete(blockHash);
-                        _blockStore.Delete(i, blockHash);
-                        _headerStore.Delete(blockHash);
+                        foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+                        {
+                            Hash256 blockHash = blockInfo.BlockHash;
+                            _blockInfoDb.Delete(blockHash);
+                            _blockStore.Delete(i, blockHash);
+                            _headerStore.Delete(blockHash);
+                        }
                     }
                 }
-            }
 
-            if (newHeadBlock is not null)
+                if (newHeadBlock is not null)
+                {
+                    UpdateHeadBlock(newHeadBlock);
+                }
+
+                return deleted;
+            }
+            finally
             {
-                UpdateHeadBlock(newHeadBlock);
+                ReleaseAcceptingNewBlocks();
             }
-
-            return deleted;
         }
 
         internal void BlockAcceptingNewBlocks()

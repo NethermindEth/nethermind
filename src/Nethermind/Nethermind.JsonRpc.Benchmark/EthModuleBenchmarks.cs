@@ -84,6 +84,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 NullBloomStorage.Instance,
                 new SyncConfig(),
+                new HistoryConfig(),
+                new BlocksConfig(),
                 LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
