@@ -59,7 +59,7 @@ namespace Ethereum.Test.Base
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             EofValidator.Logger = _logger;
-            
+
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
             ISpecProvider specProvider =
