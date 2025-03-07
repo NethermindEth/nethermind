@@ -24,7 +24,7 @@ internal unsafe static partial class EvmInstructions
         where TTracingInstructions : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        OpCode[] lookup = new OpCode[256];
+        OpCode[] lookup = new OpCode[byte.MaxValue];
 
         for (int i = 0; i < lookup.Length; i++)
         {
