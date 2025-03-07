@@ -256,7 +256,8 @@ namespace Nethermind.Monitoring.Metrics
             {
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
 
-                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description, new HistogramConfiguration()
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                    new HistogramConfiguration()
                     {
                         LabelNames = histogramAttribute.LabelNames,
                         Buckets = Histogram.ExponentialBuckets(histogramAttribute.Start, histogramAttribute.Factor, histogramAttribute.Count)
