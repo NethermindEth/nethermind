@@ -1222,14 +1222,14 @@ public sealed unsafe partial class VirtualMachine(
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (gasAvailable < 0)
                     goto OutOfGas;
+                // If an exception occurred, exit the loop.
+                if (exceptionType != EvmExceptionType.None)
+                    break;
 
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInstructions.IsActive)
                     EndInstructionTrace(gasAvailable);
 
-                // If an exception occurred, exit the loop.
-                if (exceptionType != EvmExceptionType.None)
-                    break;
                 // If return data has been set, exit the loop to process the returned value.
                 if (ReturnData is not null)
                     break;
@@ -1279,6 +1279,7 @@ public sealed unsafe partial class VirtualMachine(
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
 
     OutOfGas:
+        gasAvailable = 0;
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
