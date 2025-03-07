@@ -737,7 +737,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         bytecodeResultArray = bytecodeResult.ToArray();
 
                         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-                        bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
+                        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
                         if (unspentGas >= codeDepositGasCost && !invalidCode)
                         {
                             // 4 - set state[new_address].code to the updated deploy container
