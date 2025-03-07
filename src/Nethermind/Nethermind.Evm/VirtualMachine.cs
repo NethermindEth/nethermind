@@ -1239,6 +1239,9 @@ public sealed unsafe partial class VirtualMachine(
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
+            // If tracing is enabled, complete the trace for the current instruction.
+            if (TTracingInstructions.IsActive)
+                EndInstructionTrace(gasAvailable);
             UpdateCurrentState(programCounter, gasAvailable, stack.Head);
         }
         else
