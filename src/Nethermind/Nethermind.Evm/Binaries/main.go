@@ -12,12 +12,12 @@ import (
 
 //export VerifyBytes
 func VerifyBytes(data *C.uchar, length C.int) C.uchar {
-	fmt.Printf("VerifyBytes called with data=%p length=%d\n", data, length)
+	fmt.Printf("Go: VerifyBytes called with data=%p length=%d\n", data, length)
 
 	runtime.LockOSThread() // Prevent Go scheduler from moving this thread
 
 	if length != 160 {
-		fmt.Println("Invalid length")
+		fmt.Println("Go: Invalid length")
 		return 0
 	}
 
@@ -25,7 +25,7 @@ func VerifyBytes(data *C.uchar, length C.int) C.uchar {
 	bytes := unsafe.Slice((*byte)(unsafe.Pointer(data)), length)
 
 	// Check if the data looks corrupted
-	fmt.Printf("First 8 bytes: %x\n", bytes[:8])
+	fmt.Printf("Go: First 8 bytes: %x\n", bytes[:8])
 
 	// Extract values directly from the slice
 	var hash = bytes[0:32]
@@ -34,10 +34,10 @@ func VerifyBytes(data *C.uchar, length C.int) C.uchar {
 	var publicKey = &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
 
 	if ecdsa.Verify(publicKey, hash, r, s) {
-		fmt.Println("Signature verified")
+		fmt.Println("Go: Signature verified")
 		return 1
 	}
-	fmt.Println("Signature failed")
+	fmt.Println("Go: Signature failed")
 	return 0
 }
 
