@@ -29,6 +29,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -55,9 +56,9 @@ public class SynchronizerTests
         .WithDifficulty(100000)
         .WithTotalDifficulty((UInt256)100000).TestObject;
 
-    private class SyncPeerMock : ISyncPeer
+    private class SyncPeerMock : BaseSyncPeerMock
     {
-        public string Name => "Mock";
+        public override string Name => "Mock";
 
         private readonly bool _causeTimeoutOnInit;
         private readonly bool _causeTimeoutOnBlocks;
@@ -89,24 +90,14 @@ public class SynchronizerTests
             TotalDifficulty = HeadBlock.TotalDifficulty ?? 0;
         }
 
-        public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
+        public override Node Node { get; set; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
-        public string ClientId { get; }
-        public Hash256 HeadHash { get; set; } = null!;
-        public byte ProtocolVersion { get; } = default;
-        public string ProtocolCode { get; } = null!;
-        public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
-
-        public bool IsInitialized { get; set; }
-        public bool IsPriority { get; set; }
-
-        public void Disconnect(DisconnectReason reason, string details)
+        public override void Disconnect(DisconnectReason reason, string details)
         {
             Disconnected?.Invoke(this, EventArgs.Empty);
         }
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public override Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (_causeTimeoutOnBlocks)
             {
@@ -128,7 +119,7 @@ public class SynchronizerTests
             return Task.FromResult(new OwnedBlockBodies(result));
         }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public override Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             if (_causeTimeoutOnHeaders)
             {
@@ -159,12 +150,7 @@ public class SynchronizerTests
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
         }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
+        public override async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             if (_causeTimeoutOnInit)
             {
@@ -187,7 +173,7 @@ public class SynchronizerTests
             return header;
         }
 
-        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
+        public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (mode == SendBlockMode.FullBlock)
                 ReceivedBlocks.Push(block);
@@ -197,19 +183,9 @@ public class SynchronizerTests
 
         public event EventHandler? Disconnected;
 
-        public PublicKey Id => Node.Id;
+        public override PublicKey Id => Node.Id;
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
-
-        public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
-        {
-            throw new NotImplementedException();
-        }
+        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
         public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
         {
@@ -237,16 +213,6 @@ public class SynchronizerTests
             }
 
             UpdateHead();
-        }
-
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-        {
-            throw new NotImplementedException();
-        }
-
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
-        {
-            throw new NotImplementedException();
         }
     }
 
