@@ -20,10 +20,10 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3450L;
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    private /*readonly*/ struct GoSlice(IntPtr data, long len)
+    private readonly struct GoSlice(IntPtr data, long len)
     {
-        public IntPtr Data = data;
-        public long Len = len, Cap = len;
+        public readonly IntPtr Data = data;
+        public readonly long Len = len, Cap = len;
     }
 
     [LibraryImport("Binaries/secp256r1", SetLastError = true)]
