@@ -6,18 +6,17 @@ import (
 	"crypto/elliptic"
 	"fmt"
 	"math/big"
-	"sync"
+	"runtime/debug"
 	"unsafe"
 )
 
-var verifyLock sync.Mutex
+func init() {
+	debug.SetMaxStack(16 * 1024 * 1024) // 16 MB stack per goroutine
+}
 
 //export VerifyBytes
 func VerifyBytes(data *C.uchar, length C.int) C.uchar {
 	fmt.Printf("Go: VerifyBytes called with data=%p length=%d\n", data, length)
-
-	verifyLock.Lock()
-	defer verifyLock.Unlock() // Ensure it's unlocked
 
 	if length != 160 {
 		fmt.Println("Go: Invalid length")
