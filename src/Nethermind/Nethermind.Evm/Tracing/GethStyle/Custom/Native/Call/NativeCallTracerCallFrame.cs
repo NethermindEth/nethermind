@@ -13,7 +13,9 @@ namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 [JsonConverter(typeof(NativeCallTracerCallFrameConverter))]
 public class NativeCallTracerCallFrame : IDisposable
 {
-    private int _disposed = 0;
+    private const int Alive = 0;
+    private const int Disposed = 1;
+    private int _disposed = Alive;
 
     public Instruction Type { get; set; }
 
@@ -41,7 +43,7 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 0)
+        if (Interlocked.CompareExchange(ref _disposed, Disposed, Alive) == Alive)
         {
             Input?.Dispose();
             Output?.Dispose();
