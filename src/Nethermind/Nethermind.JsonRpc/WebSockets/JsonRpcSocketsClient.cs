@@ -118,7 +118,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         int allResponsesSize = 0;
 
-        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
+        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext).WithCancellation(cancellationToken))
         {
             using (result)
             {
