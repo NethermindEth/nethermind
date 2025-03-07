@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.ExecWtiness;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -158,16 +159,21 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
+            // execution witness to collect access events and consume gas
+            // TODO: declare StatelessExecutionWitness
+            IExecutionWitness executionWitness = new NoExecWitness();
+            executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, !tx.Value.IsZero);
+
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
             int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, executionWitness, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
-            PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, executionWitness, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
             // Finalize
             if (restore)
@@ -216,6 +222,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            // TODO: report access witness using tracer
+            // if (tracer.IsTracingAccessWitness) tracer.ReportAccessWitness(env.Witness.GetAccessedKeys());
             return TransactionResult.Ok;
         }
 
@@ -538,6 +546,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
+            IExecutionWitness execWitness,
             in StackAccessTracker accessTracker)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
@@ -577,7 +586,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 codeSource: recipient,
                 executingAccount: recipient,
                 inputData: inputData,
-                codeInfo: codeInfo
+                codeInfo: codeInfo,
+                witness: execWitness
             );
         }
 
@@ -614,8 +624,18 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
+                    if (!env.Witness.AccessForContractCreationCheck(env.ExecutingAccount, ref unspentGas))
+                    {
+                        goto Fail;
+                    }
+
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                    {
+                        goto Fail;
+                    }
+
+                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, ref unspentGas))
                     {
                         goto Fail;
                     }
@@ -652,24 +672,48 @@ namespace Nethermind.Evm.TransactionProcessing
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                     if (tx.IsContractCreation)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+                        if (spec.IsEip4762Enabled)
                         {
-                            goto Fail;
-                        }
+                            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                            {
+                                goto Fail;
+                            }
 
-                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
-                        {
-                            goto Fail;
-                        }
+                            if (!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true, ref unspentGas))
+                            {
+                                goto Fail;
+                            }
 
-                        if (unspentGas >= codeDepositGasCost)
-                        {
                             var code = substate.Output.ToArray();
                             _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
-                            unspentGas -= codeDepositGasCost;
+                            if (!env.Witness.AccessForContractCreated(env.ExecutingAccount, ref unspentGas))
+                            {
+                                goto Fail;
+                            }
                         }
+                        else
+                        {
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
+                            if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+                            {
+                                goto Fail;
+                            }
+
+                            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                            {
+                                goto Fail;
+                            }
+
+                            if (unspentGas >= codeDepositGasCost)
+                            {
+                                var code = substate.Output.ToArray();
+                                _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+
+                                unspentGas -= codeDepositGasCost;
+                            }
+                        }
+
                     }
 
                     foreach (Address toBeDestroyed in substate.DestroyList)
@@ -709,7 +753,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness execWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
         {
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
@@ -722,6 +766,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     collectedFees += blobBaseFee;
                 }
+
+                if (!fees.IsZero) execWitness.AccessForGasBeneficiary(header.GasBeneficiary!);
 
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 

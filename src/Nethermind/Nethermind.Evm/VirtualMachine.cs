@@ -340,9 +340,28 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             _returnDataBuffer = Array.Empty<byte>();
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                            // first check if the code is invalid
+                            // we only need to do the gas calculation if the code is valid
                             bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+                            long codeDepositGasCost = 0;
+                            bool isGasAvailable = false;
+                            if (!invalidCode)
+                            {
+                                if (spec.IsEip4762Enabled)
+                                {
+                                    long gasThatCanBeUsed = gasAvailableForCodeDeposit;
+                                    isGasAvailable = currentState.Env.Witness.AccessAndChargeForCodeSlice(callCodeOwner,
+                                        0, callResult.Output.Length, true, ref gasThatCanBeUsed);
+                                    codeDepositGasCost = gasAvailableForCodeDeposit - gasThatCanBeUsed;
+                                }
+                                else
+                                {
+                                    codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                                    isGasAvailable = gasAvailableForCodeDeposit >= codeDepositGasCost;
+                                }
+                            }
+
+                            if (!invalidCode && isGasAvailable)
                             {
                                 ReadOnlyMemory<byte> code = callResult.Output;
                                 codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
@@ -354,6 +373,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                     _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
                                 }
                             }
+                            // TODO: here do we need to check FailOnOutOfGasCodeDeposit when eip4762 is enabled?
+                            //       or should we just fail without caring about this flag?
                             else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                             {
                                 currentState.GasAvailable -= gasAvailableForCodeDeposit;
@@ -492,9 +513,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         gasAvailable += refund;
     }
 
-    private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, bool chargeForDelegation, IReleaseSpec spec, bool chargeForWarm = true)
+    private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, bool chargeForDelegation, IReleaseSpec spec, bool chargeForWarm = true, Instruction opCode = Instruction.STOP)
     {
-        if (!spec.UseHotAndColdStorage)
+        if (!spec.UseHotAndColdStorage && !spec.IsEip4762Enabled)
         {
             return true;
         }
@@ -507,19 +528,77 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
         {
             bool result = true;
-            if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+            bool witnessGasCharged = false;
+            if (spec.IsEip4762Enabled)
             {
-                vmState.AccessTracker.WarmUp(address);
+                bool isAddressPreCompile = address.IsPrecompile(spec);
+                bool isSystemContract = address.IsSystemContract(spec);
+                switch (opCode)
+                {
+                    case Instruction.BALANCE:
+                        {
+                            var gasBefore = gasAvailable;
+                            result = vmState.Env.Witness.AccessForBalanceOpCode(address, ref gasAvailable);
+                            witnessGasCharged = gasBefore != gasAvailable;
+                            break;
+                        }
+                    case Instruction.EXTCODESIZE:
+                    case Instruction.EXTCODECOPY:
+                    case Instruction.CALL:
+                    case Instruction.CALLCODE:
+                    case Instruction.DELEGATECALL:
+                    case Instruction.STATICCALL:
+                        {
+                            if (!isAddressPreCompile && !isSystemContract)
+                            {
+                                var gasBefore = gasAvailable;
+                                result = vmState.Env.Witness.AccessAccountData(address, ref gasAvailable);
+                                witnessGasCharged = gasBefore != gasAvailable;
+                            }
+
+                            break;
+                        }
+                    case Instruction.EXTCODEHASH:
+                        {
+                            if (!isAddressPreCompile && !isSystemContract)
+                            {
+                                var gasBefore = gasAvailable;
+                                result = vmState.Env.Witness.AccessCodeHash(address, ref gasAvailable);
+                                witnessGasCharged = gasBefore != gasAvailable;
+                            }
+                            break;
+                        }
+                }
+
+                // we still use the UseHotAndColdStorage costs - we should be removing the Cold costs as it's being replaced
+                // by the witness access costs. We should still be keeping the Hot costs - to avoid free repeated access and
+                // cause a DDOS attack.
+                if (!result) return false;
             }
 
-            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+            if (spec.UseHotAndColdStorage)
             {
-                result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                vmState.AccessTracker.WarmUp(address);
-            }
-            else if (chargeForWarm)
-            {
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                if (_txTracer
+                    .IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+                {
+                    vmState.AccessTracker.WarmUp(address);
+                }
+
+                if (witnessGasCharged)
+                {
+                    vmState.AccessTracker.WarmUp(address);
+                }
+
+                if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec) && !address.IsSystemContract(spec))
+                {
+                    // after eip4762 is enabled, we don't charge cold cost as it is replaced by stateless access costs
+                    result = spec.IsEip4762Enabled || UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                    vmState.AccessTracker.WarmUp(address);
+                }
+                else if (chargeForWarm)
+                {
+                    result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                }
             }
             return result;
         }
@@ -540,6 +619,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
 
+        var gasBefore = gasAvailable;
+        if (!vmState.Env.Witness.AccessForStorage(storageCell.Address, storageCell.Index,
+                storageAccessType == StorageAccessType.SSTORE, ref gasAvailable))
+        {
+            return false;
+        }
+
+        bool witnessGasCharged = gasBefore != gasAvailable;
+
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
@@ -548,12 +636,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 vmState.AccessTracker.WarmUp(in storageCell);
             }
 
-            if (vmState.AccessTracker.IsCold(in storageCell))
+            if (witnessGasCharged)
             {
-                result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
                 vmState.AccessTracker.WarmUp(in storageCell);
             }
-            else if (storageAccessType == StorageAccessType.SLOAD)
+
+            if (vmState.AccessTracker.IsCold(in storageCell))
+            {
+                // after eip4762 is enabled we don't charge cold cost as it is replaced by stateless access costs
+                result = spec.IsEip4762Enabled || UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
+                vmState.AccessTracker.WarmUp(in storageCell);
+            }
+            else if (spec.IsEip4762Enabled || storageAccessType == StorageAccessType.SLOAD)
             {
                 // we do not charge for WARM_STORAGE_READ_COST in SSTORE scenario
                 result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
