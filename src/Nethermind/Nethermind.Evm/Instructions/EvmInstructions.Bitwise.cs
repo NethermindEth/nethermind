@@ -20,14 +20,14 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the bitwise operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        static virtual long GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the bitwise operation.
         /// </summary>
         /// <param name="a">The first operand vector.</param>
         /// <param name="b">The second operand vector.</param>
         /// <returns>The result of the bitwise operation.</returns>
-        abstract static Word Operation(Word a, Word b);
+        static abstract Word Operation(in Word a, in Word b);
     }
 
     /// <summary>
@@ -72,7 +72,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
-        public static Word Operation(Word a, Word b) => Vector256.BitwiseAnd(a, b);
+        public static Word Operation(in Word a, in Word b) => Vector256.BitwiseAnd(a, b);
     }
 
     /// <summary>
@@ -80,7 +80,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
-        public static Word Operation(Word a, Word b) => Vector256.BitwiseOr(a, b);
+        public static Word Operation(in Word a, in Word b) => Vector256.BitwiseOr(a, b);
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
-        public static Word Operation(Word a, Word b) => Vector256.Xor(a, b);
+        public static Word Operation(in Word a, in Word b) => Vector256.Xor(a, b);
     }
 
     /// <summary>
@@ -108,6 +108,6 @@ internal static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
-        public static Word Operation(Word a, Word b) => a == b ? One : default;
+        public static Word Operation(in Word a, in Word b) => a == b ? One : default;
     }
 }

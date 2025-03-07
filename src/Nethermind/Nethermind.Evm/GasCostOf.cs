@@ -68,6 +68,7 @@ namespace Nethermind.Evm
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
 
+        // Eof Execution EIP-7692
         public const long DataLoad = 4;
         public const long DataLoadN = 3;
         public const long DataCopy = 3;

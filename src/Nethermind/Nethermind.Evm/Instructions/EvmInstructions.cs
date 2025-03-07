@@ -24,7 +24,7 @@ internal unsafe static partial class EvmInstructions
         where TTracingInstructions : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        var lookup = new delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>[256];
+        OpCode[] lookup = new OpCode[256];
 
         for (int i = 0; i < lookup.Length; i++)
         {

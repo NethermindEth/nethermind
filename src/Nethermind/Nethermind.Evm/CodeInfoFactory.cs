@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EvmObjectFormat;
 
@@ -23,7 +24,7 @@ public static class CodeInfoFactory
         return codeInfo;
     }
 
-    public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, out ICodeInfo codeInfo, out Memory<byte> extraCallData)
+    public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, [NotNullWhen(true)] out ICodeInfo? codeInfo, out Memory<byte> extraCallData)
     {
         extraCallData = default;
         if (spec.IsEofEnabled && data.Span.StartsWith(EofValidator.MAGIC))
