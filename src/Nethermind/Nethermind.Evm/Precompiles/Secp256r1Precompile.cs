@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
+public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
@@ -20,20 +19,12 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3450L;
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    private /*readonly*/ struct GoSlice(IntPtr data, long len)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        public IntPtr Data = data;
-        public long Len = len, Cap = len;
-    }
+        if (inputData.Length != 160)
+            return (null, true);
 
-    [LibraryImport("Binaries/secp256r1", SetLastError = true)]
-    private static unsafe partial byte VerifyBytes(GoSlice input);
-
-    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
-    {
-        using MemoryHandle pin = input.Pin();
-        GoSlice slice = new((nint)pin.Pointer, input.Length);
-        var isValid = VerifyBytes(slice) != 0;
+        var isValid = Secp256r1.VerifySignature(in inputData);
 
         Metrics.Secp256r1Precompile++;
 
