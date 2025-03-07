@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain;
@@ -95,19 +96,19 @@ public partial class BlockTree
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_historyConfig.PruningTimeout));
-            using (_chainLevelInfoRepository.StartBatch())
-            {
-                foreach ((long _, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
-                {
-                    if (cts.Token.IsCancellationRequested)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
-                        break;
-                    }
+            using var batch = _chainLevelInfoRepository.StartBatch();
 
-                    DeleteBlocks(blockHash);
-                    deletedBlocks++;
+            foreach ((long number, Hash256 hash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+            {
+                if (cts.Token.IsCancellationRequested)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                    break;
                 }
+
+                if (_logger.IsInfo) _logger.Info($"Deleting old block {hash} at level {number}");
+                DeleteBlock(number, hash, null, batch);
+                deletedBlocks++;
             }
         }
         finally
