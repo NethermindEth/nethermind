@@ -116,12 +116,9 @@ public readonly struct CappedArray<T>
 
     public override string? ToString()
     {
-        if (typeof(T) == typeof(byte))
-        {
-            return SpanExtensions.ToHexString(MemoryMarshal.AsBytes(AsSpan()), withZeroX: true);
-        }
-
-        return base.ToString();
+        return typeof(T) == typeof(byte) ?
+            SpanExtensions.ToHexString(MemoryMarshal.AsBytes(AsSpan()), withZeroX: true) :
+            base.ToString();
     }
 
     public readonly ArraySegment<T> AsArraySegment()
