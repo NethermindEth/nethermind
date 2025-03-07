@@ -116,7 +116,6 @@ namespace Nethermind.Network
                 _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
             }
 
-
             _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
         }

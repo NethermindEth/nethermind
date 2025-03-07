@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Nethermind.Core;
 
@@ -44,7 +45,7 @@ public static class ProductInfo
             { "runtime", $"dotnet{Runtime[5..]}" }
         };
 
-        ClientId = FormatClientId("{name}/{version}/{os}/{runtime}");
+        ClientId = FormatClientId(DefaultPublicClientIdFormat);
         PublicClientId = ClientId;
     }
 
@@ -52,9 +53,18 @@ public static class ProductInfo
 
     private static string FormatClientId(string formatString)
     {
-        return ClientIdParts.Aggregate(formatString, (current, placeholder) =>
-            current.Replace($"{{{placeholder.Key}}}", placeholder.Value)
-        );
+        if (string.IsNullOrEmpty(formatString))
+        {
+            return string.Empty;
+        }
+
+        StringBuilder formattedClientId = new(formatString);
+        foreach (var placeholder in ClientIdParts)
+        {
+            formattedClientId.Replace($"{{{placeholder.Key}}}", placeholder.Value);
+        }
+
+        return formattedClientId.ToString();
     }
 
     public static string ClientId { get; }
@@ -84,6 +94,8 @@ public static class ProductInfo
     private static Dictionary<string, string> ClientIdParts { get; }
 
     public static string PublicClientId { get; private set; }
+    
+    public const string DefaultPublicClientIdFormat = "{name}/{version}/{os}/{runtime}";
 
     public static void InitializePublicClientId(string formatString)
     {

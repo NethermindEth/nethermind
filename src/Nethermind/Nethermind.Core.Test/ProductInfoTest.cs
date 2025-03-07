@@ -7,6 +7,12 @@ namespace Nethermind.Core.Test;
 
 public class ProductInfoTest
 {
+    [TearDown]
+    public void TearDown()
+    {
+        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+    }
+
     [Test]
     public void Public_client_id_template_properly_initialized()
     {

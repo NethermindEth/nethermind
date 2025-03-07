@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Config;
 
@@ -10,7 +11,6 @@ public interface INetworkConfig : IConfig
     public const int DefaultNettyArenaOrder = -1;
     public const int MaxNettyArenaOrder = 14;
     public const int DefaultMaxNettyArenaCount = 8;
-    public const string DefaultPublicClientIdFormat = "{name}/{version}/{os}/{runtime}";
 
     [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
@@ -105,6 +105,6 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
-    [ConfigItem(DefaultValue = DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients (Allowed placeholders : {name}, {version}, {os}, {runtime}).")]
+    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients (Allowed placeholders : {name}, {version}, {os}, {runtime}).")]
     string PublicClientIdFormat { get; set; }
 }
