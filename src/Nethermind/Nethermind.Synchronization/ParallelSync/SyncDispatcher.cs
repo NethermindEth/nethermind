@@ -83,20 +83,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task DispatchLoop(CancellationToken cancellationToken)
         {
-            Stopwatch sw = Stopwatch.StartNew();
             while (true)
             {
                 try
                 {
                     SyncFeedState currentStateLocal;
                     TaskCompletionSource<object?>? dormantTaskLocal;
-                    Console.Error.WriteLine($"{sw.ElapsedMilliseconds} before loack");
                     lock (_feedStateManipulation)
                     {
                         currentStateLocal = _currentFeedState;
                         dormantTaskLocal = _dormantStateTask;
                     }
-                    Console.Error.WriteLine($"{sw.ElapsedMilliseconds} after lock {currentStateLocal}");
 
                     if (currentStateLocal == SyncFeedState.Dormant)
                     {
@@ -106,7 +103,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
 
-                        Console.Error.WriteLine($"{sw.ElapsedMilliseconds} dormant wait {currentStateLocal}");
                         await (dormantTaskLocal?.Task ?? Task.CompletedTask).WaitAsync(cancellationToken);
                         if (Logger.IsDebug) Logger.Debug($"{GetType().NameWithGenerics()} got activated.");
                     }
@@ -114,7 +110,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         T request = await (Feed.PrepareRequest(cancellationToken) ?? Task.FromResult<T>(default!)); // just to avoid null refs
-                        Console.Error.WriteLine($"{sw.ElapsedMilliseconds} request prepared {currentStateLocal}");
                         if (request is null)
                         {
                             if (!Feed.IsMultiFeed)
@@ -126,9 +121,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             continue;
                         }
 
-                        Console.Error.WriteLine($"{sw.ElapsedMilliseconds} allocate {currentStateLocal}");
                         SyncPeerAllocation allocation = await Allocate(request, cancellationToken);
-                        Console.Error.WriteLine($"{sw.ElapsedMilliseconds} allocateed {currentStateLocal}");
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
                         if (allocatedPeer is not null)
@@ -316,7 +309,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public async ValueTask DisposeAsync()
         {
-            Console.Error.WriteLine("DisposeAsync");
             if (Interlocked.CompareExchange(ref _disposed, true, false))
             {
                 return;

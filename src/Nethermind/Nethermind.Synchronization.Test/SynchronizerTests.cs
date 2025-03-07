@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -22,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -308,13 +308,18 @@ public class SynchronizerTests
 
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
-            MergeConfig mergeConfig = new();
+            IMergeConfig mergeConfig = new MergeConfig();
+            IPruningConfig pruningConfig = new PruningConfig()
+            {
+                Mode = PruningMode.Full, // Memory pruning is slow to start, relatively speaking
+            };
             if (WithTTD(synchronizerType))
             {
                 mergeConfig.Enabled = true;
                 mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
             }
-            IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig);
+
+            IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig, pruningConfig);
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -356,7 +361,7 @@ public class SynchronizerTests
         {
             Assert.That(
                 () => BlockTree.BestSuggestedHeader,
-                Is.EqualTo(header).After(DynamicTimeout, 2), "header");
+                Is.EqualTo(header).After(DynamicTimeout, 10), "header");
 
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
@@ -368,7 +373,7 @@ public class SynchronizerTests
 
             Assert.That(
                 () => BlockTree.BestSuggestedHeader!.Number,
-                Is.EqualTo(number).After(DynamicTimeout, 2), "block number");
+                Is.EqualTo(number).After(DynamicTimeout, 10), "block number");
 
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
@@ -614,8 +619,6 @@ public class SynchronizerTests
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
-
-        Console.WriteLine("why?");
     }
 
     [Test, Retry(3)]
