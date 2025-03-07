@@ -113,8 +113,8 @@ namespace Nethermind.Synchronization.Blocks
 
             // at least 1 diff times 16 blocks of diff
             if (difficultyDifference > 0
-                && difficultyDifference < ((blockTree.Head?.Difficulty ?? 0) + 1) * 16
-                && bestDiffPeer.TransferSpeed > averageSpeed)
+                && (difficultyDifference >= ((blockTree.Head?.Difficulty ?? 0) + 1) * 16
+                    || bestDiffPeer.TransferSpeed > averageSpeed))
             {
                 return bestDiffPeer.Info;
             }

@@ -217,7 +217,7 @@ namespace Nethermind.Synchronization.Peers
         {
             _stringBuilder.AppendLine();
             _stringBuilder.Append("===")
-                                .Append("[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
+                                .Append("[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
                                 .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
                                 .Append("[Client Info (Name/Version/Operating System/Language)     ]")
                                 .AppendLine();
