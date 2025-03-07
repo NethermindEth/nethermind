@@ -74,7 +74,7 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
-extern GoUint8 VerifyBytes(GoSlice bytes);
+extern unsigned char VerifyBytes(unsigned char* data, int length);
 
 #ifdef __cplusplus
 }
