@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -88,7 +89,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             try
             {
-                await base.ReceiveLoopAsync(cts.Token);
+                await base.ReceiveLoopAsync(cts.Token).ConfigureAwait(false);
             }
             finally
             {
@@ -101,7 +102,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             allTasks.Add(WorkerLoop(cts.Token));
         }
 
-        await cts.WhenAllSucceed(allTasks);
+        await cts.WhenAllSucceed(allTasks).ConfigureAwait(false);
     }
 
     private async Task WorkerLoop(CancellationToken cancellationToken)
