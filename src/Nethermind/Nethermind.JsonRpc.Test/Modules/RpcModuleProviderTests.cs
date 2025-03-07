@@ -7,6 +7,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -24,7 +25,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Initialize()
         {
             _fileSystem = Substitute.For<IFileSystem>();
-            _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), LimboLogs.Instance);
+            _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
@@ -39,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig jsonRpcConfig = new();
             jsonRpcConfig.EnabledModules = [];
-            _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
+            _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
             ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);
             Assert.That(resolution, Is.EqualTo(ModuleResolution.Disabled));
@@ -64,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             JsonRpcConfig config = new();
             _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
             _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] { regex });
-            _moduleProvider = new RpcModuleProvider(_fileSystem, config, LimboLogs.Instance);
+            _moduleProvider = new RpcModuleProvider(_fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
 
             SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
