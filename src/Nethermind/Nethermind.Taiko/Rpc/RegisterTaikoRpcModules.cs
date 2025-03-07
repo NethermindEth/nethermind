@@ -46,7 +46,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
 
 
         ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api,
             _api.BlockTree.AsReadOnly(),
             _api.ReceiptStorage,
@@ -65,7 +65,23 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.L1OriginStore);
 
         rpcModuleProvider.RegisterBounded(ethModuleFactory,
-            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+            JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
+    }
+
+    protected override void RegisterProofRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        TaikoProofModuleFactory proofModuleFactory = new(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _api.BlockPreprocessor,
+            _api.ReceiptFinder,
+            _api.SpecProvider,
+            _api.LogManager);
+        rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, JsonRpcConfig.Timeout);
     }
 
     protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -80,7 +96,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         TaikoTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree.AsReadOnly(),
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -88,7 +104,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.PoSSwitcher,
             _api.LogManager);
 
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 
     protected override void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -109,7 +125,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
@@ -122,6 +138,6 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.FileSystem,
             _api.LogManager);
 
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
+        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
     }
 }
