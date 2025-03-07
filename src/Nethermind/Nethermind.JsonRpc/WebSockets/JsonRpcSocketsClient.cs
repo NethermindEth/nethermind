@@ -94,11 +94,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             {
                 _processChannel.Writer.Complete();
             }
-        }, TaskCreationOptions.LongRunning));
+        }));
 
         for (int i = 0; i < _workerTaskCount; i++)
         {
-            allTasks.Add(Task.Factory.StartNew(async () => await WorkerLoop(cts.Token), TaskCreationOptions.LongRunning));
+            allTasks.Add(Task.Factory.StartNew(async () => await WorkerLoop(cts.Token)));
         }
 
         await cts.WhenAllSucceed(allTasks);
