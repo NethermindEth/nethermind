@@ -173,6 +173,7 @@ public class SyncDispatcherTests
         public readonly HashSet<int> _results = new();
         private readonly ConcurrentQueue<TestBatch> _returned = new();
         private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
+        private TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void LockResponse()
         {
@@ -186,6 +187,7 @@ public class SyncDispatcherTests
 
         public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
         {
+            _handleResponseCalled.TrySetResult();
             _responseLock.WaitOne();
             if (response.Result is null)
             {
@@ -204,6 +206,11 @@ public class SyncDispatcherTests
 
             Interlocked.Decrement(ref _pendingRequests);
             return SyncResponseHandlingResult.OK;
+        }
+
+        public Task WaitForHandleResponse()
+        {
+            return _handleResponseCalled.Task;
         }
 
         public override bool IsMultiFeed { get; }
@@ -295,7 +302,7 @@ public class SyncDispatcherTests
 
         // Load some requests
         syncFeed.Activate();
-        await Task.Delay(200, cts.Token);
+        await syncFeed.WaitForHandleResponse();
         syncFeed.Finish();
 
         // Dispose

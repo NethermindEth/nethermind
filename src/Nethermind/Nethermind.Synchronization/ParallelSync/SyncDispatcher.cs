@@ -82,6 +82,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task DispatchLoop(CancellationToken cancellationToken)
         {
+            bool wasCancelTriggered = false;
             while (true)
             {
                 try
@@ -164,8 +165,10 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 catch (OperationCanceledException)
                 {
+                    if (wasCancelTriggered)
+                        throw new InvalidOperationException($"{Feed} did not switch to finished after `Feed.Finish` on cancel");
+                    wasCancelTriggered = true;
                     Feed.Finish();
-                    break;
                 }
             }
         }
