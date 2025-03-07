@@ -214,6 +214,11 @@ public class SynchronizerTests
 
             UpdateHead();
         }
+
+        public override string ToString()
+        {
+            return $"SyncPeerMock:{ClientId}";
+        }
     }
 
     private WhenImplementation When => new(_synchronizerType);
@@ -446,6 +451,12 @@ public class SynchronizerTests
         public async ValueTask DisposeAsync()
         {
             await StopAsync();
+        }
+
+        public SyncingContext WaitALittle()
+        {
+            Thread.Sleep(100);
+            return this;
         }
     }
 
@@ -808,7 +819,7 @@ public class SynchronizerTests
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Will_not_reorganize_more_than_max_reorg_length()
     {
         SyncPeerMock peerA = new("A");
@@ -822,6 +833,7 @@ public class SynchronizerTests
             .AfterPeerIsAdded(peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .AfterPeerIsAdded(peerB)
+            .WaitALittle()
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
     }
