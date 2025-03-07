@@ -191,7 +191,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                             responseSize += 1;
                         }
                         isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, indented: false);
+                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, cancellationToken, indented: false);
                         _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                         // We reached the limit and don't want to responded to more request in the batch
@@ -211,7 +211,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
             else
             {
-                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, cancellationToken, indented: false);
                 responseSize += await _stream.WriteEndOfMessageAsync();
                 return responseSize;
             }
