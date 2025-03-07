@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -33,17 +34,13 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
-using Nethermind.Init.Steps.Migrations;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Proof;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
 {
     public const string Taiko = "Taiko";
     private const string L1OriginDbName = "L1Origin";
@@ -62,11 +59,10 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
 
+    public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
-            return Task.CompletedTask;
-
         _api = (TaikoNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
@@ -98,9 +94,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
-            return;
-
         _api = (TaikoNethermindApi)api;
 
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
@@ -117,7 +110,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -140,8 +133,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
-        ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
-        ArgumentNullException.ThrowIfNull(_api.BadBlocksStore);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -156,7 +147,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
@@ -257,54 +247,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             readonlyTxProcessingEnvFactory,
             txDecoder
         );
-        // TODO: use RegisterTaikoRpcModules instead
-        IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
-        apiRpcModuleProvider.RegisterSingle(engine);
-        if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule>)
-        {
-            TaikoTraceModuleFactory traceModuleFactory = new(
-                _api.WorldStateManager,
-                readonlyBlockTree,
-                jsonRpcConfig,
-                _api.BlockPreprocessor,
-                _api.RewardCalculatorSource,
-                _api.ReceiptStorage,
-                _api.SpecProvider,
-                _api.PoSSwitcher,
-                _api.LogManager);
-            apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, jsonRpcConfig.Timeout);
-        }
-        if (apiRpcModuleProvider.GetPool(ModuleType.Proof) is IRpcModulePool<IProofRpcModule>)
-        {
-            TaikoProofModuleFactory proofModuleFactory = new(
-                _api.WorldStateManager,
-                readonlyBlockTree,
-                _api.BlockPreprocessor,
-                _api.ReceiptStorage,
-                _api.SpecProvider,
-                _api.LogManager);
-            apiRpcModuleProvider.RegisterBoundedByCpuCount(proofModuleFactory, jsonRpcConfig.Timeout);
-        }
-        if (apiRpcModuleProvider.GetPool(ModuleType.Debug) is IRpcModulePool<IDebugRpcModule>)
-        {
-            TaikoDebugModuleFactory debugModuleFactory = new(
-                _api.WorldStateManager,
-                _api.DbProvider,
-                _api.BlockTree,
-                jsonRpcConfig,
-                _api.BlockValidator,
-                _api.BlockPreprocessor,
-                _api.RewardCalculatorSource,
-                _api.ReceiptStorage,
-                new ReceiptMigration(_api),
-                _api.ConfigProvider,
-                _api.SpecProvider,
-                _api.SyncModeSelector,
-                _api.BadBlocksStore,
-                _api.FileSystem,
-                _api.LogManager);
-            apiRpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, jsonRpcConfig.Timeout);
-        }
+
+        _api.RpcModuleProvider.RegisterSingle(engine);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }
@@ -316,7 +260,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     // ISynchronizationPlugin
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -368,7 +312,11 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     }
 
     // IInitializationPlugin
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        yield return typeof(InitializeBlockchainTaiko);
+        yield return typeof(RegisterTaikoRpcModules);
+    }
 
     // IConsensusPlugin
 
