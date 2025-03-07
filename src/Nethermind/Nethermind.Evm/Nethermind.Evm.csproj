@@ -28,10 +28,10 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Update="Binaries\secp256r1.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Binaries\secp256r1.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 </Project>
