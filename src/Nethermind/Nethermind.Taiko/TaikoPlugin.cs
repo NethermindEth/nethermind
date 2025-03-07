@@ -33,10 +33,13 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Synchronization;
+using Nethermind.Taiko.BlockTransactionExecutors;
 
 namespace Nethermind.Taiko;
 
@@ -138,6 +141,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
         ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
+        ArgumentNullException.ThrowIfNull(_api.BadBlocksStore);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -253,10 +257,10 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             readonlyTxProcessingEnvFactory,
             txDecoder
         );
-
+        // TODO: use RegisterTaikoRpcModules instead
         IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
         apiRpcModuleProvider.RegisterSingle(engine);
-        if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
+        if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule>)
         {
             TaikoTraceModuleFactory traceModuleFactory = new(
                 _api.WorldStateManager,
@@ -270,7 +274,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.LogManager);
             apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, jsonRpcConfig.Timeout);
         }
-        if (apiRpcModuleProvider.GetPool(ModuleType.Proof) is IRpcModulePool<IProofRpcModule> proofModulePool)
+        if (apiRpcModuleProvider.GetPool(ModuleType.Proof) is IRpcModulePool<IProofRpcModule>)
         {
             TaikoProofModuleFactory proofModuleFactory = new(
                 _api.WorldStateManager,
@@ -280,6 +284,26 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.SpecProvider,
                 _api.LogManager);
             apiRpcModuleProvider.RegisterBoundedByCpuCount(proofModuleFactory, jsonRpcConfig.Timeout);
+        }
+        if (apiRpcModuleProvider.GetPool(ModuleType.Debug) is IRpcModulePool<IDebugRpcModule>)
+        {
+            TaikoDebugModuleFactory debugModuleFactory = new(
+                _api.WorldStateManager,
+                _api.DbProvider,
+                _api.BlockTree,
+                jsonRpcConfig,
+                _api.BlockValidator,
+                _api.BlockPreprocessor,
+                _api.RewardCalculatorSource,
+                _api.ReceiptStorage,
+                new ReceiptMigration(_api),
+                _api.ConfigProvider,
+                _api.SpecProvider,
+                _api.SyncModeSelector,
+                _api.BadBlocksStore,
+                _api.FileSystem,
+                _api.LogManager);
+            apiRpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, jsonRpcConfig.Timeout);
         }
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
@@ -311,11 +335,11 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        ContainerBuilder builder = new ContainerBuilder();
+        ContainerBuilder builder = new();
 
         ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton<IBeaconPivot>(_beaconPivot)
+            .AddSingleton(_beaconPivot)
             .AddSingleton(_mergeConfig)
             .AddSingleton<IInvalidChainTracker>(_api.InvalidChainTracker);
 

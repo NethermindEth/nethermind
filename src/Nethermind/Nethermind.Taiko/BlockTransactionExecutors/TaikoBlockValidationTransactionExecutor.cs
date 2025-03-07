@@ -8,19 +8,24 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class TaikoBlockValidationTransactionExecutor(
-    ITransactionProcessor transactionProcessor,
+    ITransactionProcessorAdapter transactionProcessor,
     IWorldState stateProvider)
     : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
+
+    public TaikoBlockValidationTransactionExecutor(
+        ITransactionProcessor transactionProcessor,
+        IWorldState stateProvider) : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
+    {
+    }
+
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
-        if (i == 0)
-        {
-            currentTx.IsAnchorTx = true;
-        }
+        if ((currentTx.SenderAddress?.Equals(TaikoBlockValidator.GoldenTouchAccount) ?? false) && i == 0)
+                currentTx.IsAnchorTx = true;
         base.ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
     }
 }

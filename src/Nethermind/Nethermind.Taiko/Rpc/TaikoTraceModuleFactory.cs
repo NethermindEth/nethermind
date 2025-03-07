@@ -12,6 +12,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Taiko.BlockTransactionExecutors;
 
 namespace Nethermind.Taiko.Rpc;
 

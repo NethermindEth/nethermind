@@ -9,6 +9,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Taiko.BlockTransactionExecutors;
 
 namespace Nethermind.Taiko.Rpc;
 
