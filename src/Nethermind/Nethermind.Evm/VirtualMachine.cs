@@ -2296,7 +2296,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: codeInfo
+            codeInfo: codeInfo,
+            witness: env.Witness
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2544,7 +2545,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             codeInfo: codeInfo,
             inputData: default,
             transferValue: value,
-            value: value
+            value: value,
+            witness: env.Witness
         );
         EvmState callState = EvmState.RentFrame(
             callGas,
