@@ -1694,7 +1694,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             public void ClearIterators()
             {
                 if (_disposed) return;
-
+                if (Values is null) return;
                 foreach (IteratorHolder iterator in Values)
                 {
                     iterator.Dispose();
