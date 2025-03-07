@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,7 +19,6 @@ using System.Text;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System.Buffers;
 
 namespace Nethermind.Core.Extensions
 {
@@ -389,12 +389,12 @@ namespace Nethermind.Core.Extensions
             return new(bytes, true, true);
         }
 
+        public static ReadOnlySpan<byte> Trim(this ReadOnlySpan<byte> bytes, int length)
+            => bytes.Length > length ? bytes.Slice(bytes.Length - length, length) : bytes;
+
         public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length > 2)
-            {
-                bytes = bytes.Slice(bytes.Length - 2, 2);
-            }
+            bytes = bytes.Trim(2);
 
             return bytes.Length switch
             {
