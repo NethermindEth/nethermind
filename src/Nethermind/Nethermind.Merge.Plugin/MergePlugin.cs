@@ -251,7 +251,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
             _api.BlockValidator = new InvalidBlockInterceptor(
-                new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
+                new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator, _api.WithdrawalValidator,
                     _api.SpecProvider, _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
@@ -391,6 +391,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
             if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
             if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
+            if (_api.WithdrawalValidator is null) throw new ArgumentNullException(nameof(_api.WithdrawalValidator));
             if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
@@ -417,6 +418,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.TxValidator,
                     _api.HeaderValidator,
                     _api.UnclesValidator,
+                    _api.WithdrawalValidator,
                     _api.SpecProvider,
                     _api.LogManager),
                 _invalidChainTracker,

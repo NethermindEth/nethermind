@@ -499,6 +499,12 @@ public partial class BlockDownloaderTests
             return true;
         }
 
+        public bool ValidateBody(Block block)
+        {
+            Thread.Sleep(1000);
+            return true;
+        }
+
         public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
         {
             Thread.Sleep(1000);

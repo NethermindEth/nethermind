@@ -236,6 +236,7 @@ public class SyncServerTests
             Always.Valid,
             mergeHeaderValidator,
             Always.Valid,
+            Always.Valid,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -459,6 +460,7 @@ public class SyncServerTests
             Always.Valid,
             headerValidatorWithInterceptor,
             Always.Valid,
+            Always.Valid,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -498,6 +500,7 @@ public class SyncServerTests
         BlockValidator blockValidator = new(
             Always.Valid,
             headerValidator,
+            Always.Valid,
             Always.Valid,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
