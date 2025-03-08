@@ -3,16 +3,16 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
-using Nethermind.Int256;
-using Nethermind.Evm.Tracing;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
-using System.Diagnostics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -46,7 +46,7 @@ public ref struct EvmStack
         int head = Head;
         if ((Head = head + 1) >= MaxStackSize)
         {
-            EvmStack.ThrowEvmStackOverflowException();
+            ThrowEvmStackOverflowException();
         }
 
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
@@ -425,7 +425,7 @@ public ref struct EvmStack
         int head = Head;
         if (head-- == 0)
         {
-            EvmStack.ThrowEvmStackUnderflowException();
+            ThrowEvmStackUnderflowException();
         }
 
         return _bytes.Slice(head * WordSize, WordSize);
@@ -461,7 +461,7 @@ public ref struct EvmStack
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) EvmStack.ThrowEvmStackUnderflowException();
+        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
 
         return MemoryMarshal.CreateSpan(ref bytes, WordSize);
     }
@@ -481,7 +481,8 @@ public ref struct EvmStack
     public byte PopByte()
     {
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) EvmStack.ThrowEvmStackUnderflowException();
+
+        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
 
         return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
     }
@@ -497,14 +498,11 @@ public ref struct EvmStack
 
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
 
-        if (_tracer is not null)
-        {
-            Trace(depth);
-        }
+        if (_tracer is not null) Trace(depth);
 
         if (++Head >= MaxStackSize)
         {
-            EvmStack.ThrowEvmStackOverflowException();
+            ThrowEvmStackOverflowException();
         }
 
         return true;
@@ -526,10 +524,7 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
         Unsafe.WriteUnaligned(ref top, buffer);
 
-        if (_tracer is not null)
-        {
-            Trace(depth);
-        }
+        if (_tracer is not null) Trace(depth);
 
         return true;
     }
@@ -548,10 +543,7 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
         Unsafe.WriteUnaligned(ref second, buffer);
 
-        if (_tracer is not null)
-        {
-            Trace(maxDepth);
-        }
+        if (_tracer is not null) Trace(maxDepth);
 
         return true;
     }
