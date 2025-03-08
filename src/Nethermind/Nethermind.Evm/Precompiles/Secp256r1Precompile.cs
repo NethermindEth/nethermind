@@ -2,16 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Threading;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
+public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
@@ -21,19 +19,37 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3450L;
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    [LibraryImport("Binaries/secp256r1", SetLastError = true)]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe partial void VerifyBytes();
-
-    private static readonly Lock Lock = new();
-
-    public (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
+    // TODO can be optimized - Go implementation is 2-6 times faster depending on the platform. Options:
+    // - Try to replicate Go version in C#
+    // - Compile Go code into a library and call it via P/Invoke
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        lock (Lock)
+        if (inputData.Length != 160)
+            return (null, true);
+
+        ReadOnlySpan<byte> bytes = inputData.Span;
+        ReadOnlySpan<byte> hash = bytes[..32], sig = bytes[32..96];
+        ReadOnlySpan<byte> x = bytes[96..128], y = bytes[128..160];
+
+        ECDsa ecdsa;
+        try
         {
-            Metrics.Secp256r1Precompile++;
-            VerifyBytes();
-            return (ValidResult, true);
+            ecdsa = ECDsa.Create(new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new() { X = x.ToArray(), Y = y.ToArray() }
+            });
         }
+        catch
+        {
+            // Invalid x/y parameters
+            return (null, true);
+        }
+
+        var isValid = ecdsa.VerifyHash(hash, sig);
+
+        Metrics.Secp256r1Precompile++;
+
+        return (isValid ? ValidResult : null, true);
     }
 }

@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             var bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, var success) = Precompile().Run(bytes, Prague.Instance);
 
             using (Assert.EnterMultipleScope())
             {
