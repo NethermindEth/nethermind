@@ -50,7 +50,7 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 
         private void ResetSketchAtError()
         {
-            if (_max > _minSupport && ((_sketch.errorPerItem / (double)_max) >= sketchResetError))
+            if (_max > _minSupport && (((_sketch.errorPerItem / (double)_max) * 100) >= sketchResetError))
             {
                 if (_sketchBufferPos < (_sketchBuffer.Length - 1))
                 {
