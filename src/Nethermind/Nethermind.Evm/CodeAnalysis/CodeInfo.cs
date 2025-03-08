@@ -25,24 +25,14 @@ namespace Nethermind.Evm.CodeAnalysis
         public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
-            int[] maxThresholds = [vmConfig.PartialAotThreshold, vmConfig.PartialAotThreshold, vmConfig.PatternMatchingThreshold];
-            if (_callCount > maxThresholds.Max())
+            if (_callCount > vmConfig.IlEvmAnalysisThreshold)
                 return;
 
             Interlocked.Increment(ref _callCount);
-            // use Interlocked just in case of concurrent execution to run it only once
-            IlevmMode mode = vmConfig.IsFullAotEnabled && _callCount == vmConfig.FullAotThreshold
-                ? ILMode.FULL_AOT_MODE
-                : vmConfig.IsPartialAotEnabled && _callCount == vmConfig.PartialAotThreshold
-                ? ILMode.PARTIAL_AOT_MODE
-                : vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
-                ? ILMode.PATTERN_BASED_MODE
-                : ILMode.NO_ILVM;
-
-            if (mode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
+            if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(vmConfig.IlEvmEnabledMode))
                 return;
 
-            IlAnalyzer.Enqueue(this, mode, vmConfig, logger);
+            IlAnalyzer.Enqueue(this, vmConfig, logger);
 
         }
 

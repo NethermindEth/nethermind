@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.Tracing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,50 +14,29 @@ namespace Nethermind.Evm.Config;
 public interface IVMConfig : IConfig
 {
     [ConfigItem(
-        Description = "Activates or Deactivates full contract AOT",
-        DefaultValue = "false")]
-    public bool IsFullAotEnabled { get; set; }
-
-
-    [ConfigItem(
-        Description = "Activates or Deactivates n-gram pattern optimizations",
-        DefaultValue = "false")]
-    public bool IsPatternMatchingEnabled { get; set; }
+        Description = "Set IL-EVM Activated Mode : 0- Il-evm is turned off 1- Pattern mode, 2- Precompilation mode",
+        DefaultValue = "0")]
+    public int IlEvmEnabledMode { get; set; }
 
     [ConfigItem(
-        Description = "Activates or Deactivates JIT optimizations",
-        DefaultValue = "false")]
-    public bool IsPartialAotEnabled { get; set; }
-
-    [ConfigItem(
-        Description = "Threshold for enabling JIT optimizations",
-        DefaultValue = "128")]
-    public int PartialAotThreshold { get; set; }
-
-    [ConfigItem(
-        Description = "Threshold for enabling JIT optimizations",
-        DefaultValue = "256")]
-    public int FullAotThreshold { get; set; }
-
-    [ConfigItem(
-        Description = "Threshold for enabling n-gram pattern optimizations",
+        Description = "Threshold for enabling optimizations for a contract",
         DefaultValue = "32")]
-    public int PatternMatchingThreshold { get; set; }
+    public int IlEvmAnalysisThreshold { get; set; }
 
     [ConfigItem(
-        Description = "Activates or Deactivates aggressive JIT optimizations",
+        Description = "Activates or Deactivates aggressive optimizations",
         DefaultValue = "false")]
-    public bool AggressivePartialAotMode { get; set; }
+    public bool IsIlEvmAggressiveModeEnabled { get; set; }
 
     [ConfigItem(
-        Description = "Activates or Deactivates traces in JIT optimizations",
+        Description = "Activates or Deactivates traces in AOT modes",
         DefaultValue = "false")]
-    public bool BakeInTracingInAotModes { get; set; }
+    public bool IsIlEvmTracingEnabled { get; set; }
 
     [ConfigItem(
         Description = "Sets Analysis Queue Max Size",
         DefaultValue = "8")]
-    public int AnalysisQueueMaxSize { get; set; }
+    public int IlEvmAnalysisQueueMaxSize { get; set; }
 
-    public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsPartialAotEnabled || IsFullAotEnabled;
+    public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;
 }

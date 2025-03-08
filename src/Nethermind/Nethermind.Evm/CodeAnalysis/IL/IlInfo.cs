@@ -15,9 +15,13 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 public static class ILMode
 {
     public const int NO_ILVM            = 0b00000000;
-    public const int PATTERN_BASED_MODE = 0b10000000;
-    public const int PARTIAL_AOT_MODE   = 0b01000000;
-    public const int FULL_AOT_MODE      = 0b00100000;
+    public const int PATTERN_BASED_MODE = 0b00000001;
+    public const int FULL_AOT_MODE      = 0b00000010;
+}
+
+public enum AnalysisPhase
+{
+    NotStarted, Queued, Processing, Completed
 }
 
 /// <summary>
@@ -37,29 +41,27 @@ internal class IlInfo
     /// </summary>
     public int Mode = ILMode.NO_ILVM;
     public bool IsEmpty => IlevmChunks is null && Mode == ILMode.NO_ILVM;
-    public bool IsBeingProcessed = false;
+
+    public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
     /// <summary>
     /// No overrides.
     /// </summary>
     private IlInfo(int bytecodeSize)
     {
-        IlevmChunks = default;
-        _Mapping = new byte[bytecodeSize];
+        IlevmChunks = new InstructionChunk[bytecodeSize];
     }
 
     // assumes small number of ILed
-    public InstructionChunk[]? IlevmChunks { get; set; }
+    public InstructionChunk[] IlevmChunks { get; set; }
 
     public ContractMetadata? ContractMetadata { get; set; }
     public PrecompiledContract? PrecompiledContract { get; set; }
 
-    private byte[] _Mapping = null;
-
-    public void AddMapping(int index, int chunkIdx, int mode)
+    public void AddMapping(int index, InstructionChunk handler)
     {
         // in this code ILMODE is used to mark pc if it points to compiled or pattern chunk
         // NO_ILVM is used to mark pc if it points to non-compiled chunk
-        _Mapping[index] = (byte)(chunkIdx | mode);
+        IlevmChunks[index] = handler;
     }
 
     public bool TryExecute<TTracingInstructions>(
@@ -85,9 +87,9 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue || this.IsEmpty)
             return false;
 
-        if (Mode != ILMode.NO_ILVM && _Mapping[programCounter] != ILMode.NO_ILVM)
+        var bytecodeChunkHandler = IlevmChunks[programCounter];
+        if (Mode != ILMode.NO_ILVM && bytecodeChunkHandler is not null)
         {
-            var bytecodeChunkHandler = IlevmChunks[_Mapping[programCounter] & 0x3F];
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, bytecodeChunkHandler);

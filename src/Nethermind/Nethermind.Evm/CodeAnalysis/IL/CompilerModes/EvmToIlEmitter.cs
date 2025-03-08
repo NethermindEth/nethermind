@@ -39,7 +39,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                         method.StoreLocal(locals.wordRef256A);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
@@ -65,7 +65,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                         method.StoreLocal(locals.wordRef256A);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
@@ -78,7 +78,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Branch(escapeLabels.jumpTable);
 
                         method.MarkLabel(noJump);
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
@@ -1097,7 +1097,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadCalldata(method, locals, false);
@@ -1178,7 +1178,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(ConvertionExplicit<UInt256, int>());
                             method.StoreLocal(locals.uint256C);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMemory(method, locals, true);
@@ -1208,7 +1208,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(ConvertionExplicit<UInt256, int>());
                             method.StoreLocal(locals.uint256C);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMemory(method, locals, true);
@@ -1237,7 +1237,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StoreLocal(bigInt32);
 
                             method.LoadLocalAddress(bigInt32);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMemory(method, locals, true);
@@ -1289,7 +1289,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StoreLocal(locals.uint256R);
                             method.LoadLocalAddress(locals.uint256R);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMemory(method, locals, true);
@@ -1332,7 +1332,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMemory(method, locals, true);
@@ -1429,7 +1429,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMachineCode(method, locals, false);
@@ -1527,7 +1527,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadReturnDataBuffer(method, locals, false);
@@ -1563,7 +1563,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadReturnDataBuffer(method, locals, true);
@@ -1813,8 +1813,8 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.uint256A); // position
                             method.LoadLocalAddress(locals.uint256B); // length
                             method.Call(
-                                typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(
-                                    nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)
+                                typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(
+                                    nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)
                                 )
                             );
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -1964,15 +1964,15 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadSpec(method, locals, false);
                             envLoader.LoadTxTracer(method, locals, false);
 
-                            MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
-                                        .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
+                            MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+                                        .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
                                         .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
-                            MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
-                                        .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
+                            MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                                        .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
                                         .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
-                            if (!ilCompilerConfig.BakeInTracingInAotModes)
+                            if (!ilCompilerConfig.IsIlEvmTracingEnabled)
                                 method.Call(nonTracingSStoreMethod);
                             else
                             {
@@ -2038,10 +2038,10 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadVmState(method, locals, false);
 
                             method.LoadLocalAddress(locals.storageCell);
-                            method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.StorageAccessType.SLOAD);
+                            method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.StorageAccessType.SLOAD);
                             envLoader.LoadSpec(method, locals, false);
                             envLoader.LoadTxTracer(method, locals, false);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadWorldState(method, locals, false);
@@ -2080,7 +2080,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadSpec(method, locals, false);
                             envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
@@ -2142,7 +2142,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadSpec(method, locals, false);
                             envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             method.LoadLocalAddress(locals.uint256C);
@@ -2154,7 +2154,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadCodeInfoRepository(method, locals, false);
@@ -2208,7 +2208,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadSpec(method, locals, false);
                             envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             Label pushZeroLabel = method.DefineLabel();
@@ -2281,7 +2281,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadSpec(method, locals, false);
                             envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
-                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
+                            method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
@@ -2295,11 +2295,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.SELFDESTRUCT:
                     AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
-                        MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+                        MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
 
-                        MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+                        MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
 
                         Label skipGasDeduction = method.DefineLabel();
                         Label happyPath = method.DefineLabel();
@@ -2325,7 +2325,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadLocalAddress(locals.gasAvailable);
                         envLoader.LoadSpec(method, locals, false);
                         envLoader.LoadTxTracer(method, locals, false);
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             Label skipNonTracingCall = method.DefineLabel();
                             Label skipTracingCall = method.DefineLabel();
@@ -2369,12 +2369,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.STATICCALL:
                     AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
-                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
+                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
                             .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
-                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
+                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
                             .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
                         using Local toPushToStack = method.DeclareLocal(typeof(UInt256?));
@@ -2435,7 +2435,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes){
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled){
                             Label skipNonTracingCall = method.DefineLabel();
                             Label skipTracingCall = method.DefineLabel();
                             envLoader.LoadTxTracer(method, locals, false);
@@ -2478,7 +2478,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
                         method.BranchIfTrue(skipStateMachineScheduling);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
@@ -2517,12 +2517,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.CREATE2:
                     AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
-                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
                             .MakeGenericMethod(typeof(VirtualMachine.IsTracing));
 
-                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
                             .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
 
                         using Local toPushToStack = method.DeclareLocal(typeof(UInt256?));
@@ -2571,7 +2571,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             Label skipNonTracingCall = method.DefineLabel();
                             Label skipTracingCall = method.DefineLabel();
@@ -2622,7 +2622,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadNull();
                         method.BranchIfEqual(skipStateMachineScheduling);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);

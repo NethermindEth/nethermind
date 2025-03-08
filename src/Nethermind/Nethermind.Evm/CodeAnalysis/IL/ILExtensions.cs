@@ -145,7 +145,6 @@ public static class GasEmit
         il.BranchIfLess(il.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
     }
 }
-
 public static class ReleaseSpecEmit
 {
     public static void DeclareOpcodeValidityCheckVariables<T>(Emit<T> method, ContractMetadata metadata, Locals<T> locals)
@@ -194,68 +193,8 @@ public static class ReleaseSpecEmit
         method.MarkLabel(alreadyCheckedLabel);
     }
 }
-
-public static class TypeEmit
-{
-    public static string MangleName(this string cleanName) => $"<{cleanName}>k__BackingField<ilevm>";
-    public static FieldBuilder EmitField<TField>(this TypeBuilder typeBuilder, string fieldName, bool isPublic)
-    {
-        FieldBuilder fieldBuilder = typeBuilder.DefineField(fieldName, typeof(TField), isPublic ? FieldAttributes.Public : FieldAttributes.Private);
-
-        return fieldBuilder;
-    }
-
-    public static PropertyBuilder EmitProperty<TProperty>(this TypeBuilder typeBuilder, string PropertyName, bool hasGetter, bool hasSetter, out FieldBuilder field)
-    {
-        field = typeBuilder.EmitField<TProperty>(MangleName(PropertyName), isPublic: true);
-
-        PropertyBuilder propertyBuilder = typeBuilder.DefineProperty(PropertyName, PropertyAttributes.None, typeof(TProperty), Type.EmptyTypes);
-        if (hasGetter)
-        {
-            MethodBuilder getMethod = typeBuilder.DefineMethod($"get_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot, typeof(TProperty), Type.EmptyTypes);
-            ILGenerator getMethodIL = getMethod.GetILGenerator();
-            getMethodIL.Emit(OpCodes.Ldarg_0);
-            getMethodIL.Emit(OpCodes.Ldfld, field);
-            getMethodIL.Emit(OpCodes.Ret);
-            propertyBuilder.SetGetMethod(getMethod);
-        }
-
-        if (hasSetter) {
-            MethodBuilder setMethod = typeBuilder.DefineMethod($"set_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot, null, new Type[] { typeof(TProperty) });
-            ILGenerator setMethodIL = setMethod.GetILGenerator();
-            setMethodIL.Emit(OpCodes.Ldarg_0);
-            setMethodIL.Emit(OpCodes.Ldarg_1);
-            setMethodIL.Emit(OpCodes.Stfld, field);
-            setMethodIL.Emit(OpCodes.Ret);
-            propertyBuilder.SetSetMethod(setMethod);
-        }
-
-        return propertyBuilder;
-    }
-}
 public static class StackEmit
 {
-    /// <summary>
-    /// Moves the stack <paramref name="count"/> words down.
-    /// </summary>
-    public static void StackPop<T>(this Emit<T> il, Local idx, int count)
-    {
-        il.LoadLocal(idx);
-        il.LoadConstant(count);
-        il.Subtract();
-        il.StoreLocal(idx);
-    }
-
-    /// <summary>
-    /// Moves the stack <paramref name="count"/> words down.
-    /// </summary>
-    public static void StackPop<T>(this Emit<T> il, Local local, Local count)
-    {
-        il.LoadLocal(local);
-        il.LoadLocal(count);
-        il.Subtract();
-        il.StoreLocal(local);
-    }
     /// <summary>
     /// Loads the previous EVM stack value on top of .NET stack.
     /// </summary>
@@ -295,25 +234,12 @@ public static class StackEmit
         il.StackLoadPrevious(stackHeadRef, offset, count);
         il.InitializeObject(typeof(Word));
     }
-
-
     public static void CleanAndLoadWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
     {
         il.StackLoadPrevious(stackHeadRef, offset, count);
         il.Duplicate();
 
         il.InitializeObject(typeof(Word));
-    }
-
-    /// <summary>
-    /// Advances the stack one word up.
-    /// </summary>
-    public static void StackPush<T>(this Emit<T> il, Local idx, int count)
-    {
-        il.LoadLocal(idx);
-        il.LoadConstant(count);
-        il.Add();
-        il.StoreLocal(idx);
     }
 }
 public static class WordEmit
@@ -737,28 +663,9 @@ public static class WordEmit
 }
 public static class UnsafeEmit
 {
-
-    public static MethodInfo GetAddOffsetRef<TResult>()
-    {
-        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Add) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-        return method.MakeGenericMethod(typeof(TResult));
-    }
-
-    public static MethodInfo GetSubtractOffsetRef<TResult>()
-    {
-        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Subtract) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-        return method.MakeGenericMethod(typeof(TResult));
-    }
-
     public static MethodInfo GetAddBytesOffsetRef<TResult>()
     {
         MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.AddByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-        return method.MakeGenericMethod(typeof(TResult));
-    }
-
-    public static MethodInfo GetSubtractBytesOffsetRef<TResult>()
-    {
-        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.SubtractByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
         return method.MakeGenericMethod(typeof(TResult));
     }
 
@@ -781,11 +688,6 @@ public static class UnsafeEmit
     }
 
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
-    public unsafe static MethodInfo GetCastMethodInfo<TOriginal, TResult>() where TResult : struct
-    {
-        MethodInfo method = typeof(UnsafeEmit).GetMethod(nameof(UnsafeEmit.ReinterpretCast));
-        return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
-    }
     public unsafe static Span<TResult> ReinterpretCast<TOriginal, TResult>(Span<TOriginal> original)
         where TOriginal : struct
         where TResult : struct
@@ -806,8 +708,6 @@ public static class UnsafeEmit
 /// </summary>
 static class EmitExtensions
 {
-
-    
     public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, int pc, SubSegmentMetadata stackMetadata)
     {
         if (stackMetadata.LeftOutStack != 0 && pc == stackMetadata.End)
@@ -841,7 +741,7 @@ static class EmitExtensions
         envLoader.LoadTxTracer(method, locals, false);
         method.LoadLocal(gasAvailable);
         method.LoadConstant((int)kvp.Key);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.Public));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.Public));
 
         method.MarkLabel(skipTracing);
     }
@@ -856,7 +756,7 @@ static class EmitExtensions
         method.LoadLocal(gasAvailable);
         envLoader.LoadMemory(method, locals, true);
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.Public));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.EndInstructionTrace), BindingFlags.Static | BindingFlags.Public));
 
         method.MarkLabel(skipTracing);
     }
@@ -873,7 +773,7 @@ static class EmitExtensions
         method.LoadLocal(gasAvailable);
         method.LoadConstant(op.ProgramCounter);
         method.LoadLocal(head);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.Public));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.StartInstructionTrace), BindingFlags.Static | BindingFlags.Public));
 
         method.MarkLabel(skipTracing);
     }
@@ -892,19 +792,6 @@ static class EmitExtensions
     {
         propInfo = flags is null ? typeInstance.GetProperty(name) : typeInstance.GetProperty(name, flags.Value);
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
-    }
-
-    public static void LoadRefArgument<T>(this Emit<T> il, ushort index, Type targetType)
-    {
-        il.LoadArgument(index);
-        if (targetType.IsValueType)
-        {
-            il.LoadObject(targetType);
-        }
-        else
-        {
-            il.LoadIndirect(targetType);
-        }
     }
 
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
@@ -988,84 +875,6 @@ static class EmitExtensions
                         && m.IsGenericMethod)
             .First();
         il.Call(method.MakeGenericMethod(typeof(byte)));
-    }
-
-
-    public static void WhileBranch<T>(this Emit<T> il, Local cond, Action<Emit<T>, Local> action)
-    {
-        var start = il.DefineLabel();
-        var end = il.DefineLabel();
-
-        // start of the loop
-        il.MarkLabel(start);
-
-        // if cond
-        il.LoadLocal(cond);
-        il.BranchIfFalse(end);
-
-        // emit body of loop
-        action(il, cond);
-
-        // jump to start of the loop
-        il.Branch(start);
-
-        // end of the loop
-        il.MarkLabel(end);
-    }
-
-    public static void ForBranch<T>(this Emit<T> il, Local count, Action<Emit<T>, Local> action)
-    {
-        var start = il.DefineLabel();
-        var end = il.DefineLabel();
-
-        // declare i
-        var i = il.DeclareLocal<int>();
-
-        // we initialize i to 0
-        il.LoadConstant(0);
-        il.StoreLocal(i);
-
-        // start of the loop
-        il.MarkLabel(start);
-
-        // i < count
-        il.LoadLocal(i);
-        il.LoadLocal(count);
-        il.BranchIfEqual(end);
-
-        // emit body of loop
-        action(il, i);
-
-        // i++
-        il.LoadLocal(i);
-        il.LoadConstant(1);
-        il.Add();
-        il.StoreLocal(i);
-
-        // jump to start of the loop
-        il.Branch(start);
-
-        // end of the loop
-        il.MarkLabel(end);
-    }
-
-    public static void LoadArray<T>(this Emit<T> il, ReadOnlySpan<byte> value)
-    {
-        il.LoadConstant(value.Length);
-        il.NewArray<byte>();
-
-        // get methodInfo of AsSpan from int[] it is a public instance method
-
-        for (int i = 0; i < value.Length; i++)
-        {
-            il.Duplicate();
-            il.LoadConstant(i);
-            il.LoadConstant(value[i]);
-            il.StoreElement<byte>();
-        }
-
-        il.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
-
     }
     public static void FakeBranch<T>(this Emit<T> il, Sigil.Label label)
     {

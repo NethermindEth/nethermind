@@ -33,7 +33,7 @@ namespace Nethermind.Evm;
 using Int256;
 using Nethermind.Evm.Config;
 using System.Diagnostics;
-
+using ZstdSharp.Unsafe;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -76,29 +76,29 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = new VMConfig
+        _vmConfig = vmConfig ?? new VMConfig();
+
+        switch (_vmConfig.IlEvmEnabledMode)
         {
-            BakeInTracingInAotModes = false,
-            AggressivePartialAotMode = false,
-            AnalysisQueueMaxSize = 4,
-
-            FullAotThreshold = 4,
-            IsFullAotEnabled = true,
-
-            PartialAotThreshold = int.MaxValue,
-            IsPartialAotEnabled = false,
-
-            PatternMatchingThreshold = int.MaxValue,
-            IsPatternMatchingEnabled = false,
-        };
-
-        _evm = logger.IsTrace
-            ? _vmConfig.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
-            : _vmConfig.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+            case ILMode.NO_ILVM when !logger.IsTrace:
+                _evm = new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                break;
+            case ILMode.NO_ILVM when logger.IsTrace:
+                _evm = new VirtualMachine<IsTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                break;
+            case ILMode.PATTERN_BASED_MODE when !logger.IsTrace:
+                _evm = new VirtualMachine<NotTracing, IsPatternChecking>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                break;
+            case ILMode.PATTERN_BASED_MODE when logger.IsTrace:
+                _evm = new VirtualMachine<IsTracing, IsPatternChecking>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                break;
+            case ILMode.FULL_AOT_MODE when !logger.IsTrace:
+                _evm = new VirtualMachine<NotTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                break;
+            case ILMode.FULL_AOT_MODE when logger.IsTrace:
+                _evm = new VirtualMachine<IsTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                break;
+        }
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -162,7 +162,8 @@ public class VirtualMachine : IVirtualMachine
 
     public interface IIsOptimizing { }
     public readonly struct NotOptimizing : IIsOptimizing { }
-    public readonly struct IsOptimizing : IIsOptimizing { }
+    public readonly struct IsPatternChecking : IIsOptimizing { }
+    public readonly struct IsPrecompiling : IIsOptimizing { }
 }
 
 public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
@@ -712,7 +713,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if(typeof(IsOptimizing) == typeof(TOptimizing))
+        if(typeof(IsPrecompiling) == typeof(TOptimizing))
         {
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
@@ -796,8 +797,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         var chunkExecutionResult = new ILChunkExecutionState();
         while ((uint)programCounter < codeLength)
         {
-
-            if (typeof(TOptimizing) == typeof(IsOptimizing))
+            if (typeof(IsPatternChecking) == typeof(TOptimizing))
             {
                 while (ilInfo is not null && (ilInfo.TryExecute(_logger,
                     vmState,

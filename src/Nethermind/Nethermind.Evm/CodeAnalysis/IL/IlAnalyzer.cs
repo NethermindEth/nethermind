@@ -26,17 +26,19 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
-    public class AnalysisWork(CodeInfo codeInfo, IlevmMode mode)
-    {
-        public CodeInfo CodeInfo = codeInfo;
-        public IlevmMode Mode = mode;
-    }
-    private static readonly ConcurrentQueue<AnalysisWork> _queue = new();
+    private static readonly ConcurrentQueue<CodeInfo> _queue = new();
 
-    public static void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
+    public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
-        _queue.Enqueue(new AnalysisWork(codeInfo, mode));
-        if (config.AnalysisQueueMaxSize <= _queue.Count)
+        if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted)
+        {
+            return;
+        }
+
+        _queue.Enqueue(codeInfo);
+        codeInfo.IlInfo.AnalysisPhase = AnalysisPhase.Queued;
+
+        if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
         {
             Task.Run(() => AnalyzeQueue(config, logger));
         }
@@ -45,18 +47,11 @@ public static class IlAnalyzer
     private static void AnalyzeQueue(IVMConfig config, ILogger logger)
     {
         int itemsLeft = _queue.Count;
-        while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
+        while (itemsLeft-- > 0 && _queue.TryDequeue(out CodeInfo worklet))
         {
-            if (worklet.CodeInfo.IlInfo.IsBeingProcessed)
-            {
-                _queue.Enqueue(worklet);
-            }
-            else
-            {
-                worklet.CodeInfo.IlInfo.IsBeingProcessed = true;
-                Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
-                worklet.CodeInfo.IlInfo.IsBeingProcessed = false;
-            }
+            worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
+            Analyse(worklet, config.IlEvmEnabledMode, config, logger);
+            worklet.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
         }
     }
 
@@ -136,9 +131,6 @@ public static class IlAnalyzer
             case ILMode.PATTERN_BASED_MODE:
                 CheckPatterns(codeInfo.IlInfo.ContractMetadata, codeInfo.IlInfo);
                 break;
-            case ILMode.PARTIAL_AOT_MODE:
-                CompileSegments(codeInfo, codeInfo.IlInfo.ContractMetadata, codeInfo.IlInfo, vmConfig);
-                break;
             case ILMode.FULL_AOT_MODE:
                 CompileContract(codeInfo, codeInfo.IlInfo.ContractMetadata, codeInfo.IlInfo, vmConfig);
                 break;
@@ -148,8 +140,6 @@ public static class IlAnalyzer
 
     internal static void CheckPatterns(ContractMetadata contractMetadata, IlInfo ilinfo)
     {
-        List<InstructionChunk> patternsFound = new();
-        int offset = ilinfo.IlevmChunks?.Length ?? 0;
         var strippedBytecode = contractMetadata.Opcodes;
 
         foreach ((Type _, IPatternChunk chunkHandler) in _patterns)
@@ -164,31 +154,12 @@ public static class IlAnalyzer
 
                 if (found)
                 {
-                    ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, patternsFound.Count + offset, ILMode.PATTERN_BASED_MODE);
-                    patternsFound.Add(chunkHandler);
+                    ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, chunkHandler);
                     i += chunkHandler.Pattern.Length - 1;
                 }
             }
         }
 
-        if (patternsFound.Count == 0)
-        {
-            return;
-        }
-
-        if (ilinfo.IlevmChunks is null)
-        {
-            ilinfo.IlevmChunks = patternsFound.ToArray();
-        }
-        else
-        {
-            List<InstructionChunk> combined = [
-                ..ilinfo.IlevmChunks,
-                    ..patternsFound
-            ];
-
-            ilinfo.IlevmChunks = combined.ToArray();
-        }
         Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
     }
 
@@ -245,47 +216,6 @@ public static class IlAnalyzer
         Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 
-    internal static void CompileSegments(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
-    {
-        List<InstructionChunk> segmentsFound = new();
-        int offset = ilinfo.IlevmChunks?.Length ?? 0;
-        string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
-
-
-        for (int i = 0; i < contractMetadata.Segments.Length; i++)
-        {
-            string segmentName = GenerateName(contractMetadata.Segments[i].Boundaries);
-            PrecompiledChunk segmentExecutionCtx = Precompiler.CompileSegment(segmentName, contractMetadata, i, vmConfig, out var localJumpdests);
-            ilinfo.AddMapping(contractMetadata.Segments[i].Segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
-            if (vmConfig.AggressivePartialAotMode)
-            {
-                for (int k = 0; k < localJumpdests.Length; k++)
-                {
-                    ilinfo.AddMapping(localJumpdests[k], segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
-                }
-            }
-            segmentsFound.Add(segmentExecutionCtx);
-        }
-
-        if (segmentsFound.Count == 0)
-        {
-            return;
-        }
-
-        if (ilinfo.IlevmChunks is null)
-        {
-            ilinfo.IlevmChunks = segmentsFound.ToArray();
-        }
-        else
-        {
-            List<InstructionChunk> combined = [
-                ..ilinfo.IlevmChunks,
-                    ..segmentsFound
-            ];
-            ilinfo.IlevmChunks = combined.ToArray();
-        }
-        Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
-    }
     internal static SegmentMetadata AnalyzeSegment(OpcodeInfo[] fullcode, Range segmentRange)
     {
         SegmentMetadata metadata = new()

@@ -178,11 +178,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
             }
 
-            if (mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
-            {
-                IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
-            }
-
             if (mode.HasFlag(ILMode.FULL_AOT_MODE))
             {
                 IlAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
@@ -203,28 +198,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
     [TestFixture]
     [NonParallelizable]
-    internal class IlEvmTests : TestBlockChain
+    internal class IlEvmTests
     {
-        private const string AnalyzerField = "_analyzer";
         private const string PatternField = "_patterns";
         private const int RepeatCount = 256;
 
-        [SetUp]
-        public override void Setup()
-        {
-            base.Setup();
-
-            base.config = new VMConfig()
-            {
-                IsPartialAotEnabled = true,
-                IsPatternMatchingEnabled = true,
-                AggressivePartialAotMode = true,
-                BakeInTracingInAotModes = true,
-
-                PatternMatchingThreshold = 4,
-                PartialAotThreshold = 256,
-            };
-        }
 
         public static IEnumerable<(string, byte[])> GetPatBytecodesSamples()
         {
@@ -998,13 +976,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.MSIZE], Prepare.EvmCode
-                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .MSIZE()
                     .PushData(1)
                     .SSTORE()
-                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(32)
                     .Op(Instruction.MSTORE)
                     .MSIZE()
@@ -1490,14 +1468,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.LOG0], Prepare.EvmCode
-                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .LOGx(0, 0, 64)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.LOG1], Prepare.EvmCode
-                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1505,7 +1483,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.LOG2], Prepare.EvmCode
-                    .PushData(SampleHexData2.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1514,7 +1492,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.LOG3], Prepare.EvmCode
-                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1524,7 +1502,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.LOG4], Prepare.EvmCode
-                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -2099,12 +2077,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = true,
-                PartialAotThreshold = int.MaxValue,
-                IsPartialAotEnabled = false,
-                AggressivePartialAotMode = false,
-                AnalysisQueueMaxSize = 1,
+                IlEvmEnabledMode = ILMode.PATTERN_BASED_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
             });
 
             var pattern1 = IlAnalyzer.GetPatternHandler<SomeAfterTwoPush>();
@@ -2153,53 +2128,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void Execution_Swap_Happens_When_Segments_are_compiled()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = int.MaxValue,
-                IsPatternMatchingEnabled = false,
-                AnalysisQueueMaxSize = 1,
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                AggressivePartialAotMode = false
-            });
-
-            byte[] bytecode =
-                Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(1000)
-                    .GAS()
-                    .LT()
-                    .PUSHx([0, 26])
-                    .JUMPI()
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .POP()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .POP()
-                    .PUSHx([0, 0])
-                    .JUMP()
-                    .JUMPDEST()
-                    .STOP()
-                    .Done;
-
-            var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i < RepeatCount; i++)
-            {
-                using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
-                var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null && tr.SegmentID.StartsWith("ILEVM_PRECOMPILED_")).ToList();
-                accumulatedTraces.AddRange(traces);
-            }
-
-            Assert.That(accumulatedTraces.Count, Is.GreaterThan(0));
-        }
-
-        [Test]
         public void All_Opcodes_Have_Metadata()
         {
             Instruction[] instructions = System.Enum.GetValues<Instruction>();
@@ -2210,77 +2138,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void ILVM_JIT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
-        {
-            Console.WriteLine(testcase.msg);
-
-            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
-
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = int.MaxValue,
-                IsPatternMatchingEnabled = false,
-                BakeInTracingInAotModes = !testcase.Item5.enableAmortization,
-                AggressivePartialAotMode = testcase.Item5.enableAggressiveMode,
-                PartialAotThreshold = 1,
-                AnalysisQueueMaxSize = 1,
-                IsPartialAotEnabled = true
-            });
-
-            var address = standardChain.InsertCode(testcase.bytecode);
-            enhancedChain.InsertCode(testcase.bytecode);
-
-            GethTraceOptions tracerOptions = new GethTraceOptions
-            {
-                EnableMemory = true,
-            };
-
-            var bytecode = Prepare.EvmCode
-                .PushData(UInt256.MaxValue)
-                .PUSHx([2])
-                .MSTORE()
-                .PushData(0)
-                .PushData(0)
-                .PushData(32) // length
-                .PushData(2) // offset
-                .PushData(0) // value
-                .PushData(address)
-                .PushData(750_000)
-                .Op(Instruction.CALL)
-                .STOP()
-                .Done;
-
-
-            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
-
-            enhancedChain.ForceRunAnalysis(address, ILMode.PARTIAL_AOT_MODE);
-
-            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
-
-            var actual = standardChain.StateRoot;
-            var expected = enhancedChain.StateRoot;
-
-            Assert.That(Metrics.IlvmPrecompiledSegmentsExecutions, Is.GreaterThan(0));
-            Assert.That(actual, Is.EqualTo(expected), testcase.msg);
-        }
-
-
-        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = int.MaxValue,
-                IsPatternMatchingEnabled = false,
-                BakeInTracingInAotModes = !testcase.Item5.enableAmortization,
-                AggressivePartialAotMode = testcase.Item5.enableAggressiveMode,
-                PartialAotThreshold = 1,
-                AnalysisQueueMaxSize = 1,
-                IsPartialAotEnabled = false,
-                IsFullAotEnabled = true
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IsIlEvmAggressiveModeEnabled = testcase.Item5.enableAggressiveMode,
+                IsIlEvmTracingEnabled = !testcase.Item5.enableAmortization
             });
+
 
             byte[][] blobVersionedHashes = null;
             switch (testcase.opcode[0])
@@ -2307,7 +2177,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .Done;
                     var callAddress = standardChain.InsertCode(returningCode);
                     enhancedChain.InsertCode(returningCode);
-                    enhancedChain.ForceRunAnalysis(callAddress, ILMode.PARTIAL_AOT_MODE);
+                    enhancedChain.ForceRunAnalysis(callAddress, ILMode.FULL_AOT_MODE);
 
                     var callCode =
                         Prepare.EvmCode
@@ -2364,12 +2234,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var address = standardChain.InsertCode(testcase.bytecode);
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = true,
-                PartialAotThreshold = int.MaxValue,
-                AnalysisQueueMaxSize = 1,
-                IsPartialAotEnabled = false
+                IlEvmEnabledMode = ILMode.PATTERN_BASED_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
             });
+
             enhancedChain.InsertCode(testcase.bytecode);
 
             var bytecode =
@@ -2391,322 +2260,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_On()
+        public void AOT_invalid_opcode_results_in_failure()
         {
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = false,
-                PartialAotThreshold = 1,
-                AnalysisQueueMaxSize = 1,
-                IsPartialAotEnabled = true,
-                AggressivePartialAotMode = true,
-            });
-
-            var aux = enhancedChain.InsertCode(Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .ADD()
-                .STOP().Done);
-
-            Address main = enhancedChain.InsertCode(
-                Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(1000)
-                    .GAS()
-                    .LT()
-                    .JUMPI(59)
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .POP()
-                    .Call(aux, 100)
-                    .POP()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .POP()
-                    .JUMP(0)
-                    .JUMPDEST()
-                    .STOP()
-                    .Done);
-
-            byte[] driver =
-                Prepare.EvmCode
-                    .Call(main, 1_000_000)
-                    .Done;
-
-            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
-            enhancedChain.ForceRunAnalysis(aux, ILMode.PARTIAL_AOT_MODE);
-
-            using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            enhancedChain.Execute(driver, tracer);
-            var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
-
-
-            // in the last stint gas is almost below 1000
-            // it executes segment 0 (0..47)
-            // then calls address 23 (segment 0..5 since it is precompiled as well)
-            // then it executes segment 49..60 which ends in jump back to pc = 0
-            // then it executes segment 0..46 again but this time gas is below 1000
-            // it ends jumping to pc = 59 (which occurs in segment 49..60)
-            // so the last segment executed is (49..60)
-
-            string[] desiredTracePattern = new[]
-            {
-                $"ILEVM_PRECOMPILED_({main})[0..48]",
-                $"ILEVM_PRECOMPILED_({aux})[0..5]",
-                $"ILEVM_PRECOMPILED_({main})[49..60]",
-                $"ILEVM_PRECOMPILED_({main})[0..48]",
-                $"ILEVM_PRECOMPILED_({main})[49..60]",
-            };
-
-            string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
-            Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
-        }
-
-        [Test]
-        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_Off()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = 2,
-                AnalysisQueueMaxSize = 1,
-                IsPatternMatchingEnabled = true,
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                AggressivePartialAotMode = false,
-                BakeInTracingInAotModes = true
-            });
-
-            var aux = enhancedChain.InsertCode(Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .ADD()
-                .STOP().Done);
-
-            Address main = enhancedChain.InsertCode(
-                Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(1000)
-                    .GAS()
-                    .LT()
-                    .JUMPI(59)
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .POP()
-                    .Call(aux, 100)
-                    .POP()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .POP()
-                    .JUMP(0)
-                    .JUMPDEST()
-                    .STOP()
-                    .Done);
-
-            byte[] driver =
-                Prepare.EvmCode
-                    .Call(main, 1_000_000)
-                    .Done;
-
-            enhancedChain.ForceRunAnalysis(main, ILMode.PATTERN_BASED_MODE | ILMode.PARTIAL_AOT_MODE);
-
-            enhancedChain.ForceRunAnalysis(aux, ILMode.PATTERN_BASED_MODE | ILMode.PARTIAL_AOT_MODE);
-
-            using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            enhancedChain.Execute(driver, tracer);
-            var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
-
-            // in the last stint gas is almost below 1000
-            // it executes segment 0 (0..47)
-            // then calls address 23 (segment 0..5 since it is precompiled as well)
-            // then it executes segment 49..60 which ends in jump back to pc = 0
-            // then it executes segment 0..47 again but this time gas is below 1000
-            // it ends jumping to pc = 59 (which is index of AbortDestinationPattern)
-            // so the last segment executed is AbortDestinationPattern
-
-            string[] desiredTracePattern = new[]
-            {
-                $"ILEVM_PRECOMPILED_({main})[0..48]",
-                $"ILEVM_PRECOMPILED_({aux})[0..5]",
-                $"ILEVM_PRECOMPILED_({main})[49..60]",
-                $"ILEVM_PRECOMPILED_({main})[0..48]",
-                $"AbortDestinationPattern",
-            };
-
-            string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
-            Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
-        }
-
-        [Test]
-        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_On_Equiv()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = false,
-                PartialAotThreshold = 1,
-                AnalysisQueueMaxSize = 1,
-                IsPartialAotEnabled = true,
-                AggressivePartialAotMode = true,
-            });
-
-            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
-
-            var auxCode = Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .ADD()
-                .STOP().Done;
-
-            var aux = enhancedChain.InsertCode(auxCode);
-            standardChain.InsertCode(auxCode);
-
-            var maincode = Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(1000)
-                    .GAS()
-                    .LT()
-                    .JUMPI(59)
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .POP()
-                    .Call(aux, 100)
-                    .POP()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .POP()
-                    .JUMP(0)
-                    .JUMPDEST()
-                    .STOP()
-                    .Done;
-
-            Address main = enhancedChain.InsertCode(maincode);
-            standardChain.InsertCode(maincode);
-
-            using var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            using var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-
-            var bytecode =
-                Prepare.EvmCode
-                    .Call(main, 100000)
-                    .STOP()
-                    .Done;
-
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
-
-            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
-
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
-
-            var normal_traces = tracer1.BuildResult();
-            var ilvm_traces = tracer2.BuildResult();
-
-            var actual = enhancedChain.StateRoot;
-            var expected = standardChain.StateRoot;
-
-            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-
-            Assert.That(enhancedHasIlvmTraces, Is.True);
-            Assert.That(normalHasIlvmTraces, Is.False);
-            Assert.That(actual, Is.EqualTo(expected));
-        }
-
-        [Test]
-        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_Off_Equiv()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = 2,
-                AnalysisQueueMaxSize = 1,
-                IsPatternMatchingEnabled = true,
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                AggressivePartialAotMode = false,
-            });
-
-
-            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
-
-            var auxCode = Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .ADD()
-                .STOP().Done;
-
-            var aux = enhancedChain.InsertCode(auxCode);
-            standardChain.InsertCode(auxCode);
-
-            var maincode = Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(1000)
-                    .GAS()
-                    .LT()
-                    .JUMPI(59)
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .POP()
-                    .Call(aux, 100)
-                    .POP()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .POP()
-                    .JUMP(0)
-                    .JUMPDEST()
-                    .STOP()
-                    .Done;
-
-            Address main = enhancedChain.InsertCode(maincode);
-            standardChain.InsertCode(maincode);
-
-            using var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            using var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-
-            var bytecode =
-                Prepare.EvmCode
-                    .Call(main, 100000)
-                    .STOP()
-                    .Done;
-
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
-
-            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
-
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
-
-            var normal_traces = tracer1.BuildResult();
-            var ilvm_traces = tracer2.BuildResult();
-
-            var actual = enhancedChain.StateRoot;
-            var expected = standardChain.StateRoot;
-
-            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-
-            Assert.That(enhancedHasIlvmTraces, Is.True);
-            Assert.That(normalHasIlvmTraces, Is.False);
-            Assert.That(actual, Is.EqualTo(expected));
-        }
-
-        [Test]
-        public void JIT_invalid_opcode_results_in_failure()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = false,
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                AnalysisQueueMaxSize = 1,
-                AggressivePartialAotMode = false
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IsIlEvmAggressiveModeEnabled = false,
+                IsIlEvmTracingEnabled = true,
             });
 
             Address main = enhancedChain.InsertCode(
@@ -2725,14 +2287,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
+            enhancedChain.ForceRunAnalysis(main, ILMode.FULL_AOT_MODE);
             using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
             var traces = tracer.BuildResult();
 
-            var HasIlvmTraces = traces.Entries.Where(tr => tr.SegmentID is not null).Any();
             var hasFailed = traces.Failed;
-            Assert.That(HasIlvmTraces, Is.True);
+            Assert.That(Metrics.AotPrecompiledCalls, Is.GreaterThan(0));
             Assert.That(hasFailed, Is.True);
         }
 
