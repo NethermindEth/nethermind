@@ -338,7 +338,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
-    public static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    private static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         bool result = true;
         IReleaseSpec spec = vm.Spec;
@@ -380,7 +380,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="storageAccessType">Indicates whether the access is for a load (SLOAD) or store (SSTORE) operation.</param>
     /// <param name="spec">The release specification which governs gas metering and storage access rules.</param>
     /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
-    internal static bool ChargeStorageAccessGas(
+    private static bool ChargeStorageAccessGas(
         ref long gasAvailable,
         VirtualMachine vm,
         in StorageCell storageCell,
@@ -425,7 +425,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="length">The length of the memory region.</param>
     /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
         // Calculate additional gas cost for any memory expansion.
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
@@ -447,7 +447,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="gasAvailable">The remaining gas available.</param>
     /// <returns><c>true</c> if there was sufficient gas; otherwise, <c>false</c>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool UpdateGas(long gasCost, ref long gasAvailable)
+    private static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
         if (gasAvailable < gasCost)
         {
@@ -464,7 +464,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="refund">The gas amount to refund.</param>
     /// <param name="gasAvailable">The current gas available.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateGasUp(long refund, ref long gasAvailable)
+    private static void UpdateGasUp(long refund, ref long gasAvailable)
     {
         gasAvailable += refund;
     }
