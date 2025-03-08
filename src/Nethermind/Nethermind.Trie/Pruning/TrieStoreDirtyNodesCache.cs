@@ -405,9 +405,10 @@ internal class TrieStoreDirtyNodesCache
         return true;
     }
 
-    public void PersistAll(INodeStorage nodeStorage, CancellationToken cancellationToken)
+    public int PersistAll(INodeStorage nodeStorage, CancellationToken cancellationToken)
     {
         ConcurrentDictionary<Key, bool> wasPersisted = new();
+        int persistedCount = 0;
 
         void PersistNode(TrieNode n, Hash256? address, TreePath path)
         {
@@ -418,6 +419,7 @@ internal class TrieStoreDirtyNodesCache
             {
                 nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
                 n.IsPersisted = true;
+                persistedCount++;
             }
         }
 
@@ -425,13 +427,15 @@ internal class TrieStoreDirtyNodesCache
         {
             foreach (KeyValuePair<Key, TrieNode> kv in AllNodes)
             {
-                if (cancellationToken.IsCancellationRequested) return;
+                if (cancellationToken.IsCancellationRequested) return persistedCount;
                 Key key = kv.Key;
                 TreePath path = key.Path;
                 Hash256? address = key.AddressAsHash256;
                 kv.Value.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
             }
         }
+
+        return persistedCount;
     }
 
     public void Dump()
