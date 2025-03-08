@@ -716,7 +716,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Create new code info for the init code.
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
 
         // Set up the execution environment for the new contract.
         ExecutionEnvironment callEnv = new
@@ -774,7 +774,7 @@ internal static partial class EvmInstructions
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
         // Retrieve the deployment code using the container section offset.
         ReadOnlyMemory<byte> deployCode = codeInfo.ContainerSection[(Range)codeInfo.ContainerSectionOffset(sectionIdx)];
-        EofCodeInfo deployCodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, ValidationStrategy.ExractHeader);
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, ValidationStrategy.ExtractHeader);
 
         // Pop memory offset and size for the return data.
         stack.PopUInt256(out UInt256 a);
