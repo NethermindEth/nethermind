@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -11,7 +10,6 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
 {
     public EofContainer EofContainer { get; private set; } = container;
     public ReadOnlyMemory<byte> MachineCode => EofContainer.Container;
-    public IPrecompile? Precompile => null;
     public int Version => EofContainer.Header.Version;
     public bool IsEmpty => EofContainer.IsEmpty;
     public ReadOnlyMemory<byte> TypeSection => EofContainer.TypeSection;
@@ -25,6 +23,4 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
 
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
         => EofContainer.GetSectionMetadata(index);
-
-    public bool ValidateJump(int destination) => true;
 }

@@ -388,9 +388,11 @@ internal static partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionCallFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        ICodeInfo iCodeInfo = vm.EvmState.Env.CodeInfo;
+        if (iCodeInfo.Version == 0)
             goto BadInstruction;
+
+        EofCodeInfo codeInfo = (EofCodeInfo)iCodeInfo;
 
         if (!UpdateGas(GasCostOf.Callf, ref gasAvailable))
             goto OutOfGas;
@@ -468,9 +470,11 @@ internal static partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionJumpFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        ICodeInfo iCodeInfo = vm.EvmState.Env.CodeInfo;
+        if (iCodeInfo.Version == 0)
             goto BadInstruction;
+
+        EofCodeInfo codeInfo = (EofCodeInfo)iCodeInfo;
 
         if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable))
             goto OutOfGas;
@@ -768,7 +772,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        EofCodeInfo codeInfo = (EofCodeInfo)vm.EvmState.Env.CodeInfo;
 
         // Read the container section index from the code.
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
@@ -952,7 +956,6 @@ internal static partial class EvmInstructions
 
         // 11. Retrieve and prepare the target code for execution.
         ICodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
-        targetCodeInfo.AnalyzeInBackgroundIfRequired();
 
         // For delegate calls, calling a non-EOF (legacy) target is disallowed.
         if (typeof(TOpEofCall) == typeof(OpEofDelegateCall)

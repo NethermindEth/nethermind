@@ -22,37 +22,37 @@ namespace Nethermind.Evm;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
-    private static readonly FrozenDictionary<AddressAsKey, ICodeInfo> _precompiles = InitializePrecompiledContracts();
+    private static readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
-    private readonly FrozenDictionary<AddressAsKey, ICodeInfo> _localPrecompiles;
+    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
 
-    private static FrozenDictionary<AddressAsKey, ICodeInfo> InitializePrecompiledContracts()
+    private static FrozenDictionary<AddressAsKey, PrecompileInfo> InitializePrecompiledContracts()
     {
-        return new Dictionary<AddressAsKey, ICodeInfo>
+        return new Dictionary<AddressAsKey, PrecompileInfo>
         {
-            [EcRecoverPrecompile.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new CodeInfo(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new CodeInfo(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new CodeInfo(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address] = new PrecompileInfo(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new PrecompileInfo(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new PrecompileInfo(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new PrecompileInfo(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Address] = new CodeInfo(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new CodeInfo(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new CodeInfo(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new CodeInfo(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address] = new PrecompileInfo(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new PrecompileInfo(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new PrecompileInfo(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new PrecompileInfo(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Address] = new CodeInfo(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address] = new PrecompileInfo(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Address] = new CodeInfo(G1AddPrecompile.Instance),
-            [G1MSMPrecompile.Address] = new CodeInfo(G1MSMPrecompile.Instance),
-            [G2AddPrecompile.Address] = new CodeInfo(G2AddPrecompile.Instance),
-            [G2MSMPrecompile.Address] = new CodeInfo(G2MSMPrecompile.Instance),
-            [PairingCheckPrecompile.Address] = new CodeInfo(PairingCheckPrecompile.Instance),
-            [MapFpToG1Precompile.Address] = new CodeInfo(MapFpToG1Precompile.Instance),
-            [MapFp2ToG2Precompile.Address] = new CodeInfo(MapFp2ToG2Precompile.Instance),
+            [G1AddPrecompile.Address] = new PrecompileInfo(G1AddPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new PrecompileInfo(G1MSMPrecompile.Instance),
+            [G2AddPrecompile.Address] = new PrecompileInfo(G2AddPrecompile.Instance),
+            [G2MSMPrecompile.Address] = new PrecompileInfo(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new PrecompileInfo(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new PrecompileInfo(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new PrecompileInfo(MapFp2ToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new PrecompileInfo(PointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new CodeInfo(Secp256r1Precompile.Instance),
+            [Secp256r1Precompile.Address] = new PrecompileInfo(Secp256r1Precompile.Instance),
         }.ToFrozenDictionary();
     }
 
@@ -190,10 +190,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         return false;
     }
 
-    private static ICodeInfo CreateCachedPrecompile(
-        in KeyValuePair<AddressAsKey, ICodeInfo> originalPrecompile,
+    private static PrecompileInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
-        new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+        new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address, spec).MachineCode.Span, out delegatedAddress);

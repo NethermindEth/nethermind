@@ -38,8 +38,10 @@ public static class CodeInfoFactory
             codeInfo = null;
             return false;
         }
-        codeInfo = new CodeInfo(data);
-        codeInfo.AnalyzeInBackgroundIfRequired();
+
+        CodeInfo legacyCodeInfo = new(data);
+        legacyCodeInfo.AnalyzeInBackgroundIfRequired();
+        codeInfo = legacyCodeInfo;
         return true;
     }
 }

@@ -2,42 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
-using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class CodeInfo : ICodeInfo, IThreadPoolWorkItem
+public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
 {
-    public ReadOnlyMemory<byte> MachineCode { get; }
-    public IPrecompile? Precompile { get; set; }
-    private readonly JumpDestinationAnalyzer _analyzer;
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-    public static CodeInfo Empty { get; } = new CodeInfo([]);
+    public static CodeInfo Empty { get; } = new CodeInfo(ReadOnlyMemory<byte>.Empty);
 
-    public CodeInfo(byte[] code)
-    {
-        MachineCode = code;
-        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
-    }
+    public ReadOnlyMemory<byte> MachineCode { get; } = code;
 
-    public CodeInfo(ReadOnlyMemory<byte> code)
-    {
-        MachineCode = code;
-        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
-    }
+    private readonly JumpDestinationAnalyzer _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
 
-    public bool IsPrecompile => Precompile is not null;
-    public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer) && !IsPrecompile;
-
-    public CodeInfo(IPrecompile precompile)
-    {
-        Precompile = precompile;
-        MachineCode = Array.Empty<byte>();
-        _analyzer = _emptyAnalyzer;
-    }
+    public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
 
     public bool ValidateJump(int destination)
     {
@@ -56,12 +34,4 @@ public sealed class CodeInfo : ICodeInfo, IThreadPoolWorkItem
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
         }
     }
-
-    public SectionHeader CodeSectionOffset(int idx)
-        => throw new UnreachableException();
-
-    public SectionHeader? ContainerSectionOffset(int idx)
-        => null;
-
-    public int PcOffset() => 0;
 }

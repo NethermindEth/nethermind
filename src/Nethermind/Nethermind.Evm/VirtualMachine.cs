@@ -955,7 +955,7 @@ public sealed unsafe partial class VirtualMachine(
         UInt256 transferValue = state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
-        IPrecompile precompile = state.Env.CodeInfo.Precompile;
+        IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile;
         long baseGasCost = precompile.BaseGasCost(_spec);
         long blobGasCost = precompile.DataGasCost(callData, _spec);
 
