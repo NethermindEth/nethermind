@@ -678,14 +678,14 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (tx.IsLegacyContractCreation)
                         {
-                            if (!DeployLegacyContract(spec, env, substate, ref unspentGas))
+                            if (!DeployLegacyContract(spec, env.ExecutingAccount, substate, ref unspentGas))
                             {
                                 goto Fail;
                             }
                         }
                         else
                         {
-                            if (!DeployEofContract(spec, env, substate, ref unspentGas))
+                            if (!DeployEofContract(spec, env.ExecutingAccount, substate, ref unspentGas))
                             {
                                 goto Fail;
                             }
@@ -724,7 +724,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += gasConsumed.SpentGas;
         }
 
-        private bool DeployLegacyContract(IReleaseSpec spec, ExecutionEnvironment env, TransactionSubstate substate, ref long unspentGas)
+        private bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, TransactionSubstate substate, ref long unspentGas)
         {
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
@@ -739,8 +739,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (unspentGas >= codeDepositGasCost)
             {
-                var code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+                // Copy the bytes so it's not live memory that will be used in another tx
+                byte[] code = substate.Output.Bytes.ToArray();
+                _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
 
                 unspentGas -= codeDepositGasCost;
             }
@@ -748,9 +749,9 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        private bool DeployEofContract(IReleaseSpec spec, ExecutionEnvironment env, TransactionSubstate substate, ref long unspentGas)
+        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, TransactionSubstate substate, ref long unspentGas)
         {
-            // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
+            // 1 - load deploy EOF subContainer at deploy_container_index in the container from which RETURNCODE is executed
             ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
             EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
 
@@ -759,15 +760,18 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 return false;
             }
-
-            byte[] bytecodeResultArray = null;
-
+            int codeLength = deployCodeInfo.MachineCode.Length + auxExtraData.Length;
+            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+            if (codeLength > spec.MaxCodeSize)
+            {
+                return false;
+            }
             // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-            Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+            byte[] bytecodeResult = new byte[codeLength];
             // 2 - 1 - 1 - copy old container
             deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
             // 2 - 1 - 2 - copy aux data to dataSection
-            auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
+            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.MachineCode.Length));
 
             // 2 - 2 - update data section size in the header u16
             int dataSubHeaderSectionStart =
@@ -777,25 +781,21 @@ namespace Nethermind.Evm.TransactionProcessing
                 + (deployCodeInfo.EofContainer.Header.ContainerSections is null
                     ? 0 // container section :  (0 bytes if no container section is available)
                     : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
-                + ONE_BYTE_LENGTH; // data section seperator
+                + ONE_BYTE_LENGTH; // data section separator
 
             ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
             bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
             bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
 
-            bytecodeResultArray = bytecodeResult.ToArray();
-
-            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-            bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
-            if (unspentGas >= codeDepositGasCost && !invalidCode)
+            if (unspentGas >= codeDepositGasCost)
             {
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(WorldState, bytecodeResultArray, env.ExecutingAccount, spec);
+                _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
                 unspentGas -= codeDepositGasCost;
             }
 
-            return false;
+            return true;
         }
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
