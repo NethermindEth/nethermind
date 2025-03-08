@@ -15,6 +15,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -2194,6 +2195,23 @@ namespace Nethermind.TxPool.Test
             {
                 await semaphoreSlim.WaitAsync(10);
             }
+        }
+
+        private async Task RaiseBlockAddedToMainAndWaitForNewHead(Block block, Block previousBlock = null)
+        {
+            BlockReplacementEventArgs blockReplacementEventArgs = previousBlock is null
+                ? new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject)
+                : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
+
+            Task waitTask = Wait.ForEventCondition<Block>(
+                default,
+                e => _txPool.TxPoolHeadChanged += e,
+                e => _txPool.TxPoolHeadChanged -= e,
+                e => e.Number == block.Number
+            );
+
+            _blockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
+            await waitTask;
         }
     }
 }
