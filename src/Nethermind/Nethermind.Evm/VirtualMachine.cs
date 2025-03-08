@@ -835,15 +835,15 @@ public sealed unsafe partial class VirtualMachine(
                     _logger.Debug("Resetting EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructions = EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec);
+                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmTracedInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
         }
 
         // Store the spec in field for future access and return it.

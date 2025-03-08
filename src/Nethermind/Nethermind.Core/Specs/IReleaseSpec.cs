@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -438,8 +439,8 @@ namespace Nethermind.Core.Specs
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
-        public object? EvmInstructions { get; set; }
+        public Array? EvmInstructionsNoTrace { get; set; }
 
-        public object? EvmTracedInstructions { get; set; }
+        public Array? EvmInstructionsTraced { get; set; }
     }
 }
