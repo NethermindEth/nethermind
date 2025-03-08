@@ -61,7 +61,7 @@ public sealed class CodeInfo : ICodeInfo, IThreadPoolWorkItem
         => throw new UnreachableException();
 
     public SectionHeader? ContainerSectionOffset(int idx)
-        => throw new UnreachableException();
+        => null;
 
     public int PcOffset() => 0;
 }
