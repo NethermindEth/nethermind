@@ -82,7 +82,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             var bitmap = CreateJumpDestinationBitmap();
             _jumpDestinationBitmap = bitmap;
             // Release the MRES to be GC'd
-            _analysisComplete = bitmap;
+            Volatile.Write(ref _analysisComplete, bitmap);
             // Signal complete.
             analysisComplete.Set();
             previous = bitmap;
