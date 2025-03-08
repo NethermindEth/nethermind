@@ -1,75 +1,81 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
+using System.CommandLine;
 using System.Linq;
-using CommandLine;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.EvmObjectFormat;
 
-namespace Nethermind.EOFParse.Runner
+namespace Nethermind.EOFParse.Runner;
+
+internal class Program
 {
-    internal class Program
+    public class Options
     {
-        public class Options
-        {
-            [Option('i', "input", Required = false,
-                HelpText = "Raw eof input")]
-            public string Input { get; set; }
+        public static CliOption<string> Input { get; } =
+            new("--input", "-i") { Description = "Set the raw eof test input file or directory. Either 'input' or 'stdin' is required." };
 
-            [Option('x', "stdin", Required = false,
-                HelpText =
-                    "Interactive testing mode.")]
-            public bool Stdin { get; set; }
-        }
+        public static CliOption<bool> Stdin { get; } =
+            new("--stdin", "-x") { Description = "If stdin is used, the eof runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
+    }
 
-        public static void Main(params string[] args)
-        {
-            ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
-            if (result is Parsed<Options> options)
-                Run(options.Value);
-        }
+    public static async Task<int> Main(params string[] args)
+    {
+        CliRootCommand rootCommand =
+        [
+            Options.Input,
+            Options.Stdin
+        ];
+        rootCommand.SetAction(Run);
 
-        private static void Run(Options options)
+        CliConfiguration configuration = new(rootCommand);
+
+        return await configuration.InvokeAsync(args);
+    }
+
+    private static void Run(Options options)
+    {
+        string input = parseResult.GetValue(Options.Input);
+
+        if (parseResult.GetValue(Options.Stdin))
+            input = Console.ReadLine();
+
+        while (!string.IsNullOrWhiteSpace(input))
         {
-            string input = options.Input;
-            if (options.Stdin || input?.Length == 0)
+            if (!input.StartsWith('#'))
             {
-                input = Console.ReadLine();
-            }
+                input = new string(input.Where(c => char.IsLetterOrDigit(c)).ToArray());
 
-            while (!string.IsNullOrWhiteSpace(input))
-            {
-                if (!input.StartsWith('#'))
+                var bytecode = Bytes.FromHexString(input);
+                try
                 {
-                    input = new string(input.Where(c => char.IsLetterOrDigit(c)).ToArray());
-
-                    var bytecode = Bytes.FromHexString(input);
-                    try
+                    var validationResult = EofValidator.IsValidEof(bytecode, ValidationStrategy.ValidateRuntimeMode,
+                        out EofContainer? header);
+                    if (validationResult)
                     {
-                        var validationResult = EofValidator.IsValidEof(bytecode, ValidationStrategy.ValidateRuntimeMode,
-                            out EofContainer? header);
-                        if (validationResult)
-                        {
-                            var sectionCount = header.Value.CodeSections.Length;
-                            var subcontainerCount = header.Value.ContainerSections?.Length ?? 0;
-                            var dataCount = header.Value.DataSection.Length;
-                            Console.WriteLine($"OK {sectionCount}/{subcontainerCount}/{dataCount}");
-                        }
-                        else
-                        {
-                            Console.WriteLine($"err: unknown");
-                        }
+                        var sectionCount = header.Value.CodeSections.Length;
+                        var subContainerCount = header.Value.ContainerSections?.Length ?? 0;
+                        var dataCount = header.Value.DataSection.Length;
+                        Console.WriteLine($"OK {sectionCount}/{subContainerCount}/{dataCount}");
                     }
-                    catch (Exception e)
+                    else
                     {
-                        Console.WriteLine($"err: {e.Message}");
+                        Console.WriteLine($"err: unknown");
                     }
-
-
-                    if (!options.Stdin)
-                        break;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"err: {e.Message}");
                 }
 
-                input = Console.ReadLine();
+
+                if (!options.Stdin)
+                    break;
             }
+
+            input = Console.ReadLine();
         }
     }
 }
