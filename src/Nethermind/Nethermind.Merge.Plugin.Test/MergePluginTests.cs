@@ -40,6 +40,7 @@ public class MergePluginTests
         _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
+        _context.ConfigProvider.GetConfig(typeof(ISyncConfig)).Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
         _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
         _context.BlockProcessingQueue?.IsEmpty.Returns(true);
@@ -61,9 +62,8 @@ public class MergePluginTests
         var chainSpecParametersProvider = new TestChainSpecParametersProvider(
             new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
         _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
-        _plugin = new MergePlugin();
-
-        _consensusPlugin = new();
+        _plugin = new MergePlugin(_context.ChainSpec, _mergeConfig);
+        _consensusPlugin = new(_context.ChainSpec);
     }
 
     [TearDown]

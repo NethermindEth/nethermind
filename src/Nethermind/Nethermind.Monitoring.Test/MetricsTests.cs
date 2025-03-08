@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
@@ -43,6 +44,13 @@ public class MetricsTests
         [SummaryMetric]
         public static IMetricObserver SomeObservation { get; set; } = NoopMetricObserver.Instance;
 
+        [System.ComponentModel.Description("Histograrm metric")]
+        [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 10)]
+        public static IMetricObserver HistogramObservation { get; set; } = NoopMetricObserver.Instance;
+
+        [System.ComponentModel.Description("A test description")]
+        [DetailedMetric]
+        public static long DetailedMetric { get; set; }
     }
 
     public enum SomeEnum
@@ -84,6 +92,7 @@ public class MetricsTests
         var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
         var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
         var keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
+        var keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
 
         Assert.That(updater.Keys, Has.Member(keyDefault));
         Assert.That(updater.Keys, Has.Member(keySpecial));
@@ -93,8 +102,10 @@ public class MetricsTests
         Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
-        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.MetricUpdater>());
-        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.MetricUpdater>());
+        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+        Assert.That(updater[keyHistogram], Is.TypeOf<MetricsController.HistogramMetricUpdater>());
+        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+        Assert.That(TestMetrics.HistogramObservation, Is.TypeOf<MetricsController.HistogramMetricUpdater>());
 
         Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(123));
         Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(1234));
@@ -103,6 +114,24 @@ public class MetricsTests
         Assert.That((updater[keyDictionary2] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Value, Is.EqualTo(4));
         Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Load_DetailedMetric(bool enableDetailedMetric)
+    {
+        MetricsConfig metricsConfig = new()
+        {
+            Enabled = true,
+            EnableDetailedMetric = enableDetailedMetric
+        };
+        MetricsController metricsController = new(metricsConfig);
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        metricsController.UpdateAllMetrics();
+
+        var updater = metricsController._individualUpdater;
+        var metricName = "TestMetrics.DetailedMetric";
+        Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
     }
 
     [Test]
