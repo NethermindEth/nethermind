@@ -27,11 +27,11 @@ namespace Nethermind.Evm
         public static bool IsValidWithLegacyRules(IReleaseSpec spec, ReadOnlyMemory<byte> code)
             => !spec.IsEip3541Enabled || !code.StartsWith(InvalidStartingCodeByte);
 
-        public static bool IsValidWithEofRules(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion, EvmObjectFormat.ValidationStrategy strategy = EvmObjectFormat.ValidationStrategy.Validate)
+        public static bool IsValidWithEofRules(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion, ValidationStrategy strategy = ValidationStrategy.Validate)
         {
-            bool isCodeEof = EofValidator.IsEof(code, out byte codeVersion);
-            bool valid = code.Length >= 1
-                  && codeVersion >= fromVersion
+            byte codeVersion = 0;
+            bool isCodeEof = code.Length >= EofValidator.MAGIC.Length && EofValidator.IsEof(code, out codeVersion);
+            bool valid = codeVersion >= fromVersion
                   && (isCodeEof
                         ? (fromVersion > 0 && EofValidator.IsValidEof(code, strategy, out _))
                         : (fromVersion == 0 && IsValidWithLegacyRules(spec, code)));
