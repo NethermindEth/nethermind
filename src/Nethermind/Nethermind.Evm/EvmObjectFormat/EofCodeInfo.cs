@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -26,15 +24,7 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
     public int PcOffset() => EofContainer.Header.CodeSections.Start;
 
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
-    {
-        ReadOnlySpan<byte> typeSection = EofContainer.TypeSections[index].Span;
-        return
-            (
-                typeSection[Eof1.INPUTS_OFFSET],
-                typeSection[Eof1.OUTPUTS_OFFSET],
-                typeSection.Slice(Eof1.MAX_STACK_HEIGHT_OFFSET, Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
-            );
-    }
+        => EofContainer.GetSectionMetadata(index);
 
     public bool ValidateJump(int destination) => true;
 }

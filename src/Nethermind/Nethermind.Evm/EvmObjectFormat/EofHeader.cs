@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 
 namespace Nethermind.Evm.EvmObjectFormat;
@@ -58,11 +59,22 @@ public readonly struct EofContainer
     public readonly ReadOnlyMemory<byte> CodeSection;
     public readonly ReadOnlyMemory<byte>[] CodeSections;
 
-
     public readonly ReadOnlyMemory<byte> ContainerSection;
     public readonly ReadOnlyMemory<byte>[] ContainerSections;
     public readonly ReadOnlyMemory<byte> DataSection;
+
+    public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
+    {
+        ReadOnlySpan<byte> typeSection = TypeSections[index].Span;
+        return
+            (
+                typeSection[Eof1.INPUTS_OFFSET],
+                typeSection[Eof1.OUTPUTS_OFFSET],
+                typeSection.Slice(Eof1.MAX_STACK_HEIGHT_OFFSET, Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
+            );
+    }
 }
+
 public struct EofHeader()
 {
     public required byte Version;
