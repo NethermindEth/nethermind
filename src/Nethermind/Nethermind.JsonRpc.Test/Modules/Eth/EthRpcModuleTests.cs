@@ -96,6 +96,16 @@ public partial class EthRpcModuleTests
 
 
     [Test]
+    public async Task Eth_get_raw_transaction_by_hash_for_typed_transaction()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        await ctx.Test.AddBlock(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+        string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"02f86c0180850165a0bc0085028fa6ae008252089400000000000000000000000000000000000000000180c080a063b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43a0606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86\",\"id\":67}"), serialized.Replace("\"", "\\\""));
+    }
+
+
+    [Test]
     public async Task eth_maxPriorityFeePerGas_test()
     {
         using Context ctx = await Context.Create();
