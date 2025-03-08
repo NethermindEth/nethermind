@@ -27,7 +27,7 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
         return NullTxTracer.Instance;
     }
 
-    protected override IReadOnlyList<SimulateCallResult> getCalls()
+    protected override IReadOnlyList<SimulateCallResult> GetCalls()
     {
         return _txTracers.Select(t => t.TraceResult).ToList();
     }

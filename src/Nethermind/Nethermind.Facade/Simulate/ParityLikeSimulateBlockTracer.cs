@@ -27,7 +27,7 @@ public class ParityLikeSimulateBlockTracer(bool isTracingLogs, bool includeFullT
         return NullTxTracer.Instance;
     }
 
-    protected override IReadOnlyList<ParityLikeTxTrace> getCalls()
+    protected override IReadOnlyList<ParityLikeTxTrace> GetCalls()
     {
         return _txTracers.Select(t => t.BuildResult()).ToList();
     }

@@ -41,13 +41,13 @@ public class SimulateBlockTracerBase<TxTracer, TTrace> : IBlockTracer<SimulateBl
 
     public virtual ITxTracer StartNewTxTrace(Transaction? tx) => NullTxTracer.Instance;
 
-    protected virtual IReadOnlyList<TTrace> getCalls() => [];
+    protected virtual IReadOnlyList<TTrace> GetCalls() => [];
 
     public void EndBlockTrace()
     {
         SimulateBlockResult<TTrace>? result = new(_currentBlock, _includeFullTxData, _spec)
         {
-            Calls = getCalls(),
+            Calls = GetCalls(),
         };
 
         Results.Add(result);

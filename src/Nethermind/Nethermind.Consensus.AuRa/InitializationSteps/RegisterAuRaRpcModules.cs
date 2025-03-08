@@ -66,12 +66,15 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         AuRaTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api,
-            new BlocksConfig().SecondsPerSlot,
+            secondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -204,13 +207,16 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         AuRaDebugModuleFactory debugModuleFactory = new(
             _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
             _api,
-            new BlocksConfig().SecondsPerSlot,
+            secondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
