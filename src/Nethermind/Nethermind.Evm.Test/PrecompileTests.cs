@@ -30,14 +30,10 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
         }
     }
 
-    public virtual TestCase BeforeTest(TestCase testCase) => testCase;
-
     [TestCaseSource(nameof(TestSource))]
     public void TestVectors(TestCase testCase)
     {
         if (this is not T) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(T)}");
-
-        testCase = BeforeTest(testCase);
 
         IPrecompile precompile = T.Precompile();
         long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
@@ -50,6 +46,10 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             if (testCase.Expected is not null)
             {
                 Assert.That(output, Is.EquivalentTo(testCase.Expected));
+            }
+            else
+            {
+                Assert.That(output, Is.Null.Or.Empty);
             }
 
             if (testCase.Gas is not null)

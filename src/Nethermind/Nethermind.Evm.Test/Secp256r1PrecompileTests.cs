@@ -20,11 +20,6 @@ namespace Nethermind.Evm.Test
 
         public static IPrecompile Precompile() => Secp256r1Precompile.Instance;
 
-        public override TestCase BeforeTest(TestCase testCase)
-        {
-            return testCase with { Expected = testCase.Expected ?? [] };
-        }
-
         [Test]
         [TestCase(
             ""
