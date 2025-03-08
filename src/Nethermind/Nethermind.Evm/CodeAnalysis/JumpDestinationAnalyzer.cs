@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -55,21 +56,10 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
 
     private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
-        Thread thread = Thread.CurrentThread;
-        ThreadPriority priority = thread.Priority;
-        try
-        {
-            // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
-            thread.Priority = ThreadPriority.Normal;
-
-            // Already in progress, wait for completion.
-            resetEvent.Wait();
-        }
-        finally
-        {
-            // Restore the priority of the thread.
-            thread.Priority = priority;
-        }
+        // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
+        using var handle = Thread.CurrentThread.SetNormalPriority();
+        // Already in progress, wait for completion.
+        resetEvent.Wait();
     }
 
     private void AnalyzeJumpDestinations(out object previous)
@@ -229,25 +219,14 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             ManualResetEventSlim analysisComplete = new(initialState: false);
             if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
             {
-                Thread thread = Thread.CurrentThread;
-                ThreadPriority priority = thread.Priority;
-                try
-                {
-                    // Boost the priority of the thread as block processing may be waiting on this.
-                    thread.Priority = ThreadPriority.AboveNormal;
+                // Boost the priority of the thread as block processing may be waiting on this.
+                using var handle = Thread.CurrentThread.BoostPriority();
 
-                    _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
-
-                    // Release the MRES to be GC'd
-                    _analysisComplete = _jumpDestinationBitmap;
-                    // Signal complete.
-                    analysisComplete.Set();
-                }
-                finally
-                {
-                    // Restore the priority of the thread.
-                    thread.Priority = priority;
-                }
+                _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
+                // Release the MRES to be GC'd
+                _analysisComplete = _jumpDestinationBitmap;
+                // Signal complete.
+                analysisComplete.Set();
             }
         }
     }
