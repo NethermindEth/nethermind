@@ -4,6 +4,7 @@
 using System;
 using System.CommandLine;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.EvmObjectFormat;
@@ -35,7 +36,7 @@ internal class Program
         return await configuration.InvokeAsync(args);
     }
 
-    private static void Run(Options options)
+    private static Task Run(ParseResult parseResult, CancellationToken cancellationToken)
     {
         string input = parseResult.GetValue(Options.Input);
 
@@ -70,12 +71,13 @@ internal class Program
                     Console.WriteLine($"err: {e.Message}");
                 }
 
-
-                if (!options.Stdin)
+                if (!parseResult.GetValue(Options.Stdin))
                     break;
             }
 
             input = Console.ReadLine();
         }
+
+        return Task.CompletedTask;
     }
 }
