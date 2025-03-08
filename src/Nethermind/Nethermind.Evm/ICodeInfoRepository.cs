@@ -13,16 +13,16 @@ namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
-    CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress);
-    CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
-    ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address);
+    ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress);
+    ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
+    ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec);
-    bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress);
+    bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
 }
 
 public static class CodeInfoRepositoryExtensions
 {
-    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    public static ICodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
         => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
 }
