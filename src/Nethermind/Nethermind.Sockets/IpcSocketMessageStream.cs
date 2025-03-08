@@ -35,7 +35,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             catch { }
         }
 
-        int delimiter = ((IList<byte>)buffer[.._bufferedDataLength]).IndexOf(Delimiter);
+        int delimiter = buffer[.._bufferedDataLength].AsSpan().IndexOf(Delimiter);
         int read;
         if (delimiter == -1)
         {
