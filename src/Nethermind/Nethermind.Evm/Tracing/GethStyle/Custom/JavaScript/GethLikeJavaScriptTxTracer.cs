@@ -60,8 +60,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+
         _resultConstructed = true;
+
         return result;
     }
 

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -91,7 +92,7 @@ public class RegisterRpcModules : IStep
             _api.SyncModeSelector!,
             _api.SyncProgressResolver!,
             _api.LogManager);
-        _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.LogManager);
+        _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.EthereumJsonSerializer, _api.LogManager);
 
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
 

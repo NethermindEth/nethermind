@@ -14,6 +14,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core.Test.IO;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Hive;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -22,12 +23,13 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Serialization.Json;
 using Nethermind.Taiko;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
 
-[TestFixture, Parallelizable(ParallelScope.All)]
+[TestFixture, Parallelizable(ParallelScope.Self)]
 public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
@@ -108,13 +110,16 @@ public class EthereumRunnerTests
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             initConfig.BaseDbPath = tempPath.Path;
 
+            IDbConfig dbConfig = configProvider.GetConfig<IDbConfig>();
+            dbConfig.FlushOnExit = false;
+
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
             int port = basePort + testIndex;
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
             INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
-            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
+            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
             EthereumRunner runner = new(nethermindApi);
 
             using CancellationTokenSource cts = new();
