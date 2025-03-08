@@ -23,24 +23,17 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
     [LibraryImport("Binaries/secp256r1", SetLastError = true)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
-    private static unsafe partial byte VerifyBytes(byte* data, int length);
+    private static unsafe partial void VerifyBytes();
 
     private static readonly Lock Lock = new();
 
-    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
         lock (Lock)
         {
-            bool isValid;
-            var copy = input.ToArray();
-            fixed (byte* ptr = copy)
-            {
-                isValid = VerifyBytes(ptr, input.Length) != 0;
-            }
-
             Metrics.Secp256r1Precompile++;
-
-            return (isValid ? ValidResult : null, true);
+            VerifyBytes();
+            return (ValidResult, true);
         }
     }
 }
