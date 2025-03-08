@@ -102,7 +102,7 @@ public ref struct EvmStack
     public unsafe void Push2Bytes(ref byte value)
     {
         // ushort size
-        if (_tracer is not null) TraceBytes(in value, sizeof(ushort));
+        _tracer?.TraceBytes(in value, sizeof(ushort));
 
         ref byte bytes = ref PushBytesRef();
 
@@ -118,7 +118,7 @@ public ref struct EvmStack
     public unsafe void Push4Bytes(ref byte value)
     {
         // uint size
-        if (_tracer is not null) TraceBytes(in value, sizeof(uint));
+        _tracer?.TraceBytes(in value, sizeof(uint));
 
         ref byte bytes = ref PushBytesRef();
 
@@ -136,7 +136,7 @@ public ref struct EvmStack
     public unsafe void Push8Bytes(ref byte value)
     {
         // ulong size
-        if (_tracer is not null) TraceBytes(in value, sizeof(ulong));
+        _tracer?.TraceBytes(in value, sizeof(ulong));
 
         ref byte bytes = ref PushBytesRef();
 
@@ -153,7 +153,7 @@ public ref struct EvmStack
     public unsafe void Push16Bytes(ref byte value)
     {
         // UInt128 size
-        if (_tracer is not null) TraceBytes(in value, sizeof(HalfWord));
+        _tracer?.TraceBytes(in value, sizeof(HalfWord));
 
         ref byte bytes = ref PushBytesRef();
 
@@ -169,7 +169,7 @@ public ref struct EvmStack
     public void Push20Bytes(ref byte value)
     {
         // Address size
-        if (_tracer is not null) TraceBytes(in value, 20);
+        _tracer?.TraceBytes(in value, 20);
 
         ref byte bytes = ref PushBytesRef();
 
@@ -188,7 +188,7 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in Word value)
     {
-        if (_tracer is not null) TraceWord(in value);
+        _tracer?.TraceWord(in value);
 
         ref byte bytes = ref PushBytesRef();
         Unsafe.As<byte, Word>(ref bytes) = value;
@@ -237,7 +237,7 @@ public ref struct EvmStack
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // uint size
-        if (_tracer is not null) TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
+        _tracer?.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
         ref byte bytes = ref PushBytesRef();
         // First 16+8+4 bytes are zero
@@ -257,7 +257,7 @@ public ref struct EvmStack
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // uint size
-        if (_tracer is not null) TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
+        _tracer?.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
         ref byte bytes = ref PushBytesRef();
         // First 16+8 bytes are zero
@@ -563,9 +563,6 @@ public ref struct EvmStack
             _tracer.ReportStackPush(_bytes.Slice(Head * WordSize - i * WordSize, WordSize));
         }
     }
-
-    private readonly void TraceWord(in Word value) => _tracer?.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
-    private readonly void TraceBytes(in byte value, int length) => _tracer?.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(in value, length));
 
     [StackTraceHidden]
     [DoesNotReturn]
