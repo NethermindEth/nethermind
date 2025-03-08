@@ -22,7 +22,7 @@ public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [LibraryImport("Binaries/secp256r1", SetLastError = true)]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe partial void VerifyBytes();
 
     private static readonly Lock Lock = new();
