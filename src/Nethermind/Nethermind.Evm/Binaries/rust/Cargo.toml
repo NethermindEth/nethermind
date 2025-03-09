@@ -15,4 +15,5 @@ debug = false         # Disable debug information in release mode
 rpath = false         # Disable RPATH to reduce binary size (for dynamic libraries)
 
 [dependencies]
+fastcrypto = "0.1.9"
 p256 = "0.13.2"
