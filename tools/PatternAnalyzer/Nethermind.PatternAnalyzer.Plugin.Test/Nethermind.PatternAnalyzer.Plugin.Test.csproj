@@ -9,19 +9,19 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="NUnit" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="NUnit"/>
     <PackageReference Include="NUnit.Analyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="NUnit3TestAdapter"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
-    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Core.Test\Nethermind.Core.Test.csproj"/>
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj"/>
+    <ProjectReference Include="..\Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj"/>
   </ItemGroup>
 
 </Project>

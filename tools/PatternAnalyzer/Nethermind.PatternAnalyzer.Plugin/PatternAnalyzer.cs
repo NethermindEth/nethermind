@@ -1,24 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
+using System.IO.Abstractions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Logging;
-using System.IO.Abstractions;
-using Nethermind.PatternAnalyzer.Plugin.Tracer;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
+using Nethermind.PatternAnalyzer.Plugin.Tracer;
 
 namespace Nethermind.PatternAnalyzer.Plugin;
 
 public class PatternAnalyzer : INethermindPlugin
 {
+    private INethermindApi _api = null!;
+    private IPatternAnalyzerConfig _config = null!;
+    private ILogger _logger;
+    private ILogManager _logManager = null!;
+    private bool Enabled => _config?.Enabled == true;
     public string Name => "OpcodeStats";
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
-    private INethermindApi _api = null!;
-    private IPatternAnalyzerConfig _config = null!;
-    private ILogManager _logManager = null!;
-    private ILogger _logger;
-    private bool Enabled => _config?.Enabled == true;
 
     bool INethermindPlugin.Enabled => throw new NotImplementedException();
 
@@ -35,14 +36,14 @@ public class PatternAnalyzer : INethermindPlugin
     {
         if (Enabled)
         {
-            if (_logger.IsInfo) _logger.Info($"Setting up OpcodeStats tracer");
+            if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
 
             // Setup tracing
             var analyzer = new StatsAnalyzer(_config.GetStatsAnalyzerConfig());
-            PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(_config.ProcessingQueueSize, _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(),  new FileSystem(), _logger,_config.WriteFrequency, _config.File);
+            PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(_config.ProcessingQueueSize,
+                _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(), new FileSystem(), _logger,
+                _config.WriteFrequency, _config.File);
             _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
-
-
         }
 
         return Task.CompletedTask;

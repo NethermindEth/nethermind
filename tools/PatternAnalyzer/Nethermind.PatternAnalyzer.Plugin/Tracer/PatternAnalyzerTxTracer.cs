@@ -11,20 +11,20 @@ namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 
 public sealed class PatternAnalyzerTxTracer : TxTracer
 {
-
-    private readonly Analyzer.StatsAnalyzer _statsAnalyzer;
-    private StatsProcessingQueue? _queue = null;
-    private readonly HashSet<Instruction> _ignoreSet;
-    private McsLock _processingLock;
     private readonly DisposableResettableList<Instruction> _buffer;
+    private readonly HashSet<Instruction> _ignoreSet;
+    private readonly StatsAnalyzer _statsAnalyzer;
+    private McsLock _processingLock;
+    private StatsProcessingQueue? _queue;
 
-    public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
+    public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
+        int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
     {
         _ignoreSet = ignoreSet;
         _statsAnalyzer = statsAnalyzer;
         _processingLock = processingLock;
         _buffer = buffer;
-        _queue = new StatsProcessingQueue(buffer, (Analyzer.StatsAnalyzer)statsAnalyzer);
+        _queue = new StatsProcessingQueue(buffer, (StatsAnalyzer)statsAnalyzer);
         IsTracingInstructions = true;
     }
 
@@ -39,7 +39,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new(_buffer, _statsAnalyzer);
+            _queue = new StatsProcessingQueue(_buffer, _statsAnalyzer);
             q?.Dispose();
         }
     }
@@ -67,10 +67,8 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
     }
 
 
-
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         if (!_ignoreSet.Contains(opcode)) _queue?.Enqueue(opcode);
     }
 }
-
