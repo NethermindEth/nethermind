@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions.TestingHelpers;
+using System.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
@@ -50,9 +51,9 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
 
         _tracer = new PatternAnalyzerFileTracer(1, 100, _statsAnalyzer, new HashSet<Instruction>(), _fileSystem,
-            _logger, 1, _testFileName);
+            _logger, 1, _testFileName, CancellationToken.None);
         _tracerIgnore = new PatternAnalyzerFileTracer(1, 100, _statsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
-            _testIgnoreFileName);
+            _testIgnoreFileName, CancellationToken.None);
     }
 
 

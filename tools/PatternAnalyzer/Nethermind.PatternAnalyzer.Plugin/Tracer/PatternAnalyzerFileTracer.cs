@@ -16,13 +16,12 @@ namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace, PatternAnalyzerTxTracer>
 {
     private const string DefaultFile = "op_code_stats.json";
-    private static readonly object _lock = new();
-    private static readonly object _fileLock = new();
+    private static readonly Lock FileLock = new();
     private readonly string _fileName;
     private readonly IFileSystem _fileSystem;
-    public readonly JsonSerializerOptions _serializerOptions = new();
+    private readonly JsonSerializerOptions _serializerOptions = new();
     private DisposableResettableList<Instruction> _buffer = new();
-    protected int _bufferSize;
+    private readonly int _bufferSize;
     private long _currentBlock;
     private readonly List<Task> _fileTracingQueue = new();
     private readonly int _fileTracingQueueSize = 1;
@@ -34,21 +33,23 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     private readonly StatsAnalyzer _statsAnalyzer;
     private PatternAnalyzerTxTracer _tracer;
     private readonly int _writeFreq = 1;
+    private readonly CancellationToken _ct;
 
 
     public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer,
-        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, string? fileName)
+        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq,
+        string? fileName, CancellationToken? ct)
     {
         _bufferSize = bufferSize;
         _statsAnalyzer = statsAnalyzer;
         _ignore = ignore;
-
         _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
         _fileName = fileName ?? _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), DefaultFile);
         _logger = logger;
+        _ct = ct ?? CancellationToken.None;
         if (_logger.IsInfo)
             _logger.Info(
                 $"OpcodeStats file tracer is set with processing queue size: {_fileTracingQueueSize}, buffer size: {_bufferSize} and will write to file: {_fileName} ");
@@ -69,7 +70,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                 _fileTracingQueue[0].ContinueWith(t =>
                 {
                     if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
-                }).Wait();
+                }, _ct).Wait(_ct);
             }
             catch (AggregateException ex)
             {
@@ -85,7 +86,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
         var task = Task.Run(() =>
         {
-            lock (_fileLock)
+            lock (FileLock)
             {
                 try
                 {
@@ -100,7 +101,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                     throw;
                 }
             }
-        });
+        },_ct);
 
         _fileTracingQueue.Add(task);
 
@@ -117,7 +118,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         _tracer.AddTxEndMarker();
     }
 
-    public static void WriteTrace(long initialBlockNumber, long currentBlockNumber, PatternAnalyzerTxTracer tracer,
+    private static void WriteTrace(long initialBlockNumber, long currentBlockNumber, PatternAnalyzerTxTracer tracer,
         string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions)
     {
         var trace = tracer.BuildResult();
@@ -127,8 +128,8 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         File.WriteAllText(fileName, string.Empty);
 
         // Open the file for writing, using 'using' block to ensure it is closed after writing
-        using (var _file = fileSystem.File.OpenWrite(fileName))
-        using (var jsonWriter = new Utf8JsonWriter(_file))
+        using (var file = fileSystem.File.OpenWrite(fileName))
+        using (var jsonWriter = new Utf8JsonWriter(file))
         {
             JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
         }
@@ -151,7 +152,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
     public void CompleteAllTasks()
     {
-        Task.WaitAll(_fileTracingQueue.ToArray());
+        Task.WaitAll(_fileTracingQueue.ToArray(), _ct);
     }
 
     protected override PatternAnalyzerTxTracer OnStart(Transaction? tx)

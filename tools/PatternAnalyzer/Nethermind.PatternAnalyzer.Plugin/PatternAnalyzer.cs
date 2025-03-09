@@ -18,6 +18,7 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
     public string Name => "OpcodeStats";
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public bool Enabled => patternAnalyzerConfig.Enabled;
 
@@ -39,7 +40,7 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
             var analyzer = new StatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
             PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(patternAnalyzerConfig.ProcessingQueueSize,
                 patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),_api.FileSystem, _logger,
-                patternAnalyzerConfig.WriteFrequency, patternAnalyzerConfig.File);
+                patternAnalyzerConfig.WriteFrequency, patternAnalyzerConfig.File, _cancellationTokenSource.Token);
             _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
         }
 
@@ -48,6 +49,8 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
 
     ValueTask IAsyncDisposable.DisposeAsync()
     {
+        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
         return ValueTask.CompletedTask;
     }
 }
