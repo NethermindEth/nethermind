@@ -687,7 +687,6 @@ public class TxValidatorTests
     {
         get
         {
-            KzgPolynomialCommitments.InitializeAsync().Wait();
             static TransactionBuilder<Transaction> MakeTestObject(int blobCount = 1) => Build.A.Transaction
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithTimestamp(ulong.MaxValue)
