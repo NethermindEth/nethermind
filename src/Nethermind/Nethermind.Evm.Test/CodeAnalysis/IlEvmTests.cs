@@ -2082,10 +2082,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmAnalysisQueueMaxSize = 1,
             });
 
-            var pattern1 = IlAnalyzer.GetPatternHandler<SomeAfterTwoPush>();
-            var pattern2 = IlAnalyzer.GetPatternHandler<EmulatedStaticJump>();
-            var pattern3 = IlAnalyzer.GetPatternHandler<EmulatedStaticCJump>();
-
             byte[] bytecode =
                 Prepare.EvmCode
                     .JUMPDEST()
@@ -2108,17 +2104,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            /*
-            var hashcode = Keccak.Compute(bytecode);
-            var address = new Address(hashcode);
-            var spec = Prague.Instance;
-            TestState.CreateAccount(address, 1000000);
-            TestState.InsertCode(address, bytecode, spec);
-            */
             var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i < RepeatCount; i++)
             {
-                using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                using var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
                 var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null && !tr.SegmentID.StartsWith("ILEVM_PRECOMPILED_")).ToList();
                 accumulatedTraces.AddRange(traces);
@@ -2288,11 +2277,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             enhancedChain.ForceRunAnalysis(main, ILMode.FULL_AOT_MODE);
-            using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
-            var traces = tracer.BuildResult();
 
-            var hasFailed = traces.Failed;
+            var hasFailed = tracer.BuildResult().Failed;
             Assert.That(Metrics.AotPrecompiledCalls, Is.GreaterThan(0));
             Assert.That(hasFailed, Is.True);
         }
