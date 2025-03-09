@@ -160,7 +160,7 @@ public static class IlAnalyzer
             }
         }
 
-        Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
+        Interlocked.Exchange(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
     }
 
     internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo,  (OpcodeInfo[], byte[][]) codeData, IVMConfig config)
@@ -213,7 +213,7 @@ public static class IlAnalyzer
         var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), contractMetadata, vmConfig);
 
         ilinfo.PrecompiledContract = contractDelegate;
-        Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
+        Interlocked.Exchange(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 
     internal static SegmentMetadata AnalyzeSegment(OpcodeInfo[] fullcode, Range segmentRange)
