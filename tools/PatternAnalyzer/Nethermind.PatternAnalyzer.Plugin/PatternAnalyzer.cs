@@ -10,24 +10,21 @@ using Nethermind.PatternAnalyzer.Plugin.Tracer;
 
 namespace Nethermind.PatternAnalyzer.Plugin;
 
-public class PatternAnalyzer : INethermindPlugin
+public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INethermindPlugin
 {
     private INethermindApi _api = null!;
-    private IPatternAnalyzerConfig _config = null!;
     private ILogger _logger;
     private ILogManager _logManager = null!;
-    private bool Enabled => _config?.Enabled == true;
     public string Name => "OpcodeStats";
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
 
-    bool INethermindPlugin.Enabled => throw new NotImplementedException();
+    public bool Enabled => patternAnalyzerConfig.Enabled;
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        _config = _api.Config<IPatternAnalyzerConfig>();
         _logger = _logManager.GetClassLogger<PatternAnalyzer>();
         return Task.CompletedTask;
     }
@@ -39,10 +36,10 @@ public class PatternAnalyzer : INethermindPlugin
             if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
 
             // Setup tracing
-            var analyzer = new StatsAnalyzer(_config.GetStatsAnalyzerConfig());
-            PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(_config.ProcessingQueueSize,
-                _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(), new FileSystem(), _logger,
-                _config.WriteFrequency, _config.File);
+            var analyzer = new StatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
+            PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(patternAnalyzerConfig.ProcessingQueueSize,
+                patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),_api.FileSystem, _logger,
+                patternAnalyzerConfig.WriteFrequency, patternAnalyzerConfig.File);
             _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
         }
 
