@@ -15,6 +15,7 @@ namespace Nethermind.Precompiles.Benchmark;
 public class GasColumnProvider : IColumnProvider
 {
     private static readonly IColumn[] Columns = [
+        new PrecompileNameColumn(),
         new GasColumn(),
         new GasThroughputColumn(),
         new GasConfidenceIntervalColumn(true),  // Lower bound
@@ -22,6 +23,32 @@ public class GasColumnProvider : IColumnProvider
     ];
 
     public IEnumerable<IColumn> GetColumns(Summary summary) => Columns;
+
+    private class PrecompileNameColumn : IColumn
+    {
+        public bool AlwaysShow => true;
+        public ColumnCategory Category => ColumnCategory.Job;
+        public int PriorityInCategory => 0;
+        public bool IsNumeric => false;
+        public UnitType UnitType => UnitType.Dimensionless;
+
+        public string Id => "PrecompileName";
+        public string ColumnName => "Precompile Name";
+        public string Legend => "Name of the precompile";
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            var inputParam = benchmarkCase.Parameters.Items.FirstOrDefault(p => p.Name == "Input");
+            return ((PrecompileBenchmarkBase.Param) inputParam!.Value).Precompile.GetType().Name;
+        }
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style)
+            => GetValue(summary, benchmarkCase);
+
+        public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
+
+        public bool IsAvailable(Summary summary) => true;
+    }
 
     private abstract class BaseGasColumn : IColumn
     {
