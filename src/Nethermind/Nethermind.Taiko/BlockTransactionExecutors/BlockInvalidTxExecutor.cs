@@ -11,7 +11,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
 {
