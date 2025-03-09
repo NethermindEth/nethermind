@@ -104,6 +104,7 @@ internal class ChainSpecParamsJson
     public long? Eip3607Transition { get; set; } = 0;
 
     public long? OntakeTransition { get; set; }
+    public long? PacayaTransition { get; set; }
 
     public UInt256? Eip1559BaseFeeInitialValue { get; set; }
 

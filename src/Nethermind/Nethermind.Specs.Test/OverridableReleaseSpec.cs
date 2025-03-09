@@ -127,6 +127,14 @@ namespace Nethermind.Specs.Test
             get => _isOntakeEnabled ?? _spec.IsOntakeEnabled;
             set => _isOntakeEnabled = value;
         }
+
+        private bool? _isPacayaEnabled;
+        public bool IsPacayaEnabled
+        {
+            get => _isPacayaEnabled ?? _spec.IsPacayaEnabled;
+            set => _isPacayaEnabled = value;
+        }
+
         public bool IsEip7623Enabled => _spec.IsEip7623Enabled;
 
         public bool IsEip3607Enabled { get; set; }

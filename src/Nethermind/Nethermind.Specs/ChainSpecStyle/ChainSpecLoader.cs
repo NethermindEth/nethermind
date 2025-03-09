@@ -182,6 +182,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
 
             OntakeTransition = chainSpecJson.Params.OntakeTransition,
+            PacayaTransition = chainSpecJson.Params.PacayaTransition,
             BlobSchedule = new Dictionary<string, ChainSpecBlobCountJson>(chainSpecJson.Params.BlobSchedule, StringComparer.OrdinalIgnoreCase),
         };
 

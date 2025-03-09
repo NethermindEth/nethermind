@@ -233,6 +233,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsOntakeEnabled = (chainSpec.Parameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
+            releaseSpec.IsPacayaEnabled = (chainSpec.Parameters.PacayaTransition ?? long.MaxValue) <= releaseStartBlock;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;

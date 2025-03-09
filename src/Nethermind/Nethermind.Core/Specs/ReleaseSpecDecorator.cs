@@ -86,6 +86,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOntakeEnabled => spec.IsOntakeEnabled;
+    public virtual bool IsPacayaEnabled => spec.IsPacayaEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;

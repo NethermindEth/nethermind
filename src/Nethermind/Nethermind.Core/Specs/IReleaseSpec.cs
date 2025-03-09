@@ -332,6 +332,9 @@ namespace Nethermind.Core.Specs
         /// Taiko Ontake
         bool IsOntakeEnabled { get; }
 
+        /// Taiko Pacaya
+        bool IsPacayaEnabled { get; }
+
         /// <summary>
         ///  Increase call data cost
         /// </summary>
