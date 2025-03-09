@@ -90,7 +90,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.GasLimit != (spec.IsPacayaEnabled ? AnchorGasLimit : AnchorV3GasLimit))
+        if (tx.GasLimit != (spec.IsPacayaEnabled ? AnchorV3GasLimit : AnchorGasLimit))
         {
             errorMessage = "Anchor transaction must have correct gas limit";
             return false;
