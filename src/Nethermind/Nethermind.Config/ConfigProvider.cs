@@ -13,7 +13,6 @@ namespace Nethermind.Config;
 
 public class ConfigProvider : IConfigProvider
 {
-    private static IList<(Type ConfigType, Type DirectImplementation)> _configTypesCache = null!;
 
     private readonly ConcurrentDictionary<Type, IConfig> _instances = new();
 
@@ -43,6 +42,33 @@ public class ConfigProvider : IConfigProvider
                 }
             }
             _instances[type] = existingConfig;
+        }
+    }
+
+    private static IList<(Type ConfigType, Type DirectImplementation)> _configTypesCache = null!;
+    private static IList<(Type ConfigType, Type DirectImplementation)> ConfigTypesFromAssembly
+    {
+        get
+        {
+            if (_configTypesCache is not null) return _configTypesCache;
+
+            Type type = typeof(IConfig);
+            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
+            IList<(Type ConfigType, Type DirectImplementation)> types =
+                new List<(Type ConfigType, Type DirectImplementation)>();
+
+            foreach (Type @interface in interfaces)
+            {
+                Type directImplementation = @interface.GetDirectInterfaceImplementation();
+
+                if (directImplementation is not null)
+                {
+                    types.Add((@interface, directImplementation));
+                }
+            }
+
+            _configTypesCache = types;
+            return types;
         }
     }
 
@@ -88,31 +114,9 @@ public class ConfigProvider : IConfigProvider
         _configSource.Add(configSource);
     }
 
-    private static IList<(Type ConfigType, Type DirectImplementation)> GatherConfigsFromAssembly()
-    {
-        if (_configTypesCache is not null) return _configTypesCache;
-
-        Type type = typeof(IConfig);
-        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
-        IList<(Type ConfigType, Type DirectImplementation)> types = new List<(Type ConfigType, Type DirectImplementation)>();
-
-        foreach (Type @interface in interfaces)
-        {
-            Type directImplementation = @interface.GetDirectInterfaceImplementation();
-
-            if (directImplementation is not null)
-            {
-                types.Add((@interface, directImplementation));
-            }
-        }
-
-        _configTypesCache = types;
-        return types;
-    }
-
     public void Initialize()
     {
-        foreach ((Type @interface, Type directImplementation) in GatherConfigsFromAssembly())
+        foreach ((Type @interface, Type directImplementation) in ConfigTypesFromAssembly)
         {
             if (_instances.ContainsKey(@interface)) continue;
 
