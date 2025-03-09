@@ -717,7 +717,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
-                Metrics.AotPrecompiledCalls++;
+                Metrics.IlvmAotPrecompiledCalls++;
                 PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
                 int programCounter = vmState.ProgramCounter;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
