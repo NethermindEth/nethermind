@@ -84,7 +84,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
         using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
-        allTasks.Add(Task.Factory.StartNew(async () =>
+        allTasks.Add(Task.Run(async () =>
         {
             try
             {
@@ -98,7 +98,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
         for (int i = 0; i < _workerTaskCount; i++)
         {
-            allTasks.Add(Task.Factory.StartNew(async () => await WorkerLoop(cts.Token)));
+            allTasks.Add(Task.Run(async () => await WorkerLoop(cts.Token)));
         }
 
         await cts.WhenAllSucceed(allTasks);
