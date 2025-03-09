@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Init.Steps;
@@ -42,7 +43,6 @@ public class StartRpc(INethermindApi api) : IStep
             IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
             JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
 
-            IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
                 : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
@@ -61,7 +61,7 @@ public class StartRpc(INethermindApi api) : IStep
                     jsonRpcService,
                     _api.JsonRpcLocalStats!,
                     _api.LogManager,
-                    jsonSerializer,
+                    _api.EthereumJsonSerializer,
                     jsonRpcUrlCollection,
                     auth,
                     jsonRpcConfig.MaxBatchResponseBodySize,
@@ -72,7 +72,7 @@ public class StartRpc(INethermindApi api) : IStep
 
             Bootstrap.Instance.JsonRpcService = jsonRpcService;
             Bootstrap.Instance.LogManager = _api.LogManager;
-            Bootstrap.Instance.JsonSerializer = jsonSerializer;
+            Bootstrap.Instance.JsonSerializer = _api.EthereumJsonSerializer;
             Bootstrap.Instance.JsonRpcLocalStats = _api.JsonRpcLocalStats!;
             Bootstrap.Instance.JsonRpcAuthentication = auth;
 
@@ -92,7 +92,7 @@ public class StartRpc(INethermindApi api) : IStep
             }, cancellationToken);
 
             JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, _api.ConfigProvider,
-                _api.LogManager, _api.JsonRpcLocalStats!, jsonSerializer, _api.FileSystem);
+                _api.LogManager, _api.JsonRpcLocalStats!, _api.EthereumJsonSerializer, _api.FileSystem);
             jsonIpcRunner.Start(cancellationToken);
 
 #pragma warning disable 4014

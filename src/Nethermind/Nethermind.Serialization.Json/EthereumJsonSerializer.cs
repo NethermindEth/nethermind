@@ -17,21 +17,20 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        public const int DefaultMaxDepth = 128;
         private readonly int? _maxDepth;
         private readonly JsonSerializerOptions _jsonOptions;
 
-        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int? maxDepth = null)
+        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int maxDepth = DefaultMaxDepth)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue
-                ? CreateOptions(indented: false, maxDepth: maxDepth.Value, converters: converters)
-                : CreateOptions(indented: false, converters: converters);
+            _jsonOptions = CreateOptions(indented: false, maxDepth: maxDepth, converters: converters);
         }
 
-        public EthereumJsonSerializer(int? maxDepth = null)
+        public EthereumJsonSerializer(int maxDepth = DefaultMaxDepth)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
+            _jsonOptions = maxDepth != DefaultMaxDepth ? CreateOptions(indented: false, maxDepth: maxDepth) : JsonOptions;
         }
 
         public object Deserialize(string json, Type type)
@@ -59,7 +58,7 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
+        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = DefaultMaxDepth)
         {
             var options = new JsonSerializerOptions
             {

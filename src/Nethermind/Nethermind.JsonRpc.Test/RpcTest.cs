@@ -30,7 +30,7 @@ public static class RpcTest
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
+        using JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
             ? contextAwareModule.Context
             : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
