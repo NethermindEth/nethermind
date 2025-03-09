@@ -5,7 +5,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
-    public readonly struct NGrams : IEnumerable<ulong>
+    public readonly struct NGram : IEquatable<NGram>
     {
         public readonly ulong ulong0;
         public const uint MAX_SIZE = 7;
@@ -23,43 +23,51 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
         public static ulong[] byteIndexShifts = { 0, 8, 16, 24, 32, 40, 48, 56 };
 
 
-        public NGrams(Instruction[] instructions) : this(FromInstructions(instructions))
+        public NGram(Instruction[] instructions) : this(FromInstructions(instructions))
         {
         }
 
-        public NGrams(ulong value = NGrams.NULL)
+        public NGram(ulong value = NGram.NULL)
         {
             ulong0 = value;
         }
+         public override bool Equals(object? obj) => obj is NGram other && this.Equals(other);
+
+        public bool Equals(NGram other) => ulong0 == other.ulong0;
+
+        public override int GetHashCode() => ulong0.GetHashCode();
+
+        public static bool operator ==(NGram lhs, NGram rhs) => lhs.Equals(rhs);
+
+        public static bool operator !=(NGram lhs, NGram rhs) => !(lhs == rhs);
+
+     //   [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     //   public static NGram ProcessInstructions(IEnumerable<Instruction> instructions, NGram Ngram, Action<ulong> action)
+     //   {
+     //       foreach (Instruction instruction in instructions)
+     //       {
+     //           Ngram = ProcessEachSubsequence(Ngram, action);
+     //       }
+     //       return Ngram;
+     //   }
+
+     //   [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     //   public NGram ProcessEachSubsequence(Instruction instruction, Action<ulong> action)
+     //   {
+     //       return ProcessEachSubsequence(this, action);
+     //   }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static NGrams ProcessInstructions(IEnumerable<Instruction> instructions, NGrams ngrams, Action<ulong> action)
+        public static NGram ProcessEachSubsequence(NGram ngrams, Action<NGram> action)
         {
-            foreach (Instruction instruction in instructions)
-            {
-                ngrams = ProcessOneInstruction(instruction, ngrams, action);
-            }
-            return ngrams;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public NGrams ProcessOneInstruction(Instruction instruction, Action<ulong> action)
-        {
-            return ProcessOneInstruction(instruction, this, action);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static NGrams ProcessOneInstruction(Instruction instruction, NGrams ngrams, Action<ulong> action)
-        {
-            ngrams = ngrams.ShiftAdd(instruction);
-            foreach (ulong ngram in ngrams)
+            foreach (var ngram in ngrams.GetSubsequences())
                 action(ngram);
             return ngrams;
         }
 
-        public NGrams ShiftAdd(Instruction instruction)
+        public NGram ShiftAdd(Instruction instruction)
         {
-            return new NGrams(ShiftAdd(ulong0, instruction));
+            return new NGram(ShiftAdd(ulong0, instruction));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -70,12 +78,12 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
         }
 
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static NGrams GetCounts(Instruction[] executionOpCodes, Dictionary<ulong, ulong> counts, NGrams ngrams = new NGrams())
-        {
-            Action<ulong> CountNGrams = (ulong ngram) => { counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts, ngram, out bool _); };
-            return NGrams.ProcessInstructions(executionOpCodes, ngrams, CountNGrams);
-        }
+     //   [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     //   public static NGram GetCounts(Instruction[] executionOpCodes, Dictionary<ulong, ulong> counts, NGram Ngram = new NGram())
+     //   {
+     //       Action<ulong> CountNGrams = (ulong ngram) => { counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts, ngram, out bool _); };
+     //       return NGram.ProcessInstructions(executionOpCodes, Ngram, CountNGrams);
+     //   }
 
         public static byte[] ToBytes(ulong ngram)
         {
@@ -143,21 +151,18 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
         }
 
 
-        public IEnumerator<ulong> GetEnumerator()
+        public IEnumerable<NGram> GetSubsequences()
         {
             for (int i = 1; i < MAX_SIZE; i++)
             {
-                if (NGrams.byteIndexes[i - 1] < ulong0)
+                if (NGram.byteIndexes[i - 1] < ulong0)
                 {
-                    yield return this.ulong0 & NGrams.bitMasks[i];
+                    yield return new NGram(this.ulong0 & NGram.bitMasks[i]);
                 }
-            }
+
+    }
         }
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
 
     }
 }

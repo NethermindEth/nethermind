@@ -82,7 +82,8 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         ExecuteTransactions(codes, _tracer);
         var fileContent = _fileSystem.File.ReadAllText(_testFileName);
         Assert.That(fileContent, Is.Not.Empty); //IsNotEmpty(fileContent);
-        Assert.That(fileContent, Is.EqualTo(expectedTrace));
+        Assert.That(fileContent, Is.EqualTo(expectedTrace),
+                $"\n --- Found: {fileContent} \n Expected: {expectedTrace}");
     }
 
    [TestCaseSource(nameof(GetIgnoreSetCases))]
@@ -92,7 +93,8 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         ExecuteTransactions(codes, _tracerIgnore);
         var fileContent = _fileSystem.File.ReadAllText(_testIgnoreFileName);
         Assert.That(fileContent, Is.Not.Empty); //IsNotEmpty(fileContent);
-        Assert.That(fileContent, Is.EqualTo(expectedTrace));
+        Assert.That(fileContent, Is.EqualTo(expectedTrace),
+                $"\n --- Found: {fileContent} \n Expected: {expectedTrace}");
     }
 
     private static IEnumerable<TestCaseData> GetIgnoreSetCases()
@@ -158,26 +160,26 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             },
             """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.006,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":1}]}"""
         );
-        yield return new TestCaseData(
-            new byte[][] {
-             Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done,
-             Prepare.EvmCode.PushData(0).Done,
-            },
-            """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.006,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":1}]}"""
-        );
-        yield return new TestCaseData(
-            new byte[][] {
-             Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done,
-             Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done,
-            },
-            """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.012,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":4},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":2}]}"""
-        );
-        yield return new TestCaseData(
-            new byte[][] {
-             Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).Done,
-            },
-            """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.03,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":5},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":4},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96],"count":3},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96,96,96],"count":1}]}"""
-        );
+      yield return new TestCaseData(
+          new byte[][] {
+           Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done,
+           Prepare.EvmCode.PushData(0).Done,
+          },
+          """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.006,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":1}]}"""
+      );
+      yield return new TestCaseData(
+          new byte[][] {
+           Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done,
+           Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done,
+          },
+          """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.012,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":4},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":2}]}"""
+      );
+      yield return new TestCaseData(
+          new byte[][] {
+           Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).Done,
+          },
+          """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.03,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":5},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":4},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96],"count":3},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96,96,96],"count":1}]}"""
+      );
 
 
         yield return new TestCaseData(

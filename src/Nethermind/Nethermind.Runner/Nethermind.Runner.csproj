@@ -63,7 +63,6 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj" />
   </ItemGroup>
 
   <ItemGroup>

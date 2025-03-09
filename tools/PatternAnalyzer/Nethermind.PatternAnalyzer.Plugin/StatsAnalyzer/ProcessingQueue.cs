@@ -4,27 +4,14 @@ using Nethermind.Evm;
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
 
-    public class OpcodeStatsQueue : IDisposable
+    public sealed class StatsProcessingQueue(DisposableResettableList<Instruction> buffer, Analyzer.StatsAnalyzer statsAnalyzer)
+        : IDisposable
     {
-
-        private StatsAnalyzer _statsAnalyzer;
-        private DisposableResettableList<Instruction> _queue;
         private bool disposed = false;
-
-        public OpcodeStatsQueue(DisposableResettableList<Instruction> buffer, StatsAnalyzer statsAnalyzer)
-        {
-            _statsAnalyzer = statsAnalyzer;
-            _queue = buffer;
-        }
 
         public void Enqueue(Instruction item)
         {
-            _queue.Add(item);
-         //   if (bufferPos < _queue.Length)
-         //   {
-         //       _queue[bufferPos] = item;
-         //       bufferPos++;
-         //   }
+            buffer.Add(item);
         }
 
         public void Dispose()
@@ -33,21 +20,19 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
-            if (!this.disposed)
+            if (this.disposed) return;
+            if (disposing)
             {
-                if (disposing)
-                {
-                    _statsAnalyzer.Add(_queue);
-                    _queue.Reset();
+                statsAnalyzer.Add(buffer);
+                buffer.Reset();
 
-                }
-                disposed = true;
             }
+            disposed = true;
         }
 
-        ~OpcodeStatsQueue()
+        ~StatsProcessingQueue()
         {
             Dispose(disposing: false);
         }

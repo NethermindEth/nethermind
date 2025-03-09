@@ -1,16 +1,44 @@
+using System.Runtime.CompilerServices;
 using Nethermind.Evm;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
+
+    public readonly record struct Stat(NGram ngram, ulong count);
     public class StatsAnalyzer
     {
 
         public double Error => _sketchBuffer.Sum(sketch => sketch?.errorPerItem ?? 0);
         public double Confidence => _sketchBuffer[0].confidence;
 
-        public NGrams ngrams => _ngrams;
+        public IEnumerable<Stat> Stats
+        {
+            get
+            {
+                foreach ((ulong topN, ulong count) in this._topNQueue.UnorderedItems)
+                {
+                    yield return new Stat(new NGram(topN), count);
+                }
+            }
+        }
 
-        public readonly PriorityQueue<ulong, ulong> topNQueue;
+        public IEnumerable<Stat> StatsAscending
+        {
+            get
+            {
+                var queue = new PriorityQueue<ulong, ulong>(_topN);
+                while (queue.Count > 0)
+                {
+                    queue.TryDequeue(out ulong ngram,out ulong count);
+                    yield return new Stat(new NGram(ngram), count);
+                }
+            }
+        }
+
+
+        public NGram Ngram => _ngram;
+
+        private readonly PriorityQueue<ulong, ulong> _topNQueue;
         private Dictionary<ulong, ulong> _topNMap;
 
         private CMSketch _sketch;
@@ -20,7 +48,7 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
         private int _currentSketch = 0;
 
         private int _topN;
-        private NGrams _ngrams = new NGrams();
+        private NGram _ngram = new NGram();
 
         private int _capacity;
         private ulong _minSupport;
@@ -42,7 +70,7 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
             this.sketchResetError = sketchResetError;
             _sketchBuffer = new CMSketch[sketchBufferSize];
             _sketchBuffer[0] = sketch;
-            topNQueue = new PriorityQueue<ulong, ulong>(_topN);
+            _topNQueue = new PriorityQueue<ulong, ulong>(_topN);
             _topNMap = new Dictionary<ulong, ulong>(capacity);
             _capacity = capacity;
             _minSupport = minSupport;
@@ -50,19 +78,17 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 
         private void ResetSketchAtError()
         {
-            if (_max > _minSupport && (((_sketch.errorPerItem / (double)_max) * 100) >= sketchResetError))
+            if (_max <= _minSupport || (!((_sketch.errorPerItem / (double)_max) >= sketchResetError))) return;
+            if (_sketchBufferPos < (_sketchBuffer.Length - 1))
             {
-                if (_sketchBufferPos < (_sketchBuffer.Length - 1))
-                {
-                    ++_sketchBufferPos;
-                    _sketchBuffer[_sketchBufferPos] = _sketch.Reset();
-                }
-                else
-                {
-                    // buffer is full we reuse sketches
-                    _sketchBufferPos = (_sketchBufferPos + 1) % _sketchBuffer.Length;
-                    sketchResetError *= 2; // double the error
-                }
+                ++_sketchBufferPos;
+                _sketchBuffer[_sketchBufferPos] = _sketchBuffer[_currentSketch].Reset();
+            }
+            else
+            {
+                // buffer is full we reuse sketches
+                _sketchBufferPos = (_sketchBufferPos + 1) % _sketchBuffer.Length;
+                sketchResetError *= 2; // double the error
             }
         }
 
@@ -70,24 +96,31 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
         {
 
             ResetSketchAtError();
-            _ngrams = NGrams.ProcessInstructions(instructions, _ngrams, ProcessNGram).ShiftAdd(NGrams.RESET);
+
+            foreach (var instruction in instructions)
+            {
+                _ngram = NGram.ProcessEachSubsequence(_ngram.ShiftAdd(instruction), ProcessNGram);
+            }
+            _ngram = _ngram.ShiftAdd(NGram.RESET);
             ProcessTopN();
         }
 
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Add(Instruction instruction)
         {
             ResetSketchAtError();
-            _ngrams = _ngrams.ProcessOneInstruction(instruction, ProcessNGram);
+            _ngram = NGram.ProcessEachSubsequence(_ngram.ShiftAdd(instruction), ProcessNGram);
             ProcessTopN();
         }
 
 
-        private void ProcessNGram(ulong ngram)
+        private void ProcessNGram(NGram ngram)
         {
-            _sketchBuffer[_currentSketch].Update(ngram);
-            var count = QueryAllSketches(ngram);
+            _sketchBuffer[_currentSketch].Update(ngram.ulong0);
+            var count = QueryAllSketches(ngram.ulong0);
             if (count < _minSupport) return;
-            _topNMap[ngram] = count;
+            _topNMap[ngram.ulong0] = count;
         }
 
         private ulong QueryAllSketches(ulong ngram)
@@ -100,8 +133,8 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 
         private void ProcessTopN()
         {
-            topNQueue.Clear();
-            foreach (KeyValuePair<ulong, ulong> kvp in _topNMap)
+            _topNQueue.Clear();
+            foreach (var kvp in _topNMap)
             {
                 // if count is less than minSupport remove from topNMap and  continue;
                 if (kvp.Value < _minSupport)
@@ -112,15 +145,13 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 
                 _max = Math.Max(_max, kvp.Value);
 
-                if (topNQueue.Count < _topN)
-                    topNQueue.Enqueue(kvp.Key, kvp.Value);
+                if (_topNQueue.Count < _topN)
+                    _topNQueue.Enqueue(kvp.Key, kvp.Value);
 
-                if (topNQueue.Count >= _topN)
-                {
-                    topNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
-                    //Queue has filled up, we update min support to filter out lower count updates
-                    topNQueue.TryPeek(out ulong _, out _minSupport);
-                }
+                if (_topNQueue.Count < _topN) continue;
+                _topNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
+                //Queue has filled up, we update min support to filter out lower count updates
+                _topNQueue.TryPeek(out ulong _, out _minSupport);
             }
 
         }

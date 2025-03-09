@@ -20,6 +20,8 @@ public class PatternAnalyzer : INethermindPlugin
     private ILogger _logger;
     private bool Enabled => _config?.Enabled == true;
 
+    bool INethermindPlugin.Enabled => throw new NotImplementedException();
+
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;

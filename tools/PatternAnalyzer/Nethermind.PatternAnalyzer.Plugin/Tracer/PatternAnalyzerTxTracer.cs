@@ -9,21 +9,14 @@ using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 
-public class PatternAnalyzerTxTracer : TxTracer
+public sealed class PatternAnalyzerTxTracer : TxTracer
 {
 
-    private StatsAnalyzer _statsAnalyzer;
-    private OpcodeStatsQueue? _queue = null;
-    private HashSet<Instruction> _ignoreSet;
+    private readonly Analyzer.StatsAnalyzer _statsAnalyzer;
+    private StatsProcessingQueue? _queue = null;
+    private readonly HashSet<Instruction> _ignoreSet;
     private McsLock _processingLock;
-    DisposableResettableList<Instruction> _buffer;
-    //  public OpcodeStatsTxTracer(OpcodeStatsTracer blockTracer, OpcodeStatsQueue queue, StatsAnalyzer statsAnalyzer)
-    //  {
-    //      _statsAnalyzer = statsAnalyzer;
-    //      _queue= queue;
-    //      _blockTracer = blockTracer;
-    //      IsTracingInstructions = true;
-    //  }
+    private readonly DisposableResettableList<Instruction> _buffer;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
     {
@@ -31,14 +24,14 @@ public class PatternAnalyzerTxTracer : TxTracer
         _statsAnalyzer = statsAnalyzer;
         _processingLock = processingLock;
         _buffer = buffer;
-        _queue = new(buffer, (StatsAnalyzer)statsAnalyzer);
+        _queue = new StatsProcessingQueue(buffer, (Analyzer.StatsAnalyzer)statsAnalyzer);
         IsTracingInstructions = true;
     }
 
 
     public void AddTxEndMarker()
     {
-        _queue?.Enqueue(NGrams.RESET);
+        _queue?.Enqueue(NGram.RESET);
     }
 
     private void DisposeQueue()
@@ -57,18 +50,14 @@ public class PatternAnalyzerTxTracer : TxTracer
         PatternAnalyzerTxTrace trace = new();
         trace.Confidence = _statsAnalyzer.Confidence;
         trace.ErrorPerItem = _statsAnalyzer.Error;
-        foreach ((ulong topN, ulong count) pattern in _statsAnalyzer.topNQueue.UnorderedItems)
+        foreach (var stat in _statsAnalyzer.Stats)
         {
-            NGrams _ngram = new NGrams(pattern.topN);
-            PatternAnalyzerTraceEntry entry = new PatternAnalyzerTraceEntry
+            var entry = new PatternAnalyzerTraceEntry
             {
-                Pattern = _ngram.ToString(),
-                Bytes = _ngram.ToBytes(),
-                Count = pattern.count
+                Pattern = stat.ngram.ToString(),
+                Bytes = stat.ngram.ToBytes(),
+                Count = stat.count
             };
-        //    entry.Pattern = _ngram.ToString();
-        //    entry.Bytes = _ngram.ToBytes();
-        //    entry.Count = pattern.count;
             trace.Entries.Add(entry);
         }
 
