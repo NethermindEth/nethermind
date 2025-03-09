@@ -9,7 +9,6 @@ public class StatsAnalyzer
 {
     private readonly PriorityQueue<ulong, ulong> _topNQueue;
 
-    private int _capacity;
     private readonly int _currentSketch = 0;
     private ulong _max = 1;
     private ulong _minSupport;
@@ -38,7 +37,6 @@ public class StatsAnalyzer
         _sketchBuffer[0] = sketch;
         _topNQueue = new PriorityQueue<ulong, ulong>(_topN);
         _topNMap = new Dictionary<ulong, ulong>(capacity);
-        _capacity = capacity;
         _minSupport = minSupport;
     }
 
@@ -66,8 +64,6 @@ public class StatsAnalyzer
         }
     }
 
-
-    public NGram Ngram => _ngram;
 
     private void ResetSketchAtError()
     {

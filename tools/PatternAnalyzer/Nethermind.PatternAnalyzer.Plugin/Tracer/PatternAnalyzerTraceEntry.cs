@@ -13,11 +13,4 @@ public class PatternAnalyzerTraceEntry
     [JsonConverter(typeof(ULongConverter))]
     public required ulong Count { get; set; }
 
-//    // Constructor to initialize the required properties
-//    public OpcodeStatsTraceEntry(string pattern, byte[] bytes, ulong count)
-//    {
-//        Pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
-//        Bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
-//        Count = count;
-//    }
 }
