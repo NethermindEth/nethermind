@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -10,15 +10,15 @@ using Nethermind.State;
 
 namespace Nethermind.Taiko;
 
-public class TaikoReadOnlyTxProcessingEnv(
-  IWorldStateManager worldStateManager,
-  IReadOnlyBlockTree readOnlyBlockTree,
-  ISpecProvider specProvider,
-  ILogManager logManager) : ReadOnlyTxProcessingEnv(
-  worldStateManager,
-  readOnlyBlockTree,
-  specProvider,
-  logManager
+public class TaikoOverridableTxProcessingEnv(
+    IOverridableWorldScope worldScope,
+    IReadOnlyBlockTree readOnlyBlockTree,
+    ISpecProvider specProvider,
+    ILogManager logManager) : OverridableTxProcessingEnv(
+    worldScope,
+    readOnlyBlockTree,
+    specProvider,
+    logManager
 )
 {
     protected override ITransactionProcessor CreateTransactionProcessor() =>
