@@ -1272,7 +1272,7 @@ public partial class EthRpcModuleTests
 
         Transaction testTx = Build.A.Transaction
           .WithType(TxType.SetCode)
-          .WithNonce(Test.State.GetNonce(TestItem.AddressA))
+          .WithNonce(Test.ReadOnlyState.GetNonce(TestItem.AddressA))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
@@ -1296,22 +1296,22 @@ public partial class EthRpcModuleTests
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
-          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
-          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, (ulong)test.State.GetNonce(TestItem.AddressB) + 1))
+          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, (ulong)test.ReadOnlyState.GetNonce(TestItem.AddressB) + 1))
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
         await test.AddBlock(setCodeTx);
 
-        var code = test.State.GetCode(TestItem.AddressB);
+        var code = test.ReadOnlyState.GetCode(TestItem.AddressB);
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 
         Transaction normalTx = Build.A.Transaction
-          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction)
@@ -1333,7 +1333,7 @@ public partial class EthRpcModuleTests
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
-          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)

@@ -35,6 +35,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
 using Nethermind.Synchronization;
+using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
 
 namespace Nethermind.Taiko;
@@ -150,7 +151,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+            new(_api.WorldStateManager!, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
@@ -278,11 +279,11 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        ContainerBuilder builder = new ContainerBuilder();
+        ContainerBuilder builder = new();
 
         ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton<IBeaconPivot>(_beaconPivot)
+            .AddSingleton(_beaconPivot)
             .AddSingleton(_mergeConfig)
             .AddSingleton<IInvalidChainTracker>(_api.InvalidChainTracker);
 

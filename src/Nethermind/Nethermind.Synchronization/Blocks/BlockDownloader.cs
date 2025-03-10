@@ -384,6 +384,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
                     currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
+                    currentNumber = Math.Max((_blockTree.BestSuggestedHeader?.Number ?? 0) - MaxReorganizationLength, currentNumber);
                     return false;
                 }
             }

@@ -27,6 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -264,7 +265,7 @@ public class TxPermissionFilterTest
 
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; private set; }
 
-        protected override BlockProcessor CreateBlockProcessor()
+        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
             TransactionPermissionContractVersions =
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
@@ -286,10 +287,10 @@ public class TxPermissionFilterTest
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                worldState,
                 ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, State),
+                new BeaconBlockRootHandler(TxProcessor, worldState),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
