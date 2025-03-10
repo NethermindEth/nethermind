@@ -725,6 +725,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
             Instruction instruction = (Instruction)code[programCounter];
 
+            if (_logger.IsTrace) _logger.Trace($"Instruction: {instruction}, PC: {programCounter}");
             if (isCancelable && _txTracer.IsCancelled)
             {
                 ThrowOperationCanceledException();
