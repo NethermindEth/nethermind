@@ -231,9 +231,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out _))
+                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid");
+                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
                     }
                     else
                     {
@@ -264,15 +264,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationTuple.Authority is null
                     || s > Secp256K1Curve.HalfN
                     //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || (authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1))
+                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
                 {
                     error = "Bad signature.";
                     return false;
                 }
 
-                if ((authorizationTuple.ChainId != 0
-                    && SpecProvider.ChainId != authorizationTuple.ChainId)
-                    )
+                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
                     return false;
@@ -290,11 +288,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
