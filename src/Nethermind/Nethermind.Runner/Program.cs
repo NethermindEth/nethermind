@@ -182,11 +182,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
+    processExitSource = new(cancellationToken);
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
-    // INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-    processExitSource = new(cancellationToken);
 
     try
     {

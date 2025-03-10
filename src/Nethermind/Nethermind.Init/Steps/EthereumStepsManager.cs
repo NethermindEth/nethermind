@@ -65,27 +65,29 @@ namespace Nethermind.Init.Steps
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                IStep? step = CreateStepInstance(stepInfo);
-                if (step is null)
-                    throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.");
-                stepInfoMap.Add(step.GetType(), stepInfo);
+                Func<IStep> stepFactory = () =>
+                {
+                    IStep? step = CreateStepInstance(stepInfo);
+                    if (step is null)
+                        throw new StepDependencyException(
+                            $"A step {stepInfo} could not be created and initialization cannot proceed.");
+                    return step;
+                };
+
+                stepInfoMap.Add(stepInfo.StepType, stepInfo);
                 ref List<StepWrapper>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(stepBaseTypeMap, stepInfo.StepBaseType, out bool keyExists);
                 list ??= new List<StepWrapper>();
-                list.Add(new StepWrapper(step));
+                list.Add(new StepWrapper(stepFactory, stepInfo));
             }
             List<Task> allRequiredSteps = new();
             foreach (List<StepWrapper> steps in stepBaseTypeMap.Values)
             {
                 foreach (StepWrapper stepWrapper in steps)
                 {
-                    StepInfo stepInfo = stepInfoMap[stepWrapper.Step.GetType()];
+                    StepInfo stepInfo = stepInfoMap[stepWrapper.StepInfo.StepType];
                     Task task = ExecuteStep(stepWrapper, stepInfo, stepBaseTypeMap, cancellationToken);
                     if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-
-                    if (stepWrapper.Step.MustInitialize)
-                    {
-                        allRequiredSteps.Add(task);
-                    }
+                    allRequiredSteps.Add(task);
                 }
             }
             return allRequiredSteps;
@@ -153,9 +155,12 @@ namespace Nethermind.Init.Steps
                 ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
         }
 
-        private class StepWrapper(IStep step)
+        private class StepWrapper(Func<IStep> stepFactory, StepInfo stepInfo)
         {
-            public IStep Step => step;
+            public StepInfo StepInfo => stepInfo;
+
+            private IStep? _step;
+            public IStep Step => _step ??= stepFactory();
             public Task StepTask => _taskCompletedSource.Task;
 
             private TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
@@ -167,7 +172,7 @@ namespace Nethermind.Init.Steps
                 await Task.WhenAll(dependentSteps.Select(s => s.StepTask));
                 try
                 {
-                    await step.Execute(cancellationToken);
+                    await Step.Execute(cancellationToken);
                     _taskCompletedSource.TrySetResult();
                 }
                 catch
