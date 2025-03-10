@@ -86,8 +86,10 @@ public class StatsAnalyzer
         ResetSketchAtError();
 
         foreach (var instruction in instructions)
-            _ngram = NGram.ProcessEachSubsequence(_ngram.ShiftAdd(instruction), ProcessNGram);
-
+        {
+            _ngram = _ngram.ShiftAdd(instruction);
+            NGram.ProcessEachSubsequence(_ngram, ProcessNGram);
+        }
         _ngram = _ngram.ShiftAdd(NGram.RESET);
         ProcessTopN();
     }
@@ -97,7 +99,8 @@ public class StatsAnalyzer
     public void Add(Instruction instruction)
     {
         ResetSketchAtError();
-        _ngram = NGram.ProcessEachSubsequence(_ngram.ShiftAdd(instruction), ProcessNGram);
+        _ngram =  _ngram.ShiftAdd(instruction);
+        NGram.ProcessEachSubsequence(_ngram, ProcessNGram);
         ProcessTopN();
     }
 

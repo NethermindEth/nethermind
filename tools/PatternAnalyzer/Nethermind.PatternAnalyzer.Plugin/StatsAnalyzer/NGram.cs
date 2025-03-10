@@ -63,11 +63,11 @@ public readonly struct NGram : IEquatable<NGram>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static NGram ProcessEachSubsequence(NGram ngrams, Action<NGram> action)
+    public static void ProcessEachSubsequence(NGram ngram, Action<NGram> action)
     {
-        foreach (var ngram in ngrams.GetSubsequences())
-            action(ngram);
-        return ngrams;
+        for (var i = 1; i < MAX_SIZE; i++)
+            if (byteIndexes[i - 1] < ngram.ulong0)
+                action(new NGram(ngram.ulong0 & bitMasks[i]));
     }
 
     public NGram ShiftAdd(Instruction instruction)
