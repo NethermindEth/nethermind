@@ -8,8 +8,8 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
-public class SimulateBlockResult(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
+public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
-    public List<SimulateCallResult> Calls { get; set; } = new();
+    public IReadOnlyList<TTrace> Calls { get; set; } = [];
 }

@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Eth;

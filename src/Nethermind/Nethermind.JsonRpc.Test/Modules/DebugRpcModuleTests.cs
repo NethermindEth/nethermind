@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Synchronization.ParallelSync;
@@ -53,6 +54,8 @@ public partial class DebugRpcModuleTests
                 blockchain.DbProvider,
                 blockchain.BlockTree,
                 blockchain.RpcConfig,
+                Substitute.For<IBlockchainBridgeFactory>(),
+                new BlocksConfig().SecondsPerSlot,
                 blockchain.BlockValidator,
                 blockchain.BlockPreprocessorStep,
                 NoBlockRewards.Instance,
