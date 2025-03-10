@@ -145,4 +145,9 @@ public static class KzgPolynomialCommitments
         Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
         TryComputeCommitmentHashV1(commitment, hashV1);
     }
+
+    public static void AddCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
+    {
+        Ckzg.Ckzg.ComputeCellsAndKzgProofs(new Span<byte>(), cellProofs, blob, _ckzgSetup);
+    }
 }
