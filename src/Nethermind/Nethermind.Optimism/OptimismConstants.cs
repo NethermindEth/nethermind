@@ -12,5 +12,10 @@ public static class OptimismConstants
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/superchain-upgrades.html#op-stack-protocol-versions"/>
     /// </remarks>
-    public static OptimismProtocolVersion CurrentProtocolVersion { get; } = new OptimismProtocolVersion.V0([(byte)'N', (byte)'E', (byte)'T', (byte)'H', 0, 0, 0, 0], 8, 0, 0, 0);
+    public static OptimismProtocolVersion CurrentProtocolVersion { get; } = new OptimismProtocolVersion.V0(
+        build: [(byte)'N', (byte)'E', (byte)'T', (byte)'H', 0, 0, 0, 0],
+        major: 9,
+        minor: 0,
+        patch: 0,
+        preRelease: 0);
 }
