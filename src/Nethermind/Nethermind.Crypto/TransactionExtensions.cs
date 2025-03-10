@@ -17,21 +17,5 @@ namespace Nethermind.Crypto
             _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
             return stream.GetHash();
         }
-
-        // TODO: to be removed after Fusaka
-        private static void CalculateAdditionalProofs(this Transaction transaction)
-        {
-            ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
-
-            if (networkWrapper.Proofs.Length == networkWrapper.Blobs.Length)
-            {
-                networkWrapper.BlobProofs = networkWrapper.Proofs;
-                // networkWrapper.Proofs = calculate cell proofs
-            }
-            else
-            {
-                // networkWrapper.BlobProofs = calculate blob proofs
-            }
-        }
     }
 }
