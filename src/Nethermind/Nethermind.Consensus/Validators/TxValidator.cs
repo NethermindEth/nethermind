@@ -271,9 +271,9 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             }
 
             // TODO: remove after Fusaka
-            // SetBlobProofsAndCellProofs(transaction);
+            SetBlobProofsAndCellProofs(transaction);
 
-            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
+            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.BlobProofs)
                    // || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;

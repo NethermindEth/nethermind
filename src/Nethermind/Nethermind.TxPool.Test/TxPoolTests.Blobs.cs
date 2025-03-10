@@ -789,7 +789,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction blobTxAdded = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithProofsAndCellProofs()
+                // .WithProofsAndCellProofs()
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(UInt256.Zero)
