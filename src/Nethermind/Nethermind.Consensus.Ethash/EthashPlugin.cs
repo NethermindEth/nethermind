@@ -6,10 +6,11 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashPlugin : IConsensusPlugin
+    public class EthashPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         private INethermindApi _nethermindApi;
 
@@ -21,13 +22,11 @@ namespace Nethermind.Consensus.Ethash
 
         public string Author => "Nethermind";
 
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Ethash)
-            {
-                return Task.CompletedTask;
-            }
 
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
             setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);

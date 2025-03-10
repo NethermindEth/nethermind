@@ -15,4 +15,5 @@ public class MetricsConfig : IMetricsConfig
     public bool EnableDbSizeMetrics { get; set; } = true;
     public string MonitoringGroup { get; set; } = "nethermind";
     public string MonitoringJob { get; set; } = "nethermind";
+    public bool EnableDetailedMetric { get; set; } = false;
 }

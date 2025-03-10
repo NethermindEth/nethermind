@@ -7,6 +7,7 @@ using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Test.Builders
@@ -131,8 +132,9 @@ namespace Nethermind.Core.Test.Builders
 
         public static T CloneObject<T>(T value)
         {
-            string data = Newtonsoft.Json.JsonConvert.SerializeObject(value);
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(data)!;
+            var serializer = new EthereumJsonSerializer();
+            string data = serializer.Serialize(value);
+            return serializer.Deserialize<T>(data);
         }
 
         public static Address GetRandomAddress(Random? random = null)

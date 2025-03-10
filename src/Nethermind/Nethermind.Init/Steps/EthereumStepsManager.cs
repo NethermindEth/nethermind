@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -34,7 +35,7 @@ namespace Nethermind.Init.Steps
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()
                       ?? throw new ArgumentNullException(nameof(logManager));
 
-            _allSteps = loader.LoadSteps(_api.GetType()).ToList();
+            _allSteps = loader.ResolveStepsImplementations(_api.GetType()).ToList();
         }
 
         public async Task InitializeAll(CancellationToken cancellationToken)
@@ -173,6 +174,19 @@ namespace Nethermind.Init.Steps
                     _taskCompletedSource.TrySetCanceled();
                     throw;
                 }
+            }
+        }
+
+        private class StepState(StepInfo stepInfo)
+        {
+            public StepInitializationStage Stage { get; set; }
+            public Type[] Dependencies => stepInfo.Dependencies;
+            public Type StepBaseType => stepInfo.StepBaseType;
+            public StepInfo StepInfo => stepInfo;
+
+            public override string ToString()
+            {
+                return $"{stepInfo.StepType.Name} : {stepInfo.StepBaseType.Name} ({Stage})";
             }
         }
     }
