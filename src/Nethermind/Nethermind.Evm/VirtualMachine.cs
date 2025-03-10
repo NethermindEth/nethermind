@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -600,6 +601,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         try
         {
+            if (_logger.IsTrace) _logger.Trace($"Executing precompile {precompile}, {callData.ToBytes().ToHexString()}");
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output, success, !success);
             return callResult;
@@ -722,6 +724,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
             Instruction instruction = (Instruction)code[programCounter];
 
+            if (_logger.IsTrace) _logger.Trace($"Instruction: {instruction}, PC: {programCounter}");
             if (isCancelable && _txTracer.IsCancelled)
             {
                 ThrowOperationCanceledException();
