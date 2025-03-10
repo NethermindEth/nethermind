@@ -8,8 +8,8 @@ using Microsoft.CodeAnalysis.Diagnostics;
 public class PropertyRequiredInSszTypeAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "SSZ001";
-    private static readonly LocalizableString Title = "Class or struct marked with SszSerializable must have at least one public property with public getter and setter";
-    private static readonly LocalizableString MessageFormat = "Type '{0}' is marked with SszSerializable, but does not have any public property with public getter and setter";
+    private static readonly LocalizableString Title = "A class or struct marked with SszSerializable must have at least one public property with a public getter and a public setter";
+    private static readonly LocalizableString MessageFormat = "Type '{0}' is marked with SszSerializable but does not have any public property with a public getter and a public setter.";
     private static readonly LocalizableString Description = "A class or struct marked with SszSerializable should have at least one public property with both a public getter and setter.";
     private const string Category = "Design";
 
@@ -37,8 +37,8 @@ public class PropertyRequiredInSszTypeAnalyzer : DiagnosticAnalyzer
         bool hasValidProperty = typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
             .Any(prop =>
                 prop.Modifiers.Any(SyntaxKind.PublicKeyword) &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true);
+                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) &&
+                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))));
 
         if (!hasValidProperty)
         {
