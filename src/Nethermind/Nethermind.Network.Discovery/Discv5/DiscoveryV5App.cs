@@ -37,7 +37,6 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
-    private bool _wasStarted = false;
 
     public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
     {
@@ -202,7 +201,6 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async Task StartAsync()
     {
-        _wasStarted = true;
         await _discv5Protocol.InitAsync();
 
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
@@ -315,7 +313,6 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async Task StopAsync()
     {
-        if (!_wasStarted) return;
         IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes;
         _discoveryDb.Clear();
 
@@ -334,7 +331,14 @@ public class DiscoveryV5App : IDiscoveryApp
         }
 
 
-        await _discv5Protocol.StopAsync();
+        try
+        {
+            await _discv5Protocol.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Err stopping discv5: {ex}");
+        }
         await _appShutdownSource.CancelAsync();
     }
 
