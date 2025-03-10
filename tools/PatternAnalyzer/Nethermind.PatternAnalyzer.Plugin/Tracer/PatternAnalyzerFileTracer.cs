@@ -101,6 +101,9 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                     _logger.Error($"Error writing to file {_fileName}: {ex.Message}");
                     throw;
                 }
+                catch (OperationCanceledException)
+                {
+                }
             }
         },_ct);
 
