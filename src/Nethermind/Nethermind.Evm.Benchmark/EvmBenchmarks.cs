@@ -41,9 +41,8 @@ namespace Nethermind.Evm.Benchmark
         void Run();
         void Reset();
     }
-    public struct LocalSetup<TIsTracing, TIsCompiling> : ILocalSetup
+    public struct LocalSetup<TIsCompiling> : ILocalSetup
         where TIsCompiling : struct, VirtualMachine.IIsOptimizing
-        where TIsTracing : struct, VirtualMachine.IIsTracing
     {
 
         internal delegate CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
@@ -64,30 +63,20 @@ namespace Nethermind.Evm.Benchmark
         private ILogger _logger;
         private byte[] bytecode;
         private VMConfig vmConfig;
-        private int? mode;
         private CodeInfo driverCodeInfo;
-        public LocalSetup(string name, byte[] _bytecode, int? ilvmMode)
+        public LocalSetup(string name, byte[] _bytecode)
         {
             Name = name;
 
             vmConfig = new VMConfig();
-            vmConfig.BakeInTracingInAotModes = (typeof(TIsTracing) == typeof(VirtualMachine.IsTracing));
 
-            if (typeof(TIsCompiling) == typeof(VirtualMachine.IsOptimizing))
-            {
-                vmConfig.AnalysisQueueMaxSize = 1;
+            vmConfig.IlEvmEnabledMode = typeof(TIsCompiling) == typeof(VirtualMachine.IsPrecompiling)
+                ? ILMode.FULL_AOT_MODE
+                : typeof(TIsCompiling) == typeof(VirtualMachine.IsPatternChecking)
+                ? ILMode.PATTERN_BASED_MODE : ILMode.NO_ILVM;
 
-                vmConfig.PartialAotThreshold = 0;
-                vmConfig.AggressivePartialAotMode = (ilvmMode == ILMode.PARTIAL_AOT_MODE);
-                vmConfig.IsPartialAotEnabled = (ilvmMode == ILMode.PARTIAL_AOT_MODE);
-
-                vmConfig.PatternMatchingThreshold = 0;
-                vmConfig.IsPatternMatchingEnabled = (ilvmMode == ILMode.PATTERN_BASED_MODE);
-
-                vmConfig.FullAotThreshold= 0;
-                vmConfig.IsFullAotEnabled = (ilvmMode == ILMode.FULL_AOT_MODE);
-            }
-
+            vmConfig.IlEvmAnalysisThreshold = 1;
+            vmConfig.IsIlEvmAggressiveModeEnabled= true;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
@@ -95,17 +84,12 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
 
             bytecode = _bytecode;
-            mode = ilvmMode;
 
             codeInfoRepository = new TestCodeInfoRepository();  
 
-            ILogManager logmanager = vmConfig.BakeInTracingInAotModes ? LimboLogs.Instance : NullLogManager.Instance;
+            ILogManager logmanager = NullLogManager.Instance;
 
             _logger = logmanager.GetClassLogger();
-            if (vmConfig.BakeInTracingInAotModes)
-            {
-                _txTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            }
 
             _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
@@ -123,10 +107,10 @@ namespace Nethermind.Evm.Benchmark
             var driverCodeinfo = new CodeInfo(driver, Address.FromNumber(23));
             var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
 
-            if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled || vmConfig.IsFullAotEnabled)
+            if (vmConfig.IsILEvmEnabled)
             {
-                IlAnalyzer.Analyse(driverCodeinfo, mode.Value, vmConfig, NullLogger.Instance);
-                IlAnalyzer.Analyse(targetCodeInfo, mode.Value, vmConfig, NullLogger.Instance);
+                IlAnalyzer.Analyse(driverCodeinfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
+                IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
             }
 
             driverCodeInfo = driverCodeinfo;
@@ -161,7 +145,7 @@ namespace Nethermind.Evm.Benchmark
 
         public void Run()
         {
-            _virtualMachine.Run<TIsTracing>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
         }
 
         public void Reset()
@@ -281,24 +265,17 @@ namespace Nethermind.Evm.Benchmark
 
                 string benchName = $"Fib With args {new UInt256(argBytes)}";
 
-                if (mode.HasFlag(1))
+                switch(mode)
                 {
-                    yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::1::std::" + benchName, bytecode, null);
-                }
-
-                if (mode.HasFlag(2))
-                {
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::2::pat::" + benchName, bytecode, ILMode.PATTERN_BASED_MODE);
-                }
-
-                if (mode.HasFlag(4))
-                {
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::3::jit::" + benchName, bytecode, ILMode.PARTIAL_AOT_MODE);
-                }
-
-                if (mode.HasFlag(8))
-                {
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::4::aot::" + benchName, bytecode, ILMode.FULL_AOT_MODE);
+                    case ILMode.NO_ILVM:
+                        yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
+                        break;
+                    case ILMode.PATTERN_BASED_MODE:
+                        yield return new LocalSetup<IsPatternChecking>("ILEVM::2::pat::" + benchName, bytecode);
+                        break;
+                    case ILMode.FULL_AOT_MODE:
+                        yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
+                        break;
                 }
             }
 
@@ -312,24 +289,17 @@ namespace Nethermind.Evm.Benchmark
                 string benchName = $"Prim With args {new UInt256(argBytes)}";
                 var bytecode = isPrimeBytecode(argBytes);
 
-                if (mode.HasFlag(1))
+                switch (mode)
                 {
-                    yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::1::std::" + benchName, bytecode, null);
-                }
-
-                if (mode.HasFlag(2))
-                {
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::2::pat::" + benchName, bytecode, ILMode.PATTERN_BASED_MODE);
-                }
-
-                if (mode.HasFlag(4))
-                {
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::3::jit::" + benchName, bytecode, ILMode.PARTIAL_AOT_MODE);
-                }
-
-                if (mode.HasFlag(8))
-                {
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::4::aot::" + benchName, bytecode, ILMode.FULL_AOT_MODE);
+                    case ILMode.NO_ILVM:
+                        yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
+                        break;
+                    case ILMode.PATTERN_BASED_MODE:
+                        yield return new LocalSetup<IsPatternChecking>("ILEVM::2::pat::" + benchName, bytecode);
+                        break;
+                    case ILMode.FULL_AOT_MODE:
+                        yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
+                        break;
                 }
             }
         }
@@ -365,24 +335,17 @@ namespace Nethermind.Evm.Benchmark
             byte[] bytecode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE") ?? string.Empty);
             int mode = Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
             string BenchmarkName = Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME") ?? string.Empty;
-            if (mode.HasFlag(1))
+            switch (mode)
             {
-                yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::1::std::" + BenchmarkName, bytecode, null);
-            }
-
-            if (mode.HasFlag(2))
-            {
-                yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::2::pat::" + BenchmarkName, bytecode, ILMode.PATTERN_BASED_MODE);
-            }
-
-            if (mode.HasFlag(4))
-            {
-                yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::3::jit::" + BenchmarkName, bytecode, ILMode.PARTIAL_AOT_MODE);
-            }
-
-            if (mode.HasFlag(8))
-            {
-                yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::4::aot::" + BenchmarkName, bytecode, ILMode.FULL_AOT_MODE);
+                case ILMode.NO_ILVM:
+                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + BenchmarkName, bytecode);
+                    break;
+                case ILMode.PATTERN_BASED_MODE:
+                    yield return new LocalSetup<IsPatternChecking>("ILEVM::2::pat::" + BenchmarkName, bytecode);
+                    break;
+                case ILMode.FULL_AOT_MODE:
+                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + BenchmarkName, bytecode);
+                    break;
             }
         }
 

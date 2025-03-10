@@ -73,60 +73,8 @@ namespace Nethermind.Benchmark.Runner
             [Option('n', "identifier", Required = false, HelpText = "Benchmark Name")]
             public string Name { get; set; }
 
-            [Option('c', "config", Required = false, HelpText = "EVM configs : 1-STD, 2-PAT, 4-JIT, 8-AOT")]
+            [Option('c', "config", Required = false, HelpText = "EVM configs : 0-STD, 1-PAT, 2-AOT")]
             public string Config { get; set; }
-        }
-
-
-        public static void _Main(string[] args)
-        {
-            IlAnalyzer.Initialize();
-
-            byte[] bytes = new byte[32];
-            ((UInt256)2048 * 2).ToBigEndian(bytes);
-            var argBytes = bytes.WithoutLeadingZeros().ToArray();
-            byte[] bytecode = Prepare.EvmCode
-                        .PushData(argBytes)
-                        .COMMENT("1st/2nd fib number")
-                        .PushData(0)
-                        .PushData(1)
-                        .COMMENT("MAINLOOP:")
-                        .JUMPDEST()
-                        .DUPx(3)
-                        .ISZERO()
-                        .PushData(26 + argBytes.Length)
-                        .JUMPI()
-                        .COMMENT("fib step")
-                        .DUPx(2)
-                        .DUPx(2)
-                        .ADD()
-                        .SWAPx(2)
-                        .POP()
-                        .SWAPx(1)
-                        .COMMENT("decrement fib step counter")
-                        .SWAPx(2)
-                        .PushData(1)
-                        .SWAPx(1)
-                        .SUB()
-                        .SWAPx(2)
-                        .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
-                        .JUMP()
-
-                        .COMMENT("CLEANUP:")
-                        .JUMPDEST()
-                        .SWAPx(2)
-                        .POP()
-                        .POP()
-                        .COMMENT("done: requested fib number is the only element on the stack!")
-                        .STOP()
-                        .Done;
-
-            var nrml = new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std", bytecode, null);
-            var ilvm = new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot", bytecode, ILMode.FULL_AOT_MODE);
-
-            Run(ilvm, 100);
-            Run(nrml, 100);
-
         }
 
         public static void Run(ILocalSetup setup, int iterations)
