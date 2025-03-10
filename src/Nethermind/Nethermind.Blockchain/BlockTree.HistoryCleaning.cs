@@ -117,7 +117,12 @@ public partial class BlockTree
                     break;
                 }
 
-                if (_logger.IsInfo) _logger.Info($"Deleting old block {hash} at level {number}");
+                if (number == 0)
+                {
+                    continue;
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}");
                 DeleteBlock(number, hash, null, batch);
                 deletedBlocks++;
             }
