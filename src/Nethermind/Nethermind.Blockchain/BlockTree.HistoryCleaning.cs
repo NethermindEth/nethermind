@@ -17,8 +17,11 @@ public partial class BlockTree
 
     public void TryPruneHistory()
     {
+        if (_logger.IsInfo) _logger.Info($"(tmp) TryPruneHistory");
+
         if (!ShouldPruneHistory())
         {
+            if (_logger.IsInfo) _logger.Info($"(tmp) not PruneHistory, no need");
             return;
         }
 
@@ -26,6 +29,7 @@ public partial class BlockTree
         {
             if (_pruneHistoryTask is not null && !_pruneHistoryTask.IsCompleted)
             {
+                if (_logger.IsInfo) _logger.Info($"(tmp) not PruneHistory, task is not completed");
                 return;
             }
 
@@ -37,10 +41,12 @@ public partial class BlockTree
     {
         if (!(_historyConfig.HistoryPruneEpochs is not null || _historyConfig.DropPreMerge))
         {
+            if (_logger.IsInfo) _logger.Info($"(tmp) not PruneHistory, disabled");
             return false;
         }
 
         ulong cutoffTimestamp = CalculateCutoffTimestamp();
+        if (_logger.IsInfo) _logger.Info($"(tmp) PruneHistory, cutoffTimestamp: {cutoffTimestamp}, _lastPrunedTimestamp: {_lastPrunedTimestamp}");
         return cutoffTimestamp > _lastPrunedTimestamp;
     }
 
@@ -48,15 +54,17 @@ public partial class BlockTree
     {
         if (Head is null)
         {
+            if (_logger.IsInfo) _logger.Info($"(tmp) not Pruning, no head");
             return;
         }
 
         ulong cutoffTimestamp = CalculateCutoffTimestamp();
         
-        if (cutoffTimestamp <= _lastPrunedTimestamp)
-        {
-            return;
-        }
+        // if (cutoffTimestamp <= _lastPrunedTimestamp)
+        // {
+        //     if (_logger.IsInfo) _logger.Info($"(tmp) not Pruning, same as last pruned timestamp {_lastPrunedTimestamp}");
+        //     return;
+        // }
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
@@ -74,6 +82,7 @@ public partial class BlockTree
 
         if (_historyConfig.HistoryPruneEpochs.HasValue)
         {
+            if (_logger.IsInfo) _logger.Info($"(tmp) CalculateCutoffTimestamp, HistoryPruneEpochs: {_historyConfig.HistoryPruneEpochs.Value}, head timestamp: {Head!.Timestamp}, current timestamp: {DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
             cutoffTimestamp = Head!.Timestamp - (_historyConfig.HistoryPruneEpochs.Value * epochLength);
         }
 
@@ -93,13 +102,15 @@ public partial class BlockTree
     {
         BlockAcceptingNewBlocks();
         int deletedBlocks = 0;
+        if (_logger.IsInfo) _logger.Info($"(tmp) Deleting (Pruning) blocks before timestamp {cutoffTimestamp}");
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_historyConfig.PruningTimeout));
             using var batch = _chainLevelInfoRepository.StartBatch();
 
-            foreach ((long number, Hash256 hash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+            foreach ((long number, Hash256 hash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp, _logger))
             {
+                if (_logger.IsInfo) _logger.Info($"(tmp) Deleting (Pruning) block {hash} before timestamp {cutoffTimestamp}");
                 if (cts.Token.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
@@ -108,6 +119,7 @@ public partial class BlockTree
 
                 if (number == 0)
                 {
+                    if (_logger.IsInfo) _logger.Info($"Skipping genesis block.");
                     continue;
                 }
 
@@ -118,7 +130,7 @@ public partial class BlockTree
         }
         finally
         {
-            if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+            if (_logger.IsInfo) _logger.Info($"Completed Pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
             ReleaseAcceptingNewBlocks();
         }
     }
