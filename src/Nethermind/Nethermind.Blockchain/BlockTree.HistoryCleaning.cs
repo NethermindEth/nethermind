@@ -119,6 +119,7 @@ public partial class BlockTree
 
                 if (number == 0)
                 {
+                    if (_logger.IsInfo) _logger.Info($"Skipping genesis block.");
                     continue;
                 }
 
