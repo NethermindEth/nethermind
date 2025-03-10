@@ -33,7 +33,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
 
         IEnumerable<PropertyInfo> properties = tApi
             .GetProperties(flag)
-            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
+            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() is null);
 
         Dictionary<Type, PropertyInfo> availableTypes = new Dictionary<Type, PropertyInfo>();
 
@@ -47,13 +47,13 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
 
     public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
     {
-        if (registrationAccessor == null)
+        if (registrationAccessor is null)
         {
             throw new ArgumentNullException(nameof(registrationAccessor));
         }
 
         IServiceWithType? ts = service as IServiceWithType;
-        if (ts == null || ts.ServiceType == typeof(string))
+        if (ts is null || ts.ServiceType == typeof(string))
         {
             return Enumerable.Empty<IComponentRegistration>();
         }
@@ -63,7 +63,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
         if (registrationAccessor(service).Any())
         {
             // Already have registration
-            if (!_allowRedundantRegistration && _availableTypes.TryGetValue(serviceType, out property) && property.SetMethod != null)
+            if (!_allowRedundantRegistration && _availableTypes.TryGetValue(serviceType, out property) && property.SetMethod is not null)
             {
                 // To prevent mistake, a service that already have registration via dependency injection must not also
                 // have a setter in api. This is to prevent the assumption that the setter will cause the service
