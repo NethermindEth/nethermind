@@ -101,7 +101,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                     throw;
                 }
             }
-        },_ct);
+        });
 
         _fileTracingQueue.Add(task);
 
