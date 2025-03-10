@@ -36,11 +36,8 @@ internal class IlInfo
     /// </summary>
     public static IlInfo Empty(int size) => new(size);
 
-    /// <summary>
-    /// Represents what mode of IL-EVM is used. 0 is the default. [0 = No ILVM optimizations, 1 = Pattern matching, 2 = subsegments compiling]
-    /// </summary>
-    public int Mode = ILMode.NO_ILVM;
-    public bool IsEmpty => Mode == ILMode.NO_ILVM;
+    public bool IsNotProcessed => AnalysisPhase is AnalysisPhase.NotStarted;
+
 
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
     /// <summary>
@@ -84,11 +81,11 @@ internal class IlInfo
 
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
-        if (programCounter > ushort.MaxValue || this.IsEmpty)
+        if (programCounter > ushort.MaxValue || this.IsNotProcessed)
             return false;
 
         var bytecodeChunkHandler = IlevmChunks[programCounter];
-        if (Mode != ILMode.NO_ILVM && bytecodeChunkHandler is not null)
+        if (bytecodeChunkHandler is not null)
         {
             Metrics.IlvmPredefinedPatternsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))

@@ -16,6 +16,8 @@ using Nethermind.Logging;
 using System.Threading;
 using Nethermind.Core;
 
+using CallData = System.ReadOnlyMemory<byte>;
+
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 {
@@ -39,13 +41,16 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 
     public void CacheBlockContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
+        const string blockContext = nameof(BlockExecutionContext);
+
         LoadBlockContext(il, locals, false);
-        locals.TryDeclareLocal("blockContext", typeof(BlockExecutionContext));
-        locals.TryStoreLocal("blockContext");
+        locals.TryDeclareLocal(blockContext, typeof(BlockExecutionContext));
+        locals.TryStoreLocal(blockContext);
     }
     public override void LoadBlockContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        string blockContext = "blockContext";
+        const string blockContext = nameof(BlockExecutionContext);
+
         if (locals.TryLoadLocal(blockContext, loadAddress))
         {
             return;
@@ -71,14 +76,16 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 
     public void CacheCalldata(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
+        const string calldata = nameof(CallData);
+
         LoadCalldata(il, locals, false);
-        locals.TryDeclareLocal("calldata", typeof(ReadOnlyMemory<byte>));
-        locals.TryStoreLocal("calldata");
+        locals.TryDeclareLocal(calldata, typeof(ReadOnlyMemory<byte>));
+        locals.TryStoreLocal(calldata);
     }
 
     public override void LoadCalldata(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        string calldata = "calldata";
+        const string calldata = nameof(CallData);
 
         if (locals.TryLoadLocal(calldata, loadAddress))
         {
@@ -124,14 +131,16 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 
     public void CacheEnv(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
+        const string env = nameof(ExecutionEnvironment);
+
         LoadEnv(il, locals, false);
-        locals.TryDeclareLocal("env", typeof(ExecutionEnvironment));
-        locals.TryStoreLocal("env");
+        locals.TryDeclareLocal(env, typeof(ExecutionEnvironment));
+        locals.TryStoreLocal(env);
     }
 
     public override void LoadEnv(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        string env = "env";
+        const string env = nameof(ExecutionEnvironment);
 
         if (locals.TryLoadLocal(env, loadAddress))
         {
@@ -211,14 +220,16 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 
     public void CacheSpec(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
+        const string spec = nameof(IReleaseSpec);
+
         LoadSpec(il, locals, false);
-        locals.TryDeclareLocal("spec", typeof(IReleaseSpec));
-        locals.TryStoreLocal("spec");
+        locals.TryDeclareLocal(spec, typeof(IReleaseSpec));
+        locals.TryStoreLocal(spec);
     }
 
     public override void LoadSpec(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        string spec = "spec";
+        const string spec = nameof(IReleaseSpec);
 
         if (locals.TryLoadLocal(spec, loadAddress))
         {
@@ -248,14 +259,16 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 
     public void CacheTxContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
+        const string txContext = nameof(TxExecutionContext);
+
         LoadTxContext(il, locals, false);
-        locals.TryDeclareLocal("txContext", typeof(TxExecutionContext));
-        locals.TryStoreLocal("txContext");
+        locals.TryDeclareLocal(txContext, typeof(TxExecutionContext));
+        locals.TryStoreLocal(txContext);
     }
 
     public override void LoadTxContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        string txContext = "txContext";
+        const string txContext = nameof(TxExecutionContext);
 
         if (locals.TryLoadLocal(txContext, loadAddress))
         {
