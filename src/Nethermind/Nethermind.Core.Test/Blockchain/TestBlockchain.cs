@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -25,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -232,6 +234,10 @@ public class TestBlockchain : IDisposable
 
         _resetEvent = new SemaphoreSlim(0);
         _suggestedBlockResetEvent = new ManualResetEvent(true);
+
+        AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
+        Task waitGenesis = BlockTree.WaitForNewBlock(cts.Token);
+
         BlockTree.BlockAddedToMain += BlockAddedToMain;
         BlockProducerRunner.BlockProduced += (s, e) =>
         {
@@ -241,7 +247,7 @@ public class TestBlockchain : IDisposable
         Block? genesis = GetGenesisBlock();
         BlockTree.SuggestBlock(genesis);
 
-        await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        await waitGenesis;
 
         if (addBlockOnStart)
             await AddBlocksOnStart();
@@ -436,12 +442,15 @@ public class TestBlockchain : IDisposable
         BlockTree.BlockAddedToMain += BlockAddedToMain;
 
         await WaitAsync(_oneAtATime, "Multiple block produced at once.").ConfigureAwait(false);
+
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
+        Task waitForNewBlock = BlockTree.WaitForNewBlock(cts.Token);
+
         AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
         Timestamper.Add(TimeSpan.FromSeconds(1));
-        var headProcessed = new SemaphoreSlim(0);
-        TxPool.TxPoolHeadChanged += (s, a) => headProcessed.Release();
         await BlockProductionTrigger.BuildBlock().ConfigureAwait(false);
-        await headProcessed.WaitAsync().ConfigureAwait(false);
+        await waitForNewBlock.ConfigureAwait(false);
+
         return txResults;
     }
 
