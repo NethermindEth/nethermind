@@ -115,6 +115,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
+            _api.SpecHelper,
             _api.LogManager,
             _api.Config<IBlocksConfig>());
     }

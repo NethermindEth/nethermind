@@ -38,12 +38,6 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
-    /// <summary>
-    /// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#header-validity-rules
-    /// </summary>
-    public static readonly Hash256 PostIsthmusRequestHash =
-        new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         if (!OptimismWithdrawals.Validate(specHelper, header, out error))
@@ -73,7 +67,7 @@ public class OptimismHeaderValidator(
     {
         if (specHelper.IsIsthmus(header))
         {
-            if (header.RequestsHash != PostIsthmusRequestHash)
+            if (header.RequestsHash != OptimismPostMergeBlockProducer.PostIsthmusRequestHash)
             {
                 error = ErrorMessages.RequestHashShouldBeNull;
                 return false;
@@ -96,6 +90,6 @@ public class OptimismHeaderValidator(
     private static class ErrorMessages
     {
         public static readonly string RequestHashShouldBeNull = $"{nameof(BlockHeader.RequestsHash)} should be null for pre-Isthmus blocks";
-        public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {PostIsthmusRequestHash} for post-Isthmus blocks";
+        public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
     }
 }

@@ -138,8 +138,8 @@ public class OptimismHeaderValidatorTests
             "Post Canyon");
         yield return new TestCaseData(Spec.CanyonTimestamp, null, null, false).SetName("Post Canyon - invalid");
         yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash,
-            OptimismHeaderValidator.PostIsthmusRequestHash, true).SetName("Post Isthmus");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, OptimismHeaderValidator.PostIsthmusRequestHash,
+            OptimismPostMergeBlockProducer.PostIsthmusRequestHash, true).SetName("Post Isthmus");
+        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, OptimismPostMergeBlockProducer.PostIsthmusRequestHash,
             false).SetName("Post Isthmus - invalid withdrawals hash");
         yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash, null, false).SetName(
             "Post Isthmus - invalid request hash");
