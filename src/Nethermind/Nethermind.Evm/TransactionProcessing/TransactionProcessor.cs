@@ -121,6 +121,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
+            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
@@ -128,6 +129,9 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return Execute(tx, in blCtx, tracer, opts);
+            TransactionResult result = Execute(tx, in blCtx, tracer, opts);
+            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
+            return result;
         }
 
         protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
