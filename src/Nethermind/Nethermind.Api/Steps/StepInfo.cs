@@ -57,11 +57,5 @@ namespace Nethermind.Api.Steps
         }
 
         public static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
-
-        public void Configure(ContainerBuilder builder)
-        {
-            builder.AddSingleton<StepInfo>(this);
-            builder.RegisterType(StepType).SingleInstance();
-        }
     }
 }

@@ -20,7 +20,7 @@ public class StartRpcStepsModule: Module
     {
         foreach (var builtInStep in BuiltInSteps)
         {
-            builtInStep.Configure(builder);
+            builder.AddStep(builtInStep);
         }
     }
 }

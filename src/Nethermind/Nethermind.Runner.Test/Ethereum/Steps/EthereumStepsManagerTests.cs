@@ -130,7 +130,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             foreach (var stepInfo in stepInfos)
             {
-                stepInfo.Configure(builder);
+                builder.AddStep(stepInfo);
             }
 
             return builder;

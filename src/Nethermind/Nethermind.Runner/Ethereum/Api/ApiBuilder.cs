@@ -8,6 +8,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -74,14 +75,8 @@ public class ApiBuilder
         {
             foreach (var stepInfo in nethermindPlugin.GetSteps())
             {
-                stepInfo.Configure(containerBuilder);
+                containerBuilder.AddStep(stepInfo);
             }
-        }
-
-        foreach (var nethermindPlugin in plugins)
-        {
-            if (nethermindPlugin.Module is not null)
-                containerBuilder.AddModule(nethermindPlugin.Module);
         }
 
         IContainer container = containerBuilder.Build();
