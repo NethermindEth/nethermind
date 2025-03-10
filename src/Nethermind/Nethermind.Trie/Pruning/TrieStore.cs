@@ -710,8 +710,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _pruningStrategy.PrunePersistedNodePortion);
             targetPruneMemory = Math.Max(targetPruneMemory, _pruningStrategy.PrunePersistedNodeMinimumTarget);
 
-            int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * 256);
-            shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, 256));
+            int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * ShardedDirtyNodeCount);
+            shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, ShardedDirtyNodeCount));
 
             if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
             long start = Stopwatch.GetTimestamp();
