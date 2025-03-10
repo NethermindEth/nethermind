@@ -775,6 +775,40 @@ namespace Nethermind.TxPool.Test
             values.Count.Should().Be(poolSize / 2);
         }
 
+        [Test]
+        public void should_add_blob_tx_in_eip7594_form_and_return_when_requested([Values(true, false)] bool isPersistentStorage)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithProofsAndCellProofs()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
+
+            blobTxReturned.Should().BeEquivalentTo(blobTxAdded);
+
+            blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
+            if (isPersistentStorage)
+            {
+                blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
+                    .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                    .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+            }
+        }
+
         private Transaction GetTx(PrivateKey sender)
         {
             return Build.A.Transaction
