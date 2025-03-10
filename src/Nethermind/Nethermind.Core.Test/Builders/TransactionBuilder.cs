@@ -219,28 +219,21 @@ namespace Nethermind.Core.Test.Builders
         {
             if (TestObjectInternal.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
             {
+                if (!KzgPolynomialCommitments.IsInitialized)
+                {
+                    KzgPolynomialCommitments.InitializeAsync().Wait();
+                }
+
                 wrapper.BlobProofs = wrapper.Proofs;
 
                 List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
                 foreach (byte[] blob in wrapper.Blobs)
                 {
-                    if (KzgPolynomialCommitments.IsInitialized)
-                    {
-                        byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob];
-                        KzgPolynomialCommitments.AddCellProofs(blob, cellProofsOfOneBlob);
-                        byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
-                        cellProofs.AddRange(cellProofsSeparated);
-                    }
-                    else
-                    {
-                        for (int i = 0; i < Ckzg.Ckzg.CellsPerExtBlob; i++)
-                        {
-                            cellProofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
-                            cellProofs[i][0] = (byte)(i % 256);
-                        }
-                    }
-
+                    byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob];
+                    KzgPolynomialCommitments.AddCellProofs(blob, cellProofsOfOneBlob);
+                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
+                    cellProofs.AddRange(cellProofsSeparated);
                 }
 
                 wrapper.CellProofs = cellProofs.ToArray();
