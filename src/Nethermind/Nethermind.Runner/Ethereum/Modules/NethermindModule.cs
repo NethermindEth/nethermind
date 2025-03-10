@@ -7,6 +7,8 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Era1;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -32,6 +34,10 @@ public class NethermindModule(
         builder
             .AddModule(new BuiltInStepsModule())
             .AddModule(new StartRpcModule())
+            .AddModule(new EraModule())
+            .AddSource(new ConfigRegistrationSource())
+            .AddModule(new DbModule())
+
             .AddSingleton<EthereumRunner>()
             .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
             .AddSingleton<EthereumStepsManager>()

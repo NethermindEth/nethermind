@@ -22,7 +22,7 @@ namespace Nethermind.Init.Steps
 
         private readonly INethermindApi _api;
         private readonly IComponentContext _ctx;
-        private readonly List<StepInfo> _allSteps;
+        private readonly IEthereumStepsLoader _loader;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
@@ -37,7 +37,7 @@ namespace Nethermind.Init.Steps
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()
                       ?? throw new ArgumentNullException(nameof(logManager));
 
-            _allSteps = loader.ResolveStepsImplementations(_api.GetType()).ToList();
+            _loader = loader ?? throw new ArgumentNullException(nameof(loader));
         }
 
         public async Task InitializeAll(CancellationToken cancellationToken)
@@ -60,8 +60,8 @@ namespace Nethermind.Init.Steps
         {
             Dictionary<Type, List<StepWrapper>> stepBaseTypeMap = [];
             Dictionary<Type, StepInfo> stepInfoMap = [];
-
-            foreach (StepInfo stepInfo in _allSteps)
+;
+            foreach (StepInfo stepInfo in _loader.ResolveStepsImplementations(_api.GetType()).ToList())
             {
                 cancellationToken.ThrowIfCancellationRequested();
 

@@ -64,6 +64,8 @@ public class EthereumStepsLoaderTests
             .Should()
             .BeEquivalentTo([
                 new StepInfo(typeof(StepLong)),
+                new StepInfo(typeof(StepWithLogManagerInConstructor)),
+                new StepInfo(typeof(StepWithSameBaseStep)),
                 new StepInfo(typeof(StepForever)),
                 new StepInfo(typeof(StepA)),
                 new StepInfo(typeof(StepB)),

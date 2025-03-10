@@ -89,11 +89,28 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
+
+            container.Resolve<StepWithLogManagerInConstructor>().WasExecuted.Should().BeTrue();
+        }
+
+        [Test]
+        public async Task With_ambigious_steps()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepWithLogManagerInConstructor)),
+                new StepInfo(typeof(StepWithSameBaseStep))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            var act = async () => await stepsManager.InitializeAll(source.Token);
+            await act.Should().ThrowAsync<StepDependencyException>();
         }
 
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
             CreateCommonBuilder(stepInfos)
-                .AddSingleton<INethermindApi>(new NethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+                .AddSingleton<NethermindApi>(new NethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+                .Bind<INethermindApi, NethermindApi>()
                 .Build();
 
         private static IContainer CreateAuraApi(params IEnumerable<StepInfo> stepInfos)
@@ -132,11 +149,28 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
+
+    public abstract class BaseStep : IStep
+    {
+        public abstract Task Execute(CancellationToken cancellationToken);
+    }
+
 #pragma warning disable CS9113 // Parameter is unread.
-    public class StepWithLogManagerInConstructor(ILogManager _) : IStep
+    public class StepWithLogManagerInConstructor(ILogManager _) : BaseStep
 #pragma warning restore CS9113 // Parameter is unread.
     {
-        public Task Execute(CancellationToken cancellationToken)
+        public bool WasExecuted { get; set; }
+
+        public override Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    public class StepWithSameBaseStep() : BaseStep
+    {
+        public override Task Execute(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

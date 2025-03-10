@@ -10,12 +10,14 @@ using System.IO.Abstractions;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Hive;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -95,6 +97,36 @@ public class EthereumRunnerTests
         }
 
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
+    }
+
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
+        {
+            // some weird thing, not worth investigating
+            return;
+        }
+
+        ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
+        EthereumRunner runner = builder.CreateEthereumRunner([]);
+
+        INethermindApi api = runner.Api;
+        api.FileSystem = Substitute.For<IFileSystem>();
+
+        try
+        {
+            var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (var step in stepsLoader.ResolveStepsImplementations(runner.Api.GetType()))
+            {
+                runner.LifetimeScope.Resolve(step.StepType);
+            }
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
     }
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
