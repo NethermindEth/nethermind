@@ -183,6 +183,11 @@ namespace Nethermind.Core.Test.Builders
                     proofs: new byte[blobCount][]
                     );
 
+                if (!KzgPolynomialCommitments.IsInitialized)
+                {
+                    KzgPolynomialCommitments.InitializeAsync().Wait();
+                }
+
                 for (int i = 0; i < blobCount; i++)
                 {
                     TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
@@ -191,20 +196,11 @@ namespace Nethermind.Core.Test.Builders
                     wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
                     wrapper.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
 
-                    if (KzgPolynomialCommitments.IsInitialized)
-                    {
-                        KzgPolynomialCommitments.KzgifyBlob(
-                            wrapper.Blobs[i],
-                            wrapper.Commitments[i],
-                            wrapper.Proofs[i],
-                            TestObjectInternal.BlobVersionedHashes[i].AsSpan());
-                    }
-                    else
-                    {
-                        TestObjectInternal.BlobVersionedHashes[i]![0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
-                        wrapper.Commitments[i][0] = (byte)(i % 256);
-                        wrapper.Proofs[i][0] = (byte)(i % 256);
-                    }
+                    KzgPolynomialCommitments.KzgifyBlob(
+                        wrapper.Blobs[i],
+                        wrapper.Commitments[i],
+                        wrapper.Proofs[i],
+                        TestObjectInternal.BlobVersionedHashes[i].AsSpan());
                 }
 
                 TestObjectInternal.NetworkWrapper = wrapper;
