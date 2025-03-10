@@ -60,7 +60,7 @@ namespace Nethermind.Init.Steps
         {
             Dictionary<Type, List<StepWrapper>> stepBaseTypeMap = [];
             Dictionary<Type, StepInfo> stepInfoMap = [];
-;
+
             foreach (StepInfo stepInfo in _loader.ResolveStepsImplementations(_api.GetType()).ToList())
             {
                 cancellationToken.ThrowIfCancellationRequested();

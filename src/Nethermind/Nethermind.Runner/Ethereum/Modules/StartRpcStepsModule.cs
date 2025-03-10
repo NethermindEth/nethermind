@@ -7,7 +7,7 @@ using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class StartRpcStepsModule: Module
+public class StartRpcStepsModule : Module
 {
     // These cant be referred in `Nethermind.Init`.
     public static readonly StepInfo[] BuiltInSteps =

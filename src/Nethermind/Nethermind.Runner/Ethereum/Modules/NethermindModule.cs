@@ -12,7 +12,7 @@ using Nethermind.Init.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class NethermindModule(INethermindApi nethermindApi): Module
+public class NethermindModule(INethermindApi nethermindApi) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -42,7 +42,6 @@ public class NethermindModule(INethermindApi nethermindApi): Module
             .RegisterInstance(nethermindApi)
             .As<NethermindApi>()
             .As<INethermindApi>()
-
             // For steps that use explicit type, like TaikoNethermindApi.
             .As(nethermindApi.GetType());
     }

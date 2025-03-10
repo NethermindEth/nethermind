@@ -8,7 +8,7 @@ using Nethermind.Init.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class BuiltInStepsModule: Module
+public class BuiltInStepsModule : Module
 {
     public static readonly StepInfo[] BuiltInSteps =
     [
