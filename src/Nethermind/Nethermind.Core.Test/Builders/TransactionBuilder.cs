@@ -231,7 +231,7 @@ namespace Nethermind.Core.Test.Builders
                 foreach (byte[] blob in wrapper.Blobs)
                 {
                     byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
-                    KzgPolynomialCommitments.AddCellProofs(blob, cellProofsOfOneBlob);
+                    KzgPolynomialCommitments.GetCellProofs(blob, cellProofsOfOneBlob);
                     byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
                     cellProofs.AddRange(cellProofsSeparated);
                 }
