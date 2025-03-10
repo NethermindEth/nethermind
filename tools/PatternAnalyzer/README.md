@@ -10,8 +10,7 @@ during execution.
 ## Analyzer
 
 The Analyzer primarily consists of the **StatsAnalyzer**, **CMSKetch**,
-**NGram **and **StatsProcessingQueue
-**.
+**NGram** and **StatsProcessingQueue**.
 
 ### Stats Analyzer
 
