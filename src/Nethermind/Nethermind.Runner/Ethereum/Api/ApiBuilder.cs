@@ -58,19 +58,22 @@ public class ApiBuilder
             throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {ChainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
         }
 
+        IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
+        /*
         ISpecProvider specProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
         FollowOtherMiners gasLimitCalculator = new FollowOtherMiners(specProvider);
-
-        IConsensusPlugin enginePlugin = consensusPlugins.First();
         INethermindApi nethermindApi =
-            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
+            consensusPlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
+            new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
         nethermindApi.SpecProvider = specProvider;
         nethermindApi.GasLimitCalculator = gasLimitCalculator;
         nethermindApi.ProcessExit = _processExitSource;
         ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+        */
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
-            .AddModule(new NethermindModule(nethermindApi));
+            .AddSingleton<IConsensusPlugin>(consensusPlugin)
+            .AddModule(new NethermindModule());
 
         foreach (var nethermindPlugin in plugins)
         {
@@ -78,6 +81,15 @@ public class ApiBuilder
             {
                 containerBuilder.AddStep(stepInfo);
             }
+        }
+
+        foreach (var plugin in plugins)
+        {
+            if (plugin.Module is not null)
+            {
+                containerBuilder.AddModule(plugin.Module);
+            }
+            containerBuilder.AddSingleton<INethermindPlugin>(plugin);
         }
 
         IContainer container = containerBuilder.Build();

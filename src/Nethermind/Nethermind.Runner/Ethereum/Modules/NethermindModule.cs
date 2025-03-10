@@ -6,13 +6,15 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Init.Steps;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class NethermindModule(INethermindApi nethermindApi) : Module
+public class NethermindModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -24,6 +26,7 @@ public class NethermindModule(INethermindApi nethermindApi) : Module
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new DbModule())
+            .AddModule(new NethermindInvariantChecks())
 
             .AddSource(new FallbackToFieldFromApi<IApiWithNetwork>())
             .AddSource(new FallbackToFieldFromApi<IApiWithBlockchain>())
@@ -36,13 +39,19 @@ public class NethermindModule(INethermindApi nethermindApi) : Module
 
             .AddSingleton<EthereumRunner>()
             .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
-            .AddSingleton<EthereumStepsManager>();
+            .AddSingleton<EthereumStepsManager>()
+            .AddSingleton<NethermindApi>()
+            .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+            .Bind<INethermindApi, NethermindApi>()
+            ;
 
+        /*
         builder
             .RegisterInstance(nethermindApi)
             .As<NethermindApi>()
             .As<INethermindApi>()
             // For steps that use explicit type, like TaikoNethermindApi.
             .As(nethermindApi.GetType());
+            */
     }
 }

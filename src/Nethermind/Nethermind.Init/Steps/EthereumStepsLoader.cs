@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
@@ -14,13 +15,15 @@ namespace Nethermind.Init.Steps
     {
         private readonly IEnumerable<StepInfo> _stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
+        private readonly Type apiType;
 
-        public EthereumStepsLoader(params IEnumerable<StepInfo> stepsInfo)
+        public EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo)
         {
             _stepsInfo = stepsInfo;
+             apiType = consensusPlugin.ApiType;
         }
 
-        public IEnumerable<StepInfo> ResolveStepsImplementations(Type apiType)
+        public IEnumerable<StepInfo> ResolveStepsImplementations()
         {
             if (!apiType.GetInterfaces().Contains(_baseApiType))
             {
@@ -29,7 +32,7 @@ namespace Nethermind.Init.Steps
 
             return _stepsInfo
                 .GroupBy(s => s.StepBaseType)
-                .Select(g => SelectImplementation(g.ToArray(), apiType))
+                .Select(g => SelectImplementation(g.ToArray()))
                 .Where(s => s is not null)
                 .Select(s => s!);
         }
@@ -41,7 +44,7 @@ namespace Nethermind.Init.Steps
                 c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(expectedParams));
         }
 
-        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type apiType)
+        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {
             StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
                 .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();

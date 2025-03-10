@@ -4,12 +4,15 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -78,14 +81,24 @@ namespace Nethermind.Consensus.AuRa
                 blockProducer);
         }
 
-        public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-            ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
         public IEnumerable<StepInfo> GetSteps()
         {
             yield return typeof(InitializeBlockchainAuRa);
             yield return typeof(LoadGenesisBlockAuRa);
             yield return typeof(RegisterAuRaRpcModules);
             yield return typeof(StartBlockProcessorAuRa);
+        }
+
+        public IModule Module => new AuraModule();
+    }
+
+    public class AuraModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            builder.AddSingleton<NethermindApi, AuRaNethermindApi>();
         }
     }
 }

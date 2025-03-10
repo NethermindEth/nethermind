@@ -160,7 +160,7 @@ public class EthereumRunnerTests
         try
         {
             var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (var step in stepsLoader.ResolveStepsImplementations(runner.Api.GetType()))
+            foreach (var step in stepsLoader.ResolveStepsImplementations())
             {
                 runner.LifetimeScope.Resolve(step.StepType);
             }

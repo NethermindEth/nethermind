@@ -34,6 +34,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
@@ -320,15 +321,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     // IConsensusPlugin
 
-    public INethermindApi CreateApi(
-        IConfigProvider configProvider,
-        IJsonSerializer jsonSerializer,
-        ILogManager logManager,
-        ChainSpec chainSpec)
-    {
-        return new TaikoNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
-    }
-
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
     {
         throw new NotSupportedException();
@@ -340,4 +332,16 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     }
 
     public string SealEngineType => Core.SealEngineType.Taiko;
+
+    public IModule Module => new TaikoModule();
+}
+
+public class TaikoModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder.AddSingleton<NethermindApi, TaikoNethermindApi>();
+    }
 }
