@@ -41,6 +41,7 @@ public class ChannelDecoder
 }
 
 // TODO: support singular batches
+// In op spec BatchV0 is called Singular batch
 public struct BatchV0
 {
     public Hash256 ParentHash;
@@ -50,17 +51,12 @@ public struct BatchV0
     public byte[][] Transactions;
 }
 
-// Span batch
-public struct BatchV1
+public struct SingularBatch
 {
-    public ulong RelTimestamp;
-    public ulong L1OriginNum;
-    public byte[] ParentCheck; // 20 bytes
-    public byte[] L1OriginCheck; // 20 bytes
-    public ulong BlockCount;
-    public BigInteger OriginBits;
-    public ulong[] BlockTxCounts;
-    public BatchV1Transactions Txs;
+    public bool IsFirstBlockInEpoch;
+    public ulong EpochNumber;
+    public ulong Timestamp;
+    public byte[][] Transactions;
 }
 
 public struct BatchV1Transactions

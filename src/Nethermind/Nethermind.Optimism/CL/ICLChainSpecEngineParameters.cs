@@ -16,6 +16,8 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public Address? UnsafeBlockSigner { get; set; }
     public string[]? Nodes { get; set; }
     public Address? L1SystemConfigAddress { get; set; }
+    public ulong? L1BeaconGenesisSlotTime { get; set; }
+    public ulong? L2BlockTime { get; set; }
     public string? EngineName => "OptimismCL";
     public string? SealEngineType => null;
 }

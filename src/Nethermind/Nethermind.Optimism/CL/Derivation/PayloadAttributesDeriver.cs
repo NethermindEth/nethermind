@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
-using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
@@ -16,7 +11,6 @@ using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Optimism.CL;
 
@@ -24,225 +18,92 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
 {
     public readonly Address SequencerFeeVault = new("0x4200000000000000000000000000000000000011");
 
-    private readonly ulong _chainId;
     private readonly DepositTransactionBuilder _depositTransactionBuilder;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly ILogger _logger;
 
-    OptimismTxDecoder<Transaction> decoder = new();
-
-
-    public PayloadAttributesDeriver(ulong chainId, ISystemConfigDeriver systemConfigDeriver, DepositTransactionBuilder depositTransactionBuilder, ILogger logger)
+    public PayloadAttributesDeriver(ISystemConfigDeriver systemConfigDeriver, DepositTransactionBuilder depositTransactionBuilder, ILogger logger)
     {
-        _chainId = chainId;
         _depositTransactionBuilder = depositTransactionBuilder;
         _systemConfigDeriver = systemConfigDeriver;
         _logger = logger;
     }
 
-    public PayloadAttributesRef[] DerivePayloadAttributes(BatchV1 batch, L2Block l2Parent, L1Block[] l1Origins, ReceiptForRpc[][] l1Receipts)
+    public PayloadAttributesRef DerivePayloadAttributes(SingularBatch batch, PayloadAttributesRef parentPayloadAttributes, L1Block l1Origin, ReceiptForRpc[] l1Receipts)
     {
-        // TODO we need to check that data is consistent(l2 parent and l1 origin are correct)
-        PayloadAttributesRef[] result = new PayloadAttributesRef[batch.BlockCount];
-        ulong txIdx = 0;
-        int originIdx = 0;
-        ulong l2ParentTimestamp = l2Parent.PayloadAttributes.Timestamp;
-        SystemConfig currentSystemConfig = l2Parent.SystemConfig;
-        L1BlockInfo currentL1OriginBlockInfo = l2Parent.L1BlockInfo;
-        ulong tosFrom = 0;
-        ulong legacyTxFrom = 0;
-        for (int i = 0; i < (int)batch.BlockCount; i++)
+        ulong number = parentPayloadAttributes.Number + 1;
+        SystemConfig systemConfig = parentPayloadAttributes.SystemConfig;
+
+        if (batch.IsFirstBlockInEpoch)
         {
-            bool isNewOrigin = ((batch.OriginBits >> i) & 1) == 1;
-            OptimismPayloadAttributes payloadAttributes;
-            if (isNewOrigin)
-            {
-                originIdx++;
-                currentSystemConfig =
-                    _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(currentSystemConfig, l1Receipts[originIdx]);
-
-                currentL1OriginBlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origins[originIdx], currentSystemConfig, 0);
-            }
-            else
-            {
-                currentL1OriginBlockInfo.SequenceNumber++;
-            }
-
-            Transaction systemTransaction = _depositTransactionBuilder.BuildL1InfoTransaction(currentL1OriginBlockInfo);
-            systemTransaction.Nonce = l2Parent.Number + 2 + (ulong)i;
-
-            if (isNewOrigin)
-            {
-                (payloadAttributes, tosFrom, legacyTxFrom) = BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origins[originIdx],
-                    currentSystemConfig, systemTransaction, l1Receipts[originIdx], i, txIdx, tosFrom, legacyTxFrom);
-            }
-            else
-            {
-                (payloadAttributes, tosFrom, legacyTxFrom) = BuildRegularBlock(batch, l2ParentTimestamp, l1Origins[originIdx],
-                    currentSystemConfig, systemTransaction, i, txIdx, tosFrom, legacyTxFrom);
-            }
-
-            result[i] = new()
-            {
-                SystemConfig = currentSystemConfig,
-                L1BlockInfo = currentL1OriginBlockInfo,
-                Number = batch.RelTimestamp / 2 + (ulong)i,
-                PayloadAttributes = payloadAttributes
-            };
-            l2ParentTimestamp = payloadAttributes.Timestamp;
-            txIdx += batch.BlockTxCounts[i];
+            systemConfig =
+                _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(systemConfig, l1Receipts);
         }
-        return result;
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, systemConfig, batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1);
+
+        Transaction systemTransaction = _depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
+        systemTransaction.Nonce = number + 1;
+
+        OptimismPayloadAttributes payloadAttributes;
+        if (batch.IsFirstBlockInEpoch)
+        {
+            payloadAttributes = BuildFirstBlockInEpoch(batch, l1Origin, systemConfig, systemTransaction, l1Receipts);
+        }
+        else
+        {
+            payloadAttributes = BuildRegularBlock(batch, l1Origin, systemConfig, systemTransaction);
+        }
+
+        return new PayloadAttributesRef()
+        {
+            L1BlockInfo = l1BlockInfo,
+            Number = number,
+            PayloadAttributes = payloadAttributes,
+            SystemConfig = systemConfig,
+        };
     }
 
-    private (OptimismPayloadAttributes, ulong, ulong) BuildFirstBlockInEpoch(BatchV1 batch, ulong l2ParentTimestamp, L1Block l1Origin, SystemConfig systemConfig,
-        Transaction systemTransaction, ReceiptForRpc[] l1OriginReceipts, int blockIdx, ulong txsFrom, ulong tosFrom, ulong legacyTxFrom)
+    private OptimismPayloadAttributes BuildRegularBlock(
+        SingularBatch batch,
+        L1Block l1Origin,
+        SystemConfig systemConfig,
+        Transaction systemTransaction)
     {
-        List<Transaction> transactions = new();
-        transactions.AddRange(_depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts));
-        // Transaction[] upgradeTxs = _depositTransactionBuilder.BuildUpgradeTransactions();
-        // Transaction[] forceIncludeTxs = _depositTransactionBuilder.BuildForceIncludeTransactions();
-        (Transaction[] userTransactions, ulong newTosFrom, ulong newLegacyTxFrom) =
-            BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx], tosFrom, legacyTxFrom);
-        transactions.AddRange(userTransactions);
-
-        // Transaction[] allTxs = new[] { systemTransaction }.Concat(userDepositTxs).Concat(upgradeTxs)
-        //     .Concat(forceIncludeTxs).Concat(userTransactions).ToArray();
-
-        return (BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, transactions.ToArray()), newTosFrom, newLegacyTxFrom);
+        List<byte[]> transactions = new();
+        transactions.Add(Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes);
+        transactions.AddRange(batch.Transactions);
+        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions.ToArray());
     }
 
-    private (OptimismPayloadAttributes, ulong, ulong) BuildRegularBlock(BatchV1 batch, ulong l2ParentTimestamp, L1Block l1Origin, SystemConfig systemConfig,
-        Transaction systemTransaction, int blockIdx, ulong txsFrom, ulong tosFrom, ulong legacyTxFrom)
+    private OptimismPayloadAttributes BuildFirstBlockInEpoch(
+        SingularBatch batch,
+        L1Block l1Origin,
+        SystemConfig systemConfig,
+        Transaction systemTransaction,
+        ReceiptForRpc[] l1OriginReceipts)
     {
-        (Transaction[] userTransactions, ulong newTosFrom, ulong newLegacyTxFrom) =
-            BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx], tosFrom, legacyTxFrom);
-
-        return (BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, userTransactions), newTosFrom, newLegacyTxFrom);
+        List<byte[]> transactions = new();
+        transactions.Add(Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes);
+        transactions.AddRange(_depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts)
+            .Select(x => Rlp.Encode(x, RlpBehaviors.SkipTypedWrapping).Bytes));
+        transactions.AddRange(batch.Transactions);
+        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions.ToArray());
     }
 
-    private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong l2ParentTimestamp, SystemConfig systemConfig, Transaction systemTx, Transaction[] userTxs)
+    private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong timestamp, SystemConfig systemConfig, byte[][] txs)
     {
         OptimismPayloadAttributes payload = new()
         {
             GasLimit = (long)systemConfig.GasLimit,
             NoTxPool = true,
             ParentBeaconBlockRoot = l1Origin.ParentBeaconBlockRoot,
-            Timestamp = l2ParentTimestamp + 2,
+            Timestamp = timestamp,
             Withdrawals = [],
             PrevRandao = l1Origin.MixHash,
             EIP1559Params = systemConfig.EIP1559Params,
             SuggestedFeeRecipient = SequencerFeeVault,
-            Transactions = (new [] { Rlp.Encode(systemTx, RlpBehaviors.SkipTypedWrapping).Bytes }).Concat(userTxs
-                .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-                .ToArray()).ToArray()
+            Transactions = txs
         };
         return payload;
-    }
-
-    private (Transaction[], ulong, ulong) BuildUserTransactions(BatchV1 batch, ulong from, ulong txCount, ulong tosFrom, ulong legacyTxFrom)
-    {
-        var userTransactions = new Transaction[txCount];
-        ulong tosIdx = tosFrom;
-        ulong legacyTxIdx = legacyTxFrom;
-        for (ulong i = 0; i < txCount; i++)
-        {
-            ulong txIdx = from + i;
-            bool parityBit = ((batch.Txs.YParityBits >> (int)txIdx) & 1) == 1;
-            var tx = new Transaction
-            {
-                ChainId = _chainId,
-                Type = batch.Txs.Types[txIdx],
-                Nonce = batch.Txs.Nonces[txIdx],
-                GasLimit = (long)batch.Txs.Gases[txIdx],
-            };
-            bool contractCreationBit = ((batch.Txs.ContractCreationBits >> (int)txIdx) & 1) == 1;
-            if (!contractCreationBit)
-            {
-                tx.To = batch.Txs.Tos[tosIdx];
-                tosIdx++;
-            }
-            ulong v;
-            switch (batch.Txs.Types[txIdx])
-            {
-                case TxType.Legacy:
-                {
-                    bool protectedBit = ((batch.Txs.ProtectedBits >> (int)legacyTxIdx) & 1) == 1;
-                    legacyTxIdx++;
-                    if (protectedBit)
-                    {
-                        v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
-                    }
-                    else
-                    {
-                        v = 27u + (parityBit ? 1u : 0u);
-                    }
-
-                    (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(batch.Txs.Datas[txIdx]);
-                    break;
-                }
-                case TxType.AccessList:
-                {
-                    v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
-                    (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(batch.Txs.Datas[txIdx]);
-                    break;
-                }
-                case TxType.EIP1559:
-                {
-                    v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
-                    (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) = DecodeEip1559Transaction(batch.Txs.Datas[txIdx]);
-                    break;
-                }
-                default:
-                {
-                    throw new ArgumentException($"Invalid tx type {batch.Txs.Types[txIdx]}");
-                }
-            }
-            Signature signature = new(batch.Txs.Signatures[txIdx].R, batch.Txs.Signatures[txIdx].S, v);
-            tx.Signature = signature;
-            userTransactions[i] = tx;
-        }
-
-        return (userTransactions, tosIdx, legacyTxIdx);
-    }
-
-    private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(byte[] encoded)
-    {
-        // rlp_encode(value, gasPrice, data)
-        RlpStream stream = new(encoded);
-        int length = stream.ReadSequenceLength();
-        UInt256 value = stream.DecodeUInt256();
-        UInt256 gasPrice = stream.DecodeUInt256();
-        byte[] data = stream.DecodeByteArray();
-        return (value, gasPrice, data);
-    }
-
-    private (UInt256 Value, UInt256 GasPrice, byte[] Data, AccessList? AccessList)
-        DecodeAccessListTransaction(byte[] encoded)
-    {
-        // 0x01 ++ rlp_encode(value, gasPrice, data, accessList)
-        RlpStream stream = new(encoded);
-        stream.ReadByte(); // type
-        int length = stream.ReadSequenceLength();
-        UInt256 value = stream.DecodeUInt256();
-        UInt256 gasPrice = stream.DecodeUInt256();
-        byte[] data = stream.DecodeByteArray();
-        AccessList? accessList = AccessListDecoder.Instance.Decode(stream);
-        return (value, gasPrice, data, accessList);
-    }
-
-    private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList)
-        DecodeEip1559Transaction(byte[] encoded)
-    {
-        // 0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)
-        RlpStream stream = new(encoded);
-        byte type = stream.ReadByte(); // type
-        int length = stream.ReadSequenceLength();
-        UInt256 value = stream.DecodeUInt256();
-        UInt256 maxPriorityFeePerGas = stream.DecodeUInt256();
-        UInt256 maxFeePerGas = stream.DecodeUInt256();
-        byte[] data = stream.DecodeByteArray();
-        AccessList? accessList = AccessListDecoder.Instance.Decode(stream);
-        return (value, maxPriorityFeePerGas, maxFeePerGas, data, accessList);
     }
 }

@@ -36,6 +36,7 @@ public class Driver : IDisposable
         ulong chainId,
         ILogger logger)
     {
+        ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         _logger = logger;
         _l2BlockTree = l2BlockTree;
         _l2EthRpc = l2EthRpc;
@@ -43,7 +44,6 @@ public class Driver : IDisposable
         _decodingPipeline = decodingPipeline;
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
-            chainId,
             new SystemConfigDeriver(engineParameters),
             new DepositTransactionBuilder(chainId, engineParameters),
             logger);

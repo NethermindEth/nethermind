@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Channels;
@@ -22,7 +23,6 @@ public class DerivationPipeline : IDerivationPipeline
     private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
 
-
     public DerivationPipeline(
         IPayloadAttributesDeriver payloadAttributesDeriver,
         IL2BlockTree l2BlockTree,
@@ -40,7 +40,11 @@ public class DerivationPipeline : IDerivationPipeline
         while (!token.IsCancellationRequested)
         {
             (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync(token);
-            await ConsumeV1Batches(l2Parent, batch);
+            var result = await ProcessOneBatch(l2Parent, batch);
+            foreach (PayloadAttributesRef payloadAttributes in result)
+            {
+                await _outputChannel.Writer.WriteAsync(payloadAttributes, token);
+            }
         }
     }
 
@@ -49,15 +53,6 @@ public class DerivationPipeline : IDerivationPipeline
 
     private readonly Channel<PayloadAttributesRef> _outputChannel = Channel.CreateUnbounded<PayloadAttributesRef>();
     public ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes => _outputChannel.Reader;
-
-    private async Task ConsumeV1Batches(L2Block parent, BatchV1 batch)
-    {
-        var result = await ProcessOneBatch(parent, batch);
-        foreach (PayloadAttributesRef payloadAttributes in result)
-        {
-            await _outputChannel.Writer.WriteAsync(payloadAttributes);
-        }
-    }
 
     private async Task<PayloadAttributesRef[]> ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
     {
@@ -96,7 +91,7 @@ public class DerivationPipeline : IDerivationPipeline
         {
             // TODO: try to save time here
             L1Block? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
-            ReceiptForRpc[]? receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
+            ReceiptForRpc[] receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
             ArgumentNullException.ThrowIfNull(l1Origin);
             ArgumentNullException.ThrowIfNull(receipts);
             l1Origins[numberOfL1Origins - i - 1] = l1Origin.Value;
@@ -104,10 +99,39 @@ public class DerivationPipeline : IDerivationPipeline
             parentHash = l1Origin.Value.ParentHash;
         }
 
-        var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
+        PayloadAttributesRef l2ParentPayloadAttributes = new()
+        {
+            L1BlockInfo = l2Parent.L1BlockInfo,
+            Number = l2Parent.Number,
+            PayloadAttributes = l2Parent.PayloadAttributes,
+            SystemConfig = l2Parent.SystemConfig
+        };
+        int originIdx = 0;
+
+        List<PayloadAttributesRef> result = new();
+        try
+        {
+            foreach (var singularBatch in batch.ToSingularBatches(480, 1719335639, 2))
+            {
+                if (singularBatch.IsFirstBlockInEpoch) originIdx++;
+                var payloadAttributes = _payloadAttributesDeriver.DerivePayloadAttributes(
+                    singularBatch,
+                    l2ParentPayloadAttributes,
+                    l1Origins[originIdx],
+                    l1Receipts[originIdx]);
+                l2ParentPayloadAttributes = payloadAttributes;
+                result.Add(payloadAttributes);
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"Exception occured while processing batch RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
+            throw;
+        }
+        // var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
 
         _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
-        return pa;
+        return result.ToArray();
     }
 
     private ulong GetNumberOfBits(BigInteger number)

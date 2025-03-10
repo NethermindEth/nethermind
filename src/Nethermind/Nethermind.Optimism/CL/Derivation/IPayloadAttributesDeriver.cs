@@ -12,7 +12,8 @@ namespace Nethermind.Optimism.CL;
 
 public interface IPayloadAttributesDeriver
 {
-    PayloadAttributesRef[] DerivePayloadAttributes(BatchV1 batch, L2Block l2Parent, L1Block[] l1Origins, ReceiptForRpc[][] l1Receipts);
+    PayloadAttributesRef DerivePayloadAttributes(SingularBatch batch,
+        PayloadAttributesRef parentPayloadAttributes, L1Block l1Origin, ReceiptForRpc[] l1Receipts);
 }
 
 public struct PayloadAttributesRef
