@@ -215,7 +215,7 @@ namespace Nethermind.Core.Test.Builders
         }
 
         // TODO: to be deprecated after Fusaka
-        public TransactionBuilder<T> WithProofsAndCellProofs(int blobCount = 1, bool isMempoolTx = true)
+        public TransactionBuilder<T> WithProofsAndCellProofs()
         {
             if (TestObjectInternal.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
             {
@@ -236,7 +236,7 @@ namespace Nethermind.Core.Test.Builders
                     cellProofs.AddRange(cellProofsSeparated);
                 }
 
-                wrapper.CellProofs = cellProofs.ToArray();
+                wrapper.Proofs = cellProofs.ToArray();
             }
 
             return this;

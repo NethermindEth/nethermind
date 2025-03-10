@@ -26,12 +26,11 @@ namespace Nethermind.Crypto
             if (networkWrapper.Proofs.Length == networkWrapper.Blobs.Length)
             {
                 networkWrapper.BlobProofs = networkWrapper.Proofs;
-                // calculate cell proofs
+                // networkWrapper.Proofs = calculate cell proofs
             }
             else
             {
-                networkWrapper.CellProofs = networkWrapper.Proofs;
-                // calculate proofs
+                // networkWrapper.BlobProofs = calculate blob proofs
             }
         }
     }
