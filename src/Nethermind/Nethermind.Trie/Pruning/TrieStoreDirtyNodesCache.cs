@@ -226,6 +226,7 @@ internal class TrieStoreDirtyNodesCache
     /// <exception cref="InvalidOperationException"></exception>
     public void PruneCache(
         bool prunePersisted = false,
+        bool forceRemovePersistedNodes = false,
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
         INodeStorage? nodeStorage = null)
     {
@@ -262,7 +263,7 @@ internal class TrieStoreDirtyNodesCache
                     {
                         // If its persisted and has last seen meaning it was recommitted,
                         // we keep it to prevent key removal from removing it from DB.
-                        if (node.LastSeen == -1)
+                        if (node.LastSeen == -1 || forceRemovePersistedNodes)
                         {
                             if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 

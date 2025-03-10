@@ -663,7 +663,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     /// This is done after a `SaveSnapshot`.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    private void PruneCache(bool prunePersisted = false, bool dontRemoveNodes = false)
+    private void PruneCache(bool prunePersisted = false, bool dontRemoveNodes = false, bool forceRemovePersistedNodes = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Pruning nodes {DirtyMemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
@@ -686,6 +686,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 dirtyNode
                     .PruneCache(
                         prunePersisted: prunePersisted,
+                        forceRemovePersistedNodes: forceRemovePersistedNodes,
                         persistedHashes: persistedHashes,
                         nodeStorage: nodeStorage);
                 persistedHashes?.NoResizeClear();
@@ -1148,8 +1149,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             ClearCommitSetQueue();
             if (cancellationToken.IsCancellationRequested) return;
 
+            // All persisted node including recommitted nodes between head and reorg depth must be removed so that
+            // it will be re-persisted or at least re-read in order to be cloned.
             // This should clear most nodes. For some reason, not all.
-            PruneCache(prunePersisted: true, dontRemoveNodes: true);
+            PruneCache(prunePersisted: true, dontRemoveNodes: true, forceRemovePersistedNodes: true);
             if (cancellationToken.IsCancellationRequested) return;
 
             int totalPersistedCount = 0;
@@ -1167,7 +1170,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
             if (cancellationToken.IsCancellationRequested) return;
 
-            PruneCache(prunePersisted: true, dontRemoveNodes: true);
+            PruneCache(prunePersisted: true, dontRemoveNodes: true, forceRemovePersistedNodes: true);
 
             long nodesCount = NodesCount();
             if (nodesCount != 0)

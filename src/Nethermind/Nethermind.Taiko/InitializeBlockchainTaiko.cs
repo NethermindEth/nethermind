@@ -15,6 +15,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.State;
+using Nethermind.Taiko.BlockTransactionExecutors;
 
 namespace Nethermind.Taiko;
 

@@ -20,10 +20,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
     {
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReceiptFinder _receiptFinder;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogManager _logManager;
-        private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IWorldStateManager _worldStateManager;
+        protected readonly ISpecProvider SpecProvider;
+        protected readonly ILogManager LogManager;
+        protected readonly IReadOnlyBlockTree BlockTree;
+        protected readonly IWorldStateManager WorldStateManager;
 
         public ProofModuleFactory(
             IWorldStateManager worldStateManager,
@@ -33,22 +33,31 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
+            LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockTree = blockTree.AsReadOnly();
+            SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            BlockTree = blockTree.AsReadOnly();
+        }
+
+        protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv()
+        {
+            return new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LogManager);
+        }
+
+        protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
+        {
+            return new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
         }
 
         public override IProofRpcModule Create()
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _worldStateManager, _blockTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
 
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-            RpcBlockTransactionsExecutor traceExecutor = new(scope.TransactionProcessor, scope.WorldState);
+            IBlockProcessor.IBlockTransactionsExecutor traceExecutor = CreateRpcBlockTransactionsExecutor(scope);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 scope,
@@ -56,10 +65,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 _recoveryStep,
                 NoBlockRewards.Instance,
                 new InMemoryReceiptStorage(),
-                _specProvider,
-                _blockTree,
-                _worldStateManager.GlobalStateReader,
-                _logManager,
+                SpecProvider,
+                BlockTree,
+                WorldStateManager.GlobalStateReader,
+                LogManager,
                 traceExecutor);
 
             Tracer tracer = new(
@@ -67,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 
-            return new ProofRpcModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);
+            return new ProofRpcModule(tracer, BlockTree, _receiptFinder, SpecProvider, LogManager);
         }
     }
 }
