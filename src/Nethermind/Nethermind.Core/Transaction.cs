@@ -354,5 +354,10 @@ namespace Nethermind.Core
         public byte[][] Commitments { get; set; }
         public byte[][] Blobs { get; set; }
         public byte[][] Proofs { get; set; }
+
+        // TODO: to be removed after transition to Fusaka
+        public byte[][]? BlobProofs { get; set; }
+        // TODO: to be removed after transition to Fusaka
+        public byte[][]? CellProofs { get; set; }
     }
 }
