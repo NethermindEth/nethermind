@@ -44,7 +44,7 @@
     },
     "Holesky": {
       "commandName": "Project",
-      "commandLineArgs": "-c holesky --data-dir .data",
+      "commandLineArgs": "-c holesky --data-dir .data --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
