@@ -270,9 +270,57 @@ public sealed class MempoolBlobTxValidator : ITxValidator
                 }
             }
 
+            // TODO: remove after Fusaka
+            // SetBlobProofsAndCellProofs(transaction);
+
             return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
+                   // || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
+        }
+    }
+
+    // TODO: remove after Fusaka
+    private void SetBlobProofsAndCellProofs(Transaction blobTx)
+    {
+        ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+
+        // checking if incoming tx has old-style blob proofs
+        if (networkWrapper.Proofs.Length == networkWrapper.Blobs.Length)
+        {
+            // setting old-style blob proofs as BlobProofs and setting cell proofs as Proofs
+            networkWrapper.BlobProofs = networkWrapper.Proofs;
+            networkWrapper.Proofs = GetCellProofs(networkWrapper.Blobs).ToArray();
+        }
+        else
+        {
+            // it means that incoming tx already has cell proofs. Calculating and setting old-style blob proofs
+            networkWrapper.BlobProofs = GetBlobProofs(networkWrapper.Blobs).ToArray();
+        }
+    }
+
+    // TODO: remove after Fusaka
+    private IEnumerable<byte[]> GetCellProofs(byte[][] blobs)
+    {
+        foreach (byte[] blob in blobs)
+        {
+            byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
+            KzgPolynomialCommitments.GetCellProofs(blob, cellProofsOfOneBlob);
+            foreach (byte[] cellProof in cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof))
+            {
+                yield return cellProof;
+            }
+        }
+    }
+
+    // TODO: remove after Fusaka
+    private IEnumerable<byte[]> GetBlobProofs(byte[][] blobs)
+    {
+        foreach (byte[] blob in blobs)
+        {
+            byte[] blobProof = new byte[Ckzg.Ckzg.BytesPerProof];
+            KzgPolynomialCommitments.GetBlobProof(blob, blobProof);
+            yield return blobProof;
         }
     }
 }
