@@ -20,7 +20,7 @@ public class NethermindModule(INethermindApi nethermindApi): Module
 
         builder
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new StartRpcModule())
+            .AddModule(new StartRpcStepsModule())
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new DbModule())

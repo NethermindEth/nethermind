@@ -39,7 +39,7 @@ public class EthereumStepsLoaderTests
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new StartRpcModule())
+            .AddModule(new StartRpcStepsModule())
             .Build();
 
         container.Resolve<IEnumerable<StepInfo>>().ToHashSet().Should().BeEquivalentTo(steps);
