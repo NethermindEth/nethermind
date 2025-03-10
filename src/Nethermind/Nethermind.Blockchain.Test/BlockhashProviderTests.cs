@@ -286,4 +286,35 @@ public class BlockhashProviderTests
         else
             Assert.That(result, Is.EqualTo(genesisHash));
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_poc_trimmed_hashes()
+    {
+        var chainLength = 42;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+
+        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+        // number = chainLength
+        Block current = Build.A.Block.WithParent(head!).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        IWorldState worldState = CreateWorldState();
+        var specProvider = new CustomSpecProvider(
+            (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
+            (new ForkActivation(0, current.Timestamp), Prague.Instance));
+        BlockhashStore store = new(specProvider, worldState);
+
+        // 1. Set some code to pass IsContract check
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+
+        current.Header.ParentHash = new Hash256("0x0011111111111111111111111111111111111111111111111111111111111111");
+        // 2. Store parent hash with leading zeros
+        store.ApplyBlockhashStateChanges(current.Header);
+        // 3. Try to retrieve the parent hash from the state
+        // This call throws an exception: System.ArgumentException : Hash256 must be 32 bytes and was 31 bytes (Parameter 'bytes')
+        var result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1);
+        Assert.That(result, Is.EqualTo(current.Header.ParentHash));
+    }
 }
