@@ -185,7 +185,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA)
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -205,7 +205,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA)
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -227,8 +227,8 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         byte[] deployedCode = new byte[3];
         byte[] initCode = Prepare.EvmCode
@@ -273,13 +273,13 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         await context.Blockchain.AddBlock(
             new[]
             {
                 Build.A.Transaction.WithNonce(currentNonceAddressA + 1).WithTo(TestItem.AddressD)
                     .SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                Build.A.Transaction.WithNonce(blockchain.State.GetNonce(TestItem.AddressB) + 1).WithTo(TestItem.AddressC)
+                Build.A.Transaction.WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressB) + 1).WithTo(TestItem.AddressC)
                     .SignedAndResolved(TestItem.PrivateKeyB).TestObject,
                 Build.A.Transaction.WithNonce(currentNonceAddressA).WithTo(TestItem.AddressC)
                     .SignedAndResolved(TestItem.PrivateKeyA).TestObject
@@ -309,9 +309,9 @@ public class TraceRpcModuleTests
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address, TestItem.PrivateKeyD.Address };
         traceFilterRequest.ToAddress = new[] { TestItem.AddressC, TestItem.AddressA, TestItem.AddressB };
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressC = blockchain.State.GetNonce(TestItem.AddressC);
-        UInt256 currentNonceAddressD = blockchain.State.GetNonce(TestItem.AddressD);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressC = blockchain.ReadOnlyState.GetNonce(TestItem.AddressC);
+        UInt256 currentNonceAddressD = blockchain.ReadOnlyState.GetNonce(TestItem.AddressD);
         // first block skipped: After 3 -> 1
         await blockchain.AddBlock(
             new[]
@@ -391,7 +391,7 @@ public class TraceRpcModuleTests
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         // traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address, TestItem.PrivateKeyD.Address};
         // traceFilterRequest.ToAddress = new[] {TestItem.AddressC, TestItem.AddressA, TestItem.AddressB};
-        UInt256 currentNonceAddressC = blockchain.State.GetNonce(TestItem.AddressC);
+        UInt256 currentNonceAddressC = blockchain.ReadOnlyState.GetNonce(TestItem.AddressC);
         await blockchain.AddBlock();
         await blockchain.AddBlock();
         await blockchain.AddBlock(
@@ -411,7 +411,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction);
@@ -429,7 +429,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -446,8 +446,8 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         byte[] deployedCode = new byte[3];
         byte[] initCode = Prepare.EvmCode
@@ -492,8 +492,8 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         byte[] deployedCode = new byte[3];
         byte[] initCode = Prepare.EvmCode
@@ -548,8 +548,8 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         byte[] deployedCode = new byte[3];
         _ = Prepare.EvmCode
@@ -582,8 +582,8 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
         byte[] code = Prepare.EvmCode
@@ -613,7 +613,7 @@ public class TraceRpcModuleTests
         TestSpecProvider specProvider = new(releaseSpec);
         await context.Build(specProvider, isAura: true);
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressC = blockchain.State.GetNonce(TestItem.AddressC);
+        UInt256 currentNonceAddressC = blockchain.ReadOnlyState.GetNonce(TestItem.AddressC);
 
         Transaction serviceTransaction = Build.A.Transaction.WithNonce(currentNonceAddressC++)
             .WithTo(TestItem.AddressE)
@@ -632,8 +632,8 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
-        UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
 
         Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
@@ -793,7 +793,7 @@ public class TraceRpcModuleTests
         await context.Build();
 
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction transaction1 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -861,7 +861,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
 
@@ -898,7 +898,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
-        UInt256 currentNonceAddressA = blockchain.State.GetNonce(TestItem.AddressA);
+        UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
 
         Transaction tx = Build.A.Transaction.WithNonce(currentNonceAddressA++)
@@ -907,9 +907,9 @@ public class TraceRpcModuleTests
             .WithGasLimit(50000)
             .WithGasPrice(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-        blockchain.State.TryGetAccount(TestItem.AddressA, out AccountStruct accountA);
-        blockchain.State.TryGetAccount(TestItem.AddressD, out AccountStruct accountD);
-        blockchain.State.TryGetAccount(TestItem.AddressF, out AccountStruct accountF);
+        blockchain.ReadOnlyState.TryGetAccount(TestItem.AddressA, out AccountStruct accountA);
+        blockchain.ReadOnlyState.TryGetAccount(TestItem.AddressD, out AccountStruct accountD);
+        blockchain.ReadOnlyState.TryGetAccount(TestItem.AddressF, out AccountStruct accountF);
 
         string[] traceTypes = ["stateDiff"];
 

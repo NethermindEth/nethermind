@@ -42,6 +42,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -328,20 +329,20 @@ public class BaseEngineModuleTests
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
-        protected override IBlockProcessor CreateBlockProcessor()
+        protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
             BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                worldState,
                 ReceiptStorage,
                 TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor, State),
-                new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor, worldState),
+                new BlockhashStore(SpecProvider, worldState),
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer(),
