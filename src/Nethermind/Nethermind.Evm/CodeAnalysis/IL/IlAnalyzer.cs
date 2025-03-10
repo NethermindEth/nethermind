@@ -35,8 +35,8 @@ public static class IlAnalyzer
             return;
         }
 
-        _queue.Enqueue(codeInfo);
         codeInfo.IlInfo.AnalysisPhase = AnalysisPhase.Queued;
+        _queue.Enqueue(codeInfo);
 
         if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
         {
@@ -159,8 +159,6 @@ public static class IlAnalyzer
                 }
             }
         }
-
-        Interlocked.Exchange(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
     }
 
     internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo,  (OpcodeInfo[], byte[][]) codeData, IVMConfig config)
@@ -213,7 +211,6 @@ public static class IlAnalyzer
         var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), contractMetadata, vmConfig);
 
         ilinfo.PrecompiledContract = contractDelegate;
-        Interlocked.Exchange(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 
     internal static SegmentMetadata AnalyzeSegment(OpcodeInfo[] fullcode, Range segmentRange)
