@@ -76,13 +76,7 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = vmConfig ?? new VMConfig
-        {
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisThreshold = 8,
-            IlEvmAnalysisQueueMaxSize = 4,
-            IsIlEvmAggressiveModeEnabled = true,
-        };
+        _vmConfig = vmConfig ?? new VMConfig();
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
