@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -42,7 +43,7 @@ public class OptimismHeaderValidatorTests
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance,
-            Substitute.For<ISpecProvider>(),
+            Spec.BuildFor(header),
             TestLogManager.Instance);
 
         var valid = validator.Validate(header, genesis);
@@ -70,7 +71,7 @@ public class OptimismHeaderValidatorTests
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance,
-            Substitute.For<ISpecProvider>(),
+            Spec.BuildFor(header),
             TestLogManager.Instance);
 
         var valid = validator.Validate(header, genesis);
@@ -79,7 +80,8 @@ public class OptimismHeaderValidatorTests
     }
 
     [TestCaseSource(nameof(WithdrawalsRootData))]
-    public void WithdrawalRoot_Validity(ulong timestamp, Hash256? withdrawalHash, bool isValid)
+    public void WithdrawalRoot_RequestRoot_Validity(ulong timestamp, Hash256? withdrawalHash, Hash256? requestHash,
+        bool isValid)
     {
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -94,13 +96,14 @@ public class OptimismHeaderValidatorTests
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
             .WithWithdrawalsRoot(withdrawalHash)
+            .WithRequestsHash(requestHash)
             .TestObject;
 
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance,
-            Substitute.For<ISpecProvider>(),
+            Spec.BuildFor(header),
             TestLogManager.Instance);
 
         var valid = validator.Validate(header, genesis);
@@ -130,10 +133,15 @@ public class OptimismHeaderValidatorTests
 
     private static IEnumerable<TestCaseData> WithdrawalsRootData()
     {
-        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, true).SetName("Pre Canyon");
-        yield return new TestCaseData(Spec.CanyonTimestamp, Keccak.OfAnEmptySequenceRlp, true).SetName("Post Canyon");
-        yield return new TestCaseData(Spec.CanyonTimestamp, null, false).SetName("Post Canyon - invalid");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash, true).SetName("Post Isthmus");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, false).SetName("Post Isthmus - invalid");
+        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, null, true).SetName("Pre Canyon");
+        yield return new TestCaseData(Spec.CanyonTimestamp, Keccak.OfAnEmptySequenceRlp, null, true).SetName(
+            "Post Canyon");
+        yield return new TestCaseData(Spec.CanyonTimestamp, null, null, false).SetName("Post Canyon - invalid");
+        yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash,
+            OptimismHeaderValidator.PostIsthmusRequestHash, true).SetName("Post Isthmus");
+        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, OptimismHeaderValidator.PostIsthmusRequestHash,
+            false).SetName("Post Isthmus - invalid withdrawals hash");
+        yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash, null, false).SetName(
+            "Post Isthmus - invalid request hash");
     }
 }

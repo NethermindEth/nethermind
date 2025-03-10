@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
+using NSubstitute;
+
 namespace Nethermind.Optimism.Test;
 
 /// <summary>
@@ -23,4 +28,16 @@ public static class Spec
             HoloceneTimestamp = HoloceneTimeStamp,
             IsthmusTimestamp = IsthmusTimeStamp
         });
+
+    public static ISpecProvider BuildFor(BlockHeader header)
+    {
+        var spec = Substitute.For<ReleaseSpec>();
+
+        spec.IsOpHoloceneEnabled = Spec.Instance.IsHolocene(header);
+        spec.IsOpGraniteEnabled = Spec.Instance.IsGranite(header);
+
+        var specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(header).Returns(spec);
+        return specProvider;
+    }
 }

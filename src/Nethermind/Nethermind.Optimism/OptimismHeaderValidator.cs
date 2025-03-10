@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -37,6 +38,12 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
+    /// <summary>
+    /// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#header-validity-rules
+    /// </summary>
+    public static readonly Hash256 PostIsthmusRequestHash =
+        new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         if (!OptimismWithdrawals.Validate(specHelper, header, out error))
@@ -62,5 +69,31 @@ public class OptimismHeaderValidator(
         return base.Validate(header, parent, isUncle, out error);
     }
 
-    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+    // protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+    // {
+    //     if (specHelper.IsIsthmus(header))
+    //     {
+    //         if (header.RequestsHash != PostIsthmusRequestHash)
+    //         {
+    //             error = ErrorMessages.RequestHashShouldBeNull;
+    //             return false;
+    //         }
+    //     }
+    //     else
+    //     {
+    //         if (header.RequestsHash is not null)
+    //         {
+    //             error = ErrorMessages.RequestHashShouldBeOfShaOfEmpty;
+    //             return false;
+    //         }
+    //     }
+    //
+    //     return true;
+    // }
+
+    private static class ErrorMessages
+    {
+        public static readonly string RequestHashShouldBeNull = $"{nameof(BlockHeader.RequestsHash)} should be null for pre-Isthmus blocks";
+        public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {PostIsthmusRequestHash} for post-Isthmus blocks";
+    }
 }
