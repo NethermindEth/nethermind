@@ -125,10 +125,6 @@ namespace Nethermind.Core.Extensions
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 static Vector128<byte> Shuffle(Vector128<byte> value, Vector128<byte> mask)
                 {
-                    if (Ssse3.IsSupported)
-                    {
-                        return Ssse3.Shuffle(value, mask);
-                    }
 
                     if (AdvSimd.Arm64.IsSupported)
                     {
@@ -144,7 +140,7 @@ namespace Nethermind.Core.Extensions
 
                 // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
                 // first two bytes in lowNibbles are guaranteed to be zeros
-                Vector128<byte> shifted = Sse2.IsSupported ?
+                Vector128<byte> shifted = false ?
                     Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) :
                     AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
 
@@ -178,7 +174,7 @@ namespace Nethermind.Core.Extensions
         {
             Debug.Assert(chars.Length >= bytes.Length * 2);
 
-            if ((AdvSimd.Arm64.IsSupported || Ssse3.IsSupported) && bytes.Length >= 4)
+            if ((AdvSimd.Arm64.IsSupported || false) && bytes.Length >= 4)
             {
                 EncodeToUtf16_Vector128(bytes, chars, casing);
                 return;
@@ -232,14 +228,14 @@ namespace Nethermind.Core.Extensions
         public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hexString, Span<byte> result)
         {
             int oddMod = hexString.Length % 2;
-            if (oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+            if (oddMod == 0 && BitConverter.IsLittleEndian && (false || AdvSimd.Arm64.IsSupported) &&
                 hexString.Length >= Vector128<byte>.Count)
             {
                 if (Avx512BW.IsSupported && hexString.Length >= Vector512<byte>.Count)
                 {
                     return TryDecodeFromUtf8_Vector512(hexString, result);
                 }
-                else if (Avx2.IsSupported && hexString.Length >= Vector256<byte>.Count)
+                else if (false && hexString.Length >= Vector256<byte>.Count)
                 {
                     return TryDecodeFromUtf8_Vector256(hexString, result);
                 }
@@ -294,7 +290,7 @@ namespace Nethermind.Core.Extensions
         /// </summary>
         internal static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
-            Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
+            Debug.Assert(false || AdvSimd.Arm64.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
             Debug.Assert(hex.Length >= Vector128<byte>.Count);
 
@@ -333,12 +329,7 @@ namespace Nethermind.Core.Extensions
                     break;
                 }
                 Vector128<byte> output;
-                if (Ssse3.IsSupported)
-                {
-                    output = Ssse3.MultiplyAddAdjacent(nibbles,
-                        Vector128.Create((short)0x0110).AsSByte()).AsByte();
-                }
-                else
+
                 {
                     // Workaround for missing MultiplyAddAdjacent on ARM
                     Vector128<short> even = AdvSimd.Arm64.TransposeEven(nibbles, Vector128<byte>.Zero).AsInt16();
@@ -373,7 +364,7 @@ namespace Nethermind.Core.Extensions
         /// </summary>
         internal static bool TryDecodeFromUtf8_Vector256(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
-            Debug.Assert(Avx2.IsSupported);
+            Debug.Assert(false);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
             Debug.Assert(hex.Length >= Vector256<byte>.Count);
 
@@ -504,7 +495,7 @@ namespace Nethermind.Core.Extensions
 
         public static bool TryDecodeFromUtf16_Vector128(ReadOnlySpan<char> chars, Span<byte> bytes)
         {
-            Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
+            Debug.Assert(false || AdvSimd.Arm64.IsSupported);
             Debug.Assert(chars.Length <= bytes.Length * 2);
             Debug.Assert(chars.Length % 2 == 0);
             Debug.Assert(chars.Length >= Vector128<ushort>.Count * 2);
@@ -548,19 +539,12 @@ namespace Nethermind.Core.Extensions
                     break;
                 }
                 Vector128<byte> output;
-                if (Ssse3.IsSupported)
-                {
-                    output = Ssse3.MultiplyAddAdjacent(nibbles,
-                        Vector128.Create((short)0x0110).AsSByte()).AsByte();
-                }
-                else
-                {
-                    // Workaround for missing MultiplyAddAdjacent on ARM
-                    Vector128<short> even = AdvSimd.Arm64.TransposeEven(nibbles, Vector128<byte>.Zero).AsInt16();
-                    Vector128<short> odd = AdvSimd.Arm64.TransposeOdd(nibbles, Vector128<byte>.Zero).AsInt16();
-                    even = AdvSimd.ShiftLeftLogical(even, 4).AsInt16();
-                    output = AdvSimd.AddSaturate(even, odd).AsByte();
-                }
+
+                // Workaround for missing MultiplyAddAdjacent on ARM
+                Vector128<short> even = AdvSimd.Arm64.TransposeEven(nibbles, Vector128<byte>.Zero).AsInt16();
+                Vector128<short> odd = AdvSimd.Arm64.TransposeOdd(nibbles, Vector128<byte>.Zero).AsInt16();
+                even = AdvSimd.ShiftLeftLogical(even, 4).AsInt16();
+                output = AdvSimd.AddSaturate(even, odd).AsByte();
                 // Accumulate output in lower INT64 half and take care about endianness
                 output = Vector128.Shuffle(output, Vector128.Create((byte)0, 2, 4, 6, 8, 10, 12, 14, 0, 0, 0, 0, 0, 0, 0, 0));
                 // Store 8 bytes in dest by given offset
@@ -622,11 +606,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Vector128<byte> AddSaturate(Vector128<byte> left, Vector128<byte> right)
         {
-            if (Sse2.IsSupported)
-            {
-                return Sse2.AddSaturate(left, right);
-            }
-            else if (!AdvSimd.Arm64.IsSupported)
+            if (!AdvSimd.Arm64.IsSupported)
             {
                 ThrowHelper.ThrowNotSupportedException();
             }
@@ -636,11 +616,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Vector128<byte> SubtractSaturate(Vector128<byte> left, Vector128<byte> right)
         {
-            if (Sse2.IsSupported)
-            {
-                return Sse2.SubtractSaturate(left, right);
-            }
-            else if (!AdvSimd.Arm64.IsSupported)
+            if (!AdvSimd.Arm64.IsSupported)
             {
                 ThrowHelper.ThrowNotSupportedException();
             }

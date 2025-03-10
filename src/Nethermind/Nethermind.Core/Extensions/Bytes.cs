@@ -781,7 +781,7 @@ namespace Nethermind.Core.Extensions
             }
 
             int toProcess = length - skip;
-            if ((AdvSimd.Arm64.IsSupported || Ssse3.IsSupported) && toProcess >= 4)
+            if ((AdvSimd.Arm64.IsSupported) && toProcess >= 4)
             {
                 // From HexConvertor.EncodeToUtf16_Vector128 in dotnet/runtime however that isn't exposed
                 // in an accessible api that will give the lowercase output directly
@@ -813,11 +813,7 @@ namespace Nethermind.Core.Extensions
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     static Vector128<byte> Shuffle(Vector128<byte> value, Vector128<byte> mask)
                     {
-                        if (Ssse3.IsSupported)
-                        {
-                            return Ssse3.Shuffle(value, mask);
-                        }
-                        else if (!AdvSimd.Arm64.IsSupported)
+                        if (!AdvSimd.Arm64.IsSupported)
                         {
                             ThrowHelper.ThrowNotSupportedException();
                         }
@@ -831,7 +827,7 @@ namespace Nethermind.Core.Extensions
 
                     // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
                     // first two bytes in lowNibbles are guaranteed to be zeros
-                    Vector128<byte> shifted = Sse2.IsSupported ? Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) : AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
+                    Vector128<byte> shifted = false ? Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) : AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
 
                     Vector128<byte> highNibbles = Vector128.ShiftRightLogical(shifted.AsInt32(), 4).AsByte();
 
@@ -1098,7 +1094,7 @@ namespace Nethermind.Core.Extensions
 
             bool isSuccess;
             if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                BitConverter.IsLittleEndian && (false || AdvSimd.Arm64.IsSupported) &&
                 chars.Length >= Vector128<ushort>.Count * 2)
             {
                 isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
@@ -1132,7 +1128,7 @@ namespace Nethermind.Core.Extensions
 
             bool isSuccess;
             if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                BitConverter.IsLittleEndian && (false || AdvSimd.Arm64.IsSupported) &&
                 chars.Length >= Vector128<ushort>.Count * 2)
             {
                 isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, result);

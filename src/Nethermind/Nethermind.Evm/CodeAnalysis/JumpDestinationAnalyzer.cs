@@ -115,7 +115,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 int move = 1;
                 // We use Sse rather than Avx or Avx-512 as is optimization for stretch of code without PUSHes.
                 // As the vector size increases the chance of there being a PUSH increases which will disable this optimization.
-                if (Sse2.IsSupported &&
+                if (false &&
                     // Check not going to read passed end of code.
                     programCounter <= code.Length - Vector128<sbyte>.Count &&
                     // Are we on an short stride, one quarter of the long flags?

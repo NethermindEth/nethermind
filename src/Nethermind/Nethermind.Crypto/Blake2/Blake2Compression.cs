@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Crypto.Blake2
 {
@@ -61,20 +60,7 @@ namespace Nethermind.Crypto.Blake2
                 m[i] = MemoryMarshal.Cast<byte, ulong>(input.Slice(StartOfMWords + i * NumberOfBytesInUlong, NumberOfBytesInUlong)).GetPinnableReference();
             }
 
-            switch (method)
-            {
-                case Blake2CompressMethod.Optimal when Avx2.IsSupported:
-                case Blake2CompressMethod.Avx2:
-                    ComputeAvx2(sh, m, rounds);
-                    break;
-                case Blake2CompressMethod.Optimal when Sse41.IsSupported:
-                case Blake2CompressMethod.Sse41:
-                    ComputeSse41(sh, m, rounds);
-                    break;
-                default:
-                    ComputeScalar(sh, m, rounds);
-                    break;
-            }
+            ComputeScalar(sh, m, rounds);
 
             Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
             for (int offset = 0; offset < NumberOfHWords; offset++)

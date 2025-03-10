@@ -147,21 +147,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Reversal()
         {
-            if (System.Runtime.Intrinsics.X86.Avx2.IsSupported)
-            {
-                byte[] bytes = Bytes.FromHexString("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-                byte[] before = (byte[])bytes.Clone();
-                Assert.That(bytes.Length, Is.EqualTo(32));
 
-                Bytes.Avx2Reverse256InPlace(bytes);
-                for (int i = 0; i < 32; i++)
-                {
-                    Assert.That(bytes[32 - 1 - i], Is.EqualTo(before[i]));
-                }
-
-                TestContext.Out.WriteLine(before.ToHexString());
-                TestContext.Out.WriteLine(bytes.ToHexString());
-            }
         }
 
         [TestCase("0x00000000", 0U)]
