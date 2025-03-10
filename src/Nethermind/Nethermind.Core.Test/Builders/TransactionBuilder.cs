@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -212,6 +213,41 @@ namespace Nethermind.Core.Test.Builders
             else
             {
                 return WithBlobVersionedHashes(blobCount);
+            }
+
+            return this;
+        }
+
+        // TODO: to be deprecated after Fusaka
+        public TransactionBuilder<T> WithProofsAndCellProofs(int blobCount = 1, bool isMempoolTx = true)
+        {
+            if (TestObjectInternal.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+            {
+                wrapper.BlobProofs = wrapper.Proofs;
+
+                List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+
+                foreach (byte[] blob in wrapper.Blobs)
+                {
+                    if (KzgPolynomialCommitments.IsInitialized)
+                    {
+                        byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob];
+                        KzgPolynomialCommitments.AddCellProofs(blob, cellProofsOfOneBlob);
+                        byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
+                        cellProofs.AddRange(cellProofsSeparated);
+                    }
+                    else
+                    {
+                        for (int i = 0; i < Ckzg.Ckzg.CellsPerExtBlob; i++)
+                        {
+                            cellProofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+                            cellProofs[i][0] = (byte)(i % 256);
+                        }
+                    }
+
+                }
+
+                wrapper.CellProofs = cellProofs.ToArray();
             }
 
             return this;
