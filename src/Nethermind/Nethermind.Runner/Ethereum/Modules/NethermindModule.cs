@@ -36,7 +36,14 @@ public class NethermindModule(INethermindApi nethermindApi): Module
 
             .AddSingleton<EthereumRunner>()
             .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
-            .AddSingleton<EthereumStepsManager>()
-            .AddSingleton(nethermindApi);
+            .AddSingleton<EthereumStepsManager>();
+
+        builder
+            .RegisterInstance(nethermindApi)
+            .As<NethermindApi>()
+            .As<INethermindApi>()
+
+            // For steps that use explicit type, like TaikoNethermindApi.
+            .As(nethermindApi.GetType());
     }
 }

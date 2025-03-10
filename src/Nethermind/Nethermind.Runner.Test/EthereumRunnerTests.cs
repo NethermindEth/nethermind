@@ -5,6 +5,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.Loader;
@@ -12,10 +13,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -31,6 +35,7 @@ using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko;
+using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -112,8 +117,22 @@ public class EthereumRunnerTests
             return;
         }
 
+        PluginLoader pluginLoader = new(
+            "plugins",
+            new FileSystem(),
+            NullLogger.Instance,
+            typeof(AuRaPlugin),
+            typeof(CliquePlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin),
+            typeof(HivePlugin),
+            typeof(UPnPPlugin)
+        );
+        pluginLoader.Load();
+
         ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
-        EthereumRunner runner = builder.CreateEthereumRunner([]);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
         api.FileSystem = Substitute.For<IFileSystem>();
