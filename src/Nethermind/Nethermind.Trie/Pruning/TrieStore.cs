@@ -1028,6 +1028,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             ClearCommitSetQueue();
             if (cancellationToken.IsCancellationRequested) return;
 
+            // All persisted node including recommitted nodes between head and reorg depth must be removed so that
+            // it will be re-persisted or at least re-read in order to be cloned.
             // This should clear most nodes. For some reason, not all.
             PruneCache(skipRecalculateMemory: true, forceRemovePersistedNodes: true);
             if (cancellationToken.IsCancellationRequested) return;
