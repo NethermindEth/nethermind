@@ -37,7 +37,6 @@ public class MergePluginTests
         IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
 
         _context = Build.ContextWithMocks();
-        _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig(typeof(ISyncConfig)).Returns(new SyncConfig());

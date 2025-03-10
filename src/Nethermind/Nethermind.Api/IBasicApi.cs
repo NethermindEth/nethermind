@@ -39,7 +39,7 @@ namespace Nethermind.Api
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
-        string SealEngineType { get; set; }
+        string SealEngineType { get; }
         ISpecProvider? SpecProvider { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
