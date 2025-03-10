@@ -66,7 +66,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
             if (!_allowRedundantRegistration && _availableTypes.TryGetValue(serviceType, out property) && property.SetMethod != null)
             {
                 // To prevent mistake, a service that already have registration via dependency injection must not also
-                // have a setter in api. This is to prevent the assumption that the setter will caause the service
+                // have a setter in api. This is to prevent the assumption that the setter will cause the service
                 // to be reflected in dependency injected components. It will not. Please remove the setter from the
                 // api.
                 throw new InvalidConfigurationException($"Service {serviceType} has both container registration and mutable field in {typeof(TApi).Name}", -1);
