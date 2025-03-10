@@ -174,6 +174,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
+    [ConfigItem(Description = "Concurrency level of websocket connection.", DefaultValue = "1")]
+    int WebSocketsProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
+    int IpcProcessingConcurrency { get; set; }
+
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
     bool EnablePerMethodMetrics { get; set; }
 }
