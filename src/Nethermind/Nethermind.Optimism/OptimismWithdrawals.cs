@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Optimism;
@@ -10,19 +13,18 @@ namespace Nethermind.Optimism;
 /// <summary>
 /// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#l2tol1messagepasser-storage-root-in-header
 /// </summary>
-/// <param name="specHelper"></param>
-public class OptimismWithdrawalValidator(IStateReader reader, IOptimismSpecHelper specHelper)
+public static class OptimismWithdrawals
 {
+    private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
+
     private static class ErrorMessages
     {
         public const string MissingWithdrawalsRoot = $"{nameof(BlockHeader.WithdrawalsRoot)} is missing";
-        public const string MissingL2ToL1MessagePasser = $"{nameof(PreDeploys.L2ToL1MessagePasser)} is missing";
-        public const string WithdrawalsRootMismatch = $"{nameof(BlockHeader.WithdrawalsRoot)} mismatch";
         public const string WithdrawalsRootShouldBeOfEmptyString = $"{nameof(BlockHeader.WithdrawalsRoot)} should be keccak256(rlp(empty_string_code))";
         public const string WithdrawalsRootShouldBeNull = $"{nameof(BlockHeader.WithdrawalsRoot)} should be null";
     }
 
-    public bool ValidateBefore(BlockHeader header, out string? error)
+    public static bool Validate(IOptimismSpecHelper specHelper, BlockHeader header, out string? error)
     {
         // From the most recent
         if (specHelper.IsIsthmus(header))
@@ -46,7 +48,7 @@ public class OptimismWithdrawalValidator(IStateReader reader, IOptimismSpecHelpe
                 return false;
             }
 
-            if (header.WithdrawalsRoot != Keccak.OfAnEmptySequenceRlp)
+            if (header.WithdrawalsRoot != PostCanyonWithdrawalsRoot)
             {
                 error = ErrorMessages.WithdrawalsRootShouldBeOfEmptyString;
                 return false;
@@ -67,25 +69,44 @@ public class OptimismWithdrawalValidator(IStateReader reader, IOptimismSpecHelpe
         return true;
     }
 
-    public bool ValidateAfter(BlockHeader header, out string? error)
+    /// <summary>
+    /// The withdrawals processor for optimism.
+    /// </summary>
+    /// <remarks>Constructed over the world state so that it can construct the proper withdrawals hash just before committment.</remarks>
+    public class Processor : IWithdrawalProcessor
     {
-        // From the most recent
-        if (specHelper.IsIsthmus(header))
-        {
-            if (!reader.TryGetAccount(header.StateRoot!, PreDeploys.L2ToL1MessagePasser, out var account))
-            {
-                error = ErrorMessages.MissingL2ToL1MessagePasser;
-                return false;
-            }
+        private readonly IWorldState _state;
+        private readonly IOptimismSpecHelper _specHelper;
+        private readonly ILogger _logger;
 
-            if (header.WithdrawalsRoot != account.StorageRoot)
-            {
-                error = ErrorMessages.WithdrawalsRootMismatch;
-                return false;
-            }
+        public Processor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper)
+        {
+            _state = state;
+            _specHelper = specHelper;
+            _logger = logManager.GetClassLogger();
         }
 
-        error = null;
-        return true;
+        public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+        {
+            var header = block.Header;
+
+            if (header.WithdrawalsRoot != null)
+                return;
+
+            if (_specHelper.IsIsthmus(header))
+            {
+                if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Setting {nameof(BlockHeader.WithdrawalsRoot)} to {account.StorageRoot}");
+
+                    header.WithdrawalsRoot = new Hash256(account.StorageRoot);
+                }
+            }
+            else if (_specHelper.IsCanyon(header))
+            {
+                header.WithdrawalsRoot = PostCanyonWithdrawalsRoot;
+            }
+        }
     }
 }

@@ -20,6 +20,15 @@ namespace Nethermind.Optimism.Test;
 [Parallelizable(ParallelScope.All)]
 public class OptimismHeaderValidatorTests
 {
+    private const ulong HoloceneTimeStamp = 2_000;
+    private const ulong GenesisTimestamp = HoloceneTimeStamp - 1_000;
+
+    private static readonly IOptimismSpecHelper Spec =
+        new OptimismSpecHelper(new OptimismChainSpecEngineParameters
+        {
+            HoloceneTimestamp = HoloceneTimeStamp
+        });
+
     private static IEnumerable<(string, bool)> EIP1559ParametersExtraData()
     {
         // Valid
@@ -44,27 +53,22 @@ public class OptimismHeaderValidatorTests
     {
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
-            .WithTimestamp(1_000)
+            .WithTimestamp(GenesisTimestamp)
             .TestObject;
         var header = Build.A.BlockHeader
             .WithNumber(1)
-            .WithTimestamp(2_000)
+            .WithTimestamp(HoloceneTimeStamp)
             .WithDifficulty(0)
             .WithNonce(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
 
-        var holoceneEnabledSpec = Substitute.For<ReleaseSpec>();
-        holoceneEnabledSpec.IsOpHoloceneEnabled = true;
-
-        var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(header).Returns(holoceneEnabledSpec);
-
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid,
-            specProvider,
+            Spec,
+            Substitute.For<ISpecProvider>(),
             TestLogManager.Instance);
 
         var valid = validator.Validate(header, genesis);
@@ -77,27 +81,22 @@ public class OptimismHeaderValidatorTests
     {
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
-            .WithTimestamp(1_000)
+            .WithTimestamp(GenesisTimestamp)
             .TestObject;
         var header = Build.A.BlockHeader
             .WithNumber(1)
-            .WithTimestamp(2_000)
+            .WithTimestamp(HoloceneTimeStamp - 1)
             .WithDifficulty(0)
             .WithNonce(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
 
-        var holoceneDisabledSpec = Substitute.For<ReleaseSpec>();
-        holoceneDisabledSpec.IsOpHoloceneEnabled = false;
-
-        var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(header).Returns(holoceneDisabledSpec);
-
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid,
-            specProvider,
+            Spec,
+            Substitute.For<ISpecProvider>(),
             TestLogManager.Instance);
 
         var valid = validator.Validate(header, genesis);

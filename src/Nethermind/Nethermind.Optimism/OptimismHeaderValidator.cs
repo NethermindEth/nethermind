@@ -29,6 +29,7 @@ public class OptimismHeaderValidator(
     IPoSSwitcher poSSwitcher,
     IBlockTree blockTree,
     ISealValidator sealValidator,
+    IOptimismSpecHelper specHelper,
     ISpecProvider specProvider,
     ILogManager logManager)
     : MergeHeaderValidator(
@@ -38,8 +39,12 @@ public class OptimismHeaderValidator(
 {
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        if (spec.IsOpHoloceneEnabled)
+        if (!OptimismWithdrawals.Validate(specHelper, header, out error))
+        {
+            return false;
+        }
+
+        if (specHelper.IsHolocene(header))
         {
             if (!header.TryDecodeEIP1559Parameters(out var parameters, out var decodeError))
             {
