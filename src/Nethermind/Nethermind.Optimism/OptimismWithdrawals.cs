@@ -102,6 +102,10 @@ public static class OptimismWithdrawals
 
                     header.WithdrawalsRoot = new Hash256(account.StorageRoot);
                 }
+                else
+                {
+                    header.WithdrawalsRoot = Keccak.EmptyTreeHash;
+                }
             }
             else if (_specHelper.IsCanyon(header))
             {

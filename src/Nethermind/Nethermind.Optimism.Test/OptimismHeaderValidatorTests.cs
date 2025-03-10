@@ -20,13 +20,21 @@ namespace Nethermind.Optimism.Test;
 [Parallelizable(ParallelScope.All)]
 public class OptimismHeaderValidatorTests
 {
+    private const ulong GenesisTimestamp = 1_000;
+    //private const ulong BedrockBlockNumber = 1_100;
+    //private const ulong RegolithTimestamp = 1_200;
+    private const ulong CanyonTimestamp = 1_300;
     private const ulong HoloceneTimeStamp = 2_000;
-    private const ulong GenesisTimestamp = HoloceneTimeStamp - 1_000;
+    private const ulong IsthmusTimeStamp = 2_100;
+
+    private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
 
     private static readonly IOptimismSpecHelper Spec =
         new OptimismSpecHelper(new OptimismChainSpecEngineParameters
         {
-            HoloceneTimestamp = HoloceneTimeStamp
+            CanyonTimestamp = CanyonTimestamp,
+            HoloceneTimestamp = HoloceneTimeStamp,
+            IsthmusTimestamp = IsthmusTimeStamp
         });
 
     private static IEnumerable<(string, bool)> EIP1559ParametersExtraData()
@@ -61,6 +69,7 @@ public class OptimismHeaderValidatorTests
             .WithDifficulty(0)
             .WithNonce(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
             .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
 
         var validator = new OptimismHeaderValidator(
@@ -89,6 +98,7 @@ public class OptimismHeaderValidatorTests
             .WithDifficulty(0)
             .WithNonce(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
             .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
 
         var validator = new OptimismHeaderValidator(
@@ -102,5 +112,45 @@ public class OptimismHeaderValidatorTests
         var valid = validator.Validate(header, genesis);
 
         valid.Should().BeTrue();
+    }
+
+    [TestCaseSource(nameof(WithdrawalsRootData))]
+    public void WithdrawalRoot_Validity(ulong timestamp, Hash256? withdrawalHash, bool isValid)
+    {
+        var genesis = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithTimestamp(GenesisTimestamp)
+            .TestObject;
+
+        var header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithTimestamp(timestamp)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
+            .WithWithdrawalsRoot(withdrawalHash)
+            .TestObject;
+
+        var validator = new OptimismHeaderValidator(
+            AlwaysPoS.Instance,
+            Substitute.For<IBlockTree>(),
+            Always.Valid,
+            Spec,
+            Substitute.For<ISpecProvider>(),
+            TestLogManager.Instance);
+
+        var valid = validator.Validate(header, genesis);
+
+        valid.Should().Be(isValid);
+    }
+
+    private static IEnumerable<TestCaseData> WithdrawalsRootData()
+    {
+        yield return new TestCaseData(CanyonTimestamp - 1, null, true).SetName("Pre Canyon");
+        yield return new TestCaseData(CanyonTimestamp, Keccak.OfAnEmptySequenceRlp, true).SetName("Post Canyon");
+        yield return new TestCaseData(CanyonTimestamp, null, false).SetName("Post Canyon - invalid");
+        yield return new TestCaseData(IsthmusTimeStamp, Keccak.EmptyTreeHash, true).SetName("Post Isthmus");
+        yield return new TestCaseData(IsthmusTimeStamp, null, false).SetName("Post Isthmus - invalid");
     }
 }
