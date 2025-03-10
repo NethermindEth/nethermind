@@ -90,9 +90,10 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
             {
                 try
                 {
+                    _ct.ThrowIfCancellationRequested();
                     var processingLock = _processingLock.Acquire();
                     WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem,
-                        _serializerOptions);
+                        _serializerOptions, _ct);
                     processingLock.Dispose();
                 }
                 catch (IOException ex)
@@ -101,7 +102,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                     throw;
                 }
             }
-        });
+        },_ct);
 
         _fileTracingQueue.Add(task);
 
@@ -119,11 +120,15 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     }
 
     private static void WriteTrace(long initialBlockNumber, long currentBlockNumber, PatternAnalyzerTxTracer tracer,
-        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions)
+        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         var trace = tracer.BuildResult();
         trace.InitialBlockNumber = initialBlockNumber;
         trace.CurrentBlockNumber = currentBlockNumber;
+
+        ct.ThrowIfCancellationRequested();
 
         File.WriteAllText(fileName, string.Empty);
 
