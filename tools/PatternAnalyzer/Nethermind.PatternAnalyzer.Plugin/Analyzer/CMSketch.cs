@@ -83,9 +83,10 @@ public class CMSketch
     private ulong[] _sketch;
 
 
-    // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
-    // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= confidence
-    // To maximize accuracy minimize maxError and maximize confidence
+    /*
+     * Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
+     * Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= _confidence
+     * To maximize accuracy minimize maxError and maximize confidence */
     public CMSketch(double maxError, double confidence) : this(
         (int)Math.Ceiling(Math.Log2(1.0d / (1.0d - confidence))), (int)Math.Ceiling(2.0d / maxError))
     {
