@@ -211,8 +211,7 @@ public class JsonRpcSocketsClientTests
             Assert.That(() => concurrentCall, Is.EqualTo(concurrencyLevel).After(10000, 10));
             completeSource.SetResult();
 
-            sendSocket.Close(1000);
-
+            sendSocket.Shutdown(SocketShutdown.Send);
             try
             {
                 await receiver;
