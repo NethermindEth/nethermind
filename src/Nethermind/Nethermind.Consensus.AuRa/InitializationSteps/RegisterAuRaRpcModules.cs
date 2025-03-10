@@ -72,7 +72,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         AuRaTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree,
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api,
             secondsPerSlot,
             _api.BlockPreprocessor,
@@ -83,7 +83,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.LogManager,
             _factory);
 
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 
     protected class AuRaTraceModuleFactory(
@@ -214,7 +214,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api,
             secondsPerSlot,
             _api.BlockValidator,
@@ -230,7 +230,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.LogManager,
             _factory);
 
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
+        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
     }
 
     protected class AuRaDebugModuleFactory(
@@ -257,7 +257,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             badBlockStore, fileSystem, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-            IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+            IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
         {
             return new AuRaReadOnlyChainProcessingEnv(
                 scope,

@@ -20,7 +20,6 @@ using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
-using Nethermind.Blockchain.Find;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -29,7 +28,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;
     private readonly ulong _secondsPerSlot;
-    private readonly IBlockValidator _blockValidator;
+    protected readonly IBlockValidator _blockValidator;
     protected readonly IRewardCalculatorSource _rewardCalculatorSource;
     protected readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsMigration _receiptsMigration;
@@ -90,7 +89,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
-        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(transactionProcessorAdapter, scope.WorldState);
         ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
 
         GethStyleTracer tracer = new(
@@ -118,8 +117,11 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridgeFactory.CreateBlockchainBridge(), _secondsPerSlot, _blockTree);
     }
 
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
+        => new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
+
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
         return new ReadOnlyChainProcessingEnv(
             scope,
