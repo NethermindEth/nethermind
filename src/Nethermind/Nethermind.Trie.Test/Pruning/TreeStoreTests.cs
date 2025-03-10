@@ -1101,5 +1101,42 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
         }
+
+        [Test]
+        public async Task When_Prune_ClearRecommittedPersistedNode()
+        {
+            MemDb memDb = new();
+
+            IPersistenceStrategy isPruningPersistenceStrategy = Substitute.For<IPersistenceStrategy>();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 64, 100000),
+                persistenceStrategy: isPruningPersistenceStrategy);
+
+            TreePath emptyPath = TreePath.Empty;
+            TaskCompletionSource tcs = new TaskCompletionSource();
+            fullTrieStore.OnMemoryPruneCompleted += (sender, args) => tcs.TrySetResult();
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
+
+                // Pruning is done in background
+                await tcs.Task;
+                tcs = new TaskCompletionSource();
+            }
+
+            memDb.Count.Should().Be(0);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 11776 : 15104);
+
+            fullTrieStore.PersistCache(default);
+            memDb.Count.Should().Be(64);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
+        }
     }
 }

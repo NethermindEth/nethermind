@@ -203,7 +203,7 @@ internal class TrieStoreDirtyNodesCache
     /// removing ones that are either no longer referenced or already persisted.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    public long PruneCache(bool skipRecalculateMemory = false)
+    public long PruneCache(bool skipRecalculateMemory = false, bool forceRemovePersistedNodes = false)
     {
         bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
         long newMemory = 0;
@@ -214,7 +214,7 @@ internal class TrieStoreDirtyNodesCache
             {
                 // If its persisted and has last seen meaning it was recommitted,
                 // we keep it to prevent key removal from removing it from DB.
-                if (node.IsPersisted && node.LastSeen == -1)
+                if (node.IsPersisted && (node.LastSeen == -1 || forceRemovePersistedNodes))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 
