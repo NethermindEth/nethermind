@@ -131,6 +131,8 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.DbProvider,
             _api.BlockTree,
             JsonRpcConfig,
+            _api,
+            _api.Config<IBlocksConfig>().SecondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
