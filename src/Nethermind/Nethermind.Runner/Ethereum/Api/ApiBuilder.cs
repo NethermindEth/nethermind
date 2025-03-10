@@ -31,6 +31,8 @@ public class ApiBuilder
     private readonly IProcessExitSource _processExitSource;
     public ChainSpec ChainSpec { get; }
 
+    private int _apiCreated;
+
     public ApiBuilder(IProcessExitSource processExitSource, IConfigProvider configProvider, ILogManager logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -82,36 +84,6 @@ public class ApiBuilder
         SetLoggerVariables(ChainSpec);
         return container.Resolve<EthereumRunner>();
     }
-
-    public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
-        Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
-
-    public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
-    {
-        bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
-        if (wasCreated)
-        {
-            throw new NotSupportedException("Creation of multiple APIs not supported.");
-        }
-
-        if (consensusPlugins.Count() > 1)
-        {
-            throw new NotSupportedException($"More than one consensus plugins are enabled. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
-        }
-
-        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault();
-        INethermindApi nethermindApi =
-            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
-            new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
-        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
-        nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
-
-        SetLoggerVariables(ChainSpec);
-
-        return nethermindApi;
-    }
-
-    private int _apiCreated;
 
     private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
     {
