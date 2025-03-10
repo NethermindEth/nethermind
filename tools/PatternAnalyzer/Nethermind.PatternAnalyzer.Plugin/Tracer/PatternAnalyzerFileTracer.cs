@@ -38,18 +38,18 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
     public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer,
         HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq,
-        string? fileName, CancellationToken? ct)
+        string fileName, CancellationToken ct)
     {
         _bufferSize = bufferSize;
         _statsAnalyzer = statsAnalyzer;
         _ignore = ignore;
-        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, ct);
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
-        _fileName = fileName ?? _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), DefaultFile);
+        _fileName = fileName;
         _logger = logger;
-        _ct = ct ?? CancellationToken.None;
+        _ct = ct;
         if (_logger.IsInfo)
             _logger.Info(
                 $"OpcodeStats file tracer is set with processing queue size: {_fileTracingQueueSize}, buffer size: {_bufferSize} and will write to file: {_fileName} ");
@@ -82,7 +82,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         var currentBlockNumber = _currentBlock;
 
         _buffer = new DisposableResettableList<Instruction>();
-        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _ct);
 
         var task = Task.Run(() =>
         {

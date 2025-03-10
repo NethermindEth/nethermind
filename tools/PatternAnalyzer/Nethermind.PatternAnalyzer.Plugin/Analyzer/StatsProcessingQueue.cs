@@ -5,7 +5,7 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
 public sealed class StatsProcessingQueue(
     DisposableResettableList<Instruction> buffer,
-    StatsAnalyzer statsAnalyzer)
+    StatsAnalyzer statsAnalyzer, CancellationToken ct)
     : IDisposable
 {
     private bool disposed;
@@ -24,7 +24,7 @@ public sealed class StatsProcessingQueue(
     private void Dispose(bool disposing)
     {
         if (disposed) return;
-        if (disposing)
+        if (disposing && !ct.IsCancellationRequested)
         {
             statsAnalyzer.Add(buffer);
             buffer.Reset();
