@@ -3,8 +3,6 @@
 
 using System;
 using System.Reflection;
-using Autofac;
-using Nethermind.Core;
 
 namespace Nethermind.Api.Steps
 {
