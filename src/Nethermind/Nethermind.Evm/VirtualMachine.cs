@@ -601,7 +601,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Executing precompile {precompile}, {callData.ToBytes().ToHexString()}");
+            if (_logger.IsTrace) _logger.Trace($"Executing precompile {precompile}");
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output, success, !success);
             return callResult;
