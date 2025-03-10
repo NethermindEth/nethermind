@@ -136,37 +136,36 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        var State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
+        IWorldState state = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
         }
 
         // Eip2935
         if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+            state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
         }
 
-        State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+        state.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
+        state.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
+        state.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
 
-        InitialStateMutator?.Invoke(State);
+        InitialStateMutator?.Invoke(state);
 
         byte[] code = Bytes.FromHexString("0xabcd");
-        Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+        state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
-        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+        state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
 
-        State.Commit(SpecProvider.GenesisSpec);
-        State.CommitTree(0);
+        state.Commit(SpecProvider.GenesisSpec);
+        state.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LogManager);
+        WorldStateManager = new WorldStateManager(state, TrieStore, DbProvider, LogManager);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
@@ -194,14 +193,14 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, state, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, state, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, State);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, state);
 
         BlockValidator = new BlockValidator(
             new TxValidator(SpecProvider.ChainId),
