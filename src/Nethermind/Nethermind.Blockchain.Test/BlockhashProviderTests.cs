@@ -313,7 +313,6 @@ public class BlockhashProviderTests
         // 2. Store parent hash with leading zeros
         store.ApplyBlockhashStateChanges(current.Header);
         // 3. Try to retrieve the parent hash from the state
-        // This call throws an exception: System.ArgumentException : Hash256 must be 32 bytes and was 31 bytes (Parameter 'bytes')
         var result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1);
         Assert.That(result, Is.EqualTo(current.Header.ParentHash));
     }
