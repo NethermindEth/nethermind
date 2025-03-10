@@ -148,7 +148,6 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    processExitSource = new(cancellationToken);
 
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
@@ -183,13 +182,12 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    ApiBuilder apiBuilder = new(configProvider, logManager);
+    ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
-    INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-    ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-    nethermindApi.ProcessExit = processExitSource;
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
+    // INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
+    processExitSource = new(cancellationToken);
 
-    EthereumRunner ethereumRunner = new(nethermindApi);
     try
     {
         await ethereumRunner.Start(processExitSource.Token);

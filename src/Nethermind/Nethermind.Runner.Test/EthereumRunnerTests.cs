@@ -25,6 +25,7 @@ using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -118,9 +119,10 @@ public class EthereumRunnerTests
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
-            INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
+            ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+            EthereumRunner runner = builder.CreateEthereumRunner([]);
+            INethermindApi nethermindApi = runner.Api;
             nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
-            EthereumRunner runner = new(nethermindApi);
 
             using CancellationTokenSource cts = new();
 

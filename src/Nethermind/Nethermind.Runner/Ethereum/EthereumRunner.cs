@@ -2,88 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Core;
-using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum;
 
-public class EthereumRunner(INethermindApi api)
+public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILifetimeScope lifetimeScope)
 {
     private readonly INethermindApi _api = api;
+    public INethermindApi Api => _api;
     private readonly ILogger _logger = api.LogManager.GetClassLogger();
-
-    public static readonly StepInfo[] BuiltInSteps =
-    [
-         typeof(InitializeStateDb),
-         typeof(ApplyMemoryHint),
-         typeof(DatabaseMigrations),
-         typeof(EraStep),
-         typeof(FilterBootnodes),
-         typeof(InitCrypto),
-         typeof(InitDatabase),
-         typeof(InitializeBlockchain),
-         typeof(InitializeBlockProducer),
-         typeof(InitializeBlockTree),
-         typeof(InitializeNetwork),
-         typeof(InitializeNodeStats),
-         typeof(InitializePlugins),
-         typeof(InitializePrecompiles),
-         typeof(InitTxTypesAndRlp),
-         typeof(LoadGenesisBlock),
-         typeof(LogHardwareInfo),
-         typeof(MigrateConfigs),
-         typeof(RegisterPluginRpcModules),
-         typeof(RegisterRpcModules),
-         typeof(ResolveIps),
-         typeof(ReviewBlockTree),
-         typeof(SetupKeyStore),
-         typeof(StartBlockProcessor),
-         typeof(StartBlockProducer),
-         typeof(StartLogProducer),
-         typeof(StartMonitoring),
-         typeof(UpdateDiscoveryConfig),
-         typeof(StartGrpc),
-         typeof(StartRpc),
-    ];
 
     public async Task Start(CancellationToken cancellationToken)
     {
         if (_logger.IsDebug) _logger.Debug("Starting Ethereum runner");
-
-        EthereumStepsLoader stepsLoader = new(GetStepsInfo(_api));
-        EthereumStepsManager stepsManager = new(stepsLoader, _api, _api.LogManager);
 
         await stepsManager.InitializeAll(cancellationToken);
 
         string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
 
         if (_logger.IsInfo) _logger.Info(infoScreen);
-    }
-
-    private IEnumerable<StepInfo> GetStepsInfo(INethermindApi api)
-    {
-        foreach (StepInfo buildInStep in BuiltInSteps)
-        {
-            yield return buildInStep;
-        }
-
-        foreach (INethermindPlugin plugin in _api.Plugins)
-        {
-            foreach (StepInfo stepInfo in plugin.GetSteps())
-            {
-                yield return stepInfo;
-            }
-        }
     }
 
     public async Task StopAsync()
@@ -111,6 +55,8 @@ public class EthereumRunner(INethermindApi api)
             _logger.Info("All DBs closed");
             _logger.Info("Ethereum runner stopped");
         }
+
+        await lifetimeScope.DisposeAsync();
     }
 
     private void Stop(Action stopAction, string description)
