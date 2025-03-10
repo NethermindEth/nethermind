@@ -1,0 +1,26 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Optimism.Test;
+
+/// <summary>
+/// Provides a shared instance of <see cref="IOptimismSpecHelper"/> over the fixed const parameters.
+/// </summary>
+public static class Spec
+{
+    public const ulong GenesisTimestamp = 1_000;
+
+    //private const ulong BedrockBlockNumber = 1_100;
+    //private const ulong RegolithTimestamp = 1_200;
+    public const ulong CanyonTimestamp = 1_300;
+    public const ulong HoloceneTimeStamp = 2_000;
+    public const ulong IsthmusTimeStamp = 2_100;
+
+    public static readonly IOptimismSpecHelper Instance =
+        new OptimismSpecHelper(new OptimismChainSpecEngineParameters
+        {
+            CanyonTimestamp = CanyonTimestamp,
+            HoloceneTimestamp = HoloceneTimeStamp,
+            IsthmusTimestamp = IsthmusTimeStamp
+        });
+}
