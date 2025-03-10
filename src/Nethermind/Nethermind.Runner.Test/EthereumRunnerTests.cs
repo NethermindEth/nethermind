@@ -12,9 +12,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.IO;
+using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
@@ -100,12 +104,11 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    [MaxTime(300000)]
     public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
         {
-            // some weird thing, not worth investigating
             return;
         }
 
@@ -114,6 +117,10 @@ public class EthereumRunnerTests
 
         INethermindApi api = runner.Api;
         api.FileSystem = Substitute.For<IFileSystem>();
+        api.BlockTree = Substitute.For<IBlockTree>();
+        api.ReceiptStorage = Substitute.For<IReceiptStorage>();
+        api.BlockValidator = Substitute.For<IBlockValidator>();
+        api.DbProvider = Substitute.For<IDbProvider>();
 
         try
         {

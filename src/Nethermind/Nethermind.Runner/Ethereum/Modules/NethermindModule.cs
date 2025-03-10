@@ -4,28 +4,15 @@
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Container;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Init.Steps;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class NethermindModule(
-    ISpecProvider specProvider,
-    ChainSpec chainSpec,
-    INethermindApi nethermindApi,
-    IProcessExitSource processExitSource,
-    IConfigProvider configProvider,
-    IJsonSerializer jsonSerializer,
-    IGasLimitCalculator gasLimitCalculator,
-    ILogManager logManager
-): Module
+public class NethermindModule(INethermindApi nethermindApi): Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -38,16 +25,18 @@ public class NethermindModule(
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new DbModule())
 
+            .AddSource(new FallbackToFieldFromApi<IApiWithNetwork>())
+            .AddSource(new FallbackToFieldFromApi<IApiWithBlockchain>())
+            .AddSource(new FallbackToFieldFromApi<IApiWithStores>())
+            .AddSource(new FallbackToFieldFromApi<IBasicApi>())
+            .Bind<IApiWithNetwork, INethermindApi>()
+            .Bind<IApiWithBlockchain, INethermindApi>()
+            .Bind<IApiWithStores, INethermindApi>()
+            .Bind<IBasicApi, INethermindApi>()
+
             .AddSingleton<EthereumRunner>()
             .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
             .AddSingleton<EthereumStepsManager>()
-            .AddSingleton(configProvider)
-            .AddSingleton(jsonSerializer)
-            .AddSingleton(logManager)
-            .AddSingleton(processExitSource)
-            .AddSingleton(specProvider)
-            .AddSingleton(gasLimitCalculator)
-            .AddSingleton(chainSpec)
             .AddSingleton(nethermindApi);
     }
 }

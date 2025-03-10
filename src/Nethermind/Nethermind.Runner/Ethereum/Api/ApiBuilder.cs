@@ -68,16 +68,7 @@ public class ApiBuilder
         ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
-            .AddModule(new NethermindModule(
-                specProvider,
-                ChainSpec,
-                nethermindApi,
-                _processExitSource,
-                _configProvider,
-                _jsonSerializer,
-                gasLimitCalculator,
-                _logManager
-            ));
+            .AddModule(new NethermindModule(nethermindApi));
 
         foreach (var nethermindPlugin in plugins)
         {
