@@ -51,8 +51,8 @@ public partial class SszGenerator : IIncrementalGenerator
     }
 
     const string Whitespace = "/**/";
-    static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
-    static readonly Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
+    static readonly Regex OpeningWhiteSpaceRegex = new(@"\n\s+\n");
+    static readonly Regex ClosingWhiteSpaceRegex = new(@"\s+\n\s*}");
     public static string FixWhitespace(string data) => OpeningWhiteSpaceRegex.Replace(
                                                         ClosingWhiteSpaceRegex.Replace(
                                                             string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x)),
