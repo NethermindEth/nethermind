@@ -177,8 +177,22 @@ public class EthereumRunnerTests
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
+            PluginLoader pluginLoader = new(
+                "plugins",
+                new FileSystem(),
+                NullLogger.Instance,
+                typeof(AuRaPlugin),
+                typeof(CliquePlugin),
+                typeof(EthashPlugin),
+                typeof(NethDevPlugin),
+                typeof(HivePlugin),
+                typeof(UPnPPlugin)
+            );
+            pluginLoader.Load();
+
             ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-            EthereumRunner runner = builder.CreateEthereumRunner([]);
+            IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+            EthereumRunner runner = builder.CreateEthereumRunner(plugins);
             INethermindApi nethermindApi = runner.Api;
             nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
 
