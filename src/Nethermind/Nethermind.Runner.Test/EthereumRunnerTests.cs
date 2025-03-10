@@ -44,7 +44,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
 
-[TestFixture, Parallelizable(ParallelScope.Self)]
+[TestFixture, Parallelizable(ParallelScope.None)]
 public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
@@ -70,6 +70,17 @@ public class EthereumRunnerTests
         });
 
         return result;
+    }
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown()
+    {
+        // Optimism override decoder globally, which mess up other test
+        Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+        if (assembly is not null)
+        {
+            Rlp.RegisterDecoders(assembly, true);
+        }
     }
 
     public static IEnumerable ChainSpecRunnerTests
@@ -255,13 +266,6 @@ public class EthereumRunnerTests
                 {
                     throw;
                 }
-            }
-
-            // Optimism override decoder globally, which mess up other test
-            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
-            if (assembly is not null)
-            {
-                Rlp.RegisterDecoders(assembly, true);
             }
         }
     }
