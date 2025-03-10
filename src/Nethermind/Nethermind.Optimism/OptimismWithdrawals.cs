@@ -20,7 +20,10 @@ public static class OptimismWithdrawals
     private static class ErrorMessages
     {
         public const string MissingWithdrawalsRoot = $"{nameof(BlockHeader.WithdrawalsRoot)} is missing";
-        public const string WithdrawalsRootShouldBeOfEmptyString = $"{nameof(BlockHeader.WithdrawalsRoot)} should be keccak256(rlp(empty_string_code))";
+
+        public const string WithdrawalsRootShouldBeOfEmptyString =
+            $"{nameof(BlockHeader.WithdrawalsRoot)} should be keccak256(rlp(empty_string_code))";
+
         public const string WithdrawalsRootShouldBeNull = $"{nameof(BlockHeader.WithdrawalsRoot)} should be null";
     }
 
