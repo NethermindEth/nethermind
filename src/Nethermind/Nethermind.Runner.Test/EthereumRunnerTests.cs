@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,11 +30,13 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko;
 using Nethermind.UPnP.Plugin;
 using NSubstitute;
@@ -252,6 +255,13 @@ public class EthereumRunnerTests
                 {
                     throw;
                 }
+            }
+
+            // Optimism override decoder globally, which mess up other test
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            if (assembly is not null)
+            {
+                Rlp.RegisterDecoders(assembly, true);
             }
         }
     }
