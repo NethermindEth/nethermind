@@ -69,27 +69,29 @@ public class OptimismHeaderValidator(
         return base.Validate(header, parent, isUncle, out error);
     }
 
-    // protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
-    // {
-    //     if (specHelper.IsIsthmus(header))
-    //     {
-    //         if (header.RequestsHash != PostIsthmusRequestHash)
-    //         {
-    //             error = ErrorMessages.RequestHashShouldBeNull;
-    //             return false;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         if (header.RequestsHash is not null)
-    //         {
-    //             error = ErrorMessages.RequestHashShouldBeOfShaOfEmpty;
-    //             return false;
-    //         }
-    //     }
-    //
-    //     return true;
-    // }
+    protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+    {
+        if (specHelper.IsIsthmus(header))
+        {
+            if (header.RequestsHash != PostIsthmusRequestHash)
+            {
+                error = ErrorMessages.RequestHashShouldBeNull;
+                return false;
+            }
+        }
+        else
+        {
+            if (header.RequestsHash is not null)
+            {
+                error = ErrorMessages.RequestHashShouldBeOfShaOfEmpty;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
     private static class ErrorMessages
     {
