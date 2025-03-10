@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -10,9 +9,9 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -22,16 +21,19 @@ namespace Nethermind.Init.Steps
         private readonly ILogger _logger;
 
         private readonly INethermindApi _api;
+        private readonly IComponentContext _ctx;
         private readonly List<StepInfo> _allSteps;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
             INethermindApi context,
+            IComponentContext ctx,
             ILogManager logManager)
         {
             ArgumentNullException.ThrowIfNull(loader);
 
             _api = context ?? throw new ArgumentNullException(nameof(context));
+            _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()
                       ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -135,7 +137,7 @@ namespace Nethermind.Init.Steps
             IStep? step = null;
             try
             {
-                step = Activator.CreateInstance(stepInfo.StepType, _api) as IStep;
+                step = _ctx.Resolve(stepInfo.StepType) as IStep;
             }
             catch (Exception e)
             {
@@ -176,19 +178,5 @@ namespace Nethermind.Init.Steps
                 }
             }
         }
-
-        private class StepState(StepInfo stepInfo)
-        {
-            public StepInitializationStage Stage { get; set; }
-            public Type[] Dependencies => stepInfo.Dependencies;
-            public Type StepBaseType => stepInfo.StepBaseType;
-            public StepInfo StepInfo => stepInfo;
-
-            public override string ToString()
-            {
-                return $"{stepInfo.StepType.Name} : {stepInfo.StepBaseType.Name} ({Stage})";
-            }
-        }
     }
-
 }
