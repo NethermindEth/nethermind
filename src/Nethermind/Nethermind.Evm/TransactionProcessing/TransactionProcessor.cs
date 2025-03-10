@@ -128,7 +128,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 return _systemTransactionProcessor.Execute(tx, new BlockExecutionContext(blCtx.Header, SpecProvider.GetSpec(blCtx.Header)), tracer, opts);
             }
 
-            return Execute(tx, in blCtx, tracer, opts);
             TransactionResult result = Execute(tx, in blCtx, tracer, opts);
             if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
             return result;
