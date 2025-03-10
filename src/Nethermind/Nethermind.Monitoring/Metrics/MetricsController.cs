@@ -39,6 +39,7 @@ namespace Nethermind.Monitoring.Metrics
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
 
         private readonly bool _useCounters;
+        private readonly bool _enableDetailedMetric;
 
         private readonly List<Action> _callbacks = new();
 
@@ -88,7 +89,7 @@ namespace Nethermind.Monitoring.Metrics
                             break;
                         case ITuple keyAsTuple:
                             {
-                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length);
+                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length, keyAsTuple.Length);
                                 for (int i = 0; i < keyAsTuple.Length; i++)
                                 {
                                     labels[i] = keyAsTuple[i]!.ToString()!;
@@ -108,16 +109,43 @@ namespace Nethermind.Monitoring.Metrics
             public Gauge Gauge => gauge;
         }
 
-        public class MetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
+        public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
             }
 
-            public void Observe(IMetricLabels labels, double value)
+            public void Observe(double value, IMetricLabels? labels = null)
             {
-                summary.WithLabels(labels.Labels).Observe(value);
+                if (labels is not null)
+                {
+                    summary.WithLabels(labels.Labels).Observe(value);
+                }
+                else
+                {
+                    summary.Observe(value);
+                }
+            }
+        }
+
+        public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
+        {
+            public void Update()
+            {
+                // Noop: Updated when `Observe` is called.
+            }
+
+            public void Observe(double value, IMetricLabels? labels = null)
+            {
+                if (labels is not null)
+                {
+                    histogram.WithLabels(labels.Labels).Observe(value);
+                }
+                else
+                {
+                    histogram.Observe(value);
+                }
             }
         }
 
@@ -193,21 +221,15 @@ namespace Nethermind.Monitoring.Metrics
                 }
 
                 IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
-                foreach (var propertyInfo in type.GetProperties())
+                IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
+                foreach (var member in members)
                 {
-                    if (TryCreateMetricUpdater(type, meter, propertyInfo, out IMetricUpdater updater))
+                    if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
+                    if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
                         metricUpdaters.Add(updater);
                     }
                 }
-                foreach (var fieldInfo in type.GetFields())
-                {
-                    if (TryCreateMetricUpdater(type, meter, fieldInfo, out IMetricUpdater updater))
-                    {
-                        metricUpdaters.Add(updater);
-                    }
-                }
-
                 _metricUpdaters[type] = metricUpdaters.ToArray();
             }
         }
@@ -216,19 +238,36 @@ namespace Nethermind.Monitoring.Metrics
         {
             Type memberType = memberInfo.GetMemberType();
 
-            if (memberType.IsAssignableTo(typeof(IMetricObserver)))
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<SummaryMetricAttribute>() is SummaryMetricAttribute summaryAttribute)
             {
-                SummaryMetricAttribute attribute = memberInfo.GetCustomAttribute<SummaryMetricAttribute>()!;
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
 
                 Summary summary = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateSummary(metricInfo.Name, metricInfo.Description,
                     new SummaryConfiguration()
                     {
-                        LabelNames = attribute.LabelNames,
-                        Objectives = attribute.ObjectiveQuantile.Zip(attribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
+                        LabelNames = summaryAttribute.LabelNames,
+                        Objectives = summaryAttribute.ObjectiveQuantile.Zip(summaryAttribute.ObjectiveEpsilon).Select(o => new QuantileEpsilonPair(o.Item1, o.Item2)).ToArray(),
                     });
 
-                metricUpdater = new MetricUpdater(summary);
+                metricUpdater = new SummaryMetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<ExponentialPowerHistogramMetric>() is ExponentialPowerHistogramMetric histogramAttribute)
+            {
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                    new HistogramConfiguration()
+                    {
+                        LabelNames = histogramAttribute.LabelNames,
+                        Buckets = Histogram.ExponentialBuckets(histogramAttribute.Start, histogramAttribute.Factor, histogramAttribute.Count)
+                    });
+
+                metricUpdater = new HistogramMetricUpdater(histogram);
                 memberInfo.SetValue(metricUpdater);
 
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
@@ -285,6 +324,7 @@ namespace Nethermind.Monitoring.Metrics
 
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
             _useCounters = metricsConfig.CountersEnabled;
+            _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
 
         public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));

@@ -35,6 +35,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -121,7 +122,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             return base.Build(specProvider, initialValues, addBlockOnStart);
         }
 
-        protected override IBlockProcessor CreateBlockProcessor()
+        protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {
             _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
                     new ChainSpec
@@ -154,12 +155,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+                state,
                 ReceiptStorage,
                 TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor, State),
-                new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor, state),
+                new BlockhashStore(SpecProvider, state),
                 LogManager,
                 WithdrawalProcessor,
                 executionRequestsProcessor: ExecutionRequestsProcessor,
@@ -215,11 +216,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
+            var env = blockProducerEnvFactory.Create();
             FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
             AuRaBlockProducer preMergeBlockProducer = new(
                 txPoolTxSource,
-                blockProducerEnvFactory.Create().ChainProcessor,
-                State,
+                env.ChainProcessor,
+                env.ReadOnlyStateProvider,
                 sealer,
                 BlockTree,
                 Timestamper,
