@@ -87,7 +87,7 @@ internal static class Precompiler
         {
             method.MarkLabel(jumpDestinations[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
 
-            if (config.IsIlEvmTracingEnabled)
+            if (!config.IsIlEvmAggressiveModeEnabled)
                 segmentMetadata.StackOffsets.Fill(0);
 
             SubSegmentMetadata currentSegment = default;
@@ -107,7 +107,7 @@ internal static class Precompiler
                     method.StoreLocal(locals.programCounter);
                 }
 
-                if (!config.IsIlEvmTracingEnabled)
+                if (config.IsIlEvmAggressiveModeEnabled)
                 {
                     if (segmentMetadata.SubSegments.ContainsKey(i))
                     {
@@ -202,14 +202,14 @@ internal static class Precompiler
 
                 if(!op.IsTerminating && !op.IsJump)
                 {
-                    if (config.IsIlEvmTracingEnabled)
+                    if (config.IsIlEvmAggressiveModeEnabled)
                     {
-                        UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                        EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                        UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
                     }
                     else
                     {
-                        UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
+                        UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                        EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                     }
                 }
 
@@ -299,7 +299,7 @@ internal static class Precompiler
         foreach (KeyValuePair<EvmExceptionType, Label> kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
-            if (config.IsIlEvmTracingEnabled)
+            if (config.IsIlEvmAggressiveModeEnabled)
                 EmitCallToErrorTrace(method, locals.gasAvailable, kvp, envLoader, locals);
 
             envLoader.LoadResult(method, locals, true);

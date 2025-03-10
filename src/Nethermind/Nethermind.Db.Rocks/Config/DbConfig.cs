@@ -235,4 +235,8 @@ public class DbConfig : IDbConfig
 
         "";
     public string? StateDbAdditionalRocksDbOptions { get; set; }
+
+    public string L1OriginDbRocksDbOptions { get; set; } = "";
+
+    public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 }

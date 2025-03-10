@@ -677,7 +677,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsEmpty)
+            if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
@@ -781,6 +781,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
 
+        vmState.IlExecutionStepState.ContractState = ContractState.Running;
+
         bool isRevert = false;
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
@@ -826,9 +828,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                             goto DataReturn;
                         case ContractState.Finished:
                             goto EmptyReturn;
-                        case ContractState.EPHEMERAL_JUMP when !vmState.Env.CodeInfo.ValidateJump(programCounter):
-                            exceptionType = EvmExceptionType.InvalidJumpDestination;
-                            goto InvalidJumpDestination;
                         case ContractState.Failed:
                             exceptionType = chunkExecutionResult.ExceptionType;
                             goto ReturnFailure;
@@ -1932,6 +1931,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         exceptionType = InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
+                        vmState.IlExecutionStepState.ContractState = ContractState.Return;
                         goto DataReturn;
                     }
                 case Instruction.CALL:
@@ -2010,6 +2010,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         isRevert = true;
+                        vmState.IlExecutionStepState.ContractState = ContractState.Revert;
                         goto DataReturn;
                     }
                 case Instruction.INVALID:
@@ -2224,6 +2225,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
+        vmState.IlExecutionStepState.ContractState = ContractState.Finished;
         return CallResult.Empty;
     DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(_txTracer, gasAvailable, vmState.Memory.Size);
@@ -2234,6 +2236,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if (returnData is EvmState state)
         {
+            vmState.IlExecutionStepState.ContractState = ContractState.Halted;
             return new CallResult(state);
         }
         return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
@@ -2256,6 +2259,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
+        vmState.IlExecutionStepState.ContractState = ContractState.Failed;
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
 
         [DoesNotReturn]

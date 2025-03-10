@@ -15,6 +15,5 @@ public class VMConfig : IVMConfig
     public int IlEvmEnabledMode { get; set; } = 0;
     public int IlEvmAnalysisThreshold { get; set; } = 32;
     public bool IsIlEvmAggressiveModeEnabled { get; set; } = false;
-    public bool IsIlEvmTracingEnabled { get; set; } = false;
     public int IlEvmAnalysisQueueMaxSize { get; set; } = 8;
 }

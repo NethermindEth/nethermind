@@ -39,14 +39,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                         method.StoreLocal(locals.wordRef256A);
 
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
                         }
                         else
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                         }
                         method.FakeBranch(escapeLabels.jumpTable);
                     });
@@ -65,27 +65,27 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                         method.StoreLocal(locals.wordRef256A);
 
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
                         }
                         else
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                         }
 
                         method.Branch(escapeLabels.jumpTable);
 
                         method.MarkLabel(noJump);
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
                         }
                         else
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                         }
                     });
                     break;
@@ -1972,7 +1972,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                                         .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
                                         .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
-                            if (!ilCompilerConfig.IsIlEvmTracingEnabled)
+                            if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                                 method.Call(nonTracingSStoreMethod);
                             else
                             {
@@ -2325,7 +2325,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadLocalAddress(locals.gasAvailable);
                         envLoader.LoadSpec(method, locals, false);
                         envLoader.LoadTxTracer(method, locals, false);
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (!ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
                             Label skipNonTracingCall = method.DefineLabel();
                             Label skipTracingCall = method.DefineLabel();
@@ -2435,7 +2435,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled){
+                        if (!ilCompilerConfig.IsIlEvmAggressiveModeEnabled){
                             Label skipNonTracingCall = method.DefineLabel();
                             Label skipTracingCall = method.DefineLabel();
                             envLoader.LoadTxTracer(method, locals, false);
@@ -2478,7 +2478,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
                         method.BranchIfTrue(skipStateMachineScheduling);
 
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (!ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
@@ -2571,7 +2571,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (!ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
                             Label skipNonTracingCall = method.DefineLabel();
                             Label skipTracingCall = method.DefineLabel();
@@ -2622,7 +2622,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadNull();
                         method.BranchIfEqual(skipStateMachineScheduling);
 
-                        if (ilCompilerConfig.IsIlEvmTracingEnabled)
+                        if (!ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
                             UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
                             EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);

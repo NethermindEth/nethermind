@@ -29,11 +29,6 @@ public interface IVMConfig : IConfig
     public bool IsIlEvmAggressiveModeEnabled { get; set; }
 
     [ConfigItem(
-        Description = "Activates or Deactivates traces in AOT modes",
-        DefaultValue = "false")]
-    public bool IsIlEvmTracingEnabled { get; set; }
-
-    [ConfigItem(
         Description = "Sets Analysis Queue Max Size",
         DefaultValue = "8")]
     public int IlEvmAnalysisQueueMaxSize { get; set; }

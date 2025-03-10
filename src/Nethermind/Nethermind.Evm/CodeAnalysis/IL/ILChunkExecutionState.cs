@@ -12,7 +12,6 @@ public enum ContractState
     Failed = 1 << 3,// failed execution due to EvmException
     Return = 1 << 4,// failed execution due to EvmException
     Revert = 1 << 5,// failed execution due to EvmException
-    EPHEMERAL_JUMP = 1 << 7,
 }
 public struct ILChunkExecutionState()
 {

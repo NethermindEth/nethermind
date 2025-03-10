@@ -24,13 +24,12 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
-            // IL-EVM info already created
-            if (_callCount > vmConfig.IlEvmAnalysisThreshold)
+            if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
 
-            Interlocked.Increment(ref _callCount);
-            if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(vmConfig.IlEvmEnabledMode))
+            if(Interlocked.Increment(ref _callCount) < vmConfig.IlEvmAnalysisThreshold)
                 return;
+
 
             IlAnalyzer.Enqueue(this, vmConfig, logger);
 
