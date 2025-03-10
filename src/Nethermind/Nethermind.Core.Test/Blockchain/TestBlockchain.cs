@@ -75,7 +75,6 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
@@ -137,7 +136,7 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
+        var State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -218,7 +217,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BlockProcessor = CreateBlockProcessor();
+        BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
         BlockchainProcessor = chainProcessor;
@@ -244,7 +243,7 @@ public class TestBlockchain : IDisposable
             _suggestedBlockResetEvent.Set();
         };
 
-        Block? genesis = GetGenesisBlock();
+        Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
         BlockTree.SuggestBlock(genesis);
 
         await waitGenesis;
@@ -344,7 +343,7 @@ public class TestBlockchain : IDisposable
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 
-    protected virtual Block GetGenesisBlock()
+    protected virtual Block GetGenesisBlock(IWorldState state)
     {
         BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
         if (GenesisBlockBuilder is not null)
@@ -374,7 +373,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithEmptyRequestsHash();
         }
 
-        genesisBlockBuilder.WithStateRoot(State.StateRoot);
+        genesisBlockBuilder.WithStateRoot(state.StateRoot);
         return genesisBlockBuilder.TestObject;
     }
 
@@ -385,17 +384,17 @@ public class TestBlockchain : IDisposable
         await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
     }
 
-    protected virtual IBlockProcessor CreateBlockProcessor() =>
+    protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
         new BlockProcessor(
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-            State,
+            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+            state,
             ReceiptStorage,
             TxProcessor,
-            new BeaconBlockRootHandler(TxProcessor, State),
-            new BlockhashStore(SpecProvider, State),
+            new BeaconBlockRootHandler(TxProcessor, state),
+            new BlockhashStore(SpecProvider, state),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer(),
             executionRequestsProcessor: ExecutionRequestsProcessor);
