@@ -19,9 +19,9 @@ namespace Nethermind.Core.Test.Json
         [TestCase(NumberConversion.Decimal)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
-            TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter);
-            TestConverter(1L, (a, b) => a.Equals(b), converter);
-            TestConverter(0L, (a, b) => a.Equals(b), converter);
+            TestConverter(int.MaxValue, static (a, b) => a.Equals(b), converter);
+            TestConverter(1L, static (a, b) => a.Equals(b), converter);
+            TestConverter(0L, static (a, b) => a.Equals(b), converter);
         }
 
         [Test]
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Json
         public void Throws_on_negative_numbers()
         {
             Assert.Throws<JsonException>(
-                () => JsonSerializer.Deserialize<ulong?>("-1", options));
+                static () => JsonSerializer.Deserialize<ulong?>("-1", options));
         }
     }
 }

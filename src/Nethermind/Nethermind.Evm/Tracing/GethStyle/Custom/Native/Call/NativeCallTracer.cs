@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -25,6 +26,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public const string CallTracer = "callTracer";
 
     private readonly long _gasLimit;
+    private readonly Hash256? _txHash;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = new();
@@ -39,6 +41,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         IsTracingActions = true;
         _gasLimit = tx!.GasLimit;
+        _txHash = tx.Hash;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -54,11 +57,17 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
+
         Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
+
         _callStack.RemoveAt(0);
         _disposables.Add(firstCallFrame);
+
+        result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+
         _resultBuilt = true;
+
         return result;
     }
 
@@ -160,28 +169,27 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
-        firstCallFrame.GasUsed = gasSpent;
+        firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
-        firstCallFrame.GasUsed = gasSpent;
+        firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        int revertedPrefixLength = TransactionSubstate.RevertedErrorMessagePrefix.Length;
-        if (errorType == EvmExceptionType.Revert && error.Length > revertedPrefixLength)
+        if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error[revertedPrefixLength..]);
+            firstCallFrame.RevertReason = ValidateRevertReason(error);
         }
 
         if (_config.WithLog)

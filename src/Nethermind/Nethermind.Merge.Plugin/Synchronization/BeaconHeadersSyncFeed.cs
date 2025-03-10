@@ -36,10 +36,19 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
                                                     _pivot.PivotDestinationNumber || _chainMerged;
 
-    protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
-    protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
+    protected override BlockHeader? LowestInsertedBlockHeader
+    {
+        get => _blockTree.LowestInsertedBeaconHeader;
+        set
+        {
+            // LowestInsertedBeaconHeader is set in blocktree when BeaconHeaderInsert is set.
+            // TODO: Probably should move that logic here so that `LowestInsertedBeaconHeader` is set only once per batch.
+        }
+    }
 
-    protected override MeasuredProgress HeadersSyncQueueReport => _syncReport.BeaconHeadersInQueue;
+    protected override long TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
+
+    protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
 
     public BeaconHeadersSyncFeed(
         IPoSSwitcher poSSwitcher,
@@ -108,13 +117,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void PostFinishCleanUp()
     {
-        HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
-        HeadersSyncProgressReport.MarkEnd();
+        HeadersSyncProgressLoggerReport.Update(TotalBlocks);
+        HeadersSyncProgressLoggerReport.MarkEnd();
         ClearDependencies(); // there may be some dependencies from wrong branches
         _pending.Clear(); // there may be pending wrong branches
         _sent.Clear(); // we my still be waiting for some bad branches
-        HeadersSyncQueueReport.Update(0L);
-        HeadersSyncQueueReport.MarkEnd();
     }
 
     public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)

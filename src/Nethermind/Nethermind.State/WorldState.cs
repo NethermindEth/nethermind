@@ -151,9 +151,9 @@ namespace Nethermind.State
         {
             _stateProvider.AddToBalance(address, balanceChange, spec);
         }
-        public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
@@ -199,11 +199,6 @@ namespace Nethermind.State
         ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
         {
             return _stateProvider.GetCodeHash(address);
-        }
-
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
-        {
-            _stateProvider.Accept(visitor, stateRoot, visitingOptions);
         }
 
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
@@ -263,8 +258,7 @@ namespace Nethermind.State
             Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
         }
 
-        // Needed for benchmarks
-        internal void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in UInt256 nonce)
         {
             _stateProvider.SetNonce(address, nonce);
         }

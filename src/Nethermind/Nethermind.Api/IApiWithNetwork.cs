@@ -44,13 +44,15 @@ namespace Nethermind.Api
         IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
+        ITrustedNodesManager? TrustedNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; }
         ISyncModeSelector SyncModeSelector { get; }
         ISyncProgressResolver? SyncProgressResolver { get; }
+        ISyncPointers? SyncPointers { get; }
         IPivot? Pivot { get; set; }
-        ISyncPeerPool? SyncPeerPool { get; set; }
-        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
-        ISyncServer? SyncServer { get; set; }
+        ISyncPeerPool? SyncPeerPool { get; }
+        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }
+        ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 

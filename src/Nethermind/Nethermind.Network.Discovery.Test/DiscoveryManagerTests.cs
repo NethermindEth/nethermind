@@ -88,10 +88,10 @@ namespace Nethermind.Network.Discovery.Test
             await Task.Delay(500);
 
             // expecting to send pong
-            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
 
             // send pings to  new node
-            await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManager.OnIncomingMsg(msg);
 
             //expecting to respond with sending Neighbors
-            _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Retry(3)]
@@ -145,7 +145,7 @@ namespace Nethermind.Network.Discovery.Test
                     INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node(TestItem.PublicKeyA, $"{a}.{b}.1.1", 8000));
                     manager?.SendPingAsync();
 
-                    PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
+                    PongMsg pongMsg = new(_publicKey, GetExpirationTime(), []);
                     pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), Port);
                     _discoveryManager.OnIncomingMsg(pongMsg);
                 }
@@ -186,7 +186,7 @@ namespace Nethermind.Network.Discovery.Test
 
         private void ReceiveSomePong()
         {
-            PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
+            PongMsg pongMsg = new(_publicKey, GetExpirationTime(), []);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(pongMsg);
         }
@@ -201,14 +201,14 @@ namespace Nethermind.Network.Discovery.Test
             });
 
             long startTime = Stopwatch.GetTimestamp();
-            FindNodeMsg msg = new(_publicKey, 0, Array.Empty<byte>());
+            FindNodeMsg msg = new(_publicKey, 0, []);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
-            Stopwatch.GetElapsedTime(startTime).Should().BeGreaterOrEqualTo(TimeSpan.FromSeconds(0.9));
+            Stopwatch.GetElapsedTime(startTime).Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(0.9));
         }
     }
 }

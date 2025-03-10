@@ -15,7 +15,7 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly ValueHash256 OfAnEmptyString = InternalCompute(Array.Empty<byte>());
+        public static readonly ValueHash256 OfAnEmptyString = InternalCompute([]);
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Hash256 OfAnEmptyString = new Hash256(ValueKeccak.InternalCompute(Array.Empty<byte>()));
+        public static readonly Hash256 OfAnEmptyString = new Hash256(ValueKeccak.InternalCompute([]));
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>

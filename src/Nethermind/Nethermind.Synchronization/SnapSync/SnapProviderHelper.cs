@@ -4,11 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -19,6 +17,8 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
+        private const int ExtensionRlpChildIndex = 1;
+
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
@@ -112,10 +112,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
-            long blockNumber,
-            in ValueHash256? startingHash,
+            PathWithAccount account,
             IReadOnlyList<PathWithStorageSlot> slots,
-            in ValueHash256 expectedRootHash,
+            in ValueHash256? startingHash,
+            in ValueHash256? limitHash,
             IReadOnlyList<byte[]>? proofs = null
         )
         {
@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 lastHash = slots[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, ValueKeccak.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, account.Account.StorageRoot, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -140,14 +140,19 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
             {
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-
-            tree.Commit(writeFlags: WriteFlags.DisableWAL);
+            // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
+            // If this is not true, StorageRange request should be extended with a lock object.
+            // That lock object should be shared between all other StorageRange requests for same account.
+            lock (account.Account)
+            {
+                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+                tree.Commit(writeFlags: WriteFlags.DisableWAL);
+            }
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
@@ -169,7 +174,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             ArgumentNullException.ThrowIfNull(tree);
 
-            ValueHash256 effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueKeccak.Zero;
+            ValueHash256 effectiveStartingHAsh = startingHash ?? ValueKeccak.Zero;
             List<(TrieNode, TreePath)> sortedBoundaryList = new();
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
@@ -204,7 +209,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
-                    if (node.GetChildHashAsValueKeccak(0, out ValueHash256 childKeccak))
+                    if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
                     {
                         if (dict.TryGetValue(childKeccak, out TrieNode child))
                         {
@@ -217,8 +222,7 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                     }
                 }
-
-                if (node.IsBranch)
+                else if (node.IsBranch)
                 {
                     int left = leftBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? leftBoundaryPath[path.Length] : 0;
                     int right = rightBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? rightBoundaryPath[path.Length] : 15;
@@ -230,7 +234,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         bool hasKeccak = node.GetChildHashAsValueKeccak(ci, out ValueHash256 childKeccak);
 
-                        moreChildrenToRight |= hasKeccak && (ci > right && (ci < limit || noLimit));
+                        moreChildrenToRight |= hasKeccak && (ci > right && (ci <= limit || noLimit));
 
                         if (ci >= left && ci <= right)
                         {
@@ -312,41 +316,58 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (!node.IsPersisted)
                 {
-                    if (node.IsExtension)
+                    INodeData nodeData = node.NodeData;
+                    if (nodeData is ExtensionData extensionData)
                     {
-                        if (IsChildPersisted(node, ref path, 1, store))
+                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, store))
                         {
                             node.IsBoundaryProofNode = false;
                         }
                     }
-
-                    if (node.IsBranch)
+                    else if (nodeData is BranchData branchData)
                     {
                         bool isBoundaryProofNode = false;
-                        for (int ci = 0; ci <= 15; ci++)
+                        int ci = 0;
+                        foreach (object? o in branchData.Branches)
                         {
-                            if (!IsChildPersisted(node, ref path, ci, store))
+                            if (!IsChildPersisted(node, ref path, o, ci, store))
                             {
                                 isBoundaryProofNode = true;
                                 break;
                             }
+                            ci++;
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
+                    }
+
+                    //leaves as a part of boundary are only added if they are outside the processed range,
+                    //therefore they will not be persisted during current Commit. Still it is possible, they have already
+                    //been persisted when processing a range they belong, so it is needed to do a check here.
+                    //Without it, there is a risk that the whole dependant path (including root) will not be eventually stitched and persisted
+                    //leading to TrieNodeException after sync (as healing may not get to heal the particular storage trie)
+                    if (node.IsLeaf)
+                    {
+                        node.IsPersisted = store.IsPersisted(path, node.Keccak);
+                        node.IsBoundaryProofNode = !node.IsPersisted;
                     }
                 }
             }
         }
 
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IScopedTrieStore store)
+        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, object? child, int childIndex, IScopedTrieStore store)
         {
-            TrieNode data = node.GetData(childIndex) as TrieNode;
-            if (data is not null)
+            if (child is TrieNode childNode)
             {
-                return data.IsBoundaryProofNode == false;
+                return childNode.IsBoundaryProofNode == false;
             }
 
-            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
+            ValueHash256 childKeccak;
+            if (child is Hash256 hash)
+            {
+                childKeccak = hash.ValueHash256;
+            }
+            else if (!node.GetChildHashAsValueKeccak(childIndex, out childKeccak))
             {
                 return true;
             }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -59,7 +58,7 @@ namespace Nethermind.Core.Extensions
                 return driveInfos.ToArray();
             }
 
-            return Array.Empty<IDriveInfo>();
+            return [];
         }
     }
 }

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using Nethermind.Api;
@@ -11,7 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Hive;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -23,8 +22,9 @@ public class ApiBuilder
     private readonly IConfigProvider _configProvider;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
-    private readonly Nethermind.Logging.ILogger _logger;
+    private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
+    public ChainSpec ChainSpec { get; }
 
     public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
     {
@@ -32,7 +32,8 @@ public class ApiBuilder
         _logger = _logManager.GetClassLogger();
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
-        _jsonSerializer = new EthereumJsonSerializer();
+        _jsonSerializer = new EthereumJsonSerializer(configProvider.GetConfig<IJsonRpcConfig>().JsonSerializationMaxDepth);
+        ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
     public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
@@ -40,24 +41,26 @@ public class ApiBuilder
 
     public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
     {
-        ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
         bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
         if (wasCreated)
         {
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        string engine = chainSpec.SealEngineType;
-        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
+        if (consensusPlugins.Count() > 1)
+        {
+            throw new NotSupportedException($"More than one consensus plugins are enabled. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
+        }
 
+        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault();
         INethermindApi nethermindApi =
-            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
-            new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
-        nethermindApi.SealEngineType = engine;
-        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
+            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
+            new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
+        nethermindApi.SealEngineType = ChainSpec.SealEngineType;
+        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
         nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 
-        SetLoggerVariables(chainSpec);
+        SetLoggerVariables(ChainSpec);
 
         return nethermindApi;
     }
@@ -66,21 +69,12 @@ public class ApiBuilder
 
     private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
     {
-        IHiveConfig hiveConfig = _configProvider.GetConfig<IHiveConfig>();
-        bool hiveChainSpecExists = File.Exists(_initConfig.HiveChainSpecPath);
+        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
-        string chainSpecFile;
-        if (hiveConfig.Enabled && hiveChainSpecExists)
-            chainSpecFile = _initConfig.HiveChainSpecPath;
-        else
-            chainSpecFile = _initConfig.ChainSpecPath;
+        ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {chainSpecFile}");
-
-        ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
-
-        IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
+        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
         return chainSpec;
     }
 

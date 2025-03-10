@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -34,8 +35,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public ulong? ChainId { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object Condition { get; set; }
-        public byte[] R { get; set; }
-        public byte[] S { get; set; }
+        public Memory<byte> R { get; set; }
+        public Memory<byte> S { get; set; }
         public UInt256 V { get; set; }
         public UInt256 StandardV { get; set; }
 

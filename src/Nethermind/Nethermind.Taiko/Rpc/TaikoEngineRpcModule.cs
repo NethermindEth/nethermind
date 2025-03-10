@@ -40,8 +40,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
-        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> executionGetPayloadBodiesByHashV2Handler,
-        IGetPayloadBodiesByRangeV2Handler executionGetPayloadBodiesByRangeV2Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
@@ -60,8 +58,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 forkchoiceUpdatedV1Handler,
                 executionGetPayloadBodiesByHashV1Handler,
                 executionGetPayloadBodiesByRangeV1Handler,
-                executionGetPayloadBodiesByHashV2Handler,
-                executionGetPayloadBodiesByRangeV2Handler,
                 transitionConfigurationHandler,
                 capabilitiesHandler,
                 getBlobsHandler,
@@ -162,7 +158,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             batch.Dispose();
         }
 
-        BlockExecutionContext blkCtx = new(blockHeader);
+        BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
         worldState.StateRoot = blockHeader.StateRoot;
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);

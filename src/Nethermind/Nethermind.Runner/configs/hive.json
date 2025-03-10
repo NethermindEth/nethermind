@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "PubSubEnabled": true,
     "WebSocketsEnabled": true,
@@ -21,7 +22,7 @@
   },
   "Hive": {
     "Enabled": true,
-    "ChainFile": "C:\\chains\\blocks_2_td_393120.rlp",
+    "ChainFile": "C:\\chains\\block1.rlp",
     "GenesisFilePath": "genesis.json",
     "BlocksDir": "blocks",
     "KeysDir": "keys"

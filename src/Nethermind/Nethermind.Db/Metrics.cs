@@ -12,7 +12,7 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of Code DB cache reads.")]
         public static long CodeDbCache => _codeDbCache.GetTotalValue();
-        private static ZeroContentionCounter _codeDbCache = new();
+        private static readonly ZeroContentionCounter _codeDbCache = new();
         [Description("Number of Code DB cache reads on thread.")]
         public static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
         public static void IncrementCodeDbCache() => _codeDbCache.Increment();
@@ -20,13 +20,13 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
-        private static ZeroContentionCounter _stateTreeCacheHits = new();
+        private static readonly ZeroContentionCounter _stateTreeCacheHits = new();
         public static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Increment();
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
         public static long StateTreeReads => _stateTreeReads.GetTotalValue();
-        private static ZeroContentionCounter _stateTreeReads = new();
+        private static readonly ZeroContentionCounter _stateTreeReads = new();
 
         [Description("Number of State Trie reads on thread.")]
         public static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
@@ -35,7 +35,7 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of State Reader reads.")]
         public static long StateReaderReads => _stateReaderReads.GetTotalValue();
-        private static ZeroContentionCounter _stateReaderReads = new();
+        private static readonly ZeroContentionCounter _stateReaderReads = new();
         public static void IncrementStateReaderReads() => _stateReaderReads.Increment();
 
         [CounterMetric]
@@ -49,13 +49,13 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
         public static long StorageTreeCache => _storageTreeCache.GetTotalValue();
-        private static ZeroContentionCounter _storageTreeCache = new();
+        private static readonly ZeroContentionCounter _storageTreeCache = new();
         public static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
         public static long StorageTreeReads => _storageTreeReads.GetTotalValue();
-        private static ZeroContentionCounter _storageTreeReads = new();
+        private static readonly ZeroContentionCounter _storageTreeReads = new();
 
         [Description("Number of storage trie reads on thread.")]
         public static long ThreadLocalStorageTreeReads => _storageTreeReads.ThreadLocalValue;

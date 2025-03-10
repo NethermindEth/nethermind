@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -128,7 +129,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "keystore/jwt-secret")]
+    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }
 
     [ConfigItem(Description = "Whether to disable authentication of the Engine API. Should not be used in production environments.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -141,7 +142,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2]")]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
@@ -158,6 +159,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    int JsonSerializationMaxDepth { get; set; }
+
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
@@ -166,4 +170,10 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
+
+    [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
+    string[] CorsOrigins { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    bool EnablePerMethodMetrics { get; set; }
 }

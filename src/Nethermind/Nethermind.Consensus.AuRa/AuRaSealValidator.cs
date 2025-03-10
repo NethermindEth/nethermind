@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -62,13 +61,13 @@ namespace Nethermind.Consensus.AuRa
                 if (step == parent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
                 else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
 
@@ -111,7 +110,7 @@ namespace Nethermind.Consensus.AuRa
                 if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
                 }
 
                 if (header.Number >= _parameters.ValidateScoreTransition)

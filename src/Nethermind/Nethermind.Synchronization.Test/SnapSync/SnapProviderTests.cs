@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -17,8 +15,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
@@ -26,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
@@ -38,7 +35,7 @@ public class SnapProviderTests
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -56,7 +53,7 @@ public class SnapProviderTests
     public void AddAccountRange_ResponseHasEmptyListOfAccountsAndOneProof_ReturnsExpiredRootHash()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -81,12 +78,12 @@ public class SnapProviderTests
             (TestItem.KeccakE, TestItem.GenerateRandomAccount()),
             (TestItem.KeccakF, TestItem.GenerateRandomAccount()),
         ];
-        Array.Sort(entries, (e1, e2) => e1.Item1.CompareTo(e2.Item1));
+        Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 1
             }))
@@ -96,14 +93,14 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) res = ss.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, entries[3].Item1, 1.MB(), default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = res.accounts;
-        accountsAndProofs.Proofs = res.proofs;
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
         progressTracker.IsFinished(out batch).Should().Be(false);
@@ -123,12 +120,12 @@ public class SnapProviderTests
             (TestItem.KeccakE, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
             (TestItem.KeccakF, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
         ];
-        Array.Sort(entries, (e1, e2) => e1.Item1.CompareTo(e2.Item1));
+        Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 2
             }))
@@ -138,14 +135,14 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) res = ss.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, Keccak.MaxValue, 1.MB(), default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = res.accounts;
-        accountsAndProofs.Proofs = res.proofs;
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 
@@ -201,8 +198,8 @@ public class SnapProviderTests
         }
         st.Commit();
 
-        ILastNStateRootTracker stateRootTracker = Substitute.For<ILastNStateRootTracker>();
-        stateRootTracker.HasStateRoot(st.RootHash).Returns(true);
+        IStateReader stateRootTracker = Substitute.For<IStateReader>();
+        stateRootTracker.HasStateForRoot(st.RootHash).Returns(true);
         var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), stateRootTracker, LimboLogs.Instance);
         return (ss, st.RootHash);
     }

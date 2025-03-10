@@ -26,12 +26,6 @@ public class MergeSynchronizer(
     private readonly CancellationTokenSource? _syncCancellation = new();
     private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
-    public event EventHandler<SyncEventArgs>? SyncEvent
-    {
-        add => baseSynchronizer.SyncEvent += value;
-        remove => baseSynchronizer.SyncEvent -= value;
-    }
-
     public void Start()
     {
         if (!syncConfig.SynchronizationEnabled)
@@ -44,10 +38,10 @@ public class MergeSynchronizer(
         WireMultiSyncModeSelector();
     }
 
-    public Task StopAsync()
+    public ValueTask DisposeAsync()
     {
         _syncCancellation?.Cancel();
-        return baseSynchronizer.StopAsync();
+        return ValueTask.CompletedTask;
     }
 
     private void StartBeaconHeadersComponents()
@@ -70,9 +64,12 @@ public class MergeSynchronizer(
         baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
     }
 
-    public void Dispose()
+    // May crash `dotnet format` if declared before any other use of `baseSynchronizer`.
+    // Seems like a bug in dotnet formatter or analyzer somewhere
+    public event EventHandler<SyncEventArgs>? SyncEvent
     {
-        baseSynchronizer.Dispose();
+        add => baseSynchronizer.SyncEvent += value;
+        remove => baseSynchronizer.SyncEvent -= value;
     }
 }
 
@@ -81,12 +78,8 @@ public class MergeSynchronizerModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .RegisterType<MergeBlockDownloader>()
-            .As<BlockDownloader>()
-            .As<ISyncDownloader<BlocksRequest>>()
-            .InstancePerLifetimeScope();
-
-        builder
+            .Add<IPosTransitionHook, PosTransitionHook>()
+            .AddDecorator<BlockDownloader, MergeBlockDownloader>()
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()

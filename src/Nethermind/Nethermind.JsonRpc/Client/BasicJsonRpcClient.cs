@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -79,7 +78,7 @@ namespace Nethermind.JsonRpc.Client
             {
                 jsonrpc = "2.0",
                 method,
-                @params = parameters ?? Enumerable.Empty<object>(),
+                @params = parameters ?? [],
                 id = 67
             };
 

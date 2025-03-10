@@ -12,23 +12,14 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
-public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, GethLikeJavaScriptTxTracer>, IDisposable
+public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options)
+    : BlockTracerBase<GethLikeTxTrace, GethLikeJavaScriptTxTracer>(options.TxHash), IDisposable
 {
-    private readonly IReleaseSpec _spec;
-    private readonly GethTraceOptions _options;
-    private readonly Context _ctx;
-    private readonly Db _db;
+    private readonly Context _ctx = new();
+    private readonly Db _db = new(worldState);
     private int _index;
     private List<IDisposable>? _engines;
     private UInt256 _baseFee;
-
-    public GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
-    {
-        _spec = spec;
-        _options = options;
-        _ctx = new Context();
-        _db = new Db(worldState);
-    }
 
     public override void StartNewBlockTrace(Block block)
     {
@@ -42,14 +33,14 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     protected override GethLikeJavaScriptTxTracer OnStart(Transaction? tx)
     {
         SetTransactionCtx(tx);
-        Engine engine = new(_spec);
+        Engine engine = new(spec);
         _engines?.Add(engine);
-        return new GethLikeJavaScriptTxTracer(this, engine, _db, _ctx, _options);
+        return new GethLikeJavaScriptTxTracer(this, engine, _db, _ctx, options);
     }
 
     private void SetTransactionCtx(Transaction? tx)
     {
-        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, _baseFee);
+        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
         _ctx.gas = tx.GasLimit;
@@ -75,9 +66,6 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     public void Dispose()
     {
         List<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
-        if (list is not null)
-        {
-            list.ForEach(e => e.Dispose());
-        }
+        list?.ForEach(static e => e.Dispose());
     }
 }

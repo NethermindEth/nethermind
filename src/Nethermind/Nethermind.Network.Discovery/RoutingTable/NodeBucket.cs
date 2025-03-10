@@ -10,7 +10,7 @@ namespace Nethermind.Network.Discovery.RoutingTable;
 [DebuggerDisplay("{BondedItemsCount} bonded item(s)")]
 public class NodeBucket
 {
-    private readonly object _nodeBucketLock = new();
+    private readonly Lock _nodeBucketLock = new();
     private readonly LinkedList<NodeBucketItem> _items;
     private readonly float _dropFullBucketProbability;
 

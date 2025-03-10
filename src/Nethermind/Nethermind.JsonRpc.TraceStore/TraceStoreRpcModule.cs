@@ -86,7 +86,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
             FilterTraces(traces, TraceRpcModule.GetParityTypes(traceTypes));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t, true)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t, true)));
         }
 
         return _traceModule.trace_replayBlockTransactions(blockParameter, traceTypes);
@@ -114,7 +114,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 if (blockSearch.IsError)
                 {
                     error = blockSearch;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
 
                 Block block = blockSearch.Object!;
@@ -125,7 +125,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 else
                 {
                     missingTraces = true;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
             });
 

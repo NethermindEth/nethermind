@@ -15,7 +15,7 @@ public static class IContainerSynchronizerTestExtensions
     public static ContainerBuilder WithSuggestedHeaderOfStateRoot(this ContainerBuilder builder, Hash256 stateRoot)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        BlockHeader header = Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         blockTree.BestSuggestedHeader.Returns(header);
 

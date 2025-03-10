@@ -26,7 +26,7 @@ public class GethLikeBlockMemoryTracerTests
     public void Number_of_tx_traces_equals_number_of_txs_in_a_block()
     {
         Block block = Build.A.Block.TestObject;
-        block = block.WithReplacedBody(new BlockBody(new Transaction[3], new BlockHeader[0]));
+        block = block.WithReplacedBody(new BlockBody(new Transaction[3], []));
 
         GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
 
@@ -43,7 +43,7 @@ public class GethLikeBlockMemoryTracerTests
     public void Records_trace_properly()
     {
         Block block = Build.A.Block.TestObject;
-        block = block.WithReplacedBody(new BlockBody(new Transaction[3], new BlockHeader[0]));
+        _ = block.WithReplacedBody(new BlockBody(new Transaction[3], []));
 
         GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
         ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject);
@@ -65,7 +65,7 @@ public class GethLikeBlockMemoryTracerTests
     public void Throws_when_ending_without_starting()
     {
         Block block = Build.A.Block.TestObject;
-        block = block.WithReplacedBody(new BlockBody(new Transaction[3], new BlockHeader[0]));
+        block = block.WithReplacedBody(new BlockBody(new Transaction[3], []));
         block.Transactions[0] = Build.A.Transaction.TestObject;
         block.Transactions[1] = Build.A.Transaction.TestObject;
         block.Transactions[2] = Build.A.Transaction.TestObject;

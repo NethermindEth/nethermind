@@ -15,7 +15,6 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
@@ -41,6 +40,7 @@ public class MergePluginTests
         _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
+        _context.ConfigProvider.GetConfig(typeof(ISyncConfig)).Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
         _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
         _context.BlockProcessingQueue?.IsEmpty.Returns(true);
@@ -62,9 +62,8 @@ public class MergePluginTests
         var chainSpecParametersProvider = new TestChainSpecParametersProvider(
             new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
         _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
-        _plugin = new MergePlugin();
-
-        _consensusPlugin = new();
+        _plugin = new MergePlugin(_context.ChainSpec, _mergeConfig);
+        _consensusPlugin = new(_context.ChainSpec);
     }
 
     [TearDown]
@@ -162,7 +161,7 @@ public class MergePluginTests
         await _plugin.Init(_context);
 
         jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo(new string[] { });
+        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
         jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
         {
             "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"

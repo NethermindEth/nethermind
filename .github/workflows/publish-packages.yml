@@ -60,7 +60,7 @@ jobs:
     needs: publish-ppa
     steps:
       - name: Wait for PPA package to be published
-        run: sleep 1.5h
+        run: sleep 2h
       - name: Install PPA dependencies
         run: |
           sudo apt-get update

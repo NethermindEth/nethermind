@@ -9,7 +9,6 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -70,7 +69,7 @@ namespace Nethermind.Network.StaticNodes
                 }
             }
 
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(n => n.NodeId, n => n));
+            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
         }
 
         private static string[] GetNodes(string data)
@@ -78,7 +77,7 @@ namespace Nethermind.Network.StaticNodes
             string[] nodes;
             try
             {
-                nodes = JsonSerializer.Deserialize<string[]>(data) ?? Array.Empty<string>();
+                nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
             }
             catch (JsonException)
             {
@@ -132,12 +131,12 @@ namespace Nethermind.Network.StaticNodes
         {
             NetworkNode node = new(enode);
             return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-                node.Host, StringComparison.InvariantCultureIgnoreCase);
+                node.Host, StringComparison.OrdinalIgnoreCase);
         }
 
         private Task SaveFileAsync()
             => File.WriteAllTextAsync(_staticNodesPath,
-                JsonSerializer.Serialize(_nodes.Select(n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
+                JsonSerializer.Serialize(_nodes.Select(static n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
         public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -149,10 +148,10 @@ namespace Nethermind.Network.StaticNodes
                 yield return node;
             }
 
-            EventHandler<NodeEventArgs> handler = (_, args) =>
+            void handler(object? _, NodeEventArgs args)
             {
                 ch.Writer.TryWrite(args.Node);
-            };
+            }
 
             try
             {

@@ -18,6 +18,8 @@ public class DbModule : Module
             DbNames.State,
             DbNames.Code,
             DbNames.Metadata,
+            DbNames.BlockNumbers,
+            DbNames.BadBlocks,
             DbNames.Blocks,
             DbNames.Headers,
             DbNames.BlockInfos,
@@ -43,6 +45,8 @@ public class DbModule : Module
             })
             .ExternallyOwned()
             .Named<IDb>(dbName)
+            .Named<IReadOnlyKeyValueStore>(dbName)
+            .Named<IKeyValueStore>(dbName)
             .Named<IDbMeta>(dbName);
 
         builder.Register((ctx) =>

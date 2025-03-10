@@ -8,16 +8,15 @@ using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -26,8 +25,7 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly AuRaNethermindApi _auraApi;
-    private readonly IConsensusRequestsProcessor? _consensusRequestsProcessor;
-
+    private readonly IExecutionRequestsProcessor? _executionRequestsProcessor;
     public AuRaMergeBlockProducerEnvFactory(
         AuRaNethermindApi auraApi,
         IWorldStateManager worldStateManager,
@@ -41,7 +39,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        IConsensusRequestsProcessor? consensusRequestsProcessor = null) : base(
+        IExecutionRequestsProcessor? executionRequestsProcessor = null) : base(
             worldStateManager,
             blockTree,
             specProvider,
@@ -53,10 +51,10 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             transactionComparerProvider,
             blocksConfig,
             logManager,
-            consensusRequestsProcessor)
+            executionRequestsProcessor)
     {
         _auraApi = auraApi;
-        _consensusRequestsProcessor = consensusRequestsProcessor;
+        _executionRequestsProcessor = executionRequestsProcessor;
     }
 
     protected override BlockProcessor CreateBlockProcessor(
@@ -90,7 +88,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             ),
             readOnlyTxProcessingEnv.TransactionProcessor,
             null,
-            consensusRequestsProcessor: _consensusRequestsProcessor);
+            executionRequestsProcessor: _executionRequestsProcessor);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

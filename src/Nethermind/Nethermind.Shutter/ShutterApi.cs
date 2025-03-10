@@ -33,7 +33,7 @@ public class ShutterApi : IShutterApi
     public readonly IShutterKeyValidator KeyValidator;
     public readonly IShutterEon Eon;
     public readonly ShutterTxLoader TxLoader;
-    public readonly ShutterTime Time;
+    public readonly SlotTime Time;
     public ShutterTxSource TxSource { get; }
     public IShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
@@ -76,7 +76,7 @@ public class ShutterApi : IShutterApi
         _slotLength = slotLength;
         _fileSystem = fileSystem;
         _keyStoreConfig = keyStoreConfig;
-        _blockUpToDateCutoff = slotLength;
+        _blockUpToDateCutoff = TimeSpan.FromMilliseconds(cfg.BlockUpToDateCutoff);
         _blockWaitCutoff = _slotLength / 3;
 
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
@@ -106,7 +106,7 @@ public class ShutterApi : IShutterApi
         InitP2P(ip);
     }
 
-    public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
+    public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationTokenSource);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
@@ -157,6 +157,6 @@ public class ShutterApi : IShutterApi
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
 
-    protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected virtual SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }

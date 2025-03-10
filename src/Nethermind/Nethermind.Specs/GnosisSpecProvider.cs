@@ -21,6 +21,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x65ef4dbc;
     //TODO correct this timestamp!
     public const ulong PragueTimestamp = ulong.MaxValue - 2;
+    public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }
 
@@ -37,7 +38,7 @@ public class GnosisSpecProvider : ISpecProvider
             {
                 null or < ShanghaiTimestamp => London.Instance,
                 < CancunTimestamp => Shanghai.Instance,
-                < PragueTimestamp => Cancun.Instance,
+                < PragueTimestamp => CancunGnosis.Instance,
                 _ => PragueGnosis.Instance
             }
         };

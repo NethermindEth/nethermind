@@ -25,9 +25,14 @@ namespace Nethermind.Synchronization.ParallelSync
                 _taskCompletionSource ??= new TaskCompletionSource();
             }
 
+            if (CurrentState == SyncFeedState.Finished && newState == SyncFeedState.Finished)
+            {
+                return;
+            }
+
             if (CurrentState == SyncFeedState.Finished)
             {
-                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be {newState} again.");
+                return;
             }
 
             CurrentState = newState;
@@ -44,7 +49,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public virtual void Finish()
         {
             ChangeState(SyncFeedState.Finished);
-            GC.Collect(2, GCCollectionMode.Aggressive, true, true);
         }
         public Task FeedTask => _taskCompletionSource?.Task ?? Task.CompletedTask;
         public abstract void SyncModeSelectorOnChanged(SyncMode current);

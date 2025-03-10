@@ -35,8 +35,8 @@ namespace Nethermind.Core.Crypto
             0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
         };
 
-        private byte[] _remainderBuffer = Array.Empty<byte>();
-        private ulong[] _state = Array.Empty<ulong>();
+        private byte[] _remainderBuffer = [];
+        private ulong[] _state = [];
         private byte[]? _hash;
         private int _remainderLength;
         private int _roundSize;
@@ -377,9 +377,9 @@ namespace Nethermind.Core.Crypto
                 // Process full rounds
                 do
                 {
-                    XorVectors(stateBytes, input.Slice(0, roundSize));
+                    XorVectors(stateBytes, input[..roundSize]);
                     KeccakF(state);
-                    input = input.Slice(roundSize);
+                    input = input[roundSize..];
                 } while (input.Length >= roundSize);
 
                 if (input.Length > 0)
@@ -435,7 +435,9 @@ namespace Nethermind.Core.Crypto
                     state256 = Vector512.Xor(state256, input256);
                 }
 
-                input = input.Slice(vectorLength);
+                if (input.Length == vectorLength) return;
+
+                input = input[vectorLength..];
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
@@ -452,7 +454,9 @@ namespace Nethermind.Core.Crypto
                     state256 = Vector256.Xor(state256, input256);
                 }
 
-                input = input.Slice(vectorLength);
+                if (input.Length == vectorLength) return;
+
+                input = input[vectorLength..];
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
@@ -467,11 +471,32 @@ namespace Nethermind.Core.Crypto
                     state128 = Vector128.Xor(state128, input128);
                 }
 
-                input = input.Slice(vectorLength);
+                if (input.Length == vectorLength) return;
+
+                input = input[vectorLength..];
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
-            // Handle remaining elements
+            // As 25 longs in state, 1 more to process after the vector sizes
+            if (input.Length >= sizeof(ulong))
+            {
+                int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < ulongLength; i += sizeof(ulong))
+                {
+                    ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
+                    ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                    state64 ^= input64;
+                }
+
+                // Should exit here for 25 longs
+                if (input.Length == ulongLength) return;
+
+                input = input[ulongLength..];
+                stateRef = ref Unsafe.Add(ref stateRef, ulongLength);
+            }
+
+            // Handle remaining bytes
             for (int i = 0; i < input.Length; i++)
             {
                 Unsafe.Add(ref stateRef, i) ^= input[i];
@@ -507,7 +532,7 @@ namespace Nethermind.Core.Crypto
                 int bytesToFill = _roundSize - _remainderLength;
                 int bytesToCopy = Math.Min(input.Length, bytesToFill);
 
-                input.Slice(0, bytesToCopy).CopyTo(_remainderBuffer.AsSpan(_remainderLength));
+                input[..bytesToCopy].CopyTo(_remainderBuffer.AsSpan(_remainderLength));
                 _remainderLength += bytesToCopy;
                 offset += bytesToCopy;
 
@@ -541,7 +566,7 @@ namespace Nethermind.Core.Crypto
                     _remainderBuffer = Pool.RentRemainder();
                 }
 
-                input.Slice(offset).CopyTo(_remainderBuffer);
+                input[offset..].CopyTo(_remainderBuffer);
                 _remainderLength = remainingInputLength;
             }
         }
@@ -668,7 +693,7 @@ namespace Nethermind.Core.Crypto
                     cache.Enqueue(remainder);
                 }
 
-                remainder = Array.Empty<byte>();
+                remainder = [];
             }
 
             [ThreadStatic]
@@ -685,7 +710,7 @@ namespace Nethermind.Core.Crypto
                     cache.Enqueue(state);
                 }
 
-                state = Array.Empty<ulong>();
+                state = [];
             }
         }
 

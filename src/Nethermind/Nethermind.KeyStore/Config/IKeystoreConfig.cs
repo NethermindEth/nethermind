@@ -77,8 +77,8 @@ public static class KeyStoreConfigExtensions
     public static int FindUnlockAccountIndex(this IKeyStoreConfig keyStoreConfig, Address address)
     {
         return Array.IndexOf(
-            (keyStoreConfig.UnlockAccounts ?? Array.Empty<string>())
-            .Select(a => a.ToUpperInvariant())
+            (keyStoreConfig.UnlockAccounts ?? [])
+            .Select(static a => a.ToUpperInvariant())
             .ToArray(),
             address.ToString().ToUpperInvariant());
     }

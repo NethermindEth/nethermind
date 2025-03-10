@@ -14,6 +14,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
 
     public override TxType? Type => TxType;
 
+    [JsonDiscriminator]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public AccessListForRpc? AccessList { get; set; }
 

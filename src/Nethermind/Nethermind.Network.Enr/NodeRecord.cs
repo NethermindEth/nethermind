@@ -185,7 +185,7 @@ public class NodeRecord
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(EnrSequence);
-        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
+        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(static e => e.Key))
         {
             contentEntry.Encode(rlpStream);
         }
@@ -216,7 +216,7 @@ public class NodeRecord
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
         rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
-        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
+        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(static e => e.Key))
         {
             contentEntry.Encode(rlpStream);
         }

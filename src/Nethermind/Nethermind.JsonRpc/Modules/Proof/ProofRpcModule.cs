@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
-                Array.Empty<byte>())
+                [])
             {
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 transaction.GasLimit = callHeader.GasLimit;
             }
 
-            Block block = new(callHeader, new[] { transaction }, Enumerable.Empty<BlockHeader>());
+            Block block = new(callHeader, new[] { transaction }, []);
 
             ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.SystemUser);
             _tracer.Trace(block, proofBlockTracer);
@@ -155,12 +155,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
-            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
 
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
 
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(isEip1559Enabled, block.Header) ?? new(), logIndexStart);
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
 

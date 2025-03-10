@@ -27,10 +27,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
-        if (blockNumber is null)
-        {
-            blockNumber = GetBlockNumber(blockHash);
-        }
+        blockNumber ??= GetBlockNumber(blockHash);
 
         if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {

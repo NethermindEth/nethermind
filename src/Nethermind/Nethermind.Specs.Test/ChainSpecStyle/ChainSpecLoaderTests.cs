@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -18,8 +18,8 @@ public class ChainSpecLoaderTests
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 

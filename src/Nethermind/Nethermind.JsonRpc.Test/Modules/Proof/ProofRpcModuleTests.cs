@@ -207,8 +207,7 @@ public class ProofRpcModuleTests
             GasUsedTotal = 2000,
             Logs = logEntries
         };
-
-        Block block = _blockTree.FindBlock(1)!;
+        _ = _blockTree.FindBlock(1)!;
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[1].Hash!;
         TxReceipt[] receipts = { receipt1, receipt2 };
         _receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
@@ -837,15 +836,15 @@ public class ProofRpcModuleTests
         // just the keys for debugging
         byte[] span = new byte[32];
         new UInt256(0).ToBigEndian(span);
-        Hash256 unused = Keccak.Compute(span);
+        _ = Keccak.Compute(span);
 
         // just the keys for debugging
         new UInt256(1).ToBigEndian(span);
-        Hash256 unused1 = Keccak.Compute(span);
+        _ = Keccak.Compute(span);
 
         // just the keys for debugging
         new UInt256(2).ToBigEndian(span);
-        Hash256 unused2 = Keccak.Compute(span);
+        _ = Keccak.Compute(span);
 
         foreach (AccountProof accountProof in callResultWithProof.Accounts)
         {

@@ -55,7 +55,7 @@ public class EthashSealEngineTests
         Block block = new(header);
         EthashSealer ethashSealer = new(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
         using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromMilliseconds(2000));
-        await ethashSealer.MineAsync(cancellationTokenSource.Token, block, badNonce).ContinueWith(t =>
+        await ethashSealer.MineAsync(cancellationTokenSource.Token, block, badNonce).ContinueWith(static t =>
         {
             Assert.That(t.IsCanceled, Is.True);
         });
@@ -65,10 +65,10 @@ public class EthashSealEngineTests
     [Explicit("use just for finding nonces for other tests")]
     public async Task Find_nonce()
     {
-        BlockHeader parentHeader = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });
+        BlockHeader parentHeader = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, []);
         parentHeader.Hash = parentHeader.CalculateHash();
 
-        BlockHeader blockHeader = new(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
+        BlockHeader blockHeader = new(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, []);
         blockHeader.Nonce = 7217048144105167954;
         blockHeader.MixHash = new Hash256("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
         blockHeader.Hash = blockHeader.CalculateHash();

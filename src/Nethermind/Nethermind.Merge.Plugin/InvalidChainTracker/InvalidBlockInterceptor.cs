@@ -14,7 +14,7 @@ public class InvalidBlockInterceptor(
     ILogManager logManager)
     : IBlockValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger(typeof(InvalidBlockInterceptor));
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidBlockInterceptor>();
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => headerValidator.ValidateOrphanedBlock(block, out error);
 
@@ -123,6 +123,5 @@ public class InvalidBlockInterceptor(
         // Body does not match header, but it does not mean the hash that the header point to is invalid.
         !BlockValidator.ValidateTxRootMatchesTxs(block, out _) ||
         !BlockValidator.ValidateUnclesHashMatches(block, out _) ||
-        !BlockValidator.ValidateWithdrawalsHashMatches(block, out _) ||
-        !BlockValidator.ValidateRequestsHashMatches(block, out _);
+        !BlockValidator.ValidateWithdrawalsHashMatches(block, out _);
 }

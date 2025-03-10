@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -14,6 +15,9 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
     private const long GasLimit = 30_000_000L;
+
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+        => BeaconRootsAccessList(block, spec).accessList;
 
     public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
     {
@@ -62,7 +66,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, header, tracer);
+            processor.Execute(transaction, new BlockExecutionContext(header, spec), tracer);
         }
     }
 }

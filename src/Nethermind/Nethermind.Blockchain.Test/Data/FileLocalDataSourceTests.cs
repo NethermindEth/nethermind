@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
 
-        private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(i => $"\"{i}\""))}]";
+        private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(static i => $"\"{i}\""))}]";
 
         [Test, MaxTime(Timeout.MaxTestTime)]
         public void loads_default_when_failed_loading_file()

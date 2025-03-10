@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
@@ -25,6 +22,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public string[] Nodes { get; set; }
         [JsonPropertyName("accounts")]
         public Dictionary<string, AllocationJson> Accounts { get; set; }
+        public Dictionary<string, byte[]>? CodeHashes { get; set; }
 
         internal class EngineJson
         {

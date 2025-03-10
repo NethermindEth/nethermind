@@ -24,13 +24,13 @@ namespace Nethermind.Blockchain
         public byte[]? GetCode(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? Array.Empty<byte>() : _stateReader.GetCode(account.CodeHash);
+            return !account.HasCode ? [] : _stateReader.GetCode(account.CodeHash);
         }
 
         public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);
         public byte[]? GetCode(ValueHash256 codeHash) => _stateReader.GetCode(codeHash);
 
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions)
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions) where TCtx : struct, INodeContext<TCtx>
         {
             _stateReader.RunTreeVisitor(visitor, stateRoot, visitingOptions);
         }

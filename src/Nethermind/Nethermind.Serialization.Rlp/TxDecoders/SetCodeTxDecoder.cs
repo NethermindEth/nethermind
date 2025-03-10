@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.SetCode, transactionFactory) where T : Transaction, new()
 {
-    private AuthorizationTupleDecoder _authTupleDecoder = new();
+    private readonly AuthorizationTupleDecoder _authTupleDecoder = new();
 
     protected override void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

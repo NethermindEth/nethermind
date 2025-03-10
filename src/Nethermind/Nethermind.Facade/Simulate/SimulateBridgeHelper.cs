@@ -42,9 +42,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         stateProvider.StateRoot = parent.StateRoot!;
         stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
-        IEnumerable<Address> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? Enumerable.Empty<Address?>();
-        IEnumerable<Address> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? Enumerable.Empty<Address?>();
-        foreach (Address address in senders.Union(targets).Where(t => t is not null))
+        IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
+        IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
+        foreach (Address address in senders.Union(targets).Where(static t => t is not null))
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
@@ -128,7 +128,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
         current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
         current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.Author = null;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
@@ -211,14 +210,14 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         if (notSpecifiedGasTxsCount > 0)
         {
             long gasPerTx = callHeader.GasLimit - gasSpecified / notSpecifiedGasTxsCount;
-            IEnumerable<TransactionWithSourceDetails> notSpecifiedGasTxs = callInputBlock.Calls?.Where(details => !details.HadGasLimitInRequest) ?? Enumerable.Empty<TransactionWithSourceDetails>();
+            IEnumerable<TransactionWithSourceDetails> notSpecifiedGasTxs = callInputBlock.Calls?.Where(details => !details.HadGasLimitInRequest) ?? [];
             foreach (TransactionWithSourceDetails call in notSpecifiedGasTxs)
             {
                 call.Transaction.GasLimit = gasPerTx;
             }
         }
 
-        return callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, stateProvider, nonceCache, payload.Validation)).ToArray() ?? Array.Empty<Transaction>();
+        return callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, stateProvider, nonceCache, payload.Validation)).ToArray() ?? [];
     }
 
     private Transaction CreateTransaction(TransactionWithSourceDetails transactionDetails,
@@ -282,13 +281,13 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 UInt256.Zero,
                 parent.Number + 1,
                 parent.GasLimit,
-                parent.Timestamp + 1,
-                Array.Empty<byte>())
+                parent.Timestamp + blocksConfig.SecondsPerSlot,
+                [])
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
-        result.Timestamp = parent.Timestamp + 1;
+        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation

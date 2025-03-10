@@ -71,6 +71,8 @@ namespace Nethermind.Synchronization.Blocks
 
         public List<Hash256> NonEmptyBlockHashes { get; }
 
+        public bool DownloadReceipts => _downloadReceipts;
+
         public IReadOnlyList<Hash256> GetHashesByOffset(int offset, int maxLength)
         {
             var hashesToRequest =
@@ -107,7 +109,7 @@ namespace Nethermind.Synchronization.Blocks
 
             int mappedIndex = _indexMapping[index];
             block = Blocks[_indexMapping[index]];
-            receipts ??= Array.Empty<TxReceipt>();
+            receipts ??= [];
 
             bool result = _receiptsRecovery.TryRecover(block, receipts, false) != ReceiptsRecoveryResult.Fail;
             if (result)

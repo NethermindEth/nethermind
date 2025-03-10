@@ -43,16 +43,6 @@ public class BlockchainProcessorTests
             public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                stateReader.When(it =>
-                        it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Hash256>(), Arg.Any<VisitingOptions>()))
-                    .Do((info =>
-                    {
-                        // Simulate state root check
-                        ITreeVisitor visitor = (ITreeVisitor)info[0];
-                        Hash256 stateRoot = (Hash256)info[1];
-                        if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
-                    }));
-
                 stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
             }
 
@@ -68,7 +58,7 @@ public class BlockchainProcessorTests
                 _allowedToFail.Add(hash);
             }
 
-            public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+            public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
             {
                 if (blockTracer != NullBlockTracer.Instance)
                 {
@@ -91,7 +81,7 @@ public class BlockchainProcessorTests
                             if (_allowedToFail.Contains(hash))
                             {
                                 _allowedToFail.Remove(hash);
-                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
+                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                                 throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                             }
 
@@ -107,7 +97,7 @@ public class BlockchainProcessorTests
                     else
                     {
                         _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                         return suggestedBlocks.ToArray();
                     }
                 }

@@ -1,10 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/op-sepolia.json",
+    "ChainSpecPath": "chainspec/op-sepolia.json.zst",
     "GenesisHash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
     "BaseDbPath": "nethermind_db/op-sepolia",
-    "LogFileName": "op-sepolia.logs.txt",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "op-sepolia.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -13,9 +13,8 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 18780000,
-    "PivotHash": "0x59e926908f66054b7f81bc7cf61db7f9261a57e4f81f54edc94b98892262921e",
-    "PivotTotalDifficulty": "0"
+    "PivotNumber": 24520000,
+    "PivotHash": "0xd2d91d7a0e24261a73bd7d363b5a726f032b57d8c1decf9f5740b0d31a157ed3"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -29,8 +28,7 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 2,
-    "TargetBlockGasLimit": 30000000
+    "SecondsPerSlot": 2
   },
   "Merge": {
     "Enabled": true

@@ -54,11 +54,13 @@ public static partial class Ssz
         return new Root(span);
     }
 
+
+
     public static Root[] DecodeRoots(ReadOnlySpan<byte> span)
     {
         if (span.Length == 0)
         {
-            return Array.Empty<Root>();
+            return [];
         }
 
         int count = span.Length / Ssz.RootLength;

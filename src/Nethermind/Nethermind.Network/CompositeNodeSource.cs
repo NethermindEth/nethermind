@@ -8,6 +8,8 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
@@ -20,14 +22,13 @@ public class CompositeNodeSource : INodeSource
     {
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
 
-        // TODO: .Net 9 stackalloc
-        Task[] feedTasks = _nodeSources.Select(async innerSource =>
+        using ArrayPoolList<Task> feedTasks = _nodeSources.Select(async innerSource =>
         {
             await foreach (Node node in innerSource.DiscoverNodes(cancellationToken))
             {
                 await ch.Writer.WriteAsync(node, cancellationToken);
             }
-        }).ToArray();
+        }).ToPooledList(_nodeSources.Length * 16);
 
         try
         {
@@ -38,7 +39,7 @@ public class CompositeNodeSource : INodeSource
         }
         finally
         {
-            await Task.WhenAll(feedTasks);
+            await Task.WhenAll(feedTasks.AsSpan());
         }
     }
 

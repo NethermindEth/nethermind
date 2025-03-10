@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -14,12 +13,11 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Test;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
-
-using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 class ShutterTestsCommon
@@ -31,7 +29,6 @@ class ShutterTestsCommon
     public const int ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = 1;
     public static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(5);
-    public static readonly TimeSpan BlockUpToDateCutoff = TimeSpan.FromSeconds(5);
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
     public static readonly IEthereumEcdsa Ecdsa = new EthereumEcdsa(ChainId);
     public static readonly ILogManager LogManager = LimboLogs.Instance;
@@ -47,6 +44,7 @@ class ShutterTestsCommon
         EncryptedGasLimit = 21000 * 20,
         Validator = true
     };
+    public static readonly TimeSpan BlockUpToDateCutoff = TimeSpan.FromMilliseconds(Cfg.BlockUpToDateCutoff);
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
@@ -63,7 +61,7 @@ class ShutterTestsCommon
         );
     }
 
-    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
+    public static ShutterApiSimulator InitApi(Random rnd, BaseEngineModuleTests.MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
         => new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,

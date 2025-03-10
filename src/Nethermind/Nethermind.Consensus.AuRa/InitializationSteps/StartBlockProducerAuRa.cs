@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
@@ -159,7 +158,7 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
-            _api.TransactionProcessor,
+            changeableTxProcessingEnv.TransactionProcessor,
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator(_api) as AuRaContractGasLimitOverride,

@@ -24,7 +24,7 @@ namespace Nethermind.Wallet
 
         private static NullWallet _instance;
 
-        public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullWallet());
+        public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new NullWallet());
 
         public Address NewAccount(SecureString passphrase)
         {
@@ -50,7 +50,7 @@ namespace Nethermind.Wallet
 
         public Address[] GetAccounts()
         {
-            return Array.Empty<Address>();
+            return [];
         }
 
         public bool IsUnlocked(Address address)

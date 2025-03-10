@@ -73,35 +73,35 @@ namespace Nethermind.Consensus.Clique
         public Address[] GetSigners()
         {
             Block head = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(static s => s.Key).ToArray();
         }
 
         public Address[] GetSigners(long number)
         {
             BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => s.Key).ToArray();
+                .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated()
         {
             Block header = _blockTree.Head;
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+                .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
         public Address[] GetSigners(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => s.Key).ToArray();
+                .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+                .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
         public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash) => ResultWrapper<bool>.Success(ProduceBlock(parentHash));

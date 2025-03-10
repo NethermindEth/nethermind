@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -206,7 +205,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
     public void Newly_created_empty_account_returns_empty_data_hash()
     {
         byte[] code = Prepare.EvmCode
-            .Create(Array.Empty<byte>(), 0)
+            .Create([], 0)
             .PushData(ContractAddress.From(Recipient, 0))
             .Op(Instruction.EXTCODEHASH)
             .PushData(0)

@@ -3,11 +3,11 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -123,7 +123,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 bool hasNonNull = false;
                 bool hasInserted = false;
-                Parallel.For(0, workingArray.Count, (i) =>
+                ParallelUnbalancedWork.For(0, workingArray.Count, (i) =>
                 {
                     if (workingArray[i] is not null)
                     {

@@ -6,16 +6,12 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Withdrawals;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
@@ -32,14 +28,12 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         }
 
-        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
+        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
         {
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
             WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder);
-            IWorldState worldState = _api.WorldState!;
-            ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 
             return new AuRaMergeBlockProcessor(
                 _api.SpecProvider!,
@@ -53,7 +47,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
                 transactionProcessor,
-                CreateAuRaValidator(),
+                CreateAuRaValidator(worldState, transactionProcessor),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter,

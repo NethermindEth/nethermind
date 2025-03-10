@@ -86,6 +86,6 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
     {
         base.AmendHeader(blockHeader, parent);
 
-        blockHeader.ExtraData = Array.Empty<byte>();
+        blockHeader.ExtraData = [];
     }
 }

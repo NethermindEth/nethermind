@@ -26,6 +26,8 @@ namespace Nethermind.TxPool
 
         public UInt256 CurrentFeePerBlobGas { get; }
 
+        bool IsSyncing { get; }
+
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }
 }

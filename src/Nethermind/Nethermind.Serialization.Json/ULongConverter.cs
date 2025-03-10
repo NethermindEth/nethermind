@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Json
             ulong value;
             if (s.StartsWith("0x"u8))
             {
-                s = s.Slice(2);
+                s = s[2..];
                 if (Utf8Parser.TryParse(s, out value, out _, 'x'))
                 {
                     return value;

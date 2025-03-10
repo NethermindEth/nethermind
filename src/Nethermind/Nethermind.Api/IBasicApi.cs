@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -38,7 +36,7 @@ namespace Nethermind.Api
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; set; }
-        ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
         string SealEngineType { get; set; }
@@ -51,10 +49,10 @@ namespace Nethermind.Api
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
                 .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
+                .SingleOrDefault();
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
-            Plugins.OfType<IConsensusWrapperPlugin>().Where(p => p.Enabled);
+            Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
@@ -63,7 +61,7 @@ namespace Nethermind.Api
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
+                .AddSource(new ConfigRegistrationSource())
                 .AddModule(new DbModule());
 
             return builder;

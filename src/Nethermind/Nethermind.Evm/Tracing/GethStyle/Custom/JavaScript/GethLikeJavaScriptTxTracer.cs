@@ -8,10 +8,11 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -59,8 +60,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+
         _resultConstructed = true;
+
         return result;
     }
 
@@ -169,18 +174,18 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
         _depth--;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
-        _ctx.gasUsed = gasSpent;
+        _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
         _ctx.error = error;
     }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
-        _ctx.gasUsed = gasSpent;
+        _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
     }
 

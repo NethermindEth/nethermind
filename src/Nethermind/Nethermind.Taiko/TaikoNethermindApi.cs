@@ -17,4 +17,5 @@ public class TaikoNethermindApi(
     ChainSpec chainSpec) : NethermindApi(configProvider, jsonSerializer, logManager, chainSpec)
 {
     public InvalidChainTracker? InvalidChainTracker { get; set; }
+    public L1OriginStore? L1OriginStore { get; set; }
 }

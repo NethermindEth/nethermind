@@ -43,13 +43,7 @@ namespace Nethermind.Config.Test
                     PropertyInfo[] properties = configType.GetProperties();
 
                     Type? implementationType = configType.Assembly.GetExportedTypes()
-                        .SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
-
-                    if (implementationType is null)
-                    {
-                        throw new Exception($"Missing config implementation for {configType}");
-                    }
-
+                        .SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t)) ?? throw new Exception($"Missing config implementation for {configType}");
                     object? instance = Activator.CreateInstance(implementationType);
 
                     foreach (PropertyInfo property in properties)

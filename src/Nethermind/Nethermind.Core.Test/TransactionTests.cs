@@ -46,9 +46,9 @@ public static class TransactionTestExtensions
     {
         subject.Should().BeEquivalentTo(
             expectation,
-            o => o
+            static o => o
                 .ComparingByMembers<Transaction>()
-                .Using<Memory<byte>>(ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+                .Using<Memory<byte>>(static ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
                 .WhenTypeIs<Memory<byte>>()
             );
     }

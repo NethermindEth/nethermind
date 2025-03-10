@@ -18,7 +18,7 @@ namespace Nethermind.Shutter;
 public class ShutterTxSource(
     ShutterTxLoader txLoader,
     IShutterConfig shutterConfig,
-    ShutterTime shutterTime,
+    SlotTime slotTime,
     ILogManager logManager)
     : ITxSource, IShutterTxSignal
 {
@@ -26,7 +26,7 @@ public class ShutterTxSource(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private ulong _keyWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
-    private readonly object _syncObject = new();
+    private readonly Lock _syncObject = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
     {
@@ -39,11 +39,11 @@ public class ShutterTxSource(
         ulong buildingSlot;
         try
         {
-            (buildingSlot, _) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
+            (buildingSlot, _) = slotTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
         }
-        catch (ShutterTime.ShutterSlotCalulationException e)
+        catch (SlotTime.SlotCalulationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
             return [];
         }
 
@@ -122,5 +122,5 @@ public class ShutterTxSource(
     }
 
     public void Dispose()
-        => _keyWaitTasks.ForEach(x => x.Value.ForEach(waitTask => waitTask.Value.Item2.Dispose()));
+        => _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
 }

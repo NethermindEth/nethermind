@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
@@ -134,7 +132,7 @@ namespace Nethermind.Evm.Test
         public void Logs_are_committed()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, []);
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.AccessTracker.Logs.Add(logEntry);
@@ -148,7 +146,7 @@ namespace Nethermind.Evm.Test
         public void Logs_are_restored()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, []);
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.AccessTracker.Logs.Add(logEntry);
@@ -218,25 +216,26 @@ namespace Nethermind.Evm.Test
         public void Can_dispose_after_init()
         {
             EvmState evmState = CreateEvmState();
-            evmState.InitStacks();
+            evmState.InitializeStacks();
             evmState.Dispose();
         }
 
         private static EvmState CreateEvmState(EvmState parentEvmState = null, bool isContinuation = false) =>
             parentEvmState is null
-                ? new EvmState(10000,
-                    new ExecutionEnvironment(),
-                    ExecutionType.CALL,
-                    Snapshot.Empty)
-                : new EvmState(10000,
-                    new ExecutionEnvironment(),
+                ? EvmState.RentTopLevel(10000,
                     ExecutionType.CALL,
                     Snapshot.Empty,
+                    new ExecutionEnvironment(),
+                    new StackAccessTracker())
+                : EvmState.RentFrame(10000,
                     0,
                     0,
+                    ExecutionType.CALL,
                     false,
-                    parentEvmState.AccessTracker,
-                    false);
+                    false,
+                    Snapshot.Empty,
+                    new ExecutionEnvironment(),
+                    parentEvmState.AccessTracker);
 
         public class Context { }
     }

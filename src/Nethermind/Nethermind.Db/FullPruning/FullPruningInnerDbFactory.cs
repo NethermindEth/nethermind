@@ -86,9 +86,9 @@ namespace Nethermind.Db.FullPruning
                 // else we have sub-directories, which should be index based
                 // we want to find lowest positive index and return it - 1.
                 int minIndex = directory.EnumerateDirectories()
-                    .Select(d => int.TryParse(d.Name, out int index) ? index : -1)
-                    .Where(i => i >= 0)
-                    .OrderBy(i => i)
+                    .Select(static d => int.TryParse(d.Name, out int index) ? index : -1)
+                    .Where(static i => i >= 0)
+                    .OrderBy(static i => i)
                     .FirstOrDefault();
 
                 return minIndex - 1;

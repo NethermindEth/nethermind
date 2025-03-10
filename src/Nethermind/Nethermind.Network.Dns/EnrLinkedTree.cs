@@ -18,7 +18,7 @@ public class EnrLinkedTree : EnrTreeNode
 
     public override string[] Links => new[] { Link };
 
-    public override string[] Refs => Array.Empty<string>();
+    public override string[] Refs => [];
 
-    public override string[] Records => Array.Empty<string>();
+    public override string[] Records => [];
 }

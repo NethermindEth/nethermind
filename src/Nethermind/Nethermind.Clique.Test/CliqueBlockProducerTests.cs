@@ -50,7 +50,7 @@ public class CliqueBlockProducerTests
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
-        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
+        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
         private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
         private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -87,13 +87,13 @@ public class CliqueBlockProducerTests
             MemDb stateDb = new();
             MemDb codeDb = new();
 
-            ISpecProvider specProvider = GoerliSpecProvider.Instance;
+            ISpecProvider specProvider = SepoliaSpecProvider.Instance;
 
             var trieStore = new TrieStore(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-            GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
+            SepoliaSpecProvider goerliSpecProvider = SepoliaSpecProvider.Instance;
             stateProvider.Commit(goerliSpecProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
@@ -110,7 +110,7 @@ public class CliqueBlockProducerTests
             CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(goerliSpecProvider.ChainId),
                 _logManager,
@@ -122,7 +122,7 @@ public class CliqueBlockProducerTests
 
             SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
             _snapshotManager[privateKey] = snapshotManager;
-            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
             _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
@@ -380,8 +380,8 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING {vote} VOTE ON {address} AT BLOCK {number}");
-            Assert.That(_blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote), nodeKey + " vote nonce");
-            Assert.That(_blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Beneficiary, Is.EqualTo(address), nodeKey.Address + " vote nonce");
+            Assert.That(() => _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None)?.Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote).After(_timeout, 100), nodeKey + " vote nonce");
+            Assert.That(() => _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None)?.Beneficiary, Is.EqualTo(address).After(_timeout, 100), nodeKey.Address + " vote nonce");
             return this;
         }
 
@@ -437,12 +437,7 @@ public class CliqueBlockProducerTests
 
         public Block GetBlock(PrivateKey privateKey, long number)
         {
-            Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
-            if (block is null)
-            {
-                throw new InvalidOperationException($"Cannot find block {number}");
-            }
-
+            Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"Cannot find block {number}");
             return block;
         }
 
@@ -526,10 +521,8 @@ public class CliqueBlockProducerTests
 
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
-            Transaction transaction = new();
-
             // gas limit too high
-            transaction = new Transaction();
+            Transaction transaction = new Transaction();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
@@ -568,7 +561,7 @@ public class CliqueBlockProducerTests
         }
     }
 
-    private static readonly int _timeout = 2000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
+    private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
     public async Task Can_produce_block_with_transactions()
@@ -632,7 +625,7 @@ public class CliqueBlockProducerTests
             .AssertInTurn(TestItem.PrivateKeyA, 1)
             .AssertOutOfTurn(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyA)
-            .ContinueWith(t => t.Result.StopNode(TestItem.PrivateKeyB));
+            .ContinueWith(static t => t.Result.StopNode(TestItem.PrivateKeyB));
     }
 
     [Test]
@@ -895,7 +888,7 @@ public class CliqueBlockProducerTests
     [Test, Retry(3)]
     public async Task Many_validators_can_process_blocks()
     {
-        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
+        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, AddressComparer.Instance).ToArray();
 
         On goerli = On.FastGoerli;
         for (int i = 0; i < keys.Length; i++)

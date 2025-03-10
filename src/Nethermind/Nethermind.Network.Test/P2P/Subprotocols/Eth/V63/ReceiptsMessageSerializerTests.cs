@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
@@ -114,7 +113,7 @@ public class ReceiptsMessageSerializerTests
     public void Deserialize_empty()
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        using ReceiptsMessage receiptsMessage = serializer.Deserialize(Array.Empty<byte>());
+        using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
         receiptsMessage.TxReceipts.Should().HaveCount(0);
     }
 

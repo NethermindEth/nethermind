@@ -12,7 +12,7 @@ namespace Nethermind.Network.Test;
 
 public class TestNodeSource : INodeSource
 {
-    private Channel<Node> _channel = Channel.CreateUnbounded<Node>();
+    private readonly Channel<Node> _channel = Channel.CreateUnbounded<Node>();
     public int BufferedNodeCount { get; set; }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)

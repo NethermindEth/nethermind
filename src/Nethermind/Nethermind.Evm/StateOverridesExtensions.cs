@@ -43,6 +43,7 @@ public static class StateOverridesExtensions
         state.Commit(spec);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
+
     }
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
@@ -124,7 +125,7 @@ public static class StateOverridesExtensions
             }
             else if (balance < newBalance)
             {
-                stateProvider.AddToBalance(address, newBalance - balance, spec);
+                stateProvider.AddToBalanceAndCreateIfNotExists(address, newBalance - balance, spec);
             }
         }
     }

@@ -21,7 +21,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
     {
         _baseValidator = headerValidator;
         _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger(typeof(InvalidHeaderInterceptor));
+        _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
     }
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)

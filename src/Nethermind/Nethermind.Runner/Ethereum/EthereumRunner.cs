@@ -4,14 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum;
 
@@ -20,11 +22,45 @@ public class EthereumRunner(INethermindApi api)
     private readonly INethermindApi _api = api;
     private readonly ILogger _logger = api.LogManager.GetClassLogger();
 
+    public static readonly StepInfo[] BuiltInSteps =
+    [
+         typeof(InitializeStateDb),
+         typeof(ApplyMemoryHint),
+         typeof(DatabaseMigrations),
+         typeof(EraStep),
+         typeof(FilterBootnodes),
+         typeof(InitCrypto),
+         typeof(InitDatabase),
+         typeof(InitializeBlockchain),
+         typeof(InitializeBlockProducer),
+         typeof(InitializeBlockTree),
+         typeof(InitializeNetwork),
+         typeof(InitializeNodeStats),
+         typeof(InitializePlugins),
+         typeof(InitializePrecompiles),
+         typeof(InitTxTypesAndRlp),
+         typeof(LoadGenesisBlock),
+         typeof(LogHardwareInfo),
+         typeof(MigrateConfigs),
+         typeof(RegisterPluginRpcModules),
+         typeof(RegisterRpcModules),
+         typeof(ResolveIps),
+         typeof(ReviewBlockTree),
+         typeof(SetupKeyStore),
+         typeof(StartBlockProcessor),
+         typeof(StartBlockProducer),
+         typeof(StartLogProducer),
+         typeof(StartMonitoring),
+         typeof(UpdateDiscoveryConfig),
+         typeof(StartGrpc),
+         typeof(StartRpc),
+    ];
+
     public async Task Start(CancellationToken cancellationToken)
     {
         if (_logger.IsDebug) _logger.Debug("Starting Ethereum runner");
 
-        EthereumStepsLoader stepsLoader = new(GetStepsAssemblies(_api));
+        EthereumStepsLoader stepsLoader = new(GetStepsInfo(_api));
         EthereumStepsManager stepsManager = new(stepsLoader, _api, _api.LogManager);
 
         await stepsManager.InitializeAll(cancellationToken);
@@ -34,17 +70,19 @@ public class EthereumRunner(INethermindApi api)
         if (_logger.IsInfo) _logger.Info(infoScreen);
     }
 
-    private IEnumerable<Assembly> GetStepsAssemblies(INethermindApi api)
+    private IEnumerable<StepInfo> GetStepsInfo(INethermindApi api)
     {
-        yield return typeof(IStep).Assembly;
-        yield return GetType().Assembly;
-
-        IEnumerable<IInitializationPlugin> enabledInitializationPlugins =
-            _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
-
-        foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
+        foreach (StepInfo buildInStep in BuiltInSteps)
         {
-            yield return initializationPlugin.GetType().Assembly;
+            yield return buildInStep;
+        }
+
+        foreach (INethermindPlugin plugin in _api.Plugins)
+        {
+            foreach (StepInfo stepInfo in plugin.GetSteps())
+            {
+                yield return stepInfo;
+            }
         }
     }
 
@@ -54,25 +92,18 @@ public class EthereumRunner(INethermindApi api)
         Stop(() => _api.SyncModeSelector?.Stop(), "Stopping session sync mode selector");
         Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
         Task blockProducerTask = Stop(() => _api.BlockProducerRunner?.StopAsync(), "Stopping block producer");
-        Task syncPeerPoolTask = Stop(() => _api.SyncPeerPool?.StopAsync(), "Stopping sync peer pool");
         Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
         Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
-        Task synchronizerTask = Stop(() => _api.Synchronizer?.StopAsync(), "Stopping synchronizer");
-        Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
+        Task blockchainProcessorTask = Stop(() => _api.MainProcessingContext?.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
         Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping RLPx peer");
-        await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, syncPeerPoolTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
+        await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {
             await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
         }
 
-        while (_api.DisposeStack.Count != 0)
-        {
-            IAsyncDisposable disposable = _api.DisposeStack.Pop();
-            await Stop(async () => await disposable.DisposeAsync(), $"Disposing {disposable}");
-        }
-
+        await _api.DisposeStack.DisposeAsync();
         Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
         if (_logger.IsInfo)

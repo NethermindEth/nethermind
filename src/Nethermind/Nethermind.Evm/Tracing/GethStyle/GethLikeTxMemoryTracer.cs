@@ -6,19 +6,35 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
 public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
-    public GethLikeTxMemoryTracer(GethTraceOptions options) : base(options) => IsTracingMemory = IsTracingFullMemory;
+    private readonly Transaction? _transaction;
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
+    {
+        _transaction = transaction;
+        IsTracingMemory = IsTracingFullMemory;
+    }
+
+    public override GethLikeTxTrace BuildResult()
+    {
+        var trace = base.BuildResult();
+
+        trace.TxHash = _transaction?.Hash;
+
+        return trace;
+    }
+
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-        Trace.Gas = gasSpent;
+        Trace.Gas = gasSpent.SpentGas;
     }
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)

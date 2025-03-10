@@ -31,8 +31,8 @@ public abstract class ClockCacheBase<TKey>
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
 
         MaxCapacity = maxCapacity;
-        KeyToOffset = maxCapacity == 0 ? Array.Empty<TKey>() : new TKey[maxCapacity];
-        HasBeenAccessedBitmap = maxCapacity == 0 ? Array.Empty<long>() : new long[GetInt64ArrayLengthFromBitLength(maxCapacity)];
+        KeyToOffset = maxCapacity == 0 ? [] : new TKey[maxCapacity];
+        HasBeenAccessedBitmap = maxCapacity == 0 ? [] : new long[GetInt64ArrayLengthFromBitLength(maxCapacity)];
     }
 
     protected void Clear()

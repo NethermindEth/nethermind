@@ -13,7 +13,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -28,6 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -228,13 +228,13 @@ public class TxPermissionFilterTest
             foreach (ITransactionPermissionContract.TxPermissions txType in TxPermissionsTypes)
             {
                 Task<TestTxPermissionsBlockchain> chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
-                Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
+                async Task<TestTxPermissionsBlockchain> testFactory()
                 {
                     TestTxPermissionsBlockchain chain = await chainTask;
                     chain.TxPermissionFilterCache.Permissions.Clear();
                     chain.TransactionPermissionContractVersions.Clear();
                     return chain;
-                };
+                }
 
                 yield return GetTestCase(testFactory, test, txType);
             }
@@ -265,7 +265,7 @@ public class TxPermissionFilterTest
 
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; private set; }
 
-        protected override BlockProcessor CreateBlockProcessor()
+        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
             TransactionPermissionContractVersions =
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
@@ -287,10 +287,10 @@ public class TxPermissionFilterTest
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                worldState,
                 ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, State),
+                new BeaconBlockRootHandler(TxProcessor, worldState),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,

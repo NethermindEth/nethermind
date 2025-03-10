@@ -154,11 +154,6 @@ namespace Ethereum.Test.Base
                     transactionJson.AuthorizationList
                     .Select(i =>
                     {
-                        if (i.ChainId > ulong.MaxValue)
-                        {
-                            i.ChainId = 0;
-                            transaction.SenderAddress = Address.Zero;
-                        }
                         if (i.Nonce > ulong.MaxValue)
                         {
                             i.Nonce = 0;
@@ -190,7 +185,7 @@ namespace Ethereum.Test.Base
                             transaction.SenderAddress = Address.Zero;
                         }
                         return new AuthorizationTuple(
-                            i.ChainId.u0,
+                            i.ChainId,
                             i.Address,
                             i.Nonce.u0,
                             (byte)i.V,
@@ -323,7 +318,6 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                Console.WriteLine($"Loading {namedTest.Key}\n {namedTest.Value.Post}");
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 

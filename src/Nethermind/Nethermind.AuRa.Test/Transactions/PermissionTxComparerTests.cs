@@ -33,15 +33,15 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             get
             {
-                Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
+                static Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
                     transactionSelect;
 
 
                 yield return new TestCaseData(null).SetName("All");
-                yield return new TestCaseData(Select(t => t.Where(tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To != TestItem.AddressB))).SetName("No priority");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To == TestItem.AddressB))).SetName("Only priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To != TestItem.AddressB))).SetName("No priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To == TestItem.AddressB))).SetName("Only priority");
             }
         }
 

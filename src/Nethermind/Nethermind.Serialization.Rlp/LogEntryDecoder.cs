@@ -142,8 +142,8 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.ReadSequenceLength();
             decoderContext.DecodeAddressStructRef(out var address);
-            var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
-            var sequenceLength = peekPrefixAndContentLength.PrefixLength + peekPrefixAndContentLength.ContentLength;
+            var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
+            var sequenceLength = PrefixLength + ContentLength;
             var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
             var data = decoderContext.DecodeByteArraySpan();

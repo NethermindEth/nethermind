@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
@@ -32,37 +33,34 @@ namespace Nethermind.Consensus.Producers
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
             PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
         {
-            Task<Block?>[] produceTasks = new Task<Block?>[_blockProducers.Length];
+            using ArrayPoolList<Task<Block>> produceTasks = new(_blockProducers.Length);
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 T blockProducerInfo = _blockProducers[i];
-                if (!blockProducerInfo.Condition.CanProduce(parentHeader))
-                {
-                    produceTasks[i] = Task.FromResult<Block?>(null);
-                    continue;
-                }
-                produceTasks[i] = blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, cancellationToken: token);
+                produceTasks.Add(!blockProducerInfo.Condition.CanProduce(parentHeader!)
+                    ? Task.FromResult<Block?>(null)
+                    : blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, cancellationToken: token));
             }
 
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
 
             try
             {
-                Block?[] blocks = await Task.WhenAll(produceTasks);
+                Block?[] blocks = await Task.WhenAll<Block?>(produceTasks.AsSpan());
                 blocksWithProducers = blocks.Zip(_blockProducers);
             }
             catch (OperationCanceledException)
             {
                 blocksWithProducers = produceTasks
                     .Zip(_blockProducers)
-                    .Where(t => t.First.IsCompletedSuccessfully)
-                    .Select(t => (t.First.Result, t.Second));
+                    .Where(static t => t.First.IsCompletedSuccessfully)
+                    .Select(static t => (t.First.Result, t.Second));
             }
 
             Block? bestBlock = _bestBlockPicker.GetBestBlock(blocksWithProducers);
             if (bestBlock is not null)
             {
-                if (produceTasks.Count(t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
+                if (produceTasks.Count(static t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
                 {
                     if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
                 }

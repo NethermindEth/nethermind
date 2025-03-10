@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -18,8 +19,10 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -38,7 +41,7 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly IReadOnlyKeyValueStore _stateDb;
+        private readonly IReadOnlyKeyValueStore? _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
@@ -52,8 +55,8 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
-            IReadOnlyKeyValueStore stateDb,
-            IReadOnlyKeyValueStore codeDb,
+            IWorldStateManager worldStateManager,
+            [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IBlockValidator blockValidator,
@@ -71,7 +74,7 @@ namespace Nethermind.Synchronization
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -352,7 +355,7 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Hash256? blockHash)
         {
-            return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
+            return blockHash is not null ? _receiptFinder.Get(blockHash) : [];
         }
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
@@ -373,7 +376,14 @@ namespace Nethermind.Synchronization
                 values.Add(null);
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb[keys[i].Bytes];
+                    if (_stateDb is null)
+                    {
+                        values[i] = null;
+                    }
+                    else
+                    {
+                        values[i] = _stateDb[keys[i].Bytes];
+                    }
                 }
 
                 if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)

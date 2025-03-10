@@ -34,7 +34,7 @@ namespace Nethermind.State
 
         public static byte[] GetCode(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
-            return stateReader.GetCode(GetCodeHash(stateReader, stateRoot, address)) ?? Array.Empty<byte>();
+            return stateReader.GetCode(GetCodeHash(stateReader, stateRoot, address)) ?? [];
         }
 
         public static ValueHash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address)

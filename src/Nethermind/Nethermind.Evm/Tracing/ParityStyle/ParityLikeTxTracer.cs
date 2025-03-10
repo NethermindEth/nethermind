@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -68,79 +69,51 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         private static string GetCallType(ExecutionType executionType)
         {
-            switch (executionType)
+            return executionType switch
             {
-                case ExecutionType.TRANSACTION:
-                    return "call";
-                case ExecutionType.CREATE:
-                    return "create";
-                case ExecutionType.CREATE2:
-                    return "create";
-                case ExecutionType.CALL:
-                    return "call";
-                case ExecutionType.DELEGATECALL:
-                    return "delegatecall";
-                case ExecutionType.STATICCALL:
-                    return "staticcall";
-                case ExecutionType.CALLCODE:
-                    return "callcode";
-                default:
-                    throw new NotSupportedException($"Parity trace call type is undefined for {executionType}");
-            }
+                ExecutionType.TRANSACTION => "call",
+                ExecutionType.CREATE => "create",
+                ExecutionType.CREATE2 => "create",
+                ExecutionType.CALL => "call",
+                ExecutionType.DELEGATECALL => "delegatecall",
+                ExecutionType.STATICCALL => "staticcall",
+                ExecutionType.CALLCODE => "callcode",
+                _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}"),
+            };
         }
 
         private static string GetActionType(ExecutionType executionType)
         {
-            switch (executionType)
+            return executionType switch
             {
-                case ExecutionType.TRANSACTION:
-                    return "call";
-                case ExecutionType.CREATE:
-                    return "create";
-                case ExecutionType.CREATE2:
-                    return "create";
-                case ExecutionType.CALL:
-                    return "call";
-                case ExecutionType.DELEGATECALL:
-                    return "call";
-                case ExecutionType.STATICCALL:
-                    return "call";
-                case ExecutionType.CALLCODE:
-                    return "call";
-                default:
-                    return "call";
-            }
+                ExecutionType.TRANSACTION => "call",
+                ExecutionType.CREATE => "create",
+                ExecutionType.CREATE2 => "create",
+                ExecutionType.CALL => "call",
+                ExecutionType.DELEGATECALL => "call",
+                ExecutionType.STATICCALL => "call",
+                ExecutionType.CALLCODE => "call",
+                _ => "call",
+            };
         }
 
         private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
-            switch (evmExceptionType)
+            return evmExceptionType switch
             {
-                case EvmExceptionType.None:
-                    return null;
-                case EvmExceptionType.BadInstruction:
-                    return "Bad instruction";
-                case EvmExceptionType.StackOverflow:
-                    return "Stack overflow";
-                case EvmExceptionType.StackUnderflow:
-                    return "Stack underflow";
-                case EvmExceptionType.OutOfGas:
-                    return "Out of gas";
-                case EvmExceptionType.InvalidSubroutineEntry:
-                    return "Invalid subroutine entry";
-                case EvmExceptionType.InvalidSubroutineReturn:
-                    return "Invalid subroutine return";
-                case EvmExceptionType.InvalidJumpDestination:
-                    return "Bad jump destination";
-                case EvmExceptionType.AccessViolation:
-                    return "Access violation";
-                case EvmExceptionType.StaticCallViolation:
-                    return "Static call violation";
-                case EvmExceptionType.Revert:
-                    return "Reverted";
-                default:
-                    return "Error";
-            }
+                EvmExceptionType.None => null,
+                EvmExceptionType.BadInstruction => "Bad instruction",
+                EvmExceptionType.StackOverflow => "Stack overflow",
+                EvmExceptionType.StackUnderflow => "Stack underflow",
+                EvmExceptionType.OutOfGas => "Out of gas",
+                EvmExceptionType.InvalidSubroutineEntry => "Invalid subroutine entry",
+                EvmExceptionType.InvalidSubroutineReturn => "Invalid subroutine return",
+                EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
+                EvmExceptionType.AccessViolation => "Access violation",
+                EvmExceptionType.StaticCallViolation => "Static call violation",
+                EvmExceptionType.Revert => "Reverted",
+                _ => "Error",
+            };
         }
 
         public ParityLikeTxTrace BuildResult()
@@ -163,7 +136,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
-                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => st.IncludeInTrace);
+                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(static st => st.IncludeInTrace);
                 if (action.IncludeInTrace)
                 {
                     _currentAction.Subtraces.Add(action);
@@ -172,7 +145,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             else
             {
                 _trace.Action = action;
-                action.TraceAddress = Array.Empty<int>();
+                action.TraceAddress = [];
             }
 
             _actionStack.Push(action);
@@ -215,7 +188,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -230,7 +203,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Action!.Result!.Output = output;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -240,19 +213,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Output = output;
 
             // quick tx fail (before execution)
-            if (_trace.Action is null)
+            _trace.Action ??= new ParityTraceAction
             {
-                _trace.Action = new ParityTraceAction
-                {
-                    From = _tx!.SenderAddress,
-                    To = _tx.To,
-                    Value = _tx.Value,
-                    Input = _tx.Data.AsArray(),
-                    Gas = _tx.GasLimit,
-                    CallType = _tx.IsMessageCall ? "call" : "init",
-                    Error = error
-                };
-            }
+                From = _tx!.SenderAddress,
+                To = _tx.To,
+                Value = _tx.Value,
+                Input = _tx.Data.AsArray(),
+                Gas = _tx.GasLimit,
+                CallType = _tx.IsMessageCall ? "call" : "init",
+                Error = error
+            };
         }
 
         public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
@@ -415,15 +385,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         private static string? GetCreateMethod(ExecutionType callType)
         {
-            switch (callType)
+            return callType switch
             {
-                case ExecutionType.CREATE:
-                    return "create";
-                case ExecutionType.CREATE2:
-                    return "create2";
-                default:
-                    return null;
-            }
+                ExecutionType.CREATE => "create",
+                ExecutionType.CREATE2 => "create2",
+                _ => null,
+            };
         }
 
         public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)

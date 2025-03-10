@@ -5,8 +5,10 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Stats;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -22,10 +24,13 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
             .AddModule(new SynchronizerModule(syncConfig))
             .AddModule(new DbModule())
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
-            .Map<IDbProvider, INodeStorage>(dbProvider => new NodeStorage(dbProvider.StateDb))
+            .Map<INodeStorage, IDbProvider>(dbProvider => new NodeStorage(dbProvider.StateDb))
             .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())
+            .AddSingleton<ITimerFactory>(Substitute.For<ITimerFactory>())
             .AddSingleton<ISyncConfig>(syncConfig)
+            .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
+            .AddSingleton<INodeStatsManager, NodeStatsManager>()
+            .AddSingleton<CancelOnDisposeToken>()
             .AddSingleton<ILogManager>(LimboLogs.Instance);
-
     }
 }

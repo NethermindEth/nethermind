@@ -77,8 +77,8 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Copy signature bytes (R and S)
-            byte[] signatureBytes = signature.Bytes;
-            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
+            ReadOnlySpan<byte> signatureBytes = signature.Bytes;
+            signatureBytes.CopyTo(header.ExtraData.AsSpan(header.ExtraData.Length - Clique.ExtraSealLength));
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[^1] = recoveryId;

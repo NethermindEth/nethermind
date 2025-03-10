@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -63,7 +64,6 @@ public class JsonRpcSocketsClientTests
             Assert.That(sent, Is.EqualTo(received));
         }
 
-        [Test]
         [TestCase(1)]
         [TestCase(2)]
         [TestCase(10)]
@@ -80,8 +80,13 @@ public class JsonRpcSocketsClientTests
                     byte[] buffer = new byte[10];
                     while (true)
                     {
-                        ReceiveResult? result = await stream.ReceiveAsync(buffer).ConfigureAwait(false);
-                        if (result?.EndOfMessage == true)
+                        ReceiveResult? result = await stream.ReceiveAsync(buffer);
+
+                        // Imitate random delays
+                        if (Stopwatch.GetTimestamp() % 101 == 0)
+                            await Task.Delay(1);
+
+                        if (result is not null && IsEndOfIpcMessage(result))
                         {
                             messages++;
                         }
@@ -108,7 +113,7 @@ public class JsonRpcSocketsClientTests
             Task<int> sendMessages = Task.Run(async () =>
             {
                 using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                await socket.ConnectAsync(ipEndPoint).ConfigureAwait(false);
+                await socket.ConnectAsync(ipEndPoint);
 
                 using IpcSocketMessageStream stream = new(socket);
                 using JsonRpcSocketsClient<IpcSocketMessageStream> client = new(
@@ -123,18 +128,18 @@ public class JsonRpcSocketsClientTests
 
                 for (int i = 0; i < messageCount; i++)
                 {
-                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000, () => disposeCount++), default);
-                    await client.SendJsonRpcResult(result).ConfigureAwait(false);
-                    await Task.Delay(1).ConfigureAwait(false);
+                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(100, () => disposeCount++), default);
+                    await client.SendJsonRpcResult(result);
+                    await Task.Delay(1);
                 }
 
                 disposeCount.Should().Be(messageCount);
-                await cts.CancelAsync().ConfigureAwait(false);
+                await cts.CancelAsync();
 
                 return messageCount;
             });
 
-            await Task.WhenAll(sendMessages, receiveMessages).ConfigureAwait(false);
+            await Task.WhenAll(sendMessages, receiveMessages);
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
 
@@ -158,17 +163,17 @@ public class JsonRpcSocketsClientTests
                     byte[] buffer = new byte[bufferSize];
                     while (true)
                     {
-                        ReceiveResult? result = await stream.ReceiveAsync(buffer).ConfigureAwait(false);
+                        ReceiveResult? result = await stream.ReceiveAsync(buffer);
                         if (result is not null)
                         {
                             msg.AddRange(buffer.Take(result.Read));
-                        }
 
-                        if (result?.EndOfMessage == true)
-                        {
-                            messages++;
-                            receivedMessages.Add(msg.ToArray());
-                            msg = [];
+                            if (IsEndOfIpcMessage(result))
+                            {
+                                messages++;
+                                receivedMessages.Add(msg.ToArray());
+                                msg = [];
+                            }
                         }
 
                         if (result is null || result.Closed)
@@ -190,14 +195,14 @@ public class JsonRpcSocketsClientTests
 
             Task<int> receiveMessages = OneShotServer(
                 ipEndPoint,
-                async socket => await ReadMessages(socket, receivedMessages, cts.Token).ConfigureAwait(false)
+                async socket => await ReadMessages(socket, receivedMessages, cts.Token)
             );
 
             Task<int> sendMessages = Task.Run(async () =>
             {
                 int messageCount = 0;
                 using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                await socket.ConnectAsync(ipEndPoint).ConfigureAwait(false);
+                await socket.ConnectAsync(ipEndPoint);
 
                 using IpcSocketMessageStream stream = new(socket);
                 using JsonRpcSocketsClient<IpcSocketMessageStream> client = new(
@@ -216,20 +221,20 @@ public class JsonRpcSocketsClientTests
                     messageCount++;
                     var msg = Enumerable.Range(11, i).Select(x => (byte)x).ToArray();
                     sentMessages.Add(msg);
-                    await stream.WriteAsync(msg).ConfigureAwait(false);
-                    await stream.WriteEndOfMessageAsync().ConfigureAwait(false);
+                    await stream.WriteAsync(msg.Append((byte)'\n').ToArray());
+
                     if (i % 10 == 0)
                     {
-                        await Task.Delay(1).ConfigureAwait(false);
+                        await Task.Delay(1);
                     }
                 }
                 stream.Close();
-                await cts.CancelAsync().ConfigureAwait(false);
+                await cts.CancelAsync();
 
                 return messageCount;
             });
 
-            await Task.WhenAll(sendMessages, receiveMessages).ConfigureAwait(false);
+            await Task.WhenAll(sendMessages, receiveMessages);
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
 
@@ -551,4 +556,6 @@ public class JsonRpcSocketsClientTests
         }
         return new string(stringChars);
     }
+
+    private static bool IsEndOfIpcMessage(ReceiveResult result) => result.EndOfMessage && (!result.Closed || result.Read != 0);
 }

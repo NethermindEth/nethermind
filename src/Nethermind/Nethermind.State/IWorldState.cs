@@ -90,7 +90,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
@@ -103,6 +103,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One);
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
+
+    void SetNonce(Address address, in UInt256 nonce);
 
     /* snapshots */
 
