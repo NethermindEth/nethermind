@@ -615,7 +615,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     /// removing ones that are either no longer referenced or already persisted.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    private void PruneCache(bool skipRecalculateMemory = false)
+    private void PruneCache(bool skipRecalculateMemory = false, bool forceRemovePersistedNodes = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
@@ -627,7 +627,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[index];
             _dirtyNodesTasks[index] = Task.Run(() =>
             {
-                long shardSize = dirtyNode.PruneCache(skipRecalculateMemory);
+                long shardSize = dirtyNode.PruneCache(skipRecalculateMemory, forceRemovePersistedNodes: forceRemovePersistedNodes);
                 Interlocked.Add(ref newMemory, shardSize);
             });
         }
@@ -1029,7 +1029,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             if (cancellationToken.IsCancellationRequested) return;
 
             // This should clear most nodes. For some reason, not all.
-            PruneCache(skipRecalculateMemory: true);
+            PruneCache(skipRecalculateMemory: true, forceRemovePersistedNodes: true);
             if (cancellationToken.IsCancellationRequested) return;
 
             for (int index = 0; index < _dirtyNodes.Length; index++)
@@ -1045,7 +1045,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
             if (cancellationToken.IsCancellationRequested) return;
 
-            PruneCache();
+            PruneCache(forceRemovePersistedNodes: true);
 
             int dirtyNodesCount = DirtyNodesCount();
             if (dirtyNodesCount != 0)
