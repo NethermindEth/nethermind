@@ -807,6 +807,9 @@ namespace Nethermind.TxPool.Test
                     .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
                     .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
             }
+
+            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(Ckzg.Ckzg.CellsPerExtBlob);
+            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).BlobProofs.Length.Should().Be(1);
         }
 
         private Transaction GetTx(PrivateKey sender)
