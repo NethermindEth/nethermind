@@ -22,7 +22,8 @@ This is primarily responsible for processing the instructions and accumulating t
 - **AnalyzerMinSupportThreshold**: sets the initial minimum count a
   pattern has to breach to start getting tracked by the analyzer.
 - **AnalyzerCapacity** sets the initially allocated space for intermediary storage of n-gram frequencies which are later used to populate or update the top N queue.
-- **AnalyzerBufferSize** for filters used in tracking.
+- **AnalyzerBufferSize** Buffer size for sketches e.g. setting it 1 would
+  only use one sketch for the stats;
 - **AnalyzerSketchResetOrReuseThreshold**: Sets the error threshold for
   provisioning new sketches.
 - **Ignore**: comma separated string of opcodes to ignore e.g. setting this to "JUMP, JUMPDEST"
