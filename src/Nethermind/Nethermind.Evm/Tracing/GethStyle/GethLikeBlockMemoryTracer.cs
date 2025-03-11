@@ -5,13 +5,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public class GethLikeBlockMemoryTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxMemoryTracer>
+public class GethLikeBlockMemoryTracer(GethTraceOptions options)
+    : BlockTracerBase<GethLikeTxTrace, GethLikeTxMemoryTracer>(options.TxHash)
 {
-    private readonly GethTraceOptions _options;
-
-    public GethLikeBlockMemoryTracer(GethTraceOptions options) : base(options.TxHash) => _options = options;
-
-    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(_options);
+    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(tx, options);
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxMemoryTracer txTracer) => txTracer.BuildResult();
 }

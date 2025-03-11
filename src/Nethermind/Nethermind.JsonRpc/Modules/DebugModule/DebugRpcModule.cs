@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using DotNetty.Buffers;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -291,15 +293,21 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<bool>.Success(true);
     }
 
-    public ResultWrapper<byte[]> debug_getRawTransaction(Hash256 transactionHash)
+    public ResultWrapper<string?> debug_getRawTransaction(Hash256 transactionHash)
     {
-        var transaction = _debugBridge.GetTransactionFromHash(transactionHash);
+        Transaction? transaction = _debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<byte[]>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<string?>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
         }
-        var rlp = Rlp.Encode(transaction);
-        return ResultWrapper<byte[]>.Success(rlp.Bytes);
+
+        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
+
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
+        using NettyRlpStream stream = new(buffer);
+        TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
+
+        return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
     }
 
     public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)

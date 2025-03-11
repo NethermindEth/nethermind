@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -33,12 +34,13 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
-using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
 {
     public const string Taiko = "Taiko";
     private const string L1OriginDbName = "L1Origin";
@@ -57,11 +59,10 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
 
+    public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
-            return Task.CompletedTask;
-
         _api = (TaikoNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
@@ -93,9 +94,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
-            return;
-
         _api = (TaikoNethermindApi)api;
 
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
@@ -112,7 +110,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -153,7 +151,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+            new(_api.WorldStateManager!, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
@@ -262,7 +260,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     // ISynchronizationPlugin
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -281,11 +279,11 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        ContainerBuilder builder = new ContainerBuilder();
+        ContainerBuilder builder = new();
 
         ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton<IBeaconPivot>(_beaconPivot)
+            .AddSingleton(_beaconPivot)
             .AddSingleton(_mergeConfig)
             .AddSingleton<IInvalidChainTracker>(_api.InvalidChainTracker);
 
@@ -314,7 +312,11 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     }
 
     // IInitializationPlugin
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        yield return typeof(InitializeBlockchainTaiko);
+        yield return typeof(RegisterTaikoRpcModules);
+    }
 
     // IConsensusPlugin
 
@@ -327,12 +329,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         return new TaikoNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
     }
 
-    public IBlockProducerRunner CreateBlockProducerRunner()
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
     {
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
     {
         throw new NotSupportedException();
     }

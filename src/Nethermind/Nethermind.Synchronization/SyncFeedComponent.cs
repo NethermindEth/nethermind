@@ -27,4 +27,9 @@ public class SyncFeedComponent<TBatch>(ISyncFeed<TBatch> feed, SyncDispatcher<TB
     {
         await lifetimeScope.DisposeAsync();
     }
+
+    public override string ToString()
+    {
+        return $"SyncFeedComponent Feed:{feed}";
+    }
 }

@@ -8,8 +8,10 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -70,6 +72,21 @@ public class ChainSpecBasedSpecProviderTests
         CompareSpecs(testProvider, provider, (blockNumber, timestamp));
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
+    }
+
+    [Test]
+    public void Missing_dependent_property()
+    {
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/holesky_missing_deposit_contract.json");
+        InvalidDataException? exception = Assert.Throws<InvalidDataException>(() => loader.LoadEmbeddedOrFromFile(path));
+        Assert.Multiple(() =>
+        {
+            Assert.That(exception, Is.Not.Null);
+            Assert.That(exception.InnerException, Is.TypeOf<InvalidConfigurationException>());
+            Assert.That(((InvalidConfigurationException?)exception.InnerException)?.ExitCode, Is.EqualTo(ExitCodes.MissingChainspecEipConfiguration));
+        });
     }
 
 
@@ -163,6 +180,9 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
 
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.SepoliaDepositContractAddress));
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -197,6 +217,8 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, HoleskySpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.HoleskyDepositContractAddress));
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
@@ -224,9 +246,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
-            //     yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
-            //     yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp)) { TestName = "Prague" };
-            //     yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp)) { TestName = "Prague" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -255,9 +277,10 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
-        // VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, ChiadoSpecProvider.FeeCollector);
+        VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, ChiadoSpecProvider.FeeCollector);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0xb97036A26259B7147018913bD58a774cf91acf25")));
     }
 
     public static IEnumerable<TestCaseData> GnosisActivations
@@ -320,7 +343,9 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
+        // TODO: uncomment in Pectra
         // VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
+        // Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x0B98057eA310F4d31F2a452B414647007d1645d9")));
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
@@ -487,13 +512,14 @@ public class ChainSpecBasedSpecProviderTests
             typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
         foreach (PropertyInfo propertyInfo in propertyInfos
                      .Where(p => p.Name != nameof(IReleaseSpec.Name))
+
                      // handle mainnet specific exceptions
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
-                     .Where(p => isMainnet || checkDifficultyBomb ||
-                                 p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
-                     .Where(p => isMainnet || checkDifficultyBomb ||
-                                 p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                     .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
+                     .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                     .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DepositContractAddress))
+
                      // handle RLP decoders
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))

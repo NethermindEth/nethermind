@@ -75,6 +75,8 @@ namespace Nethermind.TxPool
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
 
+        private bool _isDisposed;
+
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
@@ -808,6 +810,8 @@ namespace Nethermind.TxPool
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
             _timer?.Dispose();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
