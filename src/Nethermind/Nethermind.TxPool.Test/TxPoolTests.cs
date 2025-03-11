@@ -1925,6 +1925,10 @@ namespace Nethermind.TxPool.Test
         [TestCase(false)]
         public void Tx_is_accepted_if_conflicting_pending_delegation_is_only_local(bool isLocalDelegation)
         {
+            // tx pool capacity is only 1. As first step ending poolFillerTx unrelated with test, just to fill it.
+            // Then sending firstTx with delegation which is underpaid if isLocalDelegation.
+            // when isLocalDelegation is false (not underpaid), tx is added to standard tx pool and secondTx is rejected
+            // when isLocalDelegation is true (underpaid), tx is added only to local txs. Expensive secondTx is accepted
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 1, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
