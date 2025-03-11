@@ -16,7 +16,7 @@ public class TaikoChainSpecBasedSpecProvider(ChainSpec chainSpec,
 
     protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
-        TaikoReleaseSpec releaseSpec =  (TaikoReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
+        TaikoReleaseSpec releaseSpec = (TaikoReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 
         releaseSpec.IsOntakeEnabled = (chainSpecEngineParameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
         releaseSpec.IsPacayaEnabled = (chainSpecEngineParameters.PacayaTransition ?? long.MaxValue) <= releaseStartBlock;

@@ -327,7 +327,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ILogManager logManager,
         ChainSpec chainSpec)
     {
-        TaikoNethermindApi nethermindApi = new (configProvider, jsonSerializer, logManager, chainSpec);
+        TaikoNethermindApi nethermindApi = new(configProvider, jsonSerializer, logManager, chainSpec);
 
         TaikoChainSpecEngineParameters chainSpecParameters = chainSpec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<TaikoChainSpecEngineParameters>();
