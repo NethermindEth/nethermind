@@ -91,5 +91,7 @@ namespace Nethermind.TxPool
 
         internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
+
+        public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
     }
 }

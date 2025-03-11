@@ -12,7 +12,7 @@ namespace Nethermind.Core.Utils;
 /// <summary>
 /// Batches writes into a set of concurrent batches. For cases where throughput matter, but not atomicity.
 /// </summary>
-public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb) : INodeStorage.IWriteBatch
+public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb, long batchSize = 10000) : INodeStorage.IWriteBatch
 {
     private long _counter = 0;
     private readonly ConcurrentQueue<INodeStorage.IWriteBatch> _batches = new();
@@ -48,7 +48,7 @@ public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb) : INodeStorag
     private void ReturnBatch(INodeStorage.IWriteBatch currentBatch)
     {
         long val = Interlocked.Increment(ref _counter);
-        if (val % 10000 == 0)
+        if (val % batchSize == 0)
         {
             // Occasionally, we need to dispose the batch or it will take up memory usage.
             currentBatch.Dispose();

@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
@@ -12,6 +13,10 @@ namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 [JsonConverter(typeof(NativeCallTracerCallFrameConverter))]
 public class NativeCallTracerCallFrame : IDisposable
 {
+    private const int Alive = 0;
+    private const int Disposed = 1;
+    private int _disposed = Alive;
+
     public Instruction Type { get; set; }
 
     public Address? From { get; set; }
@@ -38,12 +43,12 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public void Dispose()
     {
-        Input?.Dispose();
-        Output?.Dispose();
-        Logs?.Dispose();
-        foreach (NativeCallTracerCallFrame childCallFrame in Calls)
+        if (Interlocked.CompareExchange(ref _disposed, Disposed, Alive) == Alive)
         {
-            childCallFrame.Dispose();
+            Input?.Dispose();
+            Output?.Dispose();
+            Logs?.Dispose();
+            Calls.DisposeRecursive();
         }
     }
 }

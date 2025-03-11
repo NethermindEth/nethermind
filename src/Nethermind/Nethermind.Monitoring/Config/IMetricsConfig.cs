@@ -37,4 +37,7 @@ public interface IMetricsConfig : IConfig
 
     [ConfigItem(Description = "The Prometheus metrics job name.", DefaultValue = "nethermind")]
     string MonitoringJob { get; }
+
+    [ConfigItem(Description = "Enable detailed metric", DefaultValue = "nethermind")]
+    bool EnableDetailedMetric { get; }
 }

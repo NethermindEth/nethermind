@@ -6,13 +6,14 @@ using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm.Test;
 
 public class DebugTracerTests : VirtualMachineTestsBase
 {
-    public GethLikeTxMemoryTracer GethLikeTxTracer => new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+    private GethLikeTxMemoryTracer GethLikeTxTracer => new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
 
     [SetUp]
     public override void Setup()

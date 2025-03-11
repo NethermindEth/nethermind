@@ -13,7 +13,8 @@ namespace Nethermind.Config;
 
 public class ConfigProvider : IConfigProvider
 {
-    private readonly ConcurrentDictionary<Type, object> _instances = new();
+
+    private readonly ConcurrentDictionary<Type, IConfig> _instances = new();
 
     private readonly List<IConfigSource> _configSource = [];
     private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
@@ -44,12 +45,39 @@ public class ConfigProvider : IConfigProvider
         }
     }
 
+    private static IList<(Type ConfigType, Type DirectImplementation)> _configTypesCache = null!;
+    private static IList<(Type ConfigType, Type DirectImplementation)> ConfigTypesFromAssembly
+    {
+        get
+        {
+            if (_configTypesCache is not null) return _configTypesCache;
+
+            Type type = typeof(IConfig);
+            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
+            IList<(Type ConfigType, Type DirectImplementation)> types =
+                new List<(Type ConfigType, Type DirectImplementation)>();
+
+            foreach (Type @interface in interfaces)
+            {
+                Type directImplementation = @interface.GetDirectInterfaceImplementation();
+
+                if (directImplementation is not null)
+                {
+                    types.Add((@interface, directImplementation));
+                }
+            }
+
+            _configTypesCache = types;
+            return types;
+        }
+    }
+
     public T GetConfig<T>() where T : IConfig
     {
         return (T)GetConfig(typeof(T));
     }
 
-    public object GetConfig(Type configType)
+    public IConfig GetConfig(Type configType)
     {
         if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
 
@@ -88,12 +116,8 @@ public class ConfigProvider : IConfigProvider
 
     public void Initialize()
     {
-        Type type = typeof(IConfig);
-        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
-
-        foreach (Type @interface in interfaces)
+        foreach ((Type @interface, Type directImplementation) in ConfigTypesFromAssembly)
         {
-            Type directImplementation = @interface.GetDirectInterfaceImplementation();
             if (_instances.ContainsKey(@interface)) continue;
 
             if (directImplementation is not null)
@@ -104,7 +128,7 @@ public class ConfigProvider : IConfigProvider
                 _implementations[@interface] = directImplementation;
 
                 object config = Activator.CreateInstance(_implementations[@interface]);
-                _instances[@interface] = config!;
+                _instances[@interface] = (IConfig)config!;
 
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {

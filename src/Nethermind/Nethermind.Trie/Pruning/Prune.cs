@@ -5,8 +5,11 @@ namespace Nethermind.Trie.Pruning
 {
     public static class Prune
     {
-        public static IPruningStrategy WhenCacheReaches(long sizeInBytes)
-            => new MemoryLimit(sizeInBytes);
+        public static IPruningStrategy WhenCacheReaches(long dirtySizeInBytes)
+            => new MemoryLimit(dirtySizeInBytes);
+
+        public static IPruningStrategy WhenPersistedCacheReaches(this IPruningStrategy baseStrategy, long persistedMemoryLimit)
+            => new PersistedMemoryLimit(baseStrategy, persistedMemoryLimit);
 
         public static IPruningStrategy TrackingPastKeys(this IPruningStrategy baseStrategy, int trackedPastKeyCount)
             => trackedPastKeyCount <= 0

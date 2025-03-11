@@ -609,7 +609,7 @@ namespace Nethermind.TxPool.Test
 
             // adding block A
             Block blockA = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsA).TestObject;
-            await RaiseBlockAddedToMainAndWaitForTransactions(txsA.Length, blockA);
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
 
             _txPool.GetPendingBlobTransactionsCount().Should().Be(txsB.Length);
             _txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out _).Should().BeFalse();
@@ -618,7 +618,7 @@ namespace Nethermind.TxPool.Test
 
             // reorganized from block A to block B
             Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsB).TestObject;
-            await RaiseBlockAddedToMainAndWaitForTransactions(txsB.Length + txsA.Length, blockB, blockA);
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
 
             // tx from block B should be removed from blob pool, but present in processed txs db
             _txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _).Should().BeFalse();

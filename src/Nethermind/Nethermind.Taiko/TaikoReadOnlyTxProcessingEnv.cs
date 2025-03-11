@@ -11,10 +11,10 @@ using Nethermind.State;
 namespace Nethermind.Taiko;
 
 public class TaikoReadOnlyTxProcessingEnv(
-  IOverridableWorldScope worldStateManager,
+  IWorldStateManager worldStateManager,
   IReadOnlyBlockTree readOnlyBlockTree,
   ISpecProvider specProvider,
-  ILogManager logManager) : OverridableTxProcessingEnv(
+  ILogManager logManager) : ReadOnlyTxProcessingEnv(
   worldStateManager,
   readOnlyBlockTree,
   specProvider,

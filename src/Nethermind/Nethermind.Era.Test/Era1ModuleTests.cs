@@ -19,6 +19,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework.Constraints;
 
@@ -119,8 +120,9 @@ public class Era1ModuleTests
     public async Task CreateEraAndVerifyAccumulators()
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        testBlockchain.State.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
-        testBlockchain.State.RecalculateStateRoot();
+        IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
+        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+        worldState.RecalculateStateRoot();
 
         using TempPath tmpFile = TempPath.GetTempFile();
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
@@ -209,8 +211,9 @@ public class Era1ModuleTests
     public async Task TestBigBlocksExportImportHistory()
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        testBlockchain.State.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
-        testBlockchain.State.RecalculateStateRoot();
+        IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
+        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+        worldState.RecalculateStateRoot();
 
         using var tmpFile = TempPath.GetTempFile();
         using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
