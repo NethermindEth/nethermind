@@ -20,11 +20,12 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory, IBlocksConfig blocksConfig)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -56,22 +57,12 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate(
+    public IEnumerable<SimulateBlockResult<TTrace>> TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
-        IBlockTracer tracer,
-        [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
-
-
-    private bool TrySimulate(
-        BlockHeader parent,
-        SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
-        IBlockTracer tracer,
-        SimulateReadOnlyBlocksProcessingEnv env,
-        [NotNullWhen(false)] out string? error)
+        IBlockTracer<TTrace> tracer,
+        CancellationToken cancellationToken,
+        SimulateReadOnlyBlocksProcessingEnv env)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -94,9 +85,14 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
                 callHeader.Hash = callHeader.CalculateHash();
 
-                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
+                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out string error))
                 {
-                    return false;
+                    yield return new SimulateBlockResult<TTrace>(currentBlock, payload.ReturnFullTransactionObjects, specProvider)
+                    {
+                        Error = error,
+                        Success = false,
+                    };
+                    yield break;
                 }
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -106,29 +102,33 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 suggestedBlocks[0] = currentBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
+                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer.WithCancellation(cancellationToken))[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
+                // CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
+                SimulateBlockResult<TTrace> result = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
+                {
+                    Calls = [.. tracer.BuildResult()],
+                };
+                yield return result;
                 parent = processedBlock.Header;
             }
+            yield break;
         }
-
-        error = null;
-        return true;
+        yield break;
     }
 
-    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
-    {
-        SimulateBlockResult current = simulateOutputTracer.Results.Last();
-        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-        current.TransactionsRoot = processedBlock.Header.TxRoot;
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
-        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-        current.Withdrawals = processedBlock.Withdrawals ?? [];
-    }
+    // private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
+    // {
+    //     SimulateBlockResult current = simulateOutputTracer.Results.Last();
+    //     current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
+    //     current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
+    //     current.TransactionsRoot = processedBlock.Header.TxRoot;
+    //     current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
+    //     current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
+    //     current.Withdrawals = processedBlock.Withdrawals ?? [];
+    // }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
     {

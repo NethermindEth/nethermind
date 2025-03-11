@@ -220,11 +220,16 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         DebugModuleFactory debugModuleFactory = new(
             _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             JsonRpcConfig,
+            _api,
+            secondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
@@ -291,10 +296,15 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         return new TraceModuleFactory(
             _api.WorldStateManager,
             _api.BlockTree,
             JsonRpcConfig,
+            _api,
+            secondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,

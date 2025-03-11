@@ -30,6 +30,9 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
+using NSubstitute;
+using Nethermind.Facade;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -66,6 +69,8 @@ public class TraceRpcModuleTests
                 Blockchain.WorldStateManager,
                 Blockchain.BlockTree,
                 JsonRpcConfig,
+                Substitute.For<IBlockchainBridgeFactory>(),
+                new BlocksConfig().SecondsPerSlot,
                 Blockchain.BlockPreprocessorStep,
                 new RewardCalculator(Blockchain.SpecProvider),
                 Blockchain.ReceiptStorage,

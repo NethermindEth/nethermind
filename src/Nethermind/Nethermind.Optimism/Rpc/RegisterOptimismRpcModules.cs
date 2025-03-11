@@ -96,10 +96,15 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         OptimismTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree,
             JsonRpcConfig,
+            _api,
+            secondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
