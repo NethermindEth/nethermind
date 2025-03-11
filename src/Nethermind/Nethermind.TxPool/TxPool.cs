@@ -75,6 +75,8 @@ namespace Nethermind.TxPool
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
 
+        private bool _isDisposed;
+
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
@@ -332,6 +334,11 @@ namespace Nethermind.TxPool
                 if (blockTx.Supports1559)
                 {
                     eip1559Txs++;
+                }
+
+                if (blockTx.SupportsAuthorizationList)
+                {
+                    eip7702Txs++;
                 }
 
                 if (blockTx.SupportsBlobs)
@@ -808,6 +815,8 @@ namespace Nethermind.TxPool
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
             _timer?.Dispose();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
@@ -963,12 +972,12 @@ Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
 Ratios in last block:
 * Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
-* Eip7702 Transactions: {Metrics.Eip7702TransactionsInBlock,24:P5}
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 Amounts:
 * Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
+* Eip7702 txs:          {Metrics.Eip7702TransactionsInBlock,24:N0}
 ------------------------------------------------
 Db usage:
 * BlobDb writes:        {Db.Metrics.DbWrites.GetValueOrDefault("BlobTransactions"),24:N0}

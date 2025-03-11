@@ -6,7 +6,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 using FluentAssertions;
-
+using FluentAssertions.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -25,6 +26,7 @@ public static class RpcTest
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
@@ -35,12 +37,12 @@ public static class RpcTest
 
         EthereumJsonSerializer serializer = new();
 
-        await using Stream stream = new MemoryStream();
-        long size = await serializer.SerializeAsync(stream, response).ConfigureAwait(false);
+        Stream stream = new MemoryStream();
+        long size = await serializer.SerializeAsync(stream, response, cts.Token).ConfigureAwait(false);
 
         // for coverage (and to prove that it does not throw
-        await using Stream indentedStream = new MemoryStream();
-        await serializer.SerializeAsync(indentedStream, response, true).ConfigureAwait(false);
+        Stream indentedStream = new MemoryStream();
+        await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
 
         stream.Seek(0, SeekOrigin.Begin);
         string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
