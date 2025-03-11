@@ -27,6 +27,7 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
+        public static readonly Hash256Comparer HashComparer = new();
         // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
         public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
@@ -130,6 +131,23 @@ namespace Nethermind.Core.Extensions
                 }
 
                 return y.Length > x.Length ? 1 : 0;
+            }
+        }
+
+        public class Hash256Comparer : Comparer<Hash256>
+        {
+            public override int Compare(Hash256? x, Hash256? y)
+            {
+                if (x is null)
+                {
+                    return y is null ? 0 : 1;
+                }
+
+                if (y is null)
+                {
+                    return -1;
+                }
+                return BytesComparer.Compare(x.Bytes, y.Bytes);
             }
         }
 

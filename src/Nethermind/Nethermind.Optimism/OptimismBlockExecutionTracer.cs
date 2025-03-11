@@ -9,12 +9,12 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public class OptimismBlockReceiptTracer : BlockReceiptsTracer
+public class OptimismBlockReceiptsTracer : BlockReceiptsTracer
 {
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IWorldState _worldState;
 
-    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState)
+    public OptimismBlockReceiptsTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState)
     {
         _opSpecHelper = opSpecHelper;
         _worldState = worldState;

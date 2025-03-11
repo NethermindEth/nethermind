@@ -219,6 +219,8 @@ public class MyTracer : ITxTracer, IDisposable
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
     public bool IsTracingLogs => false;
+    public bool IsTracingAccessWitness => false;
+
     public bool IsTracing => IsTracingReceipt
                              || IsTracingActions
                              || IsTracingOpLevelStorage
@@ -384,6 +386,11 @@ public class MyTracer : ITxTracer, IDisposable
     }
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void ReportAccessWitness(IReadOnlyList<Hash256> witnessKeys)
     {
         throw new NotImplementedException();
     }

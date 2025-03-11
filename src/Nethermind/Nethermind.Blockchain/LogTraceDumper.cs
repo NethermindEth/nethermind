@@ -54,11 +54,11 @@ public static class BlockTraceDumper
 
         try
         {
-            if (blockTracer is BlockReceiptsTracer receiptsTracer)
+            if (blockTracer is BlockExecutionTracer executionTracer)
             {
                 fileName = $"receipts_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
-                IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
+                IReadOnlyList<TxReceipt> receipts = executionTracer.TxReceipts;
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of invalid block {blockHash} in file {diagnosticFile.Name}");

@@ -216,7 +216,7 @@ public class ValidateSubmissionHandler
         RecoverSenderAddress(block, ecdsa, spec);
 
         List<Block> suggestedBlocks = [block];
-        BlockReceiptsTracer blockReceiptsTracer = new();
+        BlockExecutionTracer blockExecutionTracer = new(true, true);
 
         try
         {
@@ -224,7 +224,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            Block processedBlock = blockProcessor.Process(currentState.StateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            Block processedBlock = blockProcessor.Process(currentState.StateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockExecutionTracer)[0];
         }
         catch (Exception e)
         {
@@ -254,7 +254,7 @@ public class ValidateSubmissionHandler
 
         if (ValidateProposerPayment(expectedProfit, useBalanceDiffProfit, feeRecipientBalanceAfter, amtBeforeOrWithdrawn)) return true;
 
-        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.TxReceipts, out error))
+        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockExecutionTracer.TxReceipts, out error))
         {
             return false;
         }

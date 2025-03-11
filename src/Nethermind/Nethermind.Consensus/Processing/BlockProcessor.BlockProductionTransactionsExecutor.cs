@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+                BlockExecutionTracer executionTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -73,14 +73,14 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, executionTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
                 }
 
-                stateProvider.Commit(spec, receiptsTracer);
+                stateProvider.Commit(spec, executionTracer);
 
                 SetTransactions(block, transactionsInBlock);
-                return receiptsTracer.TxReceipts.ToArray();
+                return executionTracer.TxReceipts.ToArray();
             }
 
             protected TxAction ProcessTransaction(
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.Processing
                 in BlockExecutionContext blkCtx,
                 Transaction currentTx,
                 int index,
-                BlockReceiptsTracer receiptsTracer,
+                BlockExecutionTracer executionTracer,
                 ProcessingOptions processingOptions,
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)
@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
+                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, executionTracer, processingOptions, stateProvider);
 
                     if (result)
                     {
@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Processing
                         {
                             transactionsInBlock.Add(currentTx);
                             _transactionProcessed?.Invoke(this,
-                                new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                                new TxProcessedEventArgs(index, currentTx, executionTracer.TxReceipts[index]));
                         }
                     }
                     else
