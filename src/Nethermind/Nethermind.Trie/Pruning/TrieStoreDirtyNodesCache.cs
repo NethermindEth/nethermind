@@ -61,8 +61,8 @@ internal class TrieStoreDirtyNodesCache
         KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
         // Overhead for each key in concurrent dictionary. The key is stored in a "node" for the hashtable.
-        int concurrentNodeKeyOverhead = MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
-        KeyMemoryUsage += concurrentNodeKeyOverhead;
+        // <object header> + <value ref> + <hashcode> + <next node ref>
+        KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;;
 
         if (trackedPastKeyCount > 0 && !storeByHash)
         {
