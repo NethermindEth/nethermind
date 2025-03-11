@@ -5,18 +5,15 @@ namespace Nethermind.Core;
 
 public static class TxTypeExtensions
 {
-    public static bool IsTxTypeWithAccessList(this TxType txType)
-        => txType != TxType.Legacy;
-
     public static bool SupportsAccessList(this TxType txType)
-        => txType >= TxType.AccessList && txType != TxType.DepositTx;
+        => txType is TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode;
 
     public static bool Supports1559(this TxType txType)
-        => txType >= TxType.EIP1559 && txType != TxType.DepositTx;
+        => txType is TxType.EIP1559 or TxType.Blob or TxType.SetCode;
 
     public static bool SupportsBlobs(this TxType txType)
-        => txType == TxType.Blob && txType != TxType.DepositTx;
+        => txType == TxType.Blob;
 
     public static bool SupportsAuthorizationList(this TxType txType)
-        => txType == TxType.SetCode && txType != TxType.DepositTx;
+        => txType == TxType.SetCode;
 }
