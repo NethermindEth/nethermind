@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
@@ -27,6 +28,8 @@ public class GethLikeTxTrace : IDisposable
     public bool Failed { get; set; }
 
     public byte[] ReturnValue { get; set; } = [];
+
+    public Hash256? TxHash { get; set; }
 
     public List<GethTxTraceEntry> Entries { get; set; } = new();
 

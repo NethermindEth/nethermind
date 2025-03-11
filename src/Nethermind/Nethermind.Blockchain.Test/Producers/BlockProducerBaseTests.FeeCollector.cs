@@ -33,9 +33,9 @@ public partial class BlockProducerBaseTests
             private async Task<ScenarioBuilder> AssertNewBlockFeeCollectedAsync(UInt256 expectedFeeCollected, params Transaction[] transactions)
             {
                 await ExecuteAntecedentIfNeeded();
-                UInt256 balanceBefore = _testRpcBlockchain.State.GetBalance(_feeCollector);
+                UInt256 balanceBefore = _testRpcBlockchain.ReadOnlyState.GetBalance(_feeCollector);
                 await _testRpcBlockchain.AddBlock(transactions);
-                UInt256 balanceAfter = _testRpcBlockchain.State.GetBalance(_feeCollector);
+                UInt256 balanceAfter = _testRpcBlockchain.ReadOnlyState.GetBalance(_feeCollector);
                 Assert.That(balanceAfter - balanceBefore, Is.EqualTo(expectedFeeCollected));
 
                 return this;
