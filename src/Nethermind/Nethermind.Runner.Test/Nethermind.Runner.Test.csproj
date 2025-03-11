@@ -38,6 +38,9 @@
     <Content Include="..\Chains\genesis.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\genesis.json</Link>
     </Content>
+    <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\hive.json</Link>
+    </Content>
     <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\poacore.json</Link>
     </Content>
