@@ -239,14 +239,14 @@ namespace Nethermind.TxPool
 
             try
             {
-                if (++_headsQueueCount == 1)
+                if (Interlocked.Increment(ref _headsQueueCount) == 1)
                 {
                     _headBlocksResetEvent.Reset();
                 }
 
                 if (!_headBlocksChannel.Writer.TryWrite(e))
                 {
-                    _headsQueueCount--;
+                    Interlocked.Decrement(ref _headsQueueCount);
                     _headBlocksResetEvent.Set();
                 }
             }
@@ -305,7 +305,7 @@ namespace Nethermind.TxPool
                         }
                         finally
                         {
-                            if (--_headsQueueCount == 0)
+                            if (Interlocked.Decrement(ref _headsQueueCount) == 0)
                             {
                                 _headBlocksResetEvent.Set();
                             }
