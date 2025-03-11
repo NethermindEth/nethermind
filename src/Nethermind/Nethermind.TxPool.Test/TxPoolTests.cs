@@ -1925,8 +1925,8 @@ namespace Nethermind.TxPool.Test
         [TestCase(false)]
         public void Tx_is_accepted_if_conflicting_pending_delegation_is_only_local(bool isLocalDelegation)
         {
-            // tx pool capacity is only 1. As first step ending poolFillerTx unrelated with test, just to fill it.
-            // Then sending firstTx with delegation which is underpaid if isLocalDelegation.
+            // tx pool capacity is only 1. As a first step, we add a transaction named poolTxFiller to fill the transaction pool, but it is not related to the test.
+            // Then sending firstTx with delegation which is underpaid if isLocalDelegation is true.
             // when isLocalDelegation is false (not underpaid), tx is added to standard tx pool and secondTx is rejected
             // when isLocalDelegation is true (underpaid), tx is added only to local txs. Expensive secondTx is accepted
             ISpecProvider specProvider = GetPragueSpecProvider();
@@ -1940,7 +1940,7 @@ namespace Nethermind.TxPool.Test
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
 
-            // just tx pool filler
+            // filling transaction pool
             _stateProvider.CreateAccount(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
             Transaction poolFillerTx = Build.A.Transaction
                 .WithNonce(0)
