@@ -28,12 +28,12 @@ public class SimulateBlockTracerFactory<TTrace>(GethTraceOptions? Options = null
         ISpecProvider spec,
         BlockHeader block)
     {
-        if (_options is not null)
+        if (_options is not null || typeof(TTrace) == typeof(GethLikeTxTrace))
         {
             return (IBlockTracer<TTrace>)CreateOptionsTracer(block, worldState, spec);
         }
 
-        if (_types is not null)
+        if (_types is not null || typeof(TTrace) == typeof(ParityLikeTxTrace))
         {
             return (IBlockTracer<TTrace>)new ParityLikeBlockTracer(_types ?? ParityTraceTypes.All);
         }
