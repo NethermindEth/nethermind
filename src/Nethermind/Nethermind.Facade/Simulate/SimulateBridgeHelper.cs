@@ -105,7 +105,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer.WithCancellation(cancellationToken))[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                // CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
                 SimulateBlockResult<TTrace> result = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
@@ -118,17 +117,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
         yield break;
     }
-
-    // private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
-    // {
-    //     SimulateBlockResult current = simulateOutputTracer.Results.Last();
-    //     current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-    //     current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-    //     current.TransactionsRoot = processedBlock.Header.TxRoot;
-    //     current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
-    //     current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-    //     current.Withdrawals = processedBlock.Withdrawals ?? [];
-    // }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
     {
