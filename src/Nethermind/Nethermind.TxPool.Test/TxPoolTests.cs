@@ -1773,10 +1773,10 @@ namespace Nethermind.TxPool.Test
 
         private static IEnumerable<object> DifferentOrderNonces()
         {
-            yield return new object[] { 0, 1, AcceptTxResult.Accepted, AcceptTxResult.FutureNonceForDelegatedAccount };
-            yield return new object[] { 2, 5, AcceptTxResult.FutureNonceForDelegatedAccount, AcceptTxResult.FutureNonceForDelegatedAccount };
-            yield return new object[] { 1, 0, AcceptTxResult.FutureNonceForDelegatedAccount, AcceptTxResult.Accepted };
-            yield return new object[] { 5, 0, AcceptTxResult.FutureNonceForDelegatedAccount, AcceptTxResult.Accepted };
+            yield return new object[] { 0, 1, AcceptTxResult.Accepted, AcceptTxResult.NotCurrentNonceForDelegation };
+            yield return new object[] { 2, 5, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.NotCurrentNonceForDelegation };
+            yield return new object[] { 1, 0, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.Accepted };
+            yield return new object[] { 5, 0, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.Accepted };
         }
 
         [TestCaseSource(nameof(DifferentOrderNonces))]
@@ -1817,9 +1817,16 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(secondExpectation);
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval)
+
+        private static object[] NonceAndRemovedCases =
+        {
+            new object[]{ true, 1, AcceptTxResult.Accepted },
+            new object[]{ true, 0, AcceptTxResult.Accepted},
+            new object[]{ false, 0, AcceptTxResult.Accepted},
+            new object[]{ false, 1, AcceptTxResult.NotCurrentNonceForDelegation},
+        };
+        [TestCaseSource(nameof(NonceAndRemovedCases))]
+        public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, int secondNonce, AcceptTxResult expected)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
@@ -1846,7 +1853,7 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.Accepted);
 
             Transaction secondTx = Build.A.Transaction
-                .WithNonce(0)
+                .WithNonce((UInt256)secondNonce)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(12.GWei())
                 .WithMaxPriorityFeePerGas(12.GWei())
@@ -1860,13 +1867,13 @@ namespace Nethermind.TxPool.Test
 
                 result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-                result.Should().Be(AcceptTxResult.Accepted);
+                result.Should().Be(expected);
             }
             else
             {
                 result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-                result.Should().Be(AcceptTxResult.PendingDelegation);
+                result.Should().Be(expected);
             }
         }
 
@@ -1955,7 +1962,7 @@ namespace Nethermind.TxPool.Test
                     byte[] delegation = [..Eip7702Constants.DelegationHeader, ..TestItem.AddressB.Bytes];
                     state.InsertCode(account, delegation, spec);
                 },
-                AcceptTxResult.FutureNonceForDelegatedAccount
+                AcceptTxResult.NotCurrentNonceForDelegation
             };
         }
 
