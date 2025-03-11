@@ -274,7 +274,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             SetBlobProofsAndCellProofs(transaction);
 
             return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.BlobProofs)
-                   // || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
+                   || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
         }

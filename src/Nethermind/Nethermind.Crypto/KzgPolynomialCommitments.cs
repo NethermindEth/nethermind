@@ -142,7 +142,7 @@ public static class KzgPolynomialCommitments
         byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
 
-        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
+        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment * Ckzg.Ckzg.CellsPerExtBlob;
         byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
 
@@ -156,13 +156,15 @@ public static class KzgPolynomialCommitments
         for (int i = 0; i < blobs.Length; i++)
         {
             blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
-            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-        }
 
-        for (int i = 0; i < blobs.Length * Ckzg.Ckzg.CellsPerExtBlob; i++)
-        {
-            indices[i] = (ulong)i;
-            cellProofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
+            for (int j = 0; j < Ckzg.Ckzg.CellsPerExtBlob; j++)
+            {
+                int cellNumber = i * Ckzg.Ckzg.CellsPerExtBlob + j;
+
+                commitments[i].CopyTo(flatCommitments.Slice(cellNumber * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
+                indices[cellNumber] = (ulong)cellNumber;
+                cellProofs[cellNumber].CopyTo(flatProofs.Slice(cellNumber * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
+            }
         }
 
         try
