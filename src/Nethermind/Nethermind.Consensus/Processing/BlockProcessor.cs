@@ -336,7 +336,7 @@ public partial class BlockProcessor(
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _withdrawalProcessor.ProcessWithdrawals(block, spec, blockTracer);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
