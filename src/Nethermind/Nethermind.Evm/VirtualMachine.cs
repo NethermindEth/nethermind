@@ -2273,8 +2273,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, true, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
-
         UInt256 callValue;
         switch (instruction)
         {
@@ -2298,10 +2296,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
         Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
-
         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
             ? codeSource
             : env.ExecutingAccount;
+
+        // for static call and delegateCall, transferValue is always zero
+        // transfer is technically a noOp in case of callCode as the caller = target
+        if (!transferValue.IsZero && instruction == Instruction.CALL)
+        {
+            var gasBefore = gasAvailable;
+            if (!vmState.Env.Witness.AccessForValueTransfer(caller, target, ref gasAvailable))
+                return EvmExceptionType.OutOfGas;
+            if (gasBefore == gasAvailable)
+            {
+                if (!UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            }
+            vmState.AccessTracker.WarmUp(caller);
+            vmState.AccessTracker.WarmUp(target);
+        }
+
+        // TODO: need to check on how to handle delegation charge as well
+        if (transferValue.IsZero || instruction != Instruction.CALL)
+        {
+            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, true, spec, opCode: instruction))
+                return EvmExceptionType.OutOfGas;
+        }
+
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
@@ -2310,7 +2330,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         long gasExtra = 0L;
 
-        if (!transferValue.IsZero)
+        if (!transferValue.IsZero && !spec.IsEip4762Enabled)
         {
             gasExtra += GasCostOf.CallValue;
         }
@@ -2484,39 +2504,60 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, false, spec, false, opCode: Instruction.SELFDESTRUCT)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
+
+        UInt256 contractBalance = _state.GetBalance(executingAccount);
+        bool inheritorAccountExists = _state.AccountExists(inheritor);
+
+        // get the verkle witness cost and charge the account access gas if the verkle cost is zero
+        var gasBefore = gasAvailable;
+        if (!vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, contractBalance.IsZero,
+                inheritorAccountExists,
+                inheritor.IsPrecompile(spec) || inheritor.IsSystemContract(spec),
+                ref gasAvailable))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+        if (gasBefore == gasAvailable)
+        {
+            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, false, spec, chargeForWarm: false,
+                    opCode: Instruction.SELFDESTRUCT)) return EvmExceptionType.OutOfGas;
+        }
+        else if (spec.UseHotAndColdStorage) vmState.AccessTracker.WarmUp(inheritor);
+
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
-        UInt256 result = _state.GetBalance(executingAccount);
-        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
-        {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-        }
+        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, contractBalance, inheritor);
 
-        bool inheritorAccountExists = _state.AccountExists(inheritor);
-        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        if (!spec.IsEip4762Enabled)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (spec.ClearEmptyAccountWhenTouched && !contractBalance.IsZero && _state.IsDeadAccount(inheritor))
+            {
+                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            }
+
+            if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+            {
+                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            }
         }
 
         if (!inheritorAccountExists)
         {
-            _state.CreateAccount(inheritor, result);
+            _state.CreateAccount(inheritor, contractBalance);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            _state.AddToBalance(inheritor, result, spec);
+            _state.AddToBalance(inheritor, contractBalance, spec);
         }
 
         if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
             return EvmExceptionType.None; // don't burn eth when contract is not destroyed per EIP clarification
 
-        _state.SubtractFromBalance(executingAccount, result, spec);
+        _state.SubtractFromBalance(executingAccount, contractBalance, spec);
         return EvmExceptionType.None;
     }
 
@@ -2550,7 +2591,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         bool outOfGas = false;
-        long gasCost = GasCostOf.Create +
+        long createGasCost = spec.IsEip4762Enabled ? GasCostOf.CreatePostVerkle : GasCostOf.Create;
+        long gasCost = createGasCost +
                        (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength, out outOfGas) : 0) +
                        (instruction == Instruction.CREATE2
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength, out outOfGas)
@@ -2597,13 +2639,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
+        _state.IncrementNonce(env.ExecutingAccount);
+
+        // for the collision check, we need on check the existence of the account and no need to write to it
+        if (!env.Witness.AccessForContractCreationCheck(contractAddress, ref callGas))
+        {
+            return (EvmExceptionType.None, null);
+        }
+
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
             vmState.AccessTracker.WarmUp(contractAddress);
         }
-
-        _state.IncrementNonce(env.ExecutingAccount);
 
         Snapshot snapshot = _state.TakeSnapshot();
 
@@ -2618,9 +2666,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
+        // TODO: handle this for verkle trees, no deletion there
         if (_state.IsDeadAccount(contractAddress))
         {
             _state.ClearStorage(contractAddress);
+        }
+
+        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref callGas))
+        {
+            return (EvmExceptionType.None, null);
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
@@ -2637,7 +2691,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             callDepth: env.CallDepth + 1,
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
-            codeSource: null,
+            codeSource: contractAddress,
             codeInfo: codeInfo,
             inputData: default,
             transferValue: value,
@@ -2728,14 +2782,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
-        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-        if (spec.UseNetGasMeteringWithAStipendFix)
+        if (!spec.IsEip4762Enabled)
         {
-            if (typeof(TTracingRefunds) == typeof(IsTracing))
-                _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-            if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
+            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+            if (spec.UseNetGasMeteringWithAStipendFix)
+            {
+                if (typeof(TTracingRefunds) == typeof(IsTracing))
+                    _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
+            }
         }
+
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
         ReadOnlySpan<byte> bytes = stack.PopWord256();
@@ -2758,89 +2816,93 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
-        if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
+        if (!spec.IsEip4762Enabled)
         {
-            if (newIsZero)
+            if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
             {
-                if (!newSameAsCurrent)
+                if (newIsZero)
                 {
-                    vmState.Refund += sClearRefunds;
-                    if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
-                }
-            }
-            else if (currentIsZero)
-            {
-                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-            }
-        }
-        else // net metered
-        {
-            if (newSameAsCurrent)
-            {
-                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-            }
-            else // net metered, C != N
-            {
-                Span<byte> originalValue = _state.GetOriginal(in storageCell);
-                bool originalIsZero = originalValue.IsZero();
-
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-                if (currentSameAsOriginal)
-                {
-                    if (currentIsZero)
+                    if (!newSameAsCurrent)
                     {
-                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-                    }
-                    else // net metered, current == original != new, !currentIsZero
-                    {
-                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-                        if (newIsZero)
-                        {
-                            vmState.Refund += sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
-                        }
+                        vmState.Refund += sClearRefunds;
+                        if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
                     }
                 }
-                else // net metered, new != current != original
+                else if (currentIsZero)
                 {
-                    long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                    if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                }
+            }
+            else // net metered
+            {
+                if (newSameAsCurrent)
+                {
+                    if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                }
+                else // net metered, C != N
+                {
+                    Span<byte> originalValue = _state.GetOriginal(in storageCell);
+                    bool originalIsZero = originalValue.IsZero();
 
-                    if (!originalIsZero) // net metered, new != current != original != 0
+                    bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                    if (currentSameAsOriginal)
                     {
                         if (currentIsZero)
                         {
-                            vmState.Refund -= sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(-sClearRefunds);
+                            if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return EvmExceptionType.OutOfGas;
                         }
-
-                        if (newIsZero)
+                        else // net metered, current == original != new, !currentIsZero
                         {
-                            vmState.Refund += sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+                            if (newIsZero)
+                            {
+                                vmState.Refund += sClearRefunds;
+                                if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            }
                         }
                     }
-
-                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
-                    if (newSameAsOriginal)
+                    else // net metered, new != current != original
                     {
-                        long refundFromReversal;
-                        if (originalIsZero)
+                        long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                        if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+                        if (!originalIsZero) // net metered, new != current != original != 0
                         {
-                            refundFromReversal = spec.GetSetReversalRefund();
-                        }
-                        else
-                        {
-                            refundFromReversal = spec.GetClearReversalRefund();
+                            if (currentIsZero)
+                            {
+                                vmState.Refund -= sClearRefunds;
+                                if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(-sClearRefunds);
+                            }
+
+                            if (newIsZero)
+                            {
+                                vmState.Refund += sClearRefunds;
+                                if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            }
                         }
 
-                        vmState.Refund += refundFromReversal;
-                        if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(refundFromReversal);
+                        bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                        if (newSameAsOriginal)
+                        {
+                            long refundFromReversal;
+                            if (originalIsZero)
+                            {
+                                refundFromReversal = spec.GetSetReversalRefund();
+                            }
+                            else
+                            {
+                                refundFromReversal = spec.GetClearReversalRefund();
+                            }
+
+                            vmState.Refund += refundFromReversal;
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(refundFromReversal);
+                        }
                     }
                 }
             }
         }
+
 
         if (!newSameAsCurrent)
         {
