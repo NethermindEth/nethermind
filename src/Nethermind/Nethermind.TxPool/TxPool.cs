@@ -57,7 +57,9 @@ namespace Nethermind.TxPool
 
         private readonly ILogger _logger;
 
-        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        private int _headsQueueCount = 0;
+        private readonly ManualResetEventSlim _headBlocksResetEvent = new(true);
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
@@ -179,23 +181,48 @@ namespace Nethermind.TxPool
             ProcessNewHeads();
         }
 
-        public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
+        public Transaction[] GetPendingTransactions()
+        {
+            _headBlocksResetEvent.Wait();
+            return _transactionSnapshot ??= _transactions.GetSnapshot();
+        }
 
-        public int GetPendingTransactionsCount() => _transactions.Count;
+        public int GetPendingTransactionsCount()
+        {
+            _headBlocksResetEvent.Wait();
+            return _transactions.Count;
+        }
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
-            _transactions.GetBucketSnapshot();
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
+        {
+            _headBlocksResetEvent.Wait();
+            return _transactions.GetBucketSnapshot();
+        }
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
-            _blobTransactions.GetBucketSnapshot();
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
+        {
+            _headBlocksResetEvent.Wait();
+            return _blobTransactions.GetBucketSnapshot();
+        }
 
-        public Transaction[] GetPendingTransactionsBySender(Address address) =>
-            _transactions.GetBucketSnapshot(address);
+        public Transaction[] GetPendingTransactionsBySender(Address address)
+        {
+            _headBlocksResetEvent.Wait();
+            return _transactions.GetBucketSnapshot(address);
+        }
 
         // only for testing reasons
-        internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
+        internal Transaction[] GetOwnPendingTransactions()
+        {
+            _headBlocksResetEvent.Wait();
+            return _broadcaster.GetSnapshot();
+        }
 
-        public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
+        public int GetPendingBlobTransactionsCount()
+        {
+            _headBlocksResetEvent.Wait();
+            return _blobTransactions.Count;
+        }
 
         public bool TryGetBlobAndProof(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
@@ -212,7 +239,16 @@ namespace Nethermind.TxPool
 
             try
             {
-                _headBlocksChannel.Writer.TryWrite(e);
+                if (Interlocked.Increment(ref _headsQueueCount) == 1)
+                {
+                    _headBlocksResetEvent.Reset();
+                }
+
+                if (!_headBlocksChannel.Writer.TryWrite(e))
+                {
+                    Interlocked.Decrement(ref _headsQueueCount);
+                    _headBlocksResetEvent.Set();
+                }
             }
             catch (Exception exception)
             {
@@ -247,6 +283,7 @@ namespace Nethermind.TxPool
                                 // Sequential block, just remove changed accounts from cache
                                 _accountCache.RemoveAccounts(accountChanges);
                             }
+
                             args.Block.AccountChanges = null;
                             accountChanges?.Dispose();
 
@@ -262,7 +299,16 @@ namespace Nethermind.TxPool
                         }
                         catch (Exception e)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                            if (_logger.IsDebug)
+                                _logger.Debug(
+                                    $"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                        finally
+                        {
+                            if (Interlocked.Decrement(ref _headsQueueCount) == 0)
+                            {
+                                _headBlocksResetEvent.Set();
+                            }
                         }
                     }
                 }
@@ -734,13 +780,19 @@ namespace Nethermind.TxPool
             ? _blobTransactions.ContainsKey(hash)
             : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
 
-        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
-            _transactions.TryGetValue(hash, out transaction)
-            || _blobTransactions.TryGetValue(hash, out transaction)
-            || _broadcaster.TryGetPersistentTx(hash, out transaction);
+        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        {
+            _headBlocksResetEvent.Wait();
+            return _transactions.TryGetValue(hash, out transaction)
+                   || _blobTransactions.TryGetValue(hash, out transaction)
+                   || _broadcaster.TryGetPersistentTx(hash, out transaction);
+        }
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
-            _blobTransactions.TryGetValue(hash, out blobTransaction);
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+        {
+            _headBlocksResetEvent.Wait();
+            return _blobTransactions.TryGetValue(hash, out blobTransaction);
+        }
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
@@ -750,6 +802,8 @@ namespace Nethermind.TxPool
         // maybe it should use NonceManager, as it already has info about local txs?
         public UInt256 GetLatestPendingNonce(Address address)
         {
+            _headBlocksResetEvent.Wait();
+
             UInt256 maxPendingNonce = _accounts.GetNonce(address);
 
             bool hasPendingTxs = _transactions.GetBucketCount(address) > 0;
