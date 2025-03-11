@@ -18,7 +18,8 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
 
     private Block? _currentBlock;
 
-    protected override SimulateTxMutatorTracer OnStart(Transaction? tx){
+    protected override SimulateTxMutatorTracer OnStart(Transaction? tx)
+    {
         _txIndex++;
         return new SimulateTxMutatorTracer(_isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, _txIndex);
     }

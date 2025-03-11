@@ -67,6 +67,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction([JsonRpcParameter(ExampleValue = "\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\"")] Hash256 txHash);
 
         [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes=null);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null);
     }
 }

@@ -178,7 +178,7 @@ namespace Nethermind.Facade
 
                 if (result.Items.Count > 0)
                 {
-                    if(!result.Items[result.Items.Count - 1].Success)result.Error = result.Items[result.Items.Count - 1].Error;
+                    if (!result.Items[result.Items.Count - 1].Success) result.Error = result.Items[result.Items.Count - 1].Error;
                 }
 
             }
