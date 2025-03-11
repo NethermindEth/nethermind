@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Linq;
+using Nethermind.Evm.ExecWtiness;
 
 namespace Nethermind.Taiko;
 
@@ -33,7 +34,7 @@ public class TaikoTransactionProcessor(
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
         => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness execWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
     {
         bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
