@@ -25,7 +25,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         delegationAddress = null;
         return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
-            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec, out delegationAddress);
     }
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
