@@ -99,8 +99,6 @@ public class ChainParameters
     /// </summary>
     public long? Eip1559BaseFeeMinValueTransition { get; set; }
 
-    public long? OntakeTransition { get; set; }
-    public long? PacayaTransition { get; set; }
     /// <summary>
     /// Optional, minimal value of EIP1559 base fee
     /// </summary>

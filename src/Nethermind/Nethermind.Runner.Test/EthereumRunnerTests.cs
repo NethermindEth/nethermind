@@ -24,7 +24,7 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
-using Nethermind.Taiko;
+using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;

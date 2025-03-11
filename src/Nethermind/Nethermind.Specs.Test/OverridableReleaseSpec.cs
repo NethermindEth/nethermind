@@ -121,20 +121,6 @@ namespace Nethermind.Specs.Test
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => _spec.IsOpHoloceneEnabled;
 
-        private bool? _isOntakeEnabled;
-        public bool IsOntakeEnabled
-        {
-            get => _isOntakeEnabled ?? _spec.IsOntakeEnabled;
-            set => _isOntakeEnabled = value;
-        }
-
-        private bool? _isPacayaEnabled;
-        public bool IsPacayaEnabled
-        {
-            get => _isPacayaEnabled ?? _spec.IsPacayaEnabled;
-            set => _isPacayaEnabled = value;
-        }
-
         public bool IsEip7623Enabled => _spec.IsEip7623Enabled;
 
         public bool IsEip3607Enabled { get; set; }

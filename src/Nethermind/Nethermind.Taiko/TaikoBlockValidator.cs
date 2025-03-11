@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
 
 namespace Nethermind.Taiko;
@@ -53,7 +53,7 @@ public class TaikoBlockValidator(
                 return false;
             }
 
-            if (!ValidateAnchorTransaction(block.Transactions[0], block, spec, out errorMessage))
+            if (!ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
                 return false;
         }
 
@@ -61,7 +61,7 @@ public class TaikoBlockValidator(
         return base.ValidateTransactions(block, spec, out errorMessage);
     }
 
-    private bool ValidateAnchorTransaction(Transaction tx, Block block, IReleaseSpec spec, out string? errorMessage)
+    private bool ValidateAnchorTransaction(Transaction tx, Block block, ITaikoReleaseSpec spec, out string? errorMessage)
     {
         if (tx.Type != TxType.EIP1559)
         {
