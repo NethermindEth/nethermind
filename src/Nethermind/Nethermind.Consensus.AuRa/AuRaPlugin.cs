@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -90,6 +91,8 @@ namespace Nethermind.Consensus.AuRa
         }
 
         public IModule Module => new AuraModule();
+
+        public Type ApiType => typeof(AuRaNethermindApi);
     }
 
     public class AuraModule : Module

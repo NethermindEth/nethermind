@@ -10,11 +10,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class NethermindModule : Module
+public class NethermindModule(IJsonSerializer jsonSerializer, ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -43,15 +45,11 @@ public class NethermindModule : Module
             .AddSingleton<NethermindApi>()
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
             .Bind<INethermindApi, NethermindApi>()
-            ;
 
-        /*
-        builder
-            .RegisterInstance(nethermindApi)
-            .As<NethermindApi>()
-            .As<INethermindApi>()
-            // For steps that use explicit type, like TaikoNethermindApi.
-            .As(nethermindApi.GetType());
-            */
+            .AddSingleton(jsonSerializer)
+            .AddSingleton(chainSpec)
+            .AddSingleton(configProvider)
+            .AddSingleton(logManager)
+            ;
     }
 }

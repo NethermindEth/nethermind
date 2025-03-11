@@ -26,20 +26,26 @@ namespace Nethermind.Api
         DisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
+        [SkipServiceCollection]
         ChainSpec ChainSpec { get; set; }
+
+        [SkipServiceCollection]
         IConfigProvider ConfigProvider { get; set; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
+        [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; set; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
+        [SkipServiceCollection]
         ILogManager LogManager { get; set; }
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
         string SealEngineType { get; }
+        [SkipServiceCollection]
         ISpecProvider? SpecProvider { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }

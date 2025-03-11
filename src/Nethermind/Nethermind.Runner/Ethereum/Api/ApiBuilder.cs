@@ -59,21 +59,23 @@ public class ApiBuilder
         }
 
         IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
-        /*
-        ISpecProvider specProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
-        FollowOtherMiners gasLimitCalculator = new FollowOtherMiners(specProvider);
-        INethermindApi nethermindApi =
-            consensusPlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
-            new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
-        nethermindApi.SpecProvider = specProvider;
-        nethermindApi.GasLimitCalculator = gasLimitCalculator;
-        nethermindApi.ProcessExit = _processExitSource;
-        ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-        */
-
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
-            .AddModule(new NethermindModule());
+            .AddModule(new NethermindModule(_jsonSerializer, ChainSpec, _configProvider, _logManager));
+
+        containerBuilder
+            .RegisterBuildCallback((ctx) =>
+            {
+                INethermindApi api = ctx.Resolve<INethermindApi>();
+
+                // TODO: These should be injected from constructor
+                ISpecProvider specProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
+                FollowOtherMiners gasLimitCalculator = new FollowOtherMiners(specProvider);
+                api.SpecProvider = specProvider;
+                api.GasLimitCalculator = gasLimitCalculator;
+                api.ProcessExit = _processExitSource;
+                ((List<INethermindPlugin>)api.Plugins).AddRange(plugins);
+            });
 
         foreach (var nethermindPlugin in plugins)
         {

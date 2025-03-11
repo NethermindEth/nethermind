@@ -344,6 +344,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public bool MustInitialize => true;
 
+    public Type ApiType => typeof(OptimismNethermindApi);
+
     public IModule Module => new OptimismModule();
 }
 

@@ -334,6 +334,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     public string SealEngineType => Core.SealEngineType.Taiko;
 
     public IModule Module => new TaikoModule();
+
+    public Type ApiType => typeof(TaikoNethermindApi);
 }
 
 public class TaikoModule : Module
