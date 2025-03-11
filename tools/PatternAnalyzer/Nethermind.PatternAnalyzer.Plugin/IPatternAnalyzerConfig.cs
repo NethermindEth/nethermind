@@ -26,6 +26,11 @@ public interface IPatternAnalyzerConfig : IConfig
         DefaultValue = "")]
     string Ignore { get; set; }
 
+    [ConfigItem(
+        Description = "Sets the sort order of the stats produced",
+        DefaultValue = "unordered")]
+    string Sort { get; set; }
+
     [ConfigItem(Description = "Sets the size of the queue used to gather instructions per block")]
     int InstructionsQueueSize { get; set; }
 

@@ -40,7 +40,7 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
             var analyzer = new StatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
             PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(patternAnalyzerConfig.ProcessingQueueSize,
                 patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),_api.FileSystem, _logger,
-                patternAnalyzerConfig.WriteFrequency, patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
+                patternAnalyzerConfig.WriteFrequency, SortOrderParser.Parse(patternAnalyzerConfig.Sort), patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
             _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
         }
 

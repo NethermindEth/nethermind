@@ -17,9 +17,10 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
     private McsLock _processingLock;
     private StatsProcessingQueue? _queue;
     private CancellationToken _ct;
+    private SortOrder _sort;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
-        int size, McsLock processingLock, StatsAnalyzer statsAnalyzer, CancellationToken ct)
+        int size, McsLock processingLock, StatsAnalyzer statsAnalyzer, SortOrder sort, CancellationToken ct)
     {
         _ignoreSet = ignoreSet;
         _statsAnalyzer = statsAnalyzer;
@@ -27,6 +28,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         _buffer = buffer;
         _queue = new StatsProcessingQueue(buffer, (StatsAnalyzer)statsAnalyzer, ct);
         _ct = ct;
+        _sort = sort;
         IsTracingInstructions = true;
     }
 
@@ -52,6 +54,9 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         PatternAnalyzerTxTrace trace = new();
         trace.Confidence = _statsAnalyzer.Confidence;
         trace.ErrorPerItem = _statsAnalyzer.Error;
+        var stats = _statsAnalyzer.Stats;
+        if (_sort == SortOrder.Ascending) stats = _statsAnalyzer.StatsAscending;
+
         foreach (var stat in _statsAnalyzer.Stats)
         {
             var entry = new PatternAnalyzerTraceEntry
@@ -63,8 +68,12 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
             trace.Entries.Add(entry);
         }
 
-        var sortedEntries = trace.Entries.OrderByDescending(e => e.Count).ToList();
-        trace.Entries = sortedEntries;
+
+        if (_sort == SortOrder.Descending)
+        {
+            var sortedEntries = trace.Entries.OrderByDescending(e => e.Count).ToList();
+            trace.Entries = sortedEntries;
+        }
         return trace;
     }
 

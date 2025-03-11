@@ -34,21 +34,23 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     private PatternAnalyzerTxTracer _tracer;
     private readonly int _writeFreq = 1;
     private readonly CancellationToken _ct;
+    private readonly SortOrder _sort;
 
 
     public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer,
-        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq,
+        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, SortOrder sort,
         string fileName, CancellationToken ct)
     {
         _bufferSize = bufferSize;
         _statsAnalyzer = statsAnalyzer;
         _ignore = ignore;
-        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, ct);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, sort, ct);
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
         _fileName = fileName;
         _logger = logger;
+        _sort = sort;
         _ct = ct;
         if (_logger.IsInfo)
             _logger.Info(
@@ -82,7 +84,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         var currentBlockNumber = _currentBlock;
 
         _buffer = new DisposableResettableList<Instruction>();
-        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _ct);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _sort, _ct);
 
         var task = Task.Run(() =>
         {
