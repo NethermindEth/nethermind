@@ -283,6 +283,7 @@ namespace Nethermind.TxPool
                                 // Sequential block, just remove changed accounts from cache
                                 _accountCache.RemoveAccounts(accountChanges);
                             }
+
                             args.Block.AccountChanges = null;
                             accountChanges?.Dispose();
 
@@ -295,14 +296,19 @@ namespace Nethermind.TxPool
                             TxPoolHeadChanged?.Invoke(this, args.Block);
                             Metrics.TransactionCount = _transactions.Count;
                             Metrics.BlobTransactionCount = _blobTransactions.Count;
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug)
+                                _logger.Debug(
+                                    $"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                        finally
+                        {
                             if (--_headsQueueCount == 0)
                             {
                                 _headBlocksResetEvent.Set();
                             }
-                        }
-                        catch (Exception e)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                         }
                     }
                 }
