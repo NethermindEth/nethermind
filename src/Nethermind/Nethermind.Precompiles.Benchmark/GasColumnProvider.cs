@@ -39,7 +39,7 @@ public class GasColumnProvider : IColumnProvider
         public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
         {
             var inputParam = benchmarkCase.Parameters.Items.FirstOrDefault(p => p.Name == "Input");
-            return ((PrecompileBenchmarkBase.Param) inputParam!.Value).Precompile.GetType().Name;
+            return ((PrecompileBenchmarkBase.Param)inputParam!.Value).Precompile.GetType().Name;
         }
 
         public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style)
