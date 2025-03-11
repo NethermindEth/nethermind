@@ -59,7 +59,10 @@ This consists of primarily of the stats analyzer and instruction buffer to queue
 The plugin hosts a set of tracing components of which help serve the traces to a
 given JSON file at the provided write frequency. The trace contains the Blocks
 traversed, the error and confidence of the stats and then the stats of the
-n-grams witnessed during execution
+n-grams witnessed during execution. Furthermore, the user can choose the
+sort order of the stats delivered or have them unordered. This has
+effect on processing time: unordered stats being the fastest
+followed by ascending stats and finally, descending stats are the slowest.
 
 ```JSON
 {"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.006,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":1}]}
@@ -70,3 +73,4 @@ n-grams witnessed during execution
 - **File**: Configurable file location for dumping the stats
 - **WriteFrequency**: Users can define the frequency (in blocks) for writing stats to disk.
 - **ProcessingQueueSize**: Sets the number of tasks that can be queued when tracing & dumping stats in background
+- **Sort**: can be unordered, ascending and descending.
