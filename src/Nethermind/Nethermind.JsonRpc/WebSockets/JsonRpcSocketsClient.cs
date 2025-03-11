@@ -3,19 +3,16 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using CommunityToolkit.HighPerformance.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
@@ -34,7 +31,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly Channel<ProcessRequest> _processChannel;
     private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner);
 
-    private readonly long _processConcurrency = 1;
+    private readonly int _workerTaskCount = 1;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -45,15 +42,18 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
-        long concurrency = 1)
+        int concurrency = 1)
         : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
-        _processChannel = Channel.CreateBounded<ProcessRequest>(1);
-        _processConcurrency = concurrency;
+        _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
+        {
+            SingleWriter = true
+        });
+        _workerTaskCount = concurrency;
     }
 
     public override void Dispose()
@@ -83,7 +83,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
-        using ArrayPoolList<Task> allTasks = new((int)(_processConcurrency + 1));
+        using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
         allTasks.Add(Task.Run(async () =>
         {
             try
@@ -96,16 +96,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
         }));
 
-        for (int i = 0; i < _processConcurrency; i++)
+        for (int i = 0; i < _workerTaskCount; i++)
         {
-            int idx = i;
-            allTasks.Add(WorkerLoop(cts.Token, idx));
+            allTasks.Add(Task.Run(async () => await WorkerLoop(cts.Token)));
         }
 
         await cts.WhenAllSucceed(allTasks);
     }
 
-    private async Task WorkerLoop(CancellationToken cancellationToken, int idx)
+    private async Task WorkerLoop(CancellationToken cancellationToken)
     {
         await foreach (ProcessRequest request in _processChannel.Reader.ReadAllAsync(cancellationToken))
         {
@@ -114,12 +113,12 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         }
     }
 
-    public async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
+    private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         int allResponsesSize = 0;
 
-        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
+        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext).WithCancellation(cancellationToken))
         {
             using (result)
             {
@@ -172,14 +171,14 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
-        await _sendSemaphore.WaitAsync();
+        await _sendSemaphore.WaitAsync(cancellationToken);
         try
         {
             if (result.IsCollection)
             {
                 int responseSize = 1;
                 bool isFirst = true;
-                await _stream.WriteAsync(_jsonOpeningBracket);
+                await _stream.WriteAsync(_jsonOpeningBracket, cancellationToken);
                 await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(cancellationToken);
                 while (await enumerator.MoveNextAsync())
                 {
@@ -192,7 +191,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                             responseSize += 1;
                         }
                         isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, indented: false);
+                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, cancellationToken, indented: false);
                         _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                         // We reached the limit and don't want to responded to more request in the batch
@@ -212,7 +211,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
             else
             {
-                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, cancellationToken, indented: false);
                 responseSize += await _stream.WriteEndOfMessageAsync();
                 return responseSize;
             }

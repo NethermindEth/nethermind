@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -158,6 +159,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    int JsonSerializationMaxDepth { get; set; }
+
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
@@ -175,4 +179,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
     int IpcProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    bool EnablePerMethodMetrics { get; set; }
 }
