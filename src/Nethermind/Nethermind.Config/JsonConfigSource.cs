@@ -82,23 +82,7 @@ public class JsonConfigSource : IConfigSource
                     var value = configItem.Value;
                     if (value.ValueKind == JsonValueKind.Number)
                     {
-                        try
-                        {
-                            itemsDict[key] = value.GetInt64().ToString();
-                        }
-                        catch (FormatException)
-                        {
-                            // If parsing as Int64 fails
-                            try
-                            {
-                                itemsDict[key] = value.GetDouble().ToString();
-                            }
-                            catch (FormatException ex)
-                            {
-                                // Handle case if neither parsing works
-                                throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double. Detailed error: {ex.Message}");
-                            }
-                        }
+                            itemsDict[key] = ParseNumber(value);
                     }
                     else if (value.ValueKind == JsonValueKind.True)
                     {
@@ -174,4 +158,23 @@ public class JsonConfigSource : IConfigSource
     {
         return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
     }
+
+    private string ParseNumber(JsonElement value)
+    {
+        try
+        {
+            return value.GetInt64().ToString();
+        }
+        catch (FormatException)
+        {
+            try
+            {
+                return value.GetDouble().ToString();
+            }
+            catch (FormatException ex)
+            {
+                throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double. error: {ex.Message}");
+            }
+        }
+}
 }
