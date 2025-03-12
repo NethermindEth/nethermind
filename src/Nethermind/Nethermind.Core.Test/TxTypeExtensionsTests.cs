@@ -27,17 +27,26 @@ public class TxTypeExtensionsTests
         Assert.That(actualTxTypes, Is.EquivalentTo(expectedTxTypes));
     }
 
-    [TestCase(TxType.Legacy, false, false, false, false)]
-    [TestCase(TxType.AccessList, true, false, false, false)]
-    [TestCase(TxType.EIP1559, true, true, false, false)]
-    [TestCase(TxType.Blob, true, true, true, false)]
-    [TestCase(TxType.SetCode, true, true, false, true)]
-    [TestCase(TxType.DepositTx, false, false, false, false)]
-    public void TxTypes_supported_functionality(TxType txType, bool supportAccessList, bool supportEip1559, bool supportBlob, bool supportSetCode)
+    public enum TxFeatureSupport
     {
-        Assert.That(txType.SupportsAccessList(), Is.EqualTo(supportAccessList));
-        Assert.That(txType.Supports1559(), Is.EqualTo(supportEip1559));
-        Assert.That(txType.SupportsBlobs(), Is.EqualTo(supportBlob));
-        Assert.That(txType.SupportsAuthorizationList(), Is.EqualTo(supportSetCode));
+        None = 0,
+        AccessList = 1,
+        EIP1559 = 2,
+        Blob = 4,
+        SetCode = 8
+    }
+
+    [TestCase(TxType.Legacy, TxFeatureSupport.None)]
+    [TestCase(TxType.AccessList, TxFeatureSupport.AccessList)]
+    [TestCase(TxType.EIP1559, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559)]
+    [TestCase(TxType.Blob, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.Blob)]
+    [TestCase(TxType.SetCode, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.SetCode)]
+    [TestCase(TxType.DepositTx, TxFeatureSupport.None)]
+    public void TxTypes_supported_functionality(TxType txType, TxFeatureSupport expectedFeaturesSupport)
+    {
+        Assert.That(txType.SupportsAccessList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.AccessList)));
+        Assert.That(txType.Supports1559(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.EIP1559)));
+        Assert.That(txType.SupportsBlobs(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.Blob)));
+        Assert.That(txType.SupportsAuthorizationList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.SetCode)));
     }
 }
