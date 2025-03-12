@@ -105,6 +105,6 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
-    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients (Allowed placeholders : {name}, {version}, {os}, {runtime}).")]
+    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{os}` `{runtime}`.")]
     string PublicClientIdFormat { get; set; }
 }
