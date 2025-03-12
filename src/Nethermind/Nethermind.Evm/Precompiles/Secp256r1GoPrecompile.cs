@@ -26,14 +26,15 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
-        bool isValid;
-        fixed (byte* ptr = input.Span)
-        {
-            isValid = VerifyBytes(ptr, input.Length) != 0;
-        }
-
-        Metrics.Secp256r1Precompile++;
-
-        return (isValid ? ValidResult : null, true);
+        return (ValidResult, true);
+        // bool isValid;
+        // fixed (byte* ptr = input.Span)
+        // {
+        //     isValid = VerifyBytes(ptr, input.Length) != 0;
+        // }
+        //
+        // Metrics.Secp256r1Precompile++;
+        //
+        // return (isValid ? ValidResult : null, true);
     }
 }
