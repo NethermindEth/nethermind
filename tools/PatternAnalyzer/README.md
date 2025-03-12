@@ -1,6 +1,6 @@
 # Pattern Analyzer Plugin
 
-The plugin serves JSON traces of the stats of top patterns observed by the EVM
+The plugin serves JSON traces of the stats of top patterns of **2-7 opcodes** observed by the EVM
 during execution.
 
 **Relevant config parameters**:
