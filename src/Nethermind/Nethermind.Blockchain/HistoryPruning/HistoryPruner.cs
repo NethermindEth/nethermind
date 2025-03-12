@@ -61,7 +61,7 @@ public class HistoryPruner(
         }
 
         ulong cutoffTimestamp = CalculateCutoffTimestamp();
-        
+
         if (cutoffTimestamp <= _lastPrunedTimestamp)
         {
             return;
