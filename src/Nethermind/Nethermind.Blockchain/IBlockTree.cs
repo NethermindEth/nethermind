@@ -179,6 +179,6 @@ namespace Nethermind.Blockchain
 
         void RecalculateTreeLevels();
 
-        void TryPruneHistory();
+        void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken);
     }
 }

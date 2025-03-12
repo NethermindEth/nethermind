@@ -48,6 +48,7 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
           specProvider,
           syncPeerPool,
           logManager,
+          null,
           secondsPerSlot,
           simulateBlockProduction)
 {

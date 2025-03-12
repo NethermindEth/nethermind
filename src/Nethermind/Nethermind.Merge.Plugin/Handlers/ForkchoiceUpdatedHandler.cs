@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -51,6 +52,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly bool _simulateBlockProduction;
     private readonly ulong _secondsPerSlot;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IHistoryPruner? _historyPruner;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -66,6 +68,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         ISpecProvider specProvider,
         ISyncPeerPool syncPeerPool,
         ILogManager logManager,
+        IHistoryPruner? historyPruner,
         ulong secondsPerSlot,
         bool simulateBlockProduction = false)
     {
@@ -83,12 +86,13 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _syncPeerPool = syncPeerPool;
         _simulateBlockProduction = simulateBlockProduction;
         _secondsPerSlot = secondsPerSlot;
+        _historyPruner = historyPruner;
         _logger = logManager.GetClassLogger();
     }
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        _blockTree.TryPruneHistory();
+        _historyPruner?.TryPruneHistory();
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)

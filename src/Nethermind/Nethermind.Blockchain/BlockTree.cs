@@ -742,6 +742,39 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+        {
+            BlockAcceptingNewBlocks();
+            int deletedBlocks = 0;
+            try
+            {
+                using var batch = _chainLevelInfoRepository.StartBatch();
+
+                foreach ((long number, Hash256 hash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                        break;
+                    }
+
+                    if (number == 0)
+                    {
+                        continue;
+                    }
+
+                    if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}");
+                    DeleteBlock(number, hash, null, batch);
+                    deletedBlocks++;
+                }
+            }
+            finally
+            {
+                if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                ReleaseAcceptingNewBlocks();
+            }
+        }
+
         private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null)
         {
             currentLevel ??= LoadLevel(currentNumber);

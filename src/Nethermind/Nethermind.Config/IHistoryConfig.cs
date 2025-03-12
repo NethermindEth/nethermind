@@ -5,6 +5,8 @@ namespace Nethermind.Config;
 
 public interface IHistoryConfig : IConfig
 {
+    bool Enabled { get; }
+
     // For EIP-4444 set default to 82125
     [ConfigItem(
         Description = "The number of epochs to retain historical blocks and receipts. Set to null for unlimited retention.",

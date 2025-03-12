@@ -37,15 +37,9 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain : IStep
+    public class InitializeBlockchain(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-
-        // ReSharper disable once MemberCanBeProtected.Global
-        public InitializeBlockchain(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly INethermindApi _api = api;
 
         public async Task Execute(CancellationToken _)
         {
@@ -62,6 +56,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
+            IHistoryConfig historyConfig = getApi.Config<IHistoryConfig>();
 
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
