@@ -15,17 +15,17 @@ namespace Nethermind.Init.Steps
     {
         private readonly IEnumerable<StepInfo> _stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
-        private readonly Type apiType;
+        private readonly Type _apiType;
 
         public EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo)
         {
             _stepsInfo = stepsInfo;
-             apiType = consensusPlugin.ApiType;
+            _apiType = consensusPlugin.ApiType;
         }
 
         public IEnumerable<StepInfo> ResolveStepsImplementations()
         {
-            if (!apiType.GetInterfaces().Contains(_baseApiType))
+            if (!_apiType.GetInterfaces().Contains(_baseApiType))
             {
                 throw new NotSupportedException($"api type must implement {_baseApiType.Name}");
             }
@@ -47,7 +47,7 @@ namespace Nethermind.Init.Steps
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {
             StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
-                .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();
+                .Where(t => HasConstructorWithParameter(t.StepType, _apiType)).ToArray();
 
             if (stepsWithMatchingApiType.Length == 0)
             {

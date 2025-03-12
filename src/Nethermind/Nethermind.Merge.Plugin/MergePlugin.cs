@@ -449,13 +449,13 @@ public class MergePluginModule : Module
             .AddModule(new MergeSynchronizerModule())
 
             .AddSingleton<BeaconSync>()
-            .Bind<IBeaconSyncStrategy, BeaconSync>()
-            .Bind<IMergeSyncController, BeaconSync>()
+                .Bind<IBeaconSyncStrategy, BeaconSync>()
+                .Bind<IMergeSyncController, BeaconSync>()
             .AddSingleton<IBlockCacheService, BlockCacheService>()
             .AddSingleton<IBeaconPivot, BeaconPivot>()
-            .Bind<IPivot, IBeaconPivot>()
+                .Bind<IPivot, IBeaconPivot>()
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
-            .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
+                .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();

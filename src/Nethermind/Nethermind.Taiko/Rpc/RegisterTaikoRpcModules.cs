@@ -9,7 +9,6 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using System;
-using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Init.Steps.Migrations;
 

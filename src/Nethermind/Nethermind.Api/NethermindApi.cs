@@ -241,8 +241,7 @@ namespace Nethermind.Api
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource? ProcessExit { get; set; }
-        public ILifetimeScope Context { get; set; } = null!;
-
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+        public ILifetimeScope Context { get; set; } = null!;
     }
 }
