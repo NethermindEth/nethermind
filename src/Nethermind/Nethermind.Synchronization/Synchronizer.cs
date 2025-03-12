@@ -347,7 +347,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 
-            .Bind<IReceiptFinder, IReceiptStorage>()
             .AddSingleton<ISyncServer, SyncServer>();
 
         builder
