@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -20,7 +18,7 @@ namespace Nethermind.Init.Modules;
 
 /// <summary>
 /// Full currently on production nethermind module, excluding plugins, and fallback to INethermindApi.
-/// Not able to initialize all component without INethermindApi integration or running IStep correctly.
+/// Not able to initialize all component without INethermindApi integration and running IStep correctly.
 /// For testing without having to run ISteps, see <see cref="PseudoNethermindModule"/>.
 /// </summary>
 /// <param name="configProvider"></param>
