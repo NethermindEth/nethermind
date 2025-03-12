@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
@@ -140,10 +141,10 @@ namespace Nethermind.Serialization.Json
             return writerOptions;
         }
 
-        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
+        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
             var writer = GetPipeWriter(stream, leaveOpen);
-            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions, cancellationToken);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;
