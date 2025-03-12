@@ -302,6 +302,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISyncPointers, SyncPointers>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPivot, Pivot>() // Used by sync report
+            .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()

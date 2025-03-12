@@ -166,7 +166,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.BetterPeerStrategy);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
 
@@ -174,7 +173,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.Context.Resolve<IPoSSwitcher>(), _beaconPivot, _api.LogManager);
 
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);

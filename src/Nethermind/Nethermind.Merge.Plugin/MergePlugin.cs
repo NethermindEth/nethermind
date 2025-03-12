@@ -376,7 +376,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
             if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
             if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
-            if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
             if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
             if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
             if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
@@ -411,8 +410,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _invalidChainTracker,
                 _api.LogManager);
             _beaconSync = _api.Context.Resolve<BeaconSync>();
-
-            _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
             _peerRefresher = peerRefresher;
@@ -452,14 +449,16 @@ public class MergePluginModule : Module
             .AddModule(new MergeSynchronizerModule())
 
             .AddSingleton<BeaconSync>()
-                .Bind<IBeaconSyncStrategy, BeaconSync>()
-                .Bind<IMergeSyncController, BeaconSync>()
+            .Bind<IBeaconSyncStrategy, BeaconSync>()
+            .Bind<IMergeSyncController, BeaconSync>()
             .AddSingleton<IBlockCacheService, BlockCacheService>()
             .AddSingleton<IBeaconPivot, BeaconPivot>()
-                .Bind<IPivot, IBeaconPivot>()
+            .Bind<IPivot, IBeaconPivot>()
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
-                .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
+            .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+
+            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();
             ;
     }
 }

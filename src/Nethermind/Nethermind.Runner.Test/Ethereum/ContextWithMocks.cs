@@ -59,6 +59,7 @@ namespace Nethermind.Runner.Test.Ethereum
             api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             api.Context = new ContainerBuilder()
+                .AddSingleton(Substitute.For<IPoSSwitcher>())
                 .AddSingleton(Substitute.For<ISyncModeSelector>())
                 .AddSingleton(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton(Substitute.For<ISyncPointers>())
@@ -126,7 +127,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId);
             api.UnclesValidator = Substitute.For<IUnclesValidator>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
-            api.BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
             api.ProcessExit = Substitute.For<IProcessExitSource>();

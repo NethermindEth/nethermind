@@ -267,8 +267,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
-        var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, poSSwitcher, _beaconPivot, _api.LogManager);
 
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);

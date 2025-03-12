@@ -188,7 +188,6 @@ namespace Nethermind.Api
 
         public ISyncProgressResolver? SyncProgressResolver => Context.Resolve<ISyncProgressResolver>();
         public ISyncPointers? SyncPointers => Context.Resolve<ISyncPointers>();
-        public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => Context.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();

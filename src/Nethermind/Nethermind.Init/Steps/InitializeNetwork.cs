@@ -96,8 +96,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
-
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 

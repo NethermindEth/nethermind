@@ -47,7 +47,6 @@ namespace Nethermind.Api
         string SealEngineType { get; }
         [SkipServiceCollection]
         ISpecProvider? SpecProvider { get; set; }
-        IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
         IProcessExitSource? ProcessExit { get; set; }
