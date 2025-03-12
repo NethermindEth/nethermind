@@ -24,7 +24,7 @@ namespace Nethermind.Init.Modules;
 /// For testing without having to run ISteps, see <see cref="PseudoNethermindModule"/>.
 /// </summary>
 /// <param name="configProvider"></param>
-public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager): Module
+public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

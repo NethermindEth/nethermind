@@ -442,8 +442,6 @@ public class MergePluginModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        base.Load(builder);
-
         builder
             // Sync related
             .AddModule(new MergeSynchronizerModule())
@@ -459,6 +457,5 @@ public class MergePluginModule : Module
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();
-            ;
     }
 }

@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
@@ -52,7 +51,8 @@ public class MergePluginTests
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null) {
+    private IContainer BuildContainer(IConfigProvider? configProvider = null)
+    {
         return new ContainerBuilder()
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),

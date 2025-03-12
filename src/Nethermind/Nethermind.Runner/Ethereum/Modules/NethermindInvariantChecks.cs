@@ -8,7 +8,7 @@ using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class NethermindInvariantChecks: Module
+public class NethermindInvariantChecks : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
