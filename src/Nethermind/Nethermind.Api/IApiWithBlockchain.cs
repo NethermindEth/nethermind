@@ -86,8 +86,5 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
-
-        [SkipServiceCollection]
-        IAdminEraService AdminEraService { get; set; }
     }
 }

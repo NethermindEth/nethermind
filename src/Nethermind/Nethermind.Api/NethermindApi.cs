@@ -222,7 +222,6 @@ namespace Nethermind.Api
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
-        public IAdminEraService AdminEraService { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

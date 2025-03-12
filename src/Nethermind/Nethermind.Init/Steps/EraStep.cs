@@ -14,10 +14,9 @@ public class EraStep : IStep
 {
     private readonly EraCliRunner _eraCliRunner;
 
-    public EraStep(EraCliRunner eraCliRunner, INethermindApi nethermindApi, IAdminEraService adminEraService)
+    public EraStep(EraCliRunner eraCliRunner)
     {
         _eraCliRunner = eraCliRunner;
-        nethermindApi.AdminEraService = adminEraService;
     }
 
     public async Task Execute(CancellationToken cancellationToken)
