@@ -1,7 +1,7 @@
 ## Implementations:
-- `Secp256r1GoPrecompile` - Go version using built-in [crypto/ecdsa package](https://pkg.go.dev/crypto/ecdsa). Same one as **Geth** uses and the fastest one.
+- `Secp256r1GoPrecompile` - Go version using built-in [crypto/ecdsa package](https://pkg.go.dev/crypto/ecdsa). Same one as **OP Geth** [uses](https://github.com/ethereum-optimism/op-geth/blob/optimism/crypto/secp256r1/verifier.go) and the fastest one.
 - `Secp256r1FastCryptoPrecompile` - Rust implementation using [fastcrypto library](https://github.com/MystenLabs/fastcrypto/). A bit slower than Go variant.
-- `Secp256r1FastCryptoPrecompile` - Rust implementation using [p256 crate](https://docs.rs/p256/latest/p256/). Same one as **Revm (Reth)** uses. Much slower than Go.
+- `Secp256r1FastCryptoPrecompile` - Rust implementation using [p256 crate](https://docs.rs/p256/latest/p256/). Same one as **Revm (Reth)** [uses](https://github.com/bluealloy/revm/blob/main/crates/precompile/src/secp256r1.rs). Much slower than Go.
 - `Secp256r1Precompile` - initial version that uses built-in .NET `ECDsa`. Slowest of all, at least on Windows.
 - Other libraries tried: [BouncyCastle](https://github.com/bcgit/bc-csharp), [ecdsa-dotnet from STARK BANK](https://github.com/starkbank/ecdsa-dotnet) - comparable to or slower than .NET `ECDsa`.
 
