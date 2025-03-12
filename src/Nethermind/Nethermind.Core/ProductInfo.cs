@@ -39,7 +39,7 @@ public static class ProductInfo
             Version = Version[..Math.Min(index + 9, Version.Length - 1)];
         }
 
-        ClientIdParts = new Dictionary<string, string>
+        ClientIdParts = new()
         {
             { "name", Name },
             { "version", $"v{Version}" },
