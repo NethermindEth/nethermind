@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -299,6 +300,8 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
+            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<IPivot, Pivot>() // Used by sync report
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
@@ -346,6 +349,17 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         builder
             .Map<IReceiptFinder, IReceiptStorage>(static (storage) => storage)
             .AddSingleton<ISyncServer, SyncServer>();
+
+        builder
+            .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
+            {
+                // Move to clique plugin?
+                if (ctx.ResolveOptional<ChainSpec>()?.SealEngineType == SealEngineType.Clique)
+                    syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+
+                return syncConfig;
+            });
+
     }
 
     private void ConfigureFullSync(ContainerBuilder scopeConfig)

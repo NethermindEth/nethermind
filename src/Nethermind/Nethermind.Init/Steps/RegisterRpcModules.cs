@@ -5,11 +5,13 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
@@ -299,7 +301,7 @@ public class RegisterRpcModules : IStep
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             _api.SpecProvider,
-            _api.PoSSwitcher,
+            _api.Context.Resolve<IPoSSwitcher>(),
             _api.LogManager);
     }
 

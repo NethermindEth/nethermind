@@ -9,6 +9,8 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using System;
+using Autofac;
+using Nethermind.Consensus;
 using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Taiko.Rpc;
@@ -16,10 +18,12 @@ namespace Nethermind.Taiko.Rpc;
 public class RegisterTaikoRpcModules : RegisterRpcModules
 {
     private readonly TaikoNethermindApi _api;
+    private readonly IPoSSwitcher _poSSwitcher;
 
-    public RegisterTaikoRpcModules(INethermindApi api) : base(api)
+    public RegisterTaikoRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
     {
         _api = (TaikoNethermindApi)api;
+        _poSSwitcher = poSSwitcher;
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -101,7 +105,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             _api.SpecProvider,
-            _api.PoSSwitcher,
+            _poSSwitcher,
             _api.LogManager);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);

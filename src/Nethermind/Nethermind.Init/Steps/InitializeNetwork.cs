@@ -107,23 +107,6 @@ public class InitializeNetwork : IStep
             await plugin.InitSynchronization();
         }
 
-        _api.Pivot ??= new Pivot(_syncConfig);
-
-        if (_api.Synchronizer is null)
-        {
-            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
-                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
-
-            ContainerBuilder builder = new ContainerBuilder();
-            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
-            builder.RegisterModule(new SynchronizerModule(_syncConfig));
-            IContainer container = builder.Build();
-
-            _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Push((IAsyncDisposable)container);
-        }
-
         _api.WorldStateManager!.InitializeNetwork(
             new PathNodeRecovery(
                 new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),

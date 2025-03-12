@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -34,18 +35,18 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
 public class RegisterAuRaRpcModules : RegisterRpcModules
 {
-    public RegisterAuRaRpcModules(AuRaNethermindApi api) : base(api)
+    public RegisterAuRaRpcModules(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
     {
         _api = api;
         _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         _auraConfig = _api.Config<IAuraConfig>();
+        _poSSwitcher = poSSwitcher;
         _factory = CreateFactory();
     }
 
@@ -53,6 +54,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
     private static AuRaChainSpecEngineParameters _parameters = null!;
     private static IAuraConfig _auraConfig = null!;
     private readonly IAuRaBlockProcessorFactory _factory;
+    private readonly IPoSSwitcher _poSSwitcher;
 
     protected virtual IAuRaBlockProcessorFactory CreateFactory() => new AuRaBlockProcessorFactory();
 
@@ -73,7 +75,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             _api.SpecProvider,
-            _api.PoSSwitcher,
+            _poSSwitcher,
             _api.LogManager,
             _factory);
 
