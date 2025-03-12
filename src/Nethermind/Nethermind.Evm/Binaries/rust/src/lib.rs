@@ -38,7 +38,7 @@ pub extern "C" fn VerifyBytes(input_ptr: *const u8, input_len: usize) -> bool {
 
 #[no_mangle]
 pub extern "C" fn VerifyBytesFast(input_ptr: *const u8, input_len: usize) -> bool {
-    //println!("VerifyBytesFast: Checking signature");
+    println!("VerifyBytesFast: Checking signature");
 
     // Safety: Ensure input_ptr is not null and length is correct
     if input_ptr.is_null() || input_len != 160 {
