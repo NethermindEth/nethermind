@@ -17,24 +17,24 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 {
     private const string DefaultFile = "op_code_stats.json";
     private static readonly Lock FileLock = new();
+    private readonly int _bufferSize;
+    private readonly CancellationToken _ct;
     private readonly string _fileName;
     private readonly IFileSystem _fileSystem;
-    private readonly JsonSerializerOptions _serializerOptions = new();
-    private DisposableResettableList<Instruction> _buffer = new();
-    private readonly int _bufferSize;
-    private long _currentBlock;
     private readonly List<Task> _fileTracingQueue = new();
     private readonly int _fileTracingQueueSize = 1;
     private readonly HashSet<Instruction> _ignore;
-    private long _initialBlock;
     private readonly ILogger _logger;
-    private int _pos;
     private readonly McsLock _processingLock = new();
-    private readonly StatsAnalyzer _statsAnalyzer;
-    private PatternAnalyzerTxTracer _tracer;
-    private readonly int _writeFreq = 1;
-    private readonly CancellationToken _ct;
+    private readonly JsonSerializerOptions _serializerOptions = new();
     private readonly SortOrder _sort;
+    private readonly StatsAnalyzer _statsAnalyzer;
+    private readonly int _writeFreq = 1;
+    private DisposableResettableList<Instruction> _buffer = new();
+    private long _currentBlock;
+    private long _initialBlock;
+    private int _pos;
+    private PatternAnalyzerTxTracer _tracer;
 
 
     public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer,
@@ -84,7 +84,8 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         var currentBlockNumber = _currentBlock;
 
         _buffer = new DisposableResettableList<Instruction>();
-        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _sort, _ct);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _sort,
+            _ct);
 
         var task = Task.Run(() =>
         {
@@ -107,7 +108,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                 {
                 }
             }
-        },_ct);
+        }, _ct);
 
         _fileTracingQueue.Add(task);
 

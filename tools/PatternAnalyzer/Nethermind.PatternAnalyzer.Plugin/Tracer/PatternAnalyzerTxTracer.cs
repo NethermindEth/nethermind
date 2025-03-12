@@ -14,10 +14,10 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
     private readonly DisposableResettableList<Instruction> _buffer;
     private readonly HashSet<Instruction> _ignoreSet;
     private readonly StatsAnalyzer _statsAnalyzer;
+    private readonly CancellationToken _ct;
     private McsLock _processingLock;
     private StatsProcessingQueue? _queue;
-    private CancellationToken _ct;
-    private SortOrder _sort;
+    private readonly SortOrder _sort;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
         int size, McsLock processingLock, StatsAnalyzer statsAnalyzer, SortOrder sort, CancellationToken ct)
@@ -74,6 +74,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
             var sortedEntries = trace.Entries.OrderByDescending(e => e.Count).ToList();
             trace.Entries = sortedEntries;
         }
+
         return trace;
     }
 

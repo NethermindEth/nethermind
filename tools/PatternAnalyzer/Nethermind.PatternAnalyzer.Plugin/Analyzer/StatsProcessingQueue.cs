@@ -5,7 +5,8 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
 public sealed class StatsProcessingQueue(
     DisposableResettableList<Instruction> buffer,
-    StatsAnalyzer statsAnalyzer, CancellationToken ct)
+    StatsAnalyzer statsAnalyzer,
+    CancellationToken ct)
     : IDisposable
 {
     private bool disposed;

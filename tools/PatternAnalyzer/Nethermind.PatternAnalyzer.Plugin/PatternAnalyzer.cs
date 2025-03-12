@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Logging;
@@ -12,13 +11,13 @@ namespace Nethermind.PatternAnalyzer.Plugin;
 
 public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INethermindPlugin
 {
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
     private INethermindApi _api = null!;
     private ILogger _logger;
     private ILogManager _logManager = null!;
     public string Name => "OpcodeStats";
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public bool Enabled => patternAnalyzerConfig.Enabled;
 
@@ -39,8 +38,10 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
             // Setup tracing
             var analyzer = new StatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
             PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(patternAnalyzerConfig.ProcessingQueueSize,
-                patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),_api.FileSystem, _logger,
-                patternAnalyzerConfig.WriteFrequency, SortOrderParser.Parse(patternAnalyzerConfig.Sort), patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
+                patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),
+                _api.FileSystem, _logger,
+                patternAnalyzerConfig.WriteFrequency, SortOrderParser.Parse(patternAnalyzerConfig.Sort),
+                patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
             _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
         }
 

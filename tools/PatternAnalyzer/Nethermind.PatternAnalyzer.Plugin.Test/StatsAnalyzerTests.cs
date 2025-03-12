@@ -184,11 +184,12 @@ public class StatsAnalyzerTests
         }
     }
 
-    [Test, TestCaseSource(nameof(StatsTestCases))]
+    [Test]
+    [TestCaseSource(nameof(StatsTestCases))]
     public void validate_stats(Instruction[] executionOpCodes,
         (Instruction[] ngram, int count)[] expectedNGrams)
     {
-        Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
+        var counts = new Dictionary<ulong, ulong>();
 
         foreach ((Instruction[] instructions, int count) expected in expectedNGrams)
         {
@@ -198,7 +199,7 @@ public class StatsAnalyzerTests
 
         _statsAnalyzer.Add(executionOpCodes);
 
-        foreach (Stat stat in _statsAnalyzer.Stats)
+        foreach (var stat in _statsAnalyzer.Stats)
         {
             var ulong0 = stat.ngram.ulong0;
             Assert.That(counts[ulong0] == stat.count);

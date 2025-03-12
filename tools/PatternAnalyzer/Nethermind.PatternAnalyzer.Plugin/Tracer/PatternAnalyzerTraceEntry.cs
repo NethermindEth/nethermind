@@ -12,5 +12,4 @@ public class PatternAnalyzerTraceEntry
     [JsonPropertyName("count")]
     [JsonConverter(typeof(ULongConverter))]
     public required ulong Count { get; set; }
-
 }

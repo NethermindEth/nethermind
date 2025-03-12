@@ -173,7 +173,7 @@ public class CMSketchTests
                 // store the actual update qty in the dictionary
                 actualCounts[randomUlong] = (ulong)randomUpdate +
                                             CollectionsMarshal.GetValueRefOrAddDefault(actualCounts, randomUlong,
-                                                out var _);
+                                                out _);
             }
 
             observedConfidence += check_confidence(sketch, actualCounts, sketch.error, sketch.confidence) ? 1d : 0d;
