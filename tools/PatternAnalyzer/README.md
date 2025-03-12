@@ -73,4 +73,5 @@ followed by ascending stats and finally, descending stats are the slowest.
 - **File**: Configurable file location for dumping the stats
 - **WriteFrequency**: Users can define the frequency (in blocks) for writing stats to disk.
 - **ProcessingQueueSize**: Sets the number of tasks that can be queued when tracing & dumping stats in background
+- **ProcessingMode**: Can be set to either sequential or bulk. This strategy is triggered when the queue is full and the tracer decides to either clear the processing debt one task at a time or in bulk.
 - **Sort**: can be unordered, ascending and descending.
