@@ -1,7 +1,6 @@
 # Pattern Analyzer Plugin
 
-The plugin serves JSON traces of the stats of top patterns of **2-7 opcodes** observed by the EVM
-during execution.
+The plugin serves JSON traces of the stats of top patterns of **2-7 opcodes** observed by the EVM during execution.
 
 **Relevant config parameters**:
 
@@ -9,8 +8,7 @@ during execution.
 
 ## Analyzer
 
-The Analyzer primarily consists of the **StatsAnalyzer**, **CMSKetch**,
-**NGram** and **StatsProcessingQueue**.
+The Analyzer primarily consists of the **StatsAnalyzer**, **CMSKetch**, **NGram** and **StatsProcessingQueue**.
 
 ### Stats Analyzer
 
@@ -19,15 +17,11 @@ This is primarily responsible for processing the instructions and accumulating t
 **Relevant config parameters**:
 
 - **AnalyzerTopN**: The number of top **NGrams** to track .
-- **AnalyzerMinSupportThreshold**: sets the initial minimum count a
-  pattern has to breach to start getting tracked by the analyzer.
+- **AnalyzerMinSupportThreshold**: sets the initial minimum count a pattern has to breach to start getting tracked by the analyzer.
 - **AnalyzerCapacity** sets the initially allocated space for intermediary storage of n-gram frequencies which are later used to populate or update the top N queue.
-- **AnalyzerBufferSize** Buffer size for sketches e.g. setting it 1 would
-  only use one sketch for the stats;
-- **AnalyzerSketchResetOrReuseThreshold**: Sets the error threshold for
-  provisioning new sketches.
-- **Ignore**: comma separated string of opcodes to ignore e.g. setting this to "JUMP, JUMPDEST"
-  will not track those two opcodes
+- **AnalyzerBufferSize** Buffer size for sketches e.g. setting it 1 would only use one sketch for the stats;
+- **AnalyzerSketchResetOrReuseThreshold**: Sets the error threshold for provisioning new sketches.
+- **Ignore**: comma separated string of opcodes to ignore e.g. setting this to "JUMP, JUMPDEST" will not track those two opcodes
 
 ### CMSketch
 
@@ -56,13 +50,7 @@ This consists of primarily of the stats analyzer and instruction buffer to queue
 
 ## Tracer
 
-The plugin hosts a set of tracing components of which help serve the traces to a
-given JSON file at the provided write frequency. The trace contains the Blocks
-traversed, the error and confidence of the stats and then the stats of the
-n-grams witnessed during execution. Furthermore, the user can choose the
-sort order of the stats delivered or have them unordered. This has
-effect on processing time: unordered stats being the fastest
-followed by ascending stats and finally, descending stats are the slowest.
+The plugin hosts a set of tracing components of which help serve the traces to a given JSON file at the provided write frequency. The trace contains the Blocks traversed, the error and confidence of the stats and then the stats of the n-grams witnessed during execution. Furthermore, the user can choose the sort order of the stats delivered or have them unordered. This has effect on processing time: unordered stats being the fastest followed by ascending stats and finally, descending stats are the slowest.
 
 ```JSON
 {"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.006,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":1}]}
