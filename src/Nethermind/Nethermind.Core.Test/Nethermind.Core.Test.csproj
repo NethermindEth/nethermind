@@ -30,7 +30,6 @@
       <Link>TestRopstenBlocks\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="Specs\hive.json" />
     <None Update="TestFiles\BaseFeeTestCases.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
