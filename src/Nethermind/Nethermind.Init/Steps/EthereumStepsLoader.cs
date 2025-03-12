@@ -39,9 +39,8 @@ namespace Nethermind.Init.Steps
 
         private static bool HasConstructorWithParameter(Type type, Type parameterType)
         {
-            Type[] expectedParams = { parameterType };
             return type.GetConstructors().Any(
-                c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(expectedParams));
+                c => c.GetParameters().Select(p => p.ParameterType).Any(pType => pType == parameterType));
         }
 
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
@@ -66,7 +65,7 @@ namespace Nethermind.Init.Steps
                 // Step without INethermindApi in its constructor
                 if (stepsWithTheSameBase.Length == 1) return stepsWithTheSameBase[0];
 
-                throw new StepDependencyException($"Unable to decide step implementation to execute. Steps of same base time: {string.Join(", ", stepsWithTheSameBase.Select(s => s.StepBaseType.Name))}");
+                throw new StepDependencyException($"Unable to decide step implementation to execute. Steps of same base time: {string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType.Name))}");
             }
 
             return stepsWithMatchingApiType.FirstOrDefault();
