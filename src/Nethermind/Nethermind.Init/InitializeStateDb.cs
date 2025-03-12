@@ -104,6 +104,7 @@ public class InitializeStateDb : IStep
 
     private static void InitBlockTraceDumper()
     {
+        // TODO: add TxWitnessConverter as well here
         EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
     }
 }

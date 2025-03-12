@@ -36,7 +36,7 @@ public class VisitingTests
             raw.Clear();
 
             raw[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
-            patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i))));
+            patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i), 0)));
         }
 
         using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
@@ -98,7 +98,7 @@ public class VisitingTests
             stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
 
             stateTree.Set(stateKey,
-                new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
+                new Account(10, (UInt256)(10_000_000 + i), 0, stateRootHash, Keccak.OfAnEmptySequenceRlp, 0));
         }
 
         stateTree.Commit();

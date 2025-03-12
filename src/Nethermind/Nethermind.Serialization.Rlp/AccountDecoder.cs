@@ -56,10 +56,11 @@ namespace Nethermind.Serialization.Rlp
             Hash256 codeHash = DecodeCodeHash(rlpStream);
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
-                return new(nonce, balance);
+                return new(nonce, balance, 0);
             }
 
-            return new(nonce, balance, storageRoot, codeHash);
+            // RLP encoded are accounts from before the introduction of CodeSize and Version - set to zero
+            return new(nonce, balance, 0, storageRoot, codeHash, 0);
         }
 
         public void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -236,10 +237,10 @@ namespace Nethermind.Serialization.Rlp
             Hash256 codeHash = DecodeCodeHash(ref decoderContext);
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
-                return new(nonce, balance);
+                return new(nonce, balance, 0);
             }
 
-            return new(nonce, balance, storageRoot, codeHash);
+            return new(nonce, balance, 0, storageRoot, codeHash, 0);
         }
 
         private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
@@ -319,7 +320,7 @@ namespace Nethermind.Serialization.Rlp
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);
-            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            account = new AccountStruct(nonce, balance, storageRoot, codeHash, 0, 0);
             return true;
         }
     }

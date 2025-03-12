@@ -378,11 +378,13 @@ namespace Nethermind.State
             _keptInCache.Clear();
         }
 
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, byte version = 0)
         {
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
-            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
+            Account account = (balance.IsZero && nonce.IsZero)
+                ? Account.TotallyEmpty
+                : new Account(nonce, balance, version);
             PushNew(address, account);
         }
 

@@ -47,8 +47,8 @@ namespace Nethermind.Core.Test.Builders
             Account account = new(
                 (UInt256)index,
                 (UInt256)index,
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
+                0, Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString, 0);
 
             return account;
         }
