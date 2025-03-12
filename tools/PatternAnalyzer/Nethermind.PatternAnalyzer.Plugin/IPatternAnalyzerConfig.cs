@@ -28,6 +28,11 @@ public interface IPatternAnalyzerConfig : IConfig
 
     [ConfigItem(
         Description = "Sets the sort order of the stats produced",
+        DefaultValue = "sequential")]
+    string ProcessingMode { get; set; }
+
+    [ConfigItem(
+        Description = "Sets the sort order of the stats produced",
         DefaultValue = "unordered")]
     string Sort { get; set; }
 

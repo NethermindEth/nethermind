@@ -26,6 +26,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     private readonly HashSet<Instruction> _ignore;
     private readonly ILogger _logger;
     private readonly McsLock _processingLock = new();
+    private readonly ProcessingMode _processingMode;
     private readonly JsonSerializerOptions _serializerOptions = new();
     private readonly SortOrder _sort;
     private readonly StatsAnalyzer _statsAnalyzer;
@@ -38,7 +39,8 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
 
     public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer,
-        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, SortOrder sort,
+        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
+        SortOrder sort,
         string fileName, CancellationToken ct)
     {
         _bufferSize = bufferSize;
@@ -50,6 +52,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         _fileTracingQueueSize = processingQueueSize;
         _fileName = fileName;
         _logger = logger;
+        _processingMode = mode;
         _sort = sort;
         _ct = ct;
         if (_logger.IsInfo)
@@ -69,10 +72,13 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         if (_fileTracingQueue.Count >= _fileTracingQueueSize && _fileTracingQueue.Count > 0)
             try
             {
-                _fileTracingQueue[0].ContinueWith(t =>
-                {
-                    if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
-                }, _ct).Wait(_ct);
+                if (_processingMode == ProcessingMode.Sequential)
+                    _fileTracingQueue[0].ContinueWith(t =>
+                    {
+                        if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
+                    }, _ct).Wait(_ct);
+
+                if (_processingMode == ProcessingMode.Bulk) CompleteAllTasks();
             }
             catch (AggregateException ex)
             {

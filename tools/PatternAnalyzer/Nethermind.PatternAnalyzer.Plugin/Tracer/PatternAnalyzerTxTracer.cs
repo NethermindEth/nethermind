@@ -12,12 +12,12 @@ namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
 public sealed class PatternAnalyzerTxTracer : TxTracer
 {
     private readonly DisposableResettableList<Instruction> _buffer;
-    private readonly HashSet<Instruction> _ignoreSet;
-    private readonly StatsAnalyzer _statsAnalyzer;
     private readonly CancellationToken _ct;
+    private readonly HashSet<Instruction> _ignoreSet;
+    private readonly SortOrder _sort;
+    private readonly StatsAnalyzer _statsAnalyzer;
     private McsLock _processingLock;
     private StatsProcessingQueue? _queue;
-    private readonly SortOrder _sort;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
         int size, McsLock processingLock, StatsAnalyzer statsAnalyzer, SortOrder sort, CancellationToken ct)

@@ -19,6 +19,7 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
     public int AnalyzerCapacity { get; set; }
     public int AnalyzerSketchBufferSize { get; set; }
     public double AnalyzerSketchResetOrReuseThreshold { get; set; }
+    public string ProcessingMode { get; set; } = "sequential";
     public string Sort { get; set; } = "unordered";
 
     public StatsAnalyzerConfig GetStatsAnalyzerConfig()
