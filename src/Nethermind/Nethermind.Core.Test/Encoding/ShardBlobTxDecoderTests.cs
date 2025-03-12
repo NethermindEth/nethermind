@@ -59,6 +59,45 @@ public partial class ShardBlobTxDecoderTests
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
     }
 
+    private static IEnumerable<Transaction> TamperedTestCaseSource()
+    {
+        yield return Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(2, false)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        yield return Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(2, false)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithNonce(0)
+            .SignedAndResolved()
+            .TestObject;
+    }
+    [TestCaseSource(nameof(TamperedTestCaseSource))]
+    public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
+    {
+        var stream = new RlpStream(_txDecoder.GetLength(tx, RlpBehaviors.None));
+        _txDecoder.Encode(stream, tx);
+        // Tamper with sequence length
+        {
+            var itemsLength = 0;
+            foreach (var array in tx.BlobVersionedHashes!)
+            {
+                itemsLength += Rlp.LengthOf(array);
+            }
+
+            // Position where it starts encoding `BlobVersionedHashes`
+            stream.Position = 37;
+            // Accepts `itemsLength - 10` all the way to `itemsLength - 1`
+            stream.StartSequence(itemsLength - 1);
+        }
+        stream.Position = 0;
+
+        // Decoding should fail
+        var tryDecode = () => _txDecoder.Decode(stream);
+        tryDecode.Should().Throw<RlpException>();
+    }
+
     [TestCaseSource(nameof(ShardBlobTxTests))]
     public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
     {

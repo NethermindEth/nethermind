@@ -1093,11 +1093,10 @@ namespace Nethermind.Serialization.Rlp
                 $"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
-            T defaultElement = default)
+        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default)
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
@@ -1110,6 +1109,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     result[i] = decodeItem(this);
                 }
+            }
+
+            if (checkPositions)
+            {
+                Check(positionCheck);
             }
 
             return result;
@@ -1132,6 +1136,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     result[i] = decodeItem(this);
                 }
+            }
+
+            if (checkPositions)
+            {
+                Check(positionCheck);
             }
 
             return result;
@@ -1426,7 +1435,7 @@ namespace Nethermind.Serialization.Rlp
             return $"[{nameof(RlpStream)}|{Position}/{Length}]";
         }
 
-        public byte[][] DecodeByteArrays()
+        public byte[][] DecodeByteArrays(RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = ReadSequenceLength();
             if (length is 0)
@@ -1434,12 +1443,18 @@ namespace Nethermind.Serialization.Rlp
                 return [];
             }
 
-            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            int checkPosition = Position + length;
+            int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
             byte[][] result = new byte[itemsCount][];
 
             for (int i = 0; i < itemsCount; i++)
             {
                 result[i] = DecodeByteArray();
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                Check(checkPosition);
             }
 
             return result;
