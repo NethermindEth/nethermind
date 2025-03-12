@@ -442,9 +442,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         if (syncConfig.FastSync && syncConfig.VerifyTrieOnStateSyncFinished)
         {
             serviceCollection
-                .RegisterType<VerifyStateOnStateSyncFinished>()
-                .WithAttributeFiltering()
-                .As<IStartable>();
+                .AddSingleton<VerifyStateOnStateSyncFinished>()
+                .OnActivate<ITreeSync>((treeSync, ctx) =>
+                {
+                    ctx.Resolve<VerifyStateOnStateSyncFinished>();
+                });
         }
     }
 

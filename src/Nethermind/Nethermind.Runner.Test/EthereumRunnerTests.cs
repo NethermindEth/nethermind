@@ -17,6 +17,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
@@ -60,11 +61,21 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
+            Console.Error.WriteLine($"{configFile}");
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
             result.Enqueue((configFile, configProvider));
         });
+
+        {
+            // Special case for verify trie on state sync finished
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
+            result.Enqueue(("mainnet-verify-trie-starter", configProvider));
+        }
 
         return result;
     }
