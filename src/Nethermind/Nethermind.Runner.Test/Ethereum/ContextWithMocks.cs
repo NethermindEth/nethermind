@@ -42,6 +42,7 @@ using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Era1;
 using Nethermind.Facade.Find;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -60,6 +61,7 @@ namespace Nethermind.Runner.Test.Ethereum
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             api.Context = new ContainerBuilder()
                 .AddSingleton(Substitute.For<IPoSSwitcher>())
+                .AddSingleton(Substitute.For<IAdminEraService>())
                 .AddSingleton(Substitute.For<ISyncModeSelector>())
                 .AddSingleton(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton(Substitute.For<ISyncPointers>())

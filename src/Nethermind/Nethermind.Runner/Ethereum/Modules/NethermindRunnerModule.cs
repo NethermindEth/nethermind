@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -18,6 +21,15 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
+/// <summary>
+/// Configure the whole application including plugins and its integration.
+/// </summary>
+/// <param name="jsonSerializer"></param>
+/// <param name="chainSpec"></param>
+/// <param name="configProvider"></param>
+/// <param name="processExitSource"></param>
+/// <param name="plugins"></param>
+/// <param name="logManager"></param>
 public class NethermindRunnerModule(
     IJsonSerializer jsonSerializer,
     ChainSpec chainSpec,
@@ -29,7 +41,13 @@ public class NethermindRunnerModule(
 {
     protected override void Load(ContainerBuilder builder)
     {
-        base.Load(builder);
+        IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
+        if (consensusPlugins.Count() != 1)
+        {
+            throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
+        }
+
+        IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
 
         builder
             .AddModule(new NethermindModule(chainSpec, configProvider, logManager))
@@ -54,6 +72,7 @@ public class NethermindRunnerModule(
             .Bind<INethermindApi, NethermindApi>()
 
             .AddSingleton(jsonSerializer)
+            .AddSingleton<IConsensusPlugin>(consensusPlugin)
 
             .OnBuild((ctx) =>
             {
@@ -71,5 +90,20 @@ public class NethermindRunnerModule(
                 api.Context = ctx;
             })
             ;
+
+        foreach (var plugin in plugins)
+        {
+            foreach (var stepInfo in plugin.GetSteps())
+            {
+                builder.AddStep(stepInfo);
+            }
+
+            if (plugin.Module is not null)
+            {
+                builder.AddModule(plugin.Module);
+            }
+            builder.AddSingleton<INethermindPlugin>(plugin);
+        }
+
     }
 }

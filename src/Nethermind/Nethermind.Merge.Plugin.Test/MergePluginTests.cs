@@ -59,10 +59,8 @@ public class MergePluginTests
                 _chainSpec,
                 configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
                 Substitute.For<IProcessExitSource>(),
-                [],
+                [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
-            .AddModule(_plugin.Module)
-            .AddSingleton<IConsensusPlugin>(_consensusPlugin!)
             .AddDecorator<INethermindApi>((ctx, api) =>
             {
                 Build.MockOutNethermindApi((NethermindApi)api);

@@ -9,6 +9,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -303,6 +304,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPivot, Pivot>() // Used by sync report
             .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
@@ -339,16 +341,13 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         builder
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
-            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync);
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-        builder
-            .RegisterType<SyncPeerPool>()
-            .As<ISyncPeerPool>()
-            .As<IPeerDifficultyRefreshPool>()
-            .SingleInstance();
+            .AddSingleton<SyncPeerPool>()
+                .Bind<ISyncPeerPool, SyncPeerPool>()
+                .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 
-        builder
-            .Map<IReceiptFinder, IReceiptStorage>(static (storage) => storage)
+            .Bind<IReceiptFinder, IReceiptStorage>()
             .AddSingleton<ISyncServer, SyncServer>();
 
         builder

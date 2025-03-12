@@ -52,15 +52,7 @@ public class ApiBuilder
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
-        if (consensusPlugins.Count() != 1)
-        {
-            throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {ChainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
-        }
-
-        IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
         ContainerBuilder containerBuilder = new ContainerBuilder()
-            .AddSingleton<IConsensusPlugin>(consensusPlugin)
             .AddModule(new NethermindRunnerModule(
                 _jsonSerializer,
                 ChainSpec,
@@ -68,23 +60,6 @@ public class ApiBuilder
                 _processExitSource,
                 plugins,
                 _logManager));
-
-        foreach (var nethermindPlugin in plugins)
-        {
-            foreach (var stepInfo in nethermindPlugin.GetSteps())
-            {
-                containerBuilder.AddStep(stepInfo);
-            }
-        }
-
-        foreach (var plugin in plugins)
-        {
-            if (plugin.Module is not null)
-            {
-                containerBuilder.AddModule(plugin.Module);
-            }
-            containerBuilder.AddSingleton<INethermindPlugin>(plugin);
-        }
 
         IContainer container = containerBuilder.Build();
         SetLoggerVariables(ChainSpec);

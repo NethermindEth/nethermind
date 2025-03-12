@@ -19,8 +19,9 @@ using Nethermind.Specs.ChainSpecStyle;
 namespace Nethermind.Init.Modules;
 
 /// <summary>
-/// Full currently on production nethermind module, excluding plugins, and fallback to INethermindApis
-/// Assume `AppInputModule`
+/// Full currently on production nethermind module, excluding plugins, and fallback to INethermindApi.
+/// Not able to initialize all component without INethermindApi integration or running IStep correctly.
+/// For testing without having to run ISteps, see <see cref="PseudoNethermindModule"/>.
 /// </summary>
 /// <param name="configProvider"></param>
 public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager): Module
@@ -40,7 +41,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
-            .AddSingleton<IPoSSwitcher>(NoPoS.Instance) // Actually, this seems to be merge specific
             ;
     }
 
