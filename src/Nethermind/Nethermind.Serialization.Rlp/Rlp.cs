@@ -188,7 +188,6 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        // TODO: Check usages
         public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
@@ -1601,7 +1600,6 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Unexpected value while decoding byte {byteValue}");
             }
 
-            // TODO: Check usages
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default)
             {
                 if (decoder is null)
