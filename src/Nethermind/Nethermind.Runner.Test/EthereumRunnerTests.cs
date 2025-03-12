@@ -27,15 +27,12 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko;
 using Nethermind.UPnP.Plugin;
@@ -211,8 +208,6 @@ public class EthereumRunnerTests
             ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);
-            INethermindApi nethermindApi = runner.Api;
-            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
 
             using CancellationTokenSource cts = new();
 
