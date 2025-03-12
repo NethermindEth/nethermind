@@ -99,8 +99,6 @@ public static class ProductInfo
 
     public const string DefaultPublicClientIdFormat = "{name}/{version}/{os}/{runtime}";
 
-    public static void InitializePublicClientId(string formatString)
-    {
+    public static void InitializePublicClientId(string formatString) =>
         PublicClientId = FormatClientId(formatString);
-    }
 }
