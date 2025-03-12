@@ -1,12 +1,14 @@
 package main
 
+// #include <stdlib.h>
+import "C"
+
 import (
-	"C"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"fmt"
 	"math/big"
 	"unsafe"
-	"fmt"
 )
 
 //export VerifyBytes
