@@ -19,7 +19,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
     private readonly TaikoNethermindApi _api;
     private readonly IPoSSwitcher _poSSwitcher;
 
-    public RegisterTaikoRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
+    public RegisterTaikoRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher) : base(api, poSSwitcher)
     {
         _api = (TaikoNethermindApi)api;
         _poSSwitcher = poSSwitcher;

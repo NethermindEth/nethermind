@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
 public class RegisterAuRaRpcModules : RegisterRpcModules
 {
-    public RegisterAuRaRpcModules(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
+    public RegisterAuRaRpcModules(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : base(api, poSSwitcher)
     {
         _api = api;
         _parameters = _api.ChainSpec.EngineChainSpecParametersProvider

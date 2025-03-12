@@ -41,11 +41,13 @@ public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
     protected readonly IJsonRpcConfig JsonRpcConfig;
+    private readonly IPoSSwitcher _poSSwitcher;
 
-    public RegisterRpcModules(INethermindApi api)
+    public RegisterRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher)
     {
         _api = api;
         JsonRpcConfig = _api.Config<IJsonRpcConfig>();
+        _poSSwitcher = poSSwitcher;
     }
 
     public virtual async Task Execute(CancellationToken cancellationToken)
@@ -302,7 +304,7 @@ public class RegisterRpcModules : IStep
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             _api.SpecProvider,
-            _api.Context.Resolve<IPoSSwitcher>(),
+            _poSSwitcher,
             _api.LogManager);
     }
 

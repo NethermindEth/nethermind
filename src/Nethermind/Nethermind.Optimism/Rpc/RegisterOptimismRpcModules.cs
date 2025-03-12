@@ -25,7 +25,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     private readonly IOptimismConfig _config;
     private readonly IPoSSwitcher _poSSwitcher;
 
-    public RegisterOptimismRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
+    public RegisterOptimismRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher) : base(api, poSSwitcher)
     {
         _api = (OptimismNethermindApi)api;
         _poSSwitcher = poSSwitcher;
