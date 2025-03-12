@@ -63,11 +63,14 @@ public readonly struct NGram : IEquatable<NGram>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ProcessEachSubsequence(NGram ngram, Action<NGram> action)
+    public static unsafe void ProcessEachSubsequence(NGram ngram,
+        delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> action, int currentSketchPos,
+        int bufferSize, CMSketch[] sketchBuffer, ulong minSupport, Dictionary<ulong, ulong> topNMap)
+
     {
         for (var i = 1; i < MAX_SIZE; i++)
             if (byteIndexes[i - 1] < ngram.ulong0)
-                action(new NGram(ngram.ulong0 & bitMasks[i]));
+                action(ngram.ulong0 & bitMasks[i], currentSketchPos, bufferSize, sketchBuffer, minSupport, topNMap);
     }
 
     public NGram ShiftAdd(Instruction instruction)

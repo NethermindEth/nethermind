@@ -7,19 +7,18 @@ public readonly record struct Stat(NGram ngram, ulong count);
 
 public class StatsAnalyzer
 {
-    private readonly PriorityQueue<ulong, ulong> _topNQueue;
-
     private readonly int _currentSketch = 0;
-    private ulong _max = 1;
-    private ulong _minSupport;
-    private NGram _ngram;
 
     private readonly CMSketch _sketch;
     private readonly CMSketch[] _sketchBuffer;
-    private int _sketchBufferPos;
 
     private readonly int _topN;
     private readonly Dictionary<ulong, ulong> _topNMap;
+    private readonly PriorityQueue<ulong, ulong> _topNQueue;
+    private ulong _max = 1;
+    private ulong _minSupport;
+    private NGram _ngram;
+    private int _sketchBufferPos;
     public double sketchResetError;
 
     public StatsAnalyzer(StatsAnalyzerConfig config) : this(config.TopN, new CMSketchBuilder().Build(config.Sketch),
@@ -81,43 +80,60 @@ public class StatsAnalyzer
         }
     }
 
-    public void Add(IEnumerable<Instruction> instructions)
+    public unsafe void Add(IEnumerable<Instruction> instructions)
     {
         ResetSketchAtError();
 
         foreach (var instruction in instructions)
         {
             _ngram = _ngram.ShiftAdd(instruction);
-            NGram.ProcessEachSubsequence(_ngram, ProcessNGram);
+            delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> ptr = &ProcessNGram;
+            NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _sketchBufferPos, _sketchBuffer, _minSupport,
+                _topNMap);
         }
+
         _ngram = _ngram.ShiftAdd(NGram.RESET);
         ProcessTopN();
     }
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Add(Instruction instruction)
+    public unsafe void Add(Instruction instruction)
     {
         ResetSketchAtError();
-        _ngram =  _ngram.ShiftAdd(instruction);
-        NGram.ProcessEachSubsequence(_ngram, ProcessNGram);
+        _ngram = _ngram.ShiftAdd(instruction);
+        delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> ptr = &ProcessNGram;
+        NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _sketchBufferPos, _sketchBuffer, _minSupport,
+            _topNMap);
         ProcessTopN();
     }
 
 
-    private void ProcessNGram(NGram ngram)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ProcessNGram(ulong ngram, int currentSketchPos, int bufferSize, CMSketch[] sketchBuffer,
+        ulong minSupport, Dictionary<ulong, ulong> topNMap)
     {
-        _sketchBuffer[_currentSketch].Update(ngram.ulong0);
-        var count = QueryAllSketches(ngram.ulong0);
-        if (count < _minSupport) return;
-        _topNMap[ngram.ulong0] = count;
+        sketchBuffer[currentSketchPos].Update(ngram);
+        var count = QueryAllSketches(bufferSize, sketchBuffer, ngram);
+        if (count < minSupport) return;
+        topNMap[ngram] = count;
     }
 
-    private ulong QueryAllSketches(ulong ngram)
+    private ulong QueryAllSketches2(ulong ngram)
     {
         var count = 0UL;
         for (var i = 0; i <= _sketchBufferPos; i++)
             count += _sketchBuffer[i].Query(ngram);
+        return count;
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong QueryAllSketches(int bufferSize, CMSketch[] sketchBuffer, ulong ngram)
+    {
+        var count = 0UL;
+        for (var i = 0; i <= bufferSize; i++)
+            count += sketchBuffer[i].Query(ngram);
         return count;
     }
 
@@ -141,7 +157,7 @@ public class StatsAnalyzer
             if (_topNQueue.Count < _topN) continue;
             _topNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
             //Queue has filled up, we update min support to filter out lower count updates
-            _topNQueue.TryPeek(out var _, out _minSupport);
+            _topNQueue.TryPeek(out _, out _minSupport);
         }
     }
 }
