@@ -450,7 +450,6 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
-                    AddPendingDelegations(tx);
                     // Clear proper snapshot
                     if (tx.SupportsBlobs)
                         _blobTransactionSnapshot = null;
@@ -551,6 +550,8 @@ namespace Nethermind.TxPool
                 _hashCache.DeleteFromLongTerm(removed.Hash!);
                 Metrics.PendingTransactionsEvicted++;
             }
+
+            AddPendingDelegations(tx);
 
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
