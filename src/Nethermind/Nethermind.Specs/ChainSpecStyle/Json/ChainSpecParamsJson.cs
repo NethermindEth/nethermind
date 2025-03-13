@@ -160,8 +160,4 @@ internal class ChainSpecParamsJson
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
-
-    // Taiko
-    public long? OntakeTransition { get; set; }
-    public long? PacayaTransition { get; set; }
 }

@@ -62,7 +62,7 @@ public class ApiBuilder
         INethermindApi nethermindApi =
             enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
 
-        nethermindApi.SpecProvider ??= new ChainSpecBasedSpecProvider(ChainSpec, _logManager);;
+        nethermindApi.SpecProvider ??= new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
         nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
         nethermindApi.ProcessExit = _processExitSource;
         ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
