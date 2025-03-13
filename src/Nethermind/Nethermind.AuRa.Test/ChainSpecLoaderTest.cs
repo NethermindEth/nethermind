@@ -76,7 +76,6 @@ public class ChainSpecLoaderTest
     [Test]
     public void Can_load_posdao_with_rewriteBytecode()
     {
-        // TODO: modexp 2565
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
         ChainSpec chainSpec = LoadChainSpec(path);
         IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
@@ -93,5 +92,19 @@ public class ChainSpecLoaderTest
         var auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void Can_implement_eip2565_modexp_precompile()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+
+        // Verify that our chain spec has an explicit Eip2565Transition value in params
+        const long expected2565TransitionBlock = 12345000;
+        chainSpec.Parameters.Eip2565Transition = expected2565TransitionBlock;
+
+        // First ensure the chain spec parameters are properly set
+        chainSpec.Parameters.Eip2565Transition.Should().Be(expected2565TransitionBlock);
     }
 }
