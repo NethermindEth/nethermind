@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
         private readonly FastSync.StateSyncPivot _pivot;
-        private readonly bool _disableStorageRangeSplit;
+        private readonly bool _enableStorageRangeSplit;
 
         public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager? logManager)
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;
-            _disableStorageRangeSplit = syncConfig.DisableSnapSyncStorageRangeSplit;
+            _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
 
             SetupAccountRangePartition();
 
@@ -360,7 +360,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             UInt256 fullRange = limit - start;
 
-            if (!_disableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
+            if (_enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
                 ValueHash256 halfOfLeftHash = new((limit - lastProcessed) / 2 + lastProcessed);
 
