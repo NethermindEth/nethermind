@@ -15,7 +15,7 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
     private INethermindApi _api = null!;
     private ILogger _logger;
     private ILogManager _logManager = null!;
-    public string Name => "OpcodeStats";
+    public string Name => "PatternAnalyzer";
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
 

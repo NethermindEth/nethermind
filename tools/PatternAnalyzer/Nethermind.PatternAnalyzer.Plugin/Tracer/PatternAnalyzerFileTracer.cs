@@ -26,6 +26,8 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     private readonly HashSet<Instruction> _ignore;
     private readonly ILogger _logger;
     private readonly McsLock _processingLock = new();
+    private readonly SemaphoreSlim _processingLock2 = new(1, 1);
+    private readonly Semaphore _writeLock = new(1,1);
     private readonly ProcessingMode _processingMode;
     private readonly JsonSerializerOptions _serializerOptions = new();
     private readonly SortOrder _sort;
@@ -73,8 +75,9 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
             try
             {
                 if (_processingMode == ProcessingMode.Sequential)
-                    _fileTracingQueue[0].ContinueWith(t =>
+                   if (!_ct.IsCancellationRequested) _fileTracingQueue[0].ContinueWith(t =>
                     {
+                        _ct.ThrowIfCancellationRequested();
                         if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
                     }, _ct).Wait(_ct);
 
@@ -92,18 +95,17 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         _buffer = new DisposableResettableList<Instruction>();
         _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _sort,
             _ct);
+        var semaphore = _writeLock;
 
-        var task = Task.Run(() =>
+        var task = Task.Run( () =>
         {
-            lock (FileLock)
-            {
+
                 try
                 {
                     _ct.ThrowIfCancellationRequested();
-                    var processingLock = _processingLock.Acquire();
                     WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem,
-                        _serializerOptions, _ct);
-                    processingLock.Dispose();
+                        _serializerOptions, _ct, semaphore);
+                    //processingLock.Release();
                 }
                 catch (IOException ex)
                 {
@@ -112,11 +114,12 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
                 }
                 catch (OperationCanceledException)
                 {
+                  _fileTracingQueue.Clear();
+                   throw;
                 }
-            }
         }, _ct);
 
-        _fileTracingQueue.Add(task);
+        if (!_ct.IsCancellationRequested) _fileTracingQueue.Add(task);
 
         CleanUpCompletedTasks();
     }
@@ -132,7 +135,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     }
 
     private static void WriteTrace(long initialBlockNumber, long currentBlockNumber, PatternAnalyzerTxTracer tracer,
-        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct)
+        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct, Semaphore semaphore)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -142,13 +145,23 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
         ct.ThrowIfCancellationRequested();
 
-        File.WriteAllText(fileName, string.Empty);
-
-        // Open the file for writing, using 'using' block to ensure it is closed after writing
-        using (var file = fileSystem.File.OpenWrite(fileName))
-        using (var jsonWriter = new Utf8JsonWriter(file))
+        semaphore.WaitOne();
+        try
         {
-            JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
+            File.WriteAllText(fileName, string.Empty);
+            using (var file = fileSystem.File.OpenWrite(fileName))
+            using (var jsonWriter = new Utf8JsonWriter(file))
+            {
+                JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
+            }
+        }
+        catch (IOException)
+        {
+            throw;
+        }
+        finally
+        {
+            semaphore.Release();
         }
     }
 
@@ -169,6 +182,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
 
     public void CompleteAllTasks()
     {
+        if (_ct.IsCancellationRequested) _fileTracingQueue.Clear();
         Task.WaitAll(_fileTracingQueue.ToArray(), _ct);
     }
 
