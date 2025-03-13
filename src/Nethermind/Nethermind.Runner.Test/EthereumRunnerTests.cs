@@ -45,6 +45,7 @@ using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Taiko;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;

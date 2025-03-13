@@ -35,7 +35,9 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -319,6 +321,10 @@ public class TaikoModule : Module
         builder
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new MergePluginModule())
+
+            .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
+            .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
+                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
 
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             ;
