@@ -4,10 +4,14 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Transition;
 
@@ -34,124 +38,135 @@ namespace Nethermind.State.Transition;
 // also design the interface in a way that we can do a proper archive sync ever after the transition
 
 
-// public class TransitionWorldState: VerkleWorldState
-// {
-//     private const int NumberOfLeavesToMove = 5000;
-//     private Hash256 FinalizedMerkleStateRoot { get; }
-//     private readonly StateReader _merkleStateReader;
-//     private readonly IMerkleStateIterator _merkleStateIterator;
-//
-//     public TransitionWorldState(StateReader merkleStateReader, Hash256 finalizedStateRoot, VerkleStateTree verkleTree,
-//         IKeyValueStore codeDb, IKeyValueStore preImageDb, ILogManager? logManager) : base(
-//         new TransitionStorageProvider(merkleStateReader, finalizedStateRoot, verkleTree, logManager), verkleTree,
-//         codeDb, logManager)
-//     {
-//         _merkleStateReader = merkleStateReader;
-//         FinalizedMerkleStateRoot = finalizedStateRoot;
-//         _merkleStateIterator = new MerkleStateIterator(preImageDb);
-//     }
-//
-//     protected override Account? GetAndAddToCache(Address address)
-//     {
-//         var account = GetState(address) ?? _merkleStateReader.GetAccount(FinalizedMerkleStateRoot, address);
-//         if (account is not null)
-//         {
-//             PushJustCache(address, account);
-//         }
-//         else
-//         {
-//             // just for tracing - potential perf hit, maybe a better solution?
-//             _readsForTracing.Add(address);
-//         }
-//
-//         return account;
-//     }
-//
-//     /// <summary>
-//     /// Technically there is not use for doing this because we are anyways calling the base class.
-//     /// But, this is just a reminder that we dont try to get anything from merkle tree her because
-//     /// GetCodeChunk is only called when you are running the stateless client and that is not supported
-//     /// while the transition in ongoing. Stateless clients can only work after the transition in complete.
-//     /// </summary>
-//     /// <param name="codeOwner"></param>
-//     /// <param name="chunkId"></param>
-//     /// <returns></returns>
-//     public override byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId)
-//     {
-//         return base.GetCodeChunk(codeOwner, chunkId);
-//     }
-//
-//     /// <summary>
-//     ///
-//     /// </summary>
-//     /// <param name="blockNumber"></param>
-//     public void SweepLeaves(long blockNumber)
-//     {
-//         // have to figure out how to know the starting point
-//         using IEnumerator<(Address, Account)>?  accountIterator = _merkleStateIterator.GetAccountIterator(Keccak.Zero).GetEnumerator();
-//         IEnumerator<(StorageCell, byte[])>? currentStorageIterator = null;
-//         int i = 0;
-//         while (i < NumberOfLeavesToMove)
-//         {
-//             if (currentStorageIterator is not null)
-//             {
-//                 if (currentStorageIterator.MoveNext())
-//                 {
-//                     _tree.SetStorage(currentStorageIterator.Current.Item1, currentStorageIterator.Current.Item2);
-//                     i++;
-//                 }
-//                 else
-//                 {
-//                     currentStorageIterator = null;
-//                 }
-//             }
-//             else
-//             {
-//                 if (accountIterator.MoveNext())
-//                 {
-//                     Account? accountToBeInserted = accountIterator.Current.Item2;
-//                     if (accountToBeInserted.CodeHash != Keccak.OfAnEmptyString)
-//                     {
-//                         accountToBeInserted.Code = _codeDb[accountToBeInserted.CodeHash.Bytes];
-//                     }
-//                     SetState(accountIterator.Current.Item1, accountIterator.Current.Item2);
-//
-//                     if (accountIterator.Current.Item2.StorageRoot != Keccak.EmptyTreeHash)
-//                     {
-//                         currentStorageIterator = _merkleStateIterator
-//                             .GetStorageSlotsIterator(accountIterator.Current.Item1, Keccak.Zero).GetEnumerator();
-//                     }
-//                     i++;
-//                 }
-//                 else
-//                 {
-//                     return;
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-//
-// internal class TransitionStorageProvider : VerklePersistentStorageProvider
-// {
-//     private Hash256 FinalizedMerkleStateRoot { get; }
-//     private readonly StateReader _merkleStateReader;
-//
-//     public TransitionStorageProvider(StateReader merkleStateReader, Hash256 finalizedStateRoot, VerkleStateTree tree, ILogManager? logManager): base(tree, logManager)
-//     {
-//         _merkleStateReader = merkleStateReader;
-//         FinalizedMerkleStateRoot = finalizedStateRoot;
-//     }
-//
-//     protected override byte[] LoadFromTree(StorageCell storageCell)
-//     {
-//         Db.Metrics.StorageTreeReads++;
-//         Hash256 key = AccountHeader.GetTreeKeyForStorageSlot(storageCell.Address.Bytes, storageCell.Index);
-//         byte[]? value = _verkleTree.Get(key) ?? _merkleStateReader.GetStorage(FinalizedMerkleStateRoot, in storageCell);
-//         value ??= Array.Empty<byte>();
-//         PushToRegistryOnly(storageCell, value);
-//         return value;
-//     }
-//
-// }
+public class TransitionWorldState(
+    StateReader merkleStateReader,
+    Hash256 finalizedStateRoot,
+    VerkleStateTree verkleTree,
+    IKeyValueStore codeDb,
+    IKeyValueStore preImageDb,
+    ILogManager? logManager)
+    : VerkleWorldState(new TransitionStorageProvider(merkleStateReader, finalizedStateRoot, verkleTree, logManager),
+        verkleTree,
+        codeDb, logManager), TransitionQueryVisitor.IValueCollector
+{
+    private const int NumberOfLeavesToMove = 5000;
+    private Hash256 FinalizedMerkleStateRoot { get; } = finalizedStateRoot;
+
+    // TODO: not needed right now
+    private readonly IMerkleStateIterator _merkleStateIterator = new MerkleStateIterator(preImageDb);
+
+    private ValueHash256 _startAccountHash = Keccak.Zero;
+    private ValueHash256 _startStorageHash = null;
+
+    protected override Account? GetAndAddToCache(Address address)
+    {
+        if (_nullAccountReads.Contains(address)) return null;
+        Account? account = GetState(address)?? merkleStateReader.GetAccountDefault(FinalizedMerkleStateRoot, address);
+        if (account is not null)
+        {
+            PushJustCache(address, account);
+        }
+        else
+        {
+            // just for tracing - potential perf hit, maybe a better solution?
+            _nullAccountReads.Add(address);
+        }
+
+        return account;
+    }
+
+    /// <summary>
+    /// Technically there is not use for doing this because we are anyways calling the base class.
+    /// But, this is just a reminder that we dont try to get anything from merkle tree her because
+    /// GetCodeChunk is only called when you are running the stateless client and that is not supported
+    /// while the transition in ongoing. Stateless clients can only work after the transition in complete.
+    /// </summary>
+    /// <param name="codeOwner"></param>
+    /// <param name="chunkId"></param>
+    /// <returns></returns>
+    public override byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId)
+    {
+        return base.GetCodeChunk(codeOwner, chunkId);
+    }
+
+    public void SweepLeaves(int blockNumber)
+    {
+        var options = new VisitingOptions { ExpectAccounts = true };
+        var visitor = new TransitionQueryVisitor(_startAccountHash, _startStorageHash, this, blockNumber);
+        merkleStateReader.RunTreeVisitor(visitor, FinalizedMerkleStateRoot, options);
+        _startAccountHash = visitor.CurrentAccountPath.Path;
+        _startStorageHash = visitor.CurrentStoragePath.Path;
+    }
+
+    // TODO: does not work
+    /// <summary>
+    /// This uses an iterator on the merkle state to sweep the leaves - this is not implemented yet. Probably after
+    /// Paprika or a flatDb layout.
+    /// </summary>
+    /// <param name="blockNumber"></param>
+    public void SweepLeavesIterator(long blockNumber)
+    {
+        // have to figure out how to know the starting point
+        using IEnumerator<(Address, Account)>?  accountIterator = _merkleStateIterator.GetAccountIterator(Keccak.Zero).GetEnumerator();
+        IEnumerator<(StorageCell, byte[])>? currentStorageIterator = null;
+        int i = 0;
+        while (i < NumberOfLeavesToMove)
+        {
+            if (currentStorageIterator is not null)
+            {
+                if (currentStorageIterator.MoveNext())
+                {
+                    Tree.SetStorage(currentStorageIterator.Current.Item1, currentStorageIterator.Current.Item2);
+                    i++;
+                }
+                else
+                {
+                    currentStorageIterator.Dispose();
+                    currentStorageIterator = null;
+                }
+            }
+            else
+            {
+                if (accountIterator.MoveNext())
+                {
+                    Account? accountToBeInserted = accountIterator.Current.Item2;
+                    if (accountToBeInserted.CodeHash != Keccak.OfAnEmptyString)
+                    {
+                        accountToBeInserted.Code = CodeDb[accountToBeInserted.CodeHash.Bytes];
+                    }
+                    SetState(accountIterator.Current.Item1, accountIterator.Current.Item2, true);
+
+                    if (accountIterator.Current.Item2.StorageRoot != Keccak.EmptyTreeHash)
+                    {
+                        currentStorageIterator = _merkleStateIterator
+                            .GetStorageSlotsIterator(accountIterator.Current.Item1, Keccak.Zero).GetEnumerator();
+                    }
+                    i++;
+                }
+                else
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    public void CollectAccount(in ValueHash256 path, CappedArray<byte> value)
+    {
+        Console.WriteLine($"CollectAccount {path} {value.ToArray().ToHexString()}");
+        var addressBytes = preImageDb.Get(path.BytesAsSpan);
+        if (addressBytes is null) throw new ArgumentException("PreImage not found");
+        var address = new Address(addressBytes);
+        SetState(address, AccountDecoder.Instance.Decode(value), true);
+    }
+
+    public void CollectStorage(in ValueHash256 account, in ValueHash256 path, CappedArray<byte> value)
+    {
+        Console.WriteLine($"CollectStorage {account} {path} {value.ToArray().ToHexString()}");
+        var addressBytes = preImageDb.Get(account.BytesAsSpan);
+        if (addressBytes is null) throw new ArgumentException("PreImage not found");
+        var address = new Address(addressBytes);
+        var index = preImageDb.Get(path.BytesAsSpan);
+        Set(new StorageCell(address, new UInt256(index, true)), value.ToArray());
+    }
+}

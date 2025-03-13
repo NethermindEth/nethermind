@@ -60,6 +60,23 @@ namespace Nethermind.State
 
         public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 
+        public Account? GetAccountDefault(Hash256 stateRoot, Address address)
+        {
+            return GetStateDefault(stateRoot, address);
+        }
+
+        private Account? GetStateDefault(Hash256 stateRoot, Address address)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return null;
+            }
+
+            Metrics.StateTreeReads++;
+            Account? account = _state.Get(address, stateRoot);
+            return account;
+        }
+
         private bool TryGetState(Hash256 stateRoot, Address address, out AccountStruct account)
         {
             if (stateRoot == Keccak.EmptyTreeHash)

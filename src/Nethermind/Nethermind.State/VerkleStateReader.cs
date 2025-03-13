@@ -84,4 +84,9 @@ public class VerkleStateReader : IStateReader
         Metrics.StateTreeReads++;
         return _state.TryGetStruct(address, out account, stateRoot);
     }
+
+    public Account? GetAccountDefault(Hash256 stateRoot, Address address)
+    {
+        throw new NotImplementedException();
+    }
 }
