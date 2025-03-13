@@ -39,5 +39,8 @@
     <None Update="Binaries\rust\secp256r1.so">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Binaries\p256\p256.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
