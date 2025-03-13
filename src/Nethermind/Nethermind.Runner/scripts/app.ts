@@ -312,12 +312,11 @@ sse.addEventListener("peers", (e) => {
   const peersArray = JSON.parse(e.data) as Peer[];
 
   // Aggregate by clientType
-  const countsByType: Record<string, number> = {};
-
-  peersArray.forEach((peer) => {
-    const nodeType = getNodeType(peer.clientType);
-    countsByType[nodeType] = (countsByType[nodeType] || 0) + 1;
-  });
+  let countsByType = data.reduce((acc, peer) => {
+    let nodeType = getNodeType(peer.clientType);
+    acc[nodeType] = (acc[nodeType] || 0) + 1;
+    return acc;
+  }, {});
 
   // Convert to an array for D3
   const peers = Object.entries(countsByType).map(([type, count]) => ({
