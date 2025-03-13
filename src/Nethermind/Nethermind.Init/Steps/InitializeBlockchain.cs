@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -158,6 +159,12 @@ namespace Nethermind.Init.Steps
                 );
                 setApi.CensorshipDetector = censorshipDetector;
                 _api.DisposeStack.Push(censorshipDetector);
+            }
+
+            if (historyConfig.Enabled)
+            {
+                IHistoryPruner historyPruner = new HistoryPruner(_api.BlockTree!, _api.SpecProvider!, historyConfig, blocksConfig.SecondsPerSlot, _api.LogManager);
+                setApi.HistoryPruner = historyPruner;
             }
 
             return Task.CompletedTask;
