@@ -15,6 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -47,7 +48,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txToFail = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 10_000_000);
         UInt256 nextNonceA = ++nonceA;
         Transaction tx = GetTransferTxData(nextNonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 4_000_000);
@@ -75,12 +76,12 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult> data = result.Data;
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockTracerFactory<SimulateCallResult>());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That(data.Count, Is.EqualTo(7));
 
-        SimulateBlockResult blockResult = data.Last();
+        SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
         blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
 
     }
@@ -96,7 +97,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB2 = GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
@@ -137,9 +138,9 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         //Test that transfer tx works on mainchain
-        UInt256 before = chain.State.GetBalance(TestItem.AddressA);
+        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         await chain.AddBlock(true, txMainnetAtoB);
-        UInt256 after = chain.State.GetBalance(TestItem.AddressA);
+        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
@@ -149,14 +150,14 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockTracerFactory<SimulateCallResult>());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult> data = result.Data;
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
 
         Assert.That(data.Count, Is.EqualTo(9));
 
-        SimulateBlockResult blockResult = data[0];
+        SimulateBlockResult<SimulateCallResult> blockResult = data[0];
         Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
         blockResult = data.Last();
         Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
@@ -170,7 +171,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
             GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
@@ -221,9 +222,9 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         //Test that transfer tx works on mainchain
-        UInt256 before = chain.State.GetBalance(TestItem.AddressA);
+        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         await chain.AddBlock(true, txMainnetAtoB);
-        UInt256 after = chain.State.GetBalance(TestItem.AddressA);
+        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
@@ -233,9 +234,9 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockTracerFactory<SimulateCallResult>());
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!.Contains("higher than sender balance"), Is.True);
     }

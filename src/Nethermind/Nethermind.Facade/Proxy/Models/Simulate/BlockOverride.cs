@@ -57,6 +57,14 @@ public class BlockOverride
             SealEngineType = parent.SealEngineType
         };
 
+        if (spec.WithdrawalsEnabled){
+            result.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        }
+
+        if (spec.IsEip4788Enabled){
+            result.ParentBeaconBlockRoot = Keccak.Zero;
+        }
+
         return result;
     }
 }

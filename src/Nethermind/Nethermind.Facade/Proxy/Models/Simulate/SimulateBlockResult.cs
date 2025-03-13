@@ -10,10 +10,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
-public class SimulateBlockResult(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
+public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
     [JsonIgnore]
     public new UInt256 TotalDifficulty { get => base.TotalDifficulty; set => base.TotalDifficulty = value; }
-    public List<SimulateCallResult> Calls { get; set; } = new();
+    public string? Error { get; set; }
+    public bool Success { get; set; } = true;
+    public List<TTrace> Calls { get; set; } = new();
 }

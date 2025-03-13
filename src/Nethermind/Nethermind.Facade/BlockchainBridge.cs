@@ -30,6 +30,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
+using System.Linq;
 
 namespace Nethermind.Facade
 {
@@ -54,6 +55,7 @@ namespace Nethermind.Facade
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
+        SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
         public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
@@ -81,9 +83,8 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
-            _simulateBridgeHelper = new SimulateBridgeHelper(
-                simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory)),
-                _blocksConfig);
+            _simulateProcessingEnvFactory = simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory));
+            _simulateBridgeHelper = new SimulateBridgeHelper(_blocksConfig, _specProvider);
         }
 
         public Block? HeadBlock
@@ -165,29 +166,32 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, SimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, CancellationToken cancellationToken)
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(simulateOutputTracer);
-            SimulateOutput result = new();
+            SimulateReadOnlyBlocksProcessingEnv env = _simulateProcessingEnvFactory.Create(payload.Validation);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, _specProvider, header);
+            SimulateOutput<TTrace> result = new();
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                IEnumerable<SimulateBlockResult<TTrace>> simulateResults = _simulateBridgeHelper.TrySimulate<TTrace>(header, payload, tracer, cancellationToken, env);
+                result.Items = [.. simulateResults];
+
+                if (result.Items.Count > 0)
                 {
-                    result.Error = error;
+                    if (!result.Items[result.Items.Count - 1].Success) result.Error = result.Items[result.Items.Count - 1].Error;
                 }
+
             }
             catch (InsufficientBalanceException ex)
             {
+                result.Items = Array.Empty<SimulateBlockResult<TTrace>>();
                 result.Error = ex.Message;
             }
             catch (Exception ex)
             {
+                result.Items = Array.Empty<SimulateBlockResult<TTrace>>();
                 result.Error = ex.ToString();
             }
-
-            result.Items = simulateOutputTracer.Results;
             return result;
         }
 
