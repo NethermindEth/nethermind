@@ -190,7 +190,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!KzgPolynomialCommitments.AreProofsValid(blobsBundle.Proofs, blobsBundle.Commitments, blobsBundle.Blobs))
+        if (!KzgPolynomialCommitments.AreProofsValid(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs))
         {
             error = "Invalid KZG proofs";
             return false;
