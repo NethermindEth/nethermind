@@ -81,19 +81,19 @@ export function parseExtraData(extraData: string | null | undefined): string {
   // Convert hex -> bytes
   const bytes = hexStringToUint8Array(hex);
 
-  // Use the "toCleanUtf8String" logic
-  const data = toCleanUtf8String(bytes);
+  // Decode to UTF-8
+  let decoder = new TextDecoder('utf-8', { fatal: false });
+  let decoded = decoder.decode(bytes);
 
-  // The C# snippet's comment says:
-  // "If the cleaned text is less than half length of input size, output it as hex, else output the text."
-  // The original code in the snippet has a minor mismatch in the condition, but we’ll follow the comment:
-  if (data.length > (bytes.length / 2)) {
-    // It's "mostly" valid text
-    return data;
-  } else {
-    // It's "mostly" not decodable text => show hex
+  // Count the number of control characters
+  let controlCount = decoded.split('').filter(c => isControlCharacter(c.charCodeAt(0))).length;
+
+  // Return the original hex string if there are too many control characters
+  if (controlCount >= decoded.length / 2) {
     return `0x${hex}`;
-  }
+
+  // Return the decoded string
+  return decoded;
 }
 
 /**
