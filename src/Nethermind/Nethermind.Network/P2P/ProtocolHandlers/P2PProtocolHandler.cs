@@ -298,14 +298,14 @@ public class P2PProtocolHandler(
     {
         if (Logger.IsTrace)
         {
-            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.ClientId}, " +
+            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.PublicClientId}, " +
                          $"protocol {Name}, listen port {ListenPort}");
         }
 
         HelloMessage helloMessage = new()
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
-            ClientId = ProductInfo.ClientId,
+            ClientId = ProductInfo.PublicClientId,
             NodeId = LocalNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
