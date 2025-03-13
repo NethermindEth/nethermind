@@ -12,6 +12,11 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
 {
+    static Secp256r1GoPrecompile()
+    {
+        Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
+    }
+
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
     public static readonly Secp256r1GoPrecompile Instance = new();
