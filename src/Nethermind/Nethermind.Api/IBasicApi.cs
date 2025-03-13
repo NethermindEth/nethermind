@@ -39,7 +39,7 @@ namespace Nethermind.Api
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
-        string SealEngineType { get; set; }
+        string SealEngineType { get; }
         ISpecProvider? SpecProvider { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
@@ -49,7 +49,7 @@ namespace Nethermind.Api
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
                 .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
+                .SingleOrDefault();
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
