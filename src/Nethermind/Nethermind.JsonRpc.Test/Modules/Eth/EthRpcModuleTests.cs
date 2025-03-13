@@ -27,6 +27,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -102,6 +103,21 @@ public partial class EthRpcModuleTests
         await ctx.Test.AddBlock(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"02f86c0180850165a0bc0085028fa6ae008252089400000000000000000000000000000000000000000180c080a063b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43a0606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86\",\"id\":67}"), serialized.Replace("\"", "\\\""));
+    }
+
+    [Test]
+    public async Task Eth_get_raw_transaction_by_hash_from_pool()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        Transaction sent = Build.A.Transaction.WithShardBlobTxTypeAndFields().WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
+        byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
+
+        Transaction tx = null!;
+        Assert.DoesNotThrow(() => tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm));
+        Assert.That(tx.IsInMempoolForm());
     }
 
 
@@ -1256,7 +1272,7 @@ public partial class EthRpcModuleTests
 
         Transaction testTx = Build.A.Transaction
           .WithType(TxType.SetCode)
-          .WithNonce(Test.State.GetNonce(TestItem.AddressA))
+          .WithNonce(Test.ReadOnlyState.GetNonce(TestItem.AddressA))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
@@ -1280,22 +1296,22 @@ public partial class EthRpcModuleTests
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
-          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
-          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, (ulong)test.State.GetNonce(TestItem.AddressB) + 1))
+          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, (ulong)test.ReadOnlyState.GetNonce(TestItem.AddressB) + 1))
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
         await test.AddBlock(setCodeTx);
 
-        var code = test.State.GetCode(TestItem.AddressB);
+        var code = test.ReadOnlyState.GetCode(TestItem.AddressB);
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 
         Transaction normalTx = Build.A.Transaction
-          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction)
@@ -1317,7 +1333,7 @@ public partial class EthRpcModuleTests
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
-          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
           .WithMaxFeePerGas(9.GWei())
           .WithMaxPriorityFeePerGas(9.GWei())
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)

@@ -35,7 +35,9 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
 using Nethermind.Synchronization;
+using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -150,7 +152,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+            new(_api.WorldStateManager!, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
@@ -278,11 +280,11 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        ContainerBuilder builder = new ContainerBuilder();
+        ContainerBuilder builder = new();
 
         ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton<IBeaconPivot>(_beaconPivot)
+            .AddSingleton(_beaconPivot)
             .AddSingleton(_mergeConfig)
             .AddSingleton<IInvalidChainTracker>(_api.InvalidChainTracker);
 
@@ -325,7 +327,13 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ILogManager logManager,
         ChainSpec chainSpec)
     {
-        return new TaikoNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+        TaikoNethermindApi nethermindApi = new(configProvider, jsonSerializer, logManager, chainSpec);
+
+        TaikoChainSpecEngineParameters chainSpecParameters = chainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<TaikoChainSpecEngineParameters>();
+
+        nethermindApi.SpecProvider ??= new TaikoChainSpecBasedSpecProvider(chainSpec, chainSpecParameters, logManager);
+        return nethermindApi;
     }
 
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
