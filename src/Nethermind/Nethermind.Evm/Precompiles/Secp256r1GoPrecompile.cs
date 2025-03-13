@@ -24,6 +24,14 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe partial byte VerifyBytes(byte* data, int length);
 
+    [LibraryImport("Binaries/go/secp256r1", SetLastError = true)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe partial void ForceGC();
+
+    [LibraryImport("Binaries/go/secp256r1", SetLastError = true)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe partial void ReportGC();
+
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
         Console.WriteLine($"Secp256r1GoPrecompile: calling with {Convert.ToHexString(input.Span)}");

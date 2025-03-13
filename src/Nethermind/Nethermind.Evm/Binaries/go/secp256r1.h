@@ -79,6 +79,8 @@ extern "C" {
 #endif
 
 extern unsigned char VerifyBytes(unsigned char* data, int length);
+extern void ForceGC();
+extern void ReportGC();
 
 #ifdef __cplusplus
 }
