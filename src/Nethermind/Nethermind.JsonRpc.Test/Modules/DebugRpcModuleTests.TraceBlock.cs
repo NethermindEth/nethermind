@@ -85,7 +85,7 @@ public partial class DebugRpcModuleTests
     {
         Func<TestRpcBlockchain, Transaction[]> transactions = b =>
         {
-            var nonce = b.State.GetNonce(TestItem.AddressA);
+            var nonce = b.ReadOnlyState.GetNonce(TestItem.AddressA);
             var contract = Prepare.EvmCode
                 .PushData(0)
                 .PushData(32)

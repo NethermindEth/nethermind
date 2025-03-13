@@ -294,7 +294,7 @@ public partial class EngineModuleTests
                 })
             .Result.Data.PayloadId!;
 
-        UInt256 startingBalance = chain.StateReader.GetBalance(chain.State.StateRoot, feeRecipient);
+        UInt256 startingBalance = chain.ReadOnlyState.GetBalance(feeRecipient);
 
         await blockImprovementLock.WaitAsync(10000);
         GetPayloadV2Result getPayloadResult = (await rpc.engine_getPayloadV2(Bytes.FromHexString(payloadId))).Data!;
