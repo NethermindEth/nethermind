@@ -24,7 +24,7 @@ public class HistoryPruner(
     private readonly bool _enabled = historyConfig.Enabled;
     private readonly ulong _epochLength = secondsPerSlot * 32;
 
-    public void TryPruneHistory()
+    public void TryPruneHistory(CancellationToken cancellationToken)
     {
         if (!ShouldPruneHistory())
         {
@@ -38,7 +38,7 @@ public class HistoryPruner(
                 return;
             }
 
-            _pruneHistoryTask = ExecuteHistoryPruningAsync();
+            _pruneHistoryTask = ExecuteHistoryPruningAsync(cancellationToken);
         }
     }
 
@@ -53,7 +53,7 @@ public class HistoryPruner(
         return cutoffTimestamp > _lastPrunedTimestamp;
     }
 
-    private async Task ExecuteHistoryPruningAsync()
+    private async Task ExecuteHistoryPruningAsync(CancellationToken cancellationToken)
     {
         if (blockTree.Head is null)
         {
@@ -69,8 +69,7 @@ public class HistoryPruner(
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(historyConfig.PruningTimeout));
-        await Task.Run(() => blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cts.Token));
+        await Task.Run(() => blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken), cancellationToken);
 
         _lastPrunedTimestamp = cutoffTimestamp;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
