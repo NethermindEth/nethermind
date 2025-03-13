@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"math/big"
 	"runtime"
+	"runtime/debug"
 	"unsafe"
 )
 
 //export VerifyBytes
 func VerifyBytes(data *C.uchar, length C.int) C.uchar {
+	debug.SetPanicOnFault(true)
+
 	fmt.Printf("VerifyBytes: data=%p length=%d\n", data, length)
 	if length != 160 {
 		fmt.Printf("VerifyBytes: invalid length\n")
