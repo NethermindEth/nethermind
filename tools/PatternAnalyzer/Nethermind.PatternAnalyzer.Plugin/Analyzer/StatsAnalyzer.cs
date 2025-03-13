@@ -7,6 +7,7 @@ public readonly record struct Stat(NGram ngram, ulong count);
 
 public class StatsAnalyzer
 {
+    private readonly object _lock = new();
     private readonly int _currentSketch = 0;
 
     private readonly CMSketch _sketch;
@@ -82,30 +83,34 @@ public class StatsAnalyzer
 
     public unsafe void Add(IEnumerable<Instruction> instructions)
     {
-        ResetSketchAtError();
-
-        foreach (var instruction in instructions)
+        lock (_lock)
         {
-            _ngram = _ngram.ShiftAdd(instruction);
-            delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> ptr = &ProcessNGram;
-            NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _sketchBufferPos, _sketchBuffer, _minSupport,
-                _topNMap);
+            ResetSketchAtError();
+            foreach (var instruction in instructions)
+            {
+                _ngram = _ngram.ShiftAdd(instruction);
+                delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> ptr = &ProcessNGram;
+                NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _sketchBufferPos, _sketchBuffer, _minSupport,
+                    _topNMap);
+            }
+            _ngram = _ngram.ShiftAdd(NGram.RESET);
+            ProcessTopN();
         }
-
-        _ngram = _ngram.ShiftAdd(NGram.RESET);
-        ProcessTopN();
     }
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public unsafe void Add(Instruction instruction)
     {
-        ResetSketchAtError();
-        _ngram = _ngram.ShiftAdd(instruction);
-        delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> ptr = &ProcessNGram;
-        NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _sketchBufferPos, _sketchBuffer, _minSupport,
-            _topNMap);
-        ProcessTopN();
+        lock (_lock)
+        {
+            ResetSketchAtError();
+            _ngram = _ngram.ShiftAdd(instruction);
+            delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> ptr = &ProcessNGram;
+            NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _sketchBufferPos, _sketchBuffer, _minSupport,
+                _topNMap);
+            ProcessTopN();
+        }
     }
 
 
@@ -140,15 +145,16 @@ public class StatsAnalyzer
     private void ProcessTopN()
     {
         _topNQueue.Clear();
+
+        var keysToRemove = _topNMap.Where(kvp => kvp.Value < _minSupport).Select(kvp => kvp.Key).ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            _topNMap.Remove(key);
+        }
+
         foreach (var kvp in _topNMap)
         {
-            // if count is less than minSupport remove from topNMap and  continue;
-            if (kvp.Value < _minSupport)
-            {
-                _topNMap.Remove(kvp.Key);
-                continue;
-            }
-
             _max = Math.Max(_max, kvp.Value);
 
             if (_topNQueue.Count < _topN)
