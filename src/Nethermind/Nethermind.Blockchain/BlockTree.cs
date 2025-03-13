@@ -55,8 +55,6 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private readonly IHistoryConfig _historyConfig;
-        private readonly IBlocksConfig _blocksConfig;
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
 
@@ -131,8 +129,6 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _historyConfig = historyConfig ?? throw new ArgumentNullException(nameof(historyConfig));
-            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
