@@ -1977,7 +1977,7 @@ namespace Nethermind.TxPool.Test
 
             // should be accepted if pending delegation is only local
             Transaction secondTx = Build.A.Transaction
-                .WithNonce(1)
+                .WithNonce(1) // nonce is 1 otherwise it would always be accepted
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(25.GWei())
                 .WithMaxPriorityFeePerGas(25.GWei())
