@@ -60,11 +60,11 @@ public static class Extensions
                 if (ex.WebSocketErrorCode == WebSocketError.InvalidState)
                 {
                     // Websocket closed
-                    if(logger.IsDebug) logger.Debug($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex}");
+                    if (logger.IsDebug) logger.Debug($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex}");
                 }
                 else
                 {
-                    if(logger.IsError) logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                    if (logger.IsError) logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
                 }
             }
             catch (Exception ex)
