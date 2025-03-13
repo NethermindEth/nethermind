@@ -121,7 +121,7 @@ internal static class Precompiler
 
                         if (currentSegment.IsFailing)
                         {
-                            method.Branch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+                            method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                             i = currentSegment.End;
                             continue;
                         }
