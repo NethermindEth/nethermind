@@ -274,6 +274,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
+                WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null,
+                ParentBeaconBlockRoot = spec.IsEip4788Enabled ? Keccak.Zero : null,
             };
         result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
