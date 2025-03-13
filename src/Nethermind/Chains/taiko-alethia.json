@@ -2,7 +2,9 @@
   "name": "Taiko Alethia",
   "dataDir": "taiko-alethia",
   "engine": {
-    "Taiko": {}
+    "Taiko": {
+      "ontakeTransition": "0x836c0"
+    }
   },
   "params": {
     "chainId": "167000",
@@ -46,8 +48,7 @@
     "eip3860TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0",
 
-    "eip1559BaseFeeMinValueTransition": "0x836c0",
-    "ontakeTransition": "0x836c0"
+    "eip1559BaseFeeMinValueTransition": "0x836c0"
   },
   "genesis": {
     "seal": {

@@ -2,7 +2,9 @@
   "name": "Taiko Hekla",
   "dataDir": "taiko-hekla",
   "engine": {
-    "Taiko": {}
+    "Taiko": {
+      "ontakeTransition": "0xcd340"
+    }
   },
   "params": {
     "chainId": "167009",
@@ -46,8 +48,7 @@
     "eip3860TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0",
 
-    "eip1559BaseFeeMinValueTransition": "0xcd340",
-    "ontakeTransition": "0xcd340"
+    "eip1559BaseFeeMinValueTransition": "0xcd340"
   },
   "genesis": {
     "seal": {

@@ -11,20 +11,19 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections;
-using Nethermind.Specs.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko.Test;
 
 public class TransactionProcessorTests
 {
-    private readonly OverridableReleaseSpec _spec;
+    private readonly TaikoOntakeReleaseSpec _spec;
     private readonly ISpecProvider _specProvider;
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
@@ -32,7 +31,7 @@ public class TransactionProcessorTests
 
     public TransactionProcessorTests()
     {
-        _spec = new(Cancun.Instance);
+        _spec = new TaikoOntakeReleaseSpec();
         _specProvider = new TestSpecProvider(_spec);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
@@ -43,7 +42,6 @@ public class TransactionProcessorTests
     public void Setup()
     {
         _spec.FeeCollector = TestItem.AddressB;
-        _spec.IsOntakeEnabled = true;
 
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);

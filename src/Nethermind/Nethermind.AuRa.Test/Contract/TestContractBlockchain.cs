@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Contract
 {
@@ -38,11 +39,11 @@ namespace Nethermind.AuRa.Test.Contract
             return (TTest)await test.Build(provider.SpecProvider);
         }
 
-        protected override Block GetGenesisBlock() =>
+        protected override Block GetGenesisBlock(IWorldState worldState) =>
             new GenesisLoader(
                     ChainSpec,
                     SpecProvider,
-                    State,
+                    worldState,
                     TxProcessor)
                 .Load();
     }

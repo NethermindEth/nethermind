@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
@@ -203,8 +204,11 @@ public class InitializeNetwork : IStep
             throw new InvalidOperationException("Cannot initialize network without knowing own enode");
         }
 
+        ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
+
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
+        ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }

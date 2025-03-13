@@ -34,10 +34,10 @@ namespace Nethermind.JsonRpc.Modules
 
         private readonly Lock _updateRegistrationsLock = new();
 
-        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            Serializer = new EthereumJsonSerializer();
+            Serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {

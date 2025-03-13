@@ -140,7 +140,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);
-        chain.State.StateRoot = chain.BlockFinder.Head!.StateRoot!;
+        chain.WorldStateManager.GlobalWorldState.StateRoot = chain.BlockFinder.Head!.StateRoot!;
 
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(new Transaction
         {
@@ -178,7 +178,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
-        Assert.That(chain.State.AccountExists(contractAddress), Is.True);
+        Assert.That(chain.ReadOnlyState.AccountExists(contractAddress), Is.True);
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 

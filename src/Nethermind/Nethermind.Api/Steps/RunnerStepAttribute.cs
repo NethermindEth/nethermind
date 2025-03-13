@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Init.Steps
+namespace Nethermind.Api.Steps
 {
     [AttributeUsage(AttributeTargets.Class)]
     public class RunnerStepDependenciesAttribute : Attribute

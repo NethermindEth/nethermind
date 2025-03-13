@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -69,4 +70,11 @@ public interface IOptimismEngineRpcModule : IRpcModule
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload,
         byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
+
+    [JsonRpcMethod(
+        Description = "Signals which protocol version is recommended and required.",
+        IsSharable = true,
+        IsImplemented = false
+    )]
+    ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal);
 }

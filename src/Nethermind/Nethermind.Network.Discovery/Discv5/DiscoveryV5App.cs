@@ -331,7 +331,14 @@ public class DiscoveryV5App : IDiscoveryApp
         }
 
 
-        await _discv5Protocol.StopAsync();
+        try
+        {
+            await _discv5Protocol.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Err stopping discv5: {ex}");
+        }
         await _appShutdownSource.CancelAsync();
     }
 

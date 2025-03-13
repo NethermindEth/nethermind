@@ -24,6 +24,8 @@ public class TestNethermindModule(IConfigProvider configProvider) : Module
     {
         base.Load(builder);
 
+        LongDisposeTracker.Configure(builder);
+
         builder
             .AddModule(new PseudoNethermindModule(new ChainSpec(), configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))

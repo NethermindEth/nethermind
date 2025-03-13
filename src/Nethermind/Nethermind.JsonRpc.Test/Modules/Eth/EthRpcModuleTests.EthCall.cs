@@ -118,7 +118,7 @@ public partial class EthRpcModuleTests
         {
             To = TestItem.AddressB
         };
-        ctx.Test.State.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
+        ctx.Test.WorldStateManager.GlobalWorldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
