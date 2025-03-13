@@ -51,17 +51,11 @@ func ForceGC() {
 
 //export ReportGC
 func ReportGC() {
-	var before runtime.MemStats
-	runtime.ReadMemStats(&before)
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
 
-	runtime.GC()
-
-	var after runtime.MemStats
-	runtime.ReadMemStats(&after)
-
-	fmt.Printf("ReportGC:\n\tBefore: Alloc = %v TotalAlloc = %v Sys = %v NumGC = %v\n\tAfter Alloc = %v TotalAlloc = %v Sys = %v NumGC = %v\n",
-		before.Alloc/1024, before.TotalAlloc/1024, before.Sys/1024, before.NumGC,
-		after.Alloc/1024, after.TotalAlloc/1024, after.Sys/1024, after.NumGC,
+	fmt.Printf("ReportGC: Alloc = %v TotalAlloc = %v Sys = %v NumGC = %v\n",
+		stats.Alloc/1024, stats.TotalAlloc/1024, stats.Sys/1024, stats.NumGC,
 	)
 }
 
