@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IJsonRpcConfig? jsonRpcConfig,
         IStateReader? stateReader,
         IOverridableTxProcessorSource? env,
-        IBlockchainBridge? blockchainBridge, 
+        IBlockchainBridge? blockchainBridge,
         ulong? secondsPerSlot)
         : ITraceRpcModule
     {
