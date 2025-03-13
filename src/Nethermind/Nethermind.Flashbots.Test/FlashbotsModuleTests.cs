@@ -71,7 +71,7 @@ public partial class FlashbotsModuleTests
     private Block CreateBlock(EngineModuleTests.MergeTestBlockchain chain)
     {
         BlockHeader currentHeader = chain.BlockTree.Head.Header;
-        IWorldState State = chain.State;
+        IWorldState State = chain.WorldStateManager.GlobalWorldState;
         State.CreateAccount(TestKeysAndAddress.TestAddr, TestKeysAndAddress.TestBalance);
         UInt256 nonce = State.GetNonce(TestKeysAndAddress.TestAddr);
 

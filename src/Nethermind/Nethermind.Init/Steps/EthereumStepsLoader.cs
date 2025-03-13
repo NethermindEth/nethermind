@@ -58,6 +58,14 @@ namespace Nethermind.Init.Steps
                 Array.Sort(stepsWithMatchingApiType, (t1, t2) => t1.StepType.IsAssignableFrom(t2.StepType) ? 1 : -1);
             }
 
+            if (stepsWithMatchingApiType.Length == 0)
+            {
+                // Step without INethermindApi in its constructor
+                if (stepsWithTheSameBase.Length == 1) return stepsWithTheSameBase[0];
+
+                throw new StepDependencyException($"Unable to decide step implementation to execute. Steps of same base time: {string.Join(", ", stepsWithTheSameBase.Select(s => s.StepBaseType.Name))}");
+            }
+
             return stepsWithMatchingApiType.FirstOrDefault();
         }
     }
