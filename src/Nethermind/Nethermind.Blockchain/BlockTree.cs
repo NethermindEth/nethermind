@@ -27,7 +27,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Config;
 
 namespace Nethermind.Blockchain
 {
@@ -114,8 +113,6 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
-            IHistoryConfig? historyConfig,
-            IBlocksConfig? blocksConfig,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

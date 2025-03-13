@@ -57,8 +57,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             specProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
-            new HistoryConfig(),
-            new BlocksConfig(),
             logManager);
     }
 }
