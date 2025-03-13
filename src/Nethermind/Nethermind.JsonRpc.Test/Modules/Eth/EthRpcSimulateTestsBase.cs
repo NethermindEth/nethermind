@@ -110,7 +110,7 @@ public class EthRpcSimulateTestsBase
 
         code?.Should().Be(AcceptTxResult.Accepted);
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        await chain.AddBlock(true, txs);
+        await chain.AddBlock(txs);
 
         TxReceipt? createContractTxReceipt = null;
         while (createContractTxReceipt is null)

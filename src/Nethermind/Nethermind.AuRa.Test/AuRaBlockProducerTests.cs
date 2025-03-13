@@ -119,13 +119,13 @@ namespace Nethermind.AuRa.Test
             }
         }
 
-        [Test, Retry(6)]
+        [Test]
         public async Task Produces_block()
         {
             (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
 
-        [Test, Retry(15)]
+        [Test]
         public async Task Can_produce_first_block_when_private_chains_allowed()
         {
             Context context = new();

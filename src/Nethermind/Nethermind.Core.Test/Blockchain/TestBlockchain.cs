@@ -23,6 +23,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -43,12 +44,14 @@ using Nethermind.State.Repositories;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
+    public long TestTimout { get; set; } = DefaultTimeout;
     public IStateReader StateReader { get; private set; } = null!;
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager { get; private set; } = null!;
@@ -99,9 +102,6 @@ public class TestBlockchain : IDisposable
     public static Address AccountA = TestItem.AddressA;
     public static Address AccountB = TestItem.AddressB;
     public static Address AccountC = TestItem.AddressC;
-    public SemaphoreSlim _resetEvent = null!;
-    private ManualResetEvent _suggestedBlockResetEvent = null!;
-    private readonly AutoResetEvent _oneAtATime = new(true);
     private IBlockFinder _blockFinder = null!;
 
     public static readonly UInt256 InitialValue = 1000.Ether();
@@ -109,6 +109,8 @@ public class TestBlockchain : IDisposable
     public IHeaderValidator HeaderValidator { get; set; } = null!;
 
     private ReceiptCanonicalityMonitor? _canonicalityMonitor;
+    protected AutoCancelTokenSource _cts;
+    private TestBlockchainUtil _testUtil = null!;
 
     public IBlockValidator BlockValidator { get; set; } = null!;
 
@@ -230,18 +232,16 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _resetEvent = new SemaphoreSlim(0);
-        _suggestedBlockResetEvent = new ManualResetEvent(true);
+        _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
+        _testUtil = new TestBlockchainUtil(
+            BlockProducerRunner,
+            BlockProductionTrigger,
+            Timestamper,
+            BlockTree,
+            TxPool
+        );
 
-        AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
-        Task waitGenesis = BlockTree.WaitForNewBlock(cts.Token);
-
-        BlockTree.BlockAddedToMain += BlockAddedToMain;
-        BlockProducerRunner.BlockProduced += (s, e) =>
-        {
-            _suggestedBlockResetEvent.Set();
-        };
-
+        Task waitGenesis = WaitForNewHead();
         Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
         BlockTree.SuggestBlock(genesis);
 
@@ -260,28 +260,7 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    private void BlockAddedToMain(object? sender, BlockEventArgs e)
-    {
-        _resetEvent.Release(1);
-    }
-
     protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
-
-    private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
-    {
-        if (!await semaphore.WaitAsync(timeout))
-        {
-            throw new InvalidOperationException(error);
-        }
-    }
-
-    private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = DefaultTimeout)
-    {
-        if (!await eventWaitHandle.WaitOneAsync(timeout, CancellationToken.None))
-        {
-            throw new InvalidOperationException(error);
-        }
-    }
 
     protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
@@ -404,52 +383,17 @@ public class TestBlockchain : IDisposable
 
     public async Task WaitForNewHead()
     {
-        await WaitAsync(_resetEvent, "Failed to produce new head in time.");
-        _suggestedBlockResetEvent.Reset();
+        await BlockTree.WaitForNewBlock(_cts.Token);
     }
 
     public async Task AddBlock(params Transaction[] transactions)
     {
-        await AddBlockInternal(transactions);
-
-        await WaitAsync(_resetEvent, "Failed to produce new head in time.");
-        _suggestedBlockResetEvent.Reset();
-        _oneAtATime.Set();
+        await _testUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
     }
 
-    public async Task AddBlock(bool shouldWaitForHead = true, params Transaction[] transactions)
+    public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await AddBlockInternal(transactions);
-
-        if (shouldWaitForHead)
-        {
-            await WaitAsync(_resetEvent, "Failed to produce new head in time.");
-        }
-        else
-        {
-            await WaitAsync(_suggestedBlockResetEvent, "Failed to produce new suggested block in time.");
-        }
-
-        _oneAtATime.Set();
-    }
-
-    private async Task<AcceptTxResult[]> AddBlockInternal(params Transaction[] transactions)
-    {
-        // we want it to be last event, so lets re-register
-        BlockTree.BlockAddedToMain -= BlockAddedToMain;
-        BlockTree.BlockAddedToMain += BlockAddedToMain;
-
-        await WaitAsync(_oneAtATime, "Multiple block produced at once.").ConfigureAwait(false);
-
-        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
-        Task waitForNewBlock = BlockTree.WaitForNewBlock(cts.Token);
-
-        AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
-        Timestamper.Add(TimeSpan.FromSeconds(1));
-        await BlockProductionTrigger.BuildBlock().ConfigureAwait(false);
-        await waitForNewBlock.ConfigureAwait(false);
-
-        return txResults;
+        await _testUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)
@@ -517,5 +461,63 @@ public class TestBlockchain : IDisposable
             .WithChainId(MainnetSpecProvider.Instance.ChainId)
             .TestObject;
         return tx;
+    }
+}
+
+public class TestBlockchainUtil(
+    IBlockProducerRunner blockProducerRunner,
+    IManualBlockProductionTrigger blockProductionTrigger,
+    ManualTimestamper timestamper,
+    IBlockTree blockTree,
+    ITxPool txPool
+)
+{
+    private Task _previousAddBlock = Task.CompletedTask;
+
+    public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        await WaitAsync(_previousAddBlock, "Multiple block produced at once.").ConfigureAwait(false);
+        TaskCompletionSource tcs = new TaskCompletionSource();
+        _previousAddBlock = tcs.Task;
+
+        Task waitForNewBlock = WaitAsync(WaitForBlockProducerBlockProduced(cancellationToken), "timeout waiting for block producer");
+
+        AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+        timestamper.Add(TimeSpan.FromSeconds(1));
+        await blockProductionTrigger.BuildBlock().ConfigureAwait(false);
+
+        await waitForNewBlock.ConfigureAwait(false);
+
+        tcs.TrySetResult();
+        return txResults;
+    }
+
+    public async Task AddBlockAndWaitForHead(CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        Task waitforHead = WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
+
+        await AddBlockDoNotWaitForHead(cancellationToken, transactions);
+
+        await waitforHead;
+    }
+
+    private Task WaitForBlockProducerBlockProduced(CancellationToken cancellationToken = default)
+    {
+        return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
+            e => blockProducerRunner.BlockProduced += e,
+            e => blockProducerRunner.BlockProduced -= e,
+            b => true);
+    }
+
+    private async Task WaitAsync(Task task, string error)
+    {
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException)
+        {
+            throw new InvalidOperationException(error);
+        }
     }
 }

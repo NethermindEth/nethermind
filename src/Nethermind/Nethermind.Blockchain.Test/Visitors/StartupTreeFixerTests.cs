@@ -84,7 +84,6 @@ public class StartupTreeFixerTests
         tree.BestKnownNumber.Should().Be(2);
     }
 
-    [Retry(30)]
     [MaxTime(Timeout.MaxTestTime * 4)]
     [TestCase(0)]
     [TestCase(1)]
@@ -110,13 +109,18 @@ public class StartupTreeFixerTests
 
         // fixing after restart
         StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
-        await tree.Accept(fixer, CancellationToken.None);
 
         // waiting for N new heads
-        for (int i = 0; i < suggestedBlocksAmount; ++i)
+        Task waitHeadTask = Task.Run(async () =>
         {
-            await testRpc.WaitForNewHead();
-        }
+            for (int i = 0; i < suggestedBlocksAmount; ++i)
+            {
+                await testRpc.WaitForNewHead();
+            }
+        });
+
+        await tree.Accept(fixer, CancellationToken.None);
+        await waitHeadTask;
 
         // add a new block at the end
         await testRpc.AddBlock();

@@ -234,7 +234,7 @@ public class BaseEngineModuleTests
 
         public Task WaitForImprovedBlocck(Hash256? parentHash = null)
         {
-            return Wait.ForEventCondition<BlockEventArgs>(default,
+            return Wait.ForEventCondition<BlockEventArgs>(_cts.Token,
                 e => PayloadPreparationService!.BlockImproved += e,
                 e => PayloadPreparationService!.BlockImproved -= e,
                 b =>
