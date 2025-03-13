@@ -1928,6 +1928,67 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Tx_is_accepted_if_conflicting_pending_delegation_is_only_local(bool isLocalDelegation)
+        {
+            // tx pool capacity is only 1. As a first step, we add a transaction named poolTxFiller to fill the transaction pool, but it is not related to the test.
+            // Then sending firstTx with delegation which is underpaid if isLocalDelegation is true.
+            // when isLocalDelegation is false (not underpaid), tx is added to standard tx pool and secondTx is rejected
+            // when isLocalDelegation is true (underpaid), tx is added only to local txs. Expensive secondTx is accepted
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 1, PersistentBlobStorageSize = 0 };
+            _txPool = CreatePool(txPoolConfig, specProvider);
+
+            PrivateKey signer = TestItem.PrivateKeyA;
+            PrivateKey sponsor = TestItem.PrivateKeyB;
+            _stateProvider.CreateAccount(signer.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsor.Address, UInt256.MaxValue);
+
+            EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
+
+            // filling transaction pool
+            _stateProvider.CreateAccount(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            Transaction poolFillerTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(15.GWei())
+                .WithMaxPriorityFeePerGas(15.GWei())
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyC).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(poolFillerTx, TxHandlingOptions.None);
+            result.Should().Be(AcceptTxResult.Accepted);
+
+            // should be added only to local txs if isLocalDelegation is true
+            Transaction firstTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.SetCode)
+                .WithMaxFeePerGas((isLocalDelegation ? 10 : 20).GWei())
+                .WithMaxPriorityFeePerGas((isLocalDelegation ? 10 : 20).GWei())
+                .WithGasLimit(100_000)
+                .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
+
+            result = _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+
+            // should be accepted if pending delegation is only local
+            Transaction secondTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(25.GWei())
+                .WithMaxPriorityFeePerGas(25.GWei())
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+
+            result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(isLocalDelegation ? AcceptTxResult.Accepted : AcceptTxResult.PendingDelegation);
+        }
+
         private static IEnumerable<object[]> SetCodeReplacedTxCases()
         {
             yield return new object[]
