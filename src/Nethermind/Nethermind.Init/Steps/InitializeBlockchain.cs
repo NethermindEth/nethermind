@@ -104,10 +104,10 @@ namespace Nethermind.Init.Steps
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(new(
                         _api.WorldStateManager!,
-                        _api.BlockTree!,
+                        _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider,
-                        _api.LogManager,
-                        mainWorldState),
+                        _api.LogManager),
+                    mainWorldState,
                     _api.SpecProvider!,
                     blocksConfig,
                     _api.LogManager,
