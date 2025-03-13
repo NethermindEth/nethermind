@@ -146,7 +146,7 @@ internal class DelegatedAccountFilterTest
     }
 
 
-    private static object[] PendingDelegationNonceCases=
+    private static object[] PendingDelegationNonceCases =
     {
         new object[]{ 0, AcceptTxResult.NotCurrentNonceForDelegation },
         new object[]{ 1, AcceptTxResult.Accepted },
