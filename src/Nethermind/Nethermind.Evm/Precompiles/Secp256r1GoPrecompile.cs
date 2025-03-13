@@ -14,6 +14,8 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
 {
     static Secp256r1GoPrecompile()
     {
+        Environment.SetEnvironmentVariable("GOGC", "off");
+        Environment.SetEnvironmentVariable("GOMEMLIMIT", "9999MiB");
         Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
     }
 
