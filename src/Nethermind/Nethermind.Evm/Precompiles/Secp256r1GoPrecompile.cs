@@ -52,9 +52,9 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
 
         Metrics.Secp256r1Precompile++;
 
-        Console.WriteLine("Secp256r1GoPrecompile: Forcing Go GC");
-        ForceGC();
-        Console.WriteLine("Secp256r1GoPrecompile: Forced Go GC");
+        Console.WriteLine("Secp256r1GoPrecompile: Reporting Go GC");
+        ReportGC();
+        Console.WriteLine("Secp256r1GoPrecompile: Reported Go GC");
 
         return (isValid ? ValidResult : null, true);
     }
