@@ -49,8 +49,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
-    private DateTime _lastPruneAttempt = DateTime.MinValue;
-    private static readonly TimeSpan _minPruneInterval = TimeSpan.FromSeconds(2);
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
@@ -224,13 +222,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         using var handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
-
-        // Only try pruning if enough time has passed since last attempt
-        // if (DateTime.UtcNow - _lastPruneAttempt > _minPruneInterval)
-        // {
-        //     _lastPruneAttempt = DateTime.UtcNow;
-        //     _blockTree.TryPruneHistory();
-        // }
 
         if (result == ValidationResult.Invalid)
         {
