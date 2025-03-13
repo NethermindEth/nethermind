@@ -1977,7 +1977,7 @@ namespace Nethermind.TxPool.Test
 
             // should be accepted if pending delegation is only local
             Transaction secondTx = Build.A.Transaction
-                .WithNonce(0)
+                .WithNonce(1)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(25.GWei())
                 .WithMaxPriorityFeePerGas(25.GWei())
@@ -1986,7 +1986,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
 
             result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(isLocalDelegation ? AcceptTxResult.Accepted : AcceptTxResult.PendingDelegation);
+            result.Should().Be(isLocalDelegation ? AcceptTxResult.Accepted : AcceptTxResult.NotCurrentNonceForDelegation);
         }
 
         private static IEnumerable<object[]> SetCodeReplacedTxCases()
