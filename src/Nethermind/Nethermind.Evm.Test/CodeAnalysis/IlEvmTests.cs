@@ -2282,14 +2282,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void AOT_invalid_opcode_results_in_failure()
+        public void AOT_invalid_scenarios_results_in_failure()
         {
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
-                IsIlEvmAggressiveModeEnabled = false,
+                IsIlEvmAggressiveModeEnabled = true,
             });
 
             Address main = enhancedChain.InsertCode(

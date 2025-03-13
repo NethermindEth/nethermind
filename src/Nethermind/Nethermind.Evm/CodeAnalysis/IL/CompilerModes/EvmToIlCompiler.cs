@@ -119,7 +119,14 @@ internal static class Precompiler
                             continue;
                         }
 
-                        if(currentSegment.RequireNotStaticEnv)
+                        if (currentSegment.IsFailing)
+                        {
+                            method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+                            i = currentSegment.End;
+                            continue;
+                        }
+
+                        if(!currentSegment.RequiresStaticEnv)
                         {
                             method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
@@ -129,12 +136,6 @@ internal static class Precompiler
                             method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
                         // and we emit failure for failing jumpless segment at start 
-                        if (currentSegment.IsFailing)
-                        {
-                            method.Branch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
-                            i = currentSegment.End;
-                            continue;
-                        }
 
                         if (currentSegment.RequiredStack != 0)
                         {
@@ -200,7 +201,7 @@ internal static class Precompiler
 
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
-                if(!op.IsTerminating && !op.IsJump)
+                if(!op.IsTerminating && op.Operation is not Instruction.JUMP)
                 {
                     if (config.IsIlEvmAggressiveModeEnabled)
                     {
@@ -220,7 +221,11 @@ internal static class Precompiler
             }
         }
 
-        exitLoops:
+        envLoader.LoadResult(method, locals, true);
+        method.LoadConstant((int)ContractState.Finished);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+    exitLoops:
         method.MarkLabel(ret);
         // we get locals.stackHeadRef size
         envLoader.LoadStackHead(method, locals, true);
@@ -299,7 +304,7 @@ internal static class Precompiler
         foreach (KeyValuePair<EvmExceptionType, Label> kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
-            if (config.IsIlEvmAggressiveModeEnabled)
+            if (!config.IsIlEvmAggressiveModeEnabled)
                 EmitCallToErrorTrace(method, locals.gasAvailable, kvp, envLoader, locals);
 
             envLoader.LoadResult(method, locals, true);
