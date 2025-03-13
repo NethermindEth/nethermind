@@ -54,6 +54,7 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
 
