@@ -21,32 +21,32 @@ public class Metrics
     public static long SelfDestructs => _selfDestructs.GetTotalValue();
     private static readonly ZeroContentionCounter _selfDestructs = new();
     [Description("Number of calls to other contracts on thread.")]
-    public static long ThreadLocalSelfDestructs => _selfDestructs.ThreadLocalValue;
-    public static void IncrementSelfDestructs() => _selfDestructs.Increment();
+    internal static long ThreadLocalSelfDestructs => _selfDestructs.ThreadLocalValue;
+    internal static void IncrementSelfDestructs() => _selfDestructs.Increment();
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
     public static long Calls => _calls.GetTotalValue();
     private static readonly ZeroContentionCounter _calls = new();
     [Description("Number of calls to other contracts on thread.")]
-    public static long ThreadLocalCalls => _calls.ThreadLocalValue;
-    public static void IncrementCalls() => _calls.Increment();
+    internal static long ThreadLocalCalls => _calls.ThreadLocalValue;
+    internal static void IncrementCalls() => _calls.Increment();
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
     public static long SloadOpcode => _sLoadOpcode.GetTotalValue();
     private static readonly ZeroContentionCounter _sLoadOpcode = new();
     [Description("Number of SLOAD opcodes executed on thread.")]
-    public static long ThreadLocalSLoadOpcode => _sLoadOpcode.ThreadLocalValue;
-    public static void IncrementSLoadOpcode() => _sLoadOpcode.Increment();
+    internal static long ThreadLocalSLoadOpcode => _sLoadOpcode.ThreadLocalValue;
+    internal static void IncrementSLoadOpcode() => _sLoadOpcode.Increment();
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
     public static long SstoreOpcode => _sStoreOpcode.GetTotalValue();
     private static readonly ZeroContentionCounter _sStoreOpcode = new();
     [Description("Number of SSTORE opcodes executed on thread.")]
-    public static long ThreadLocalSStoreOpcode => _sStoreOpcode.ThreadLocalValue;
-    public static void IncrementSStoreOpcode() => _sStoreOpcode.Increment();
+    internal static long ThreadLocalSStoreOpcode => _sStoreOpcode.ThreadLocalValue;
+    internal static void IncrementSStoreOpcode() => _sStoreOpcode.Increment();
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
@@ -122,8 +122,8 @@ public class Metrics
     public static long EmptyCalls => _emptyCalls.GetTotalValue();
     private static readonly ZeroContentionCounter _emptyCalls = new();
     [Description("Number of calls made to addresses without code on thread.")]
-    public static long ThreadLocalEmptyCalls => _emptyCalls.ThreadLocalValue;
-    public static void IncrementEmptyCalls() => _emptyCalls.Increment();
+    internal static long ThreadLocalEmptyCalls => _emptyCalls.ThreadLocalValue;
+    internal static void IncrementEmptyCalls() => _emptyCalls.Increment();
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
@@ -131,15 +131,15 @@ public class Metrics
 
     private static readonly ZeroContentionCounter _creates = new();
     [Description("Number of contract create calls on thread.")]
-    public static long ThreadLocalCreates => _creates.ThreadLocalValue;
-    public static void IncrementCreates() => _creates.Increment();
+    internal static long ThreadLocalCreates => _creates.ThreadLocalValue;
+    internal static void IncrementCreates() => _creates.Increment();
 
     [Description("Number of contracts' code analysed for jump destinations.")]
     public static long ContractsAnalysed => _contractsAnalysed.GetTotalValue();
     private static readonly ZeroContentionCounter _contractsAnalysed = new();
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
-    public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
-    public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
+    internal static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
+    internal static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
     [GaugeMetric]
     [Description("The number of tasks scheduled in the background.")]

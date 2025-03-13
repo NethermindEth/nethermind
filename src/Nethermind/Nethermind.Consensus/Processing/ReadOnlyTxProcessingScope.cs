@@ -23,6 +23,6 @@ public class ReadOnlyTxProcessingScope(
     public void Reset()
     {
         worldState.StateRoot = originalStateRoot;
-        worldState.Reset();
+        worldState.Reset(resetBlockCache: true);
     }
 }
