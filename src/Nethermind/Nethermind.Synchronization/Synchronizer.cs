@@ -443,7 +443,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         {
             serviceCollection
                 .AddSingleton<VerifyStateOnStateSyncFinished>()
-                .OnActivate<TreeSync>((treeSync, ctx) => // It actually use TreeSync, not ITreeSync.
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
                 {
                     ctx.Resolve<VerifyStateOnStateSyncFinished>();
                 });
