@@ -54,7 +54,7 @@ public partial class DebugRpcModuleTests
                 blockchain.DbProvider,
                 blockchain.BlockTree,
                 blockchain.RpcConfig,
-                Substitute.For<IBlockchainBridgeFactory>(),
+                Substitute.For<IBlockchainBridge>(),
                 new BlocksConfig().SecondsPerSlot,
                 blockchain.BlockValidator,
                 blockchain.BlockPreprocessorStep,

@@ -13,5 +13,5 @@ public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransacti
 {
     public string? Error { get; set; }
     public bool Success { get; set; } = true;
-    public List<TTrace> Calls { get; set; } = new();
+    public IReadOnlyCollection<TTrace> Calls { get; set; } = [];
 }

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -14,10 +16,13 @@ public class SimulateBlockTracerFactory<TTrace>(GethTraceOptions? Options = null
     private readonly GethTraceOptions? _options = Options;
     private readonly ParityTraceTypes? _types = Types;
 
+    private GethLikeBlockNativeTracer CreateNativeTracer(IWorldState worldState) =>
+        new(_options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(_options, b, tx, worldState));
+
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, IWorldState worldState, ISpecProvider specProvider) =>
         _options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(_options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(_options, b, tx, worldState)),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => CreateNativeTracer(worldState),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), _options),
             _ => new GethLikeBlockMemoryTracer(_options),
         };

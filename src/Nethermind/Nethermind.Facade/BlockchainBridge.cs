@@ -55,7 +55,7 @@ namespace Nethermind.Facade
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
-        SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
+        private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
         public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
@@ -166,30 +166,31 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, SimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, CancellationToken cancellationToken)
         {
             SimulateReadOnlyBlocksProcessingEnv env = _simulateProcessingEnvFactory.Create(payload.Validation);
             IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, _specProvider, header);
             SimulateOutput<TTrace> result = new();
             try
             {
-                IEnumerable<SimulateBlockResult<TTrace>> simulateResults = _simulateBridgeHelper.TrySimulate<TTrace>(header, payload, tracer, cancellationToken, env);
+                IEnumerable<SimulateBlockResult<TTrace>> simulateResults = _simulateBridgeHelper.TrySimulate<TTrace>(header, payload, tracer, env, cancellationToken);
                 result.Items = [.. simulateResults];
 
                 if (result.Items.Count > 0)
                 {
-                    if (!result.Items[result.Items.Count - 1].Success) result.Error = result.Items[result.Items.Count - 1].Error;
+                    var last = result.Items[^1];
+                    if (!last.Success) result.Error = last.Error;
                 }
 
             }
             catch (InsufficientBalanceException ex)
             {
-                result.Items = Array.Empty<SimulateBlockResult<TTrace>>();
+                result.Items = [];
                 result.Error = ex.Message;
             }
             catch (Exception ex)
             {
-                result.Items = Array.Empty<SimulateBlockResult<TTrace>>();
+                result.Items = [];
                 result.Error = ex.ToString();
             }
             return result;
