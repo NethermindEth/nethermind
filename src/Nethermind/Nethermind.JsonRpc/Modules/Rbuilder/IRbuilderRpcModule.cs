@@ -24,7 +24,20 @@ public interface IRbuilderRpcModule
         Description = "Calculate the state root on top of the state trie at specified block given a set of change.",
         IsSharable = true,
         ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-    ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter block, IDictionary<Address, AccountChange> accountDiff);
+    ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter block,
+        IDictionary<Address, AccountChange> accountDiff);
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Get account data",
+        IsSharable = true)]
+    ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block);
+
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Gets block hash",
+        IsSharable = true,
+        ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    ResultWrapper<Hash256> rbuilder_getBlockHash(BlockParameter block);
 }
 
 public class AccountChange
@@ -43,4 +56,31 @@ public class AccountChange
 
     [JsonPropertyName("changed_slots")]
     public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
+}
+
+
+public class AccountState
+{
+    public AccountState(UInt256 nonce, UInt256 balance, ValueHash256 codeHash)
+    {
+        Nonce = nonce;
+        Balance = balance;
+        CodeHash = new Hash256(codeHash);
+    }
+
+    public AccountState()
+    {
+        Nonce = 0;
+        Balance = 0;
+        CodeHash = Keccak.OfAnEmptyString;
+    }
+
+    [JsonPropertyName("nonce")]
+    public UInt256 Nonce { get; set; }
+
+    [JsonPropertyName("balance")]
+    public UInt256 Balance { get; set; }
+
+    [JsonPropertyName("code_hash")]
+    public Hash256 CodeHash { get; set; }
 }
