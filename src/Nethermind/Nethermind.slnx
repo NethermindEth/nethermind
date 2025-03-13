@@ -1,4 +1,9 @@
 <Solution>
+  <Folder Name="/Discv5/" Id="f9f81822-8fda-40f3-b29e-3c2341207baf">
+    <Project Path="../discv5/src/Lantern.Discv5.Enr/Lantern.Discv5.Enr.csproj" Id="78843d68-b129-4fc5-8705-0da0edc5884f" />
+    <Project Path="../discv5/src/Lantern.Discv5.Rlp/Lantern.Discv5.Rlp.csproj" Id="d3de6e2c-e920-41d6-ac0b-599e416df9ad" />
+    <Project Path="../discv5/src/Lantern.Discv5.WireProtocol/Lantern.Discv5.WireProtocol.csproj" Id="229a317c-7442-4055-89a9-bffac68a15e1" />
+  </Folder>
   <Folder Name="/Logging/">
     <Project Path="Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <Project Path="Nethermind.Logging.NLog.Test/Nethermind.Logging.NLog.Test.csproj" />
@@ -7,29 +12,29 @@
     <Project Path="Nethermind.Seq/Nethermind.Seq.csproj" />
   </Folder>
   <Folder Name="/Plugins/" />
-  <Folder Name="/Plugins/Analytics/">
+  <Folder Name="/Plugins/Analytics/" Id="52b26c29-5fea-cdb3-9654-fed6e07d5419">
     <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
   </Folder>
-  <Folder Name="/Plugins/Hive/">
+  <Folder Name="/Plugins/Hive/" Id="00277ad0-0e5f-407a-d7c8-c1c1d7fb2dc0">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
   </Folder>
-  <Folder Name="/Plugins/Merge/">
+  <Folder Name="/Plugins/Merge/" Id="a15625dd-202f-93df-300c-a28972f8df45">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
   </Folder>
-  <Folder Name="/Plugins/Flashbots/">
+  <Folder Name="/Plugins/Flashbots/" Id="5a73d5c1-f5ee-8aa7-45a4-4792fc44a504">
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
-  <Folder Name="/Plugins/Signer/">
+  <Folder Name="/Plugins/Signer/" Id="b8f052f8-dd8b-040e-8d8d-c364907aec53">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
   </Folder>
-  <Folder Name="/Plugins/TraceStore/">
+  <Folder Name="/Plugins/TraceStore/" Id="fd2f51eb-e867-b401-7dc2-3873166daaa7">
     <Project Path="Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />
   </Folder>
-  <Folder Name="/Plugins/UPnP/">
+  <Folder Name="/Plugins/UPnP/" Id="efc6cd32-1548-c06d-1a33-6ec04148148c">
     <Project Path="Nethermind.UPnP.Plugin/Nethermind.UPnP.Plugin.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">

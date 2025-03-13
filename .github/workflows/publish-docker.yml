@@ -48,6 +48,8 @@ jobs:
           image_name=nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}
           build_timestamp=$(date '+%s')
           
+
+          git submodule update --init src/discv5
           echo "Building image with tag $tag"
 
           docker buildx build --platform=linux/amd64,linux/arm64 \
