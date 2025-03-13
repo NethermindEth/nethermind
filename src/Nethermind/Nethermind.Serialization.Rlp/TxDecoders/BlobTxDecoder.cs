@@ -67,7 +67,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
-                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext, rlpBehaviors);
+                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext);
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
@@ -126,7 +126,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
-        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(rlpBehaviors);
+        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -144,11 +144,11 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
-        byte[][] blobs = decoderContext.DecodeByteArrays(rlpBehaviors);
-        byte[][] commitments = decoderContext.DecodeByteArrays(rlpBehaviors);
-        byte[][] proofs = decoderContext.DecodeByteArrays(rlpBehaviors);
+        byte[][] blobs = decoderContext.DecodeByteArrays();
+        byte[][] commitments = decoderContext.DecodeByteArrays();
+        byte[][] proofs = decoderContext.DecodeByteArrays();
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 

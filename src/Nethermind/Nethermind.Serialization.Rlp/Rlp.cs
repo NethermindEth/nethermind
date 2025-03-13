@@ -1551,7 +1551,7 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-            internal byte[][] DecodeByteArrays(RlpBehaviors rlpBehaviors)
+            internal byte[][] DecodeByteArrays()
             {
                 int length = ReadSequenceLength();
                 if (length is 0)
@@ -1568,10 +1568,7 @@ namespace Nethermind.Serialization.Rlp
                     result[i] = DecodeByteArray();
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                {
-                    Check(checkPosition);
-                }
+                Check(checkPosition);
 
                 return result;
             }
