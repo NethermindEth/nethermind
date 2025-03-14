@@ -102,8 +102,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
                         ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian();
-                        bool newIsZero = bytes.IsZero();
-                        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : Bytes.ZeroByteSpan;
+                        bytes = bytes.IsZero() ? Bytes.ZeroByteSpan : bytes.WithoutLeadingZeros();
                         worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
                     }
                 }
