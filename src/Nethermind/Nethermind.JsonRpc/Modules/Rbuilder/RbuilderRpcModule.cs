@@ -29,7 +29,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         BlockHeader? blockHeader = blockFinder.FindHeader(blockParam);
         if (blockHeader is null)
         {
-            return ResultWrapper<Hash256>.Fail("Block not found");
+            return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
         IOverridableWorldScope worldScope = _overridableWorldScopePool.Get();
@@ -100,10 +100,10 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 {
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
-                        ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian();
+                        byte[] bytes = changedSlot.Value.ToBigEndian();
                         bool newIsZero = bytes.IsZero();
                         bytes = !newIsZero ? bytes.WithoutLeadingZeros() : [0];
-                        worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
+                        worldState.Set(new StorageCell(address, changedSlot.Key), bytes);
                     }
                 }
             }
@@ -124,7 +124,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            return ResultWrapper<AccountState>.Fail("Block not found");
+            return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
         if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
