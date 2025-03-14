@@ -620,7 +620,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
                     {
-                        goto Fail;
+                        goto FailContractCreate;
                     }
                 }
 
@@ -658,12 +658,12 @@ namespace Nethermind.Evm.TransactionProcessing
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
-                            goto Fail;
+                            goto FailContractCreate;
                         }
 
                         if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                         {
-                            goto Fail;
+                            goto FailContractCreate;
                         }
 
                         if (unspentGas >= codeDepositGasCost)
@@ -698,7 +698,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
             }
-        Fail:
+        FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
 
