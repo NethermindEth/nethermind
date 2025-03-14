@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -278,8 +279,10 @@ public partial class EngineModuleTests
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
+        Task waitForImprovement = chain.WaitForImprovedBlock();
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
+        await waitForImprovement;
 
         Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.InRange(3, 5).After(timePerSlot.Milliseconds * 10, 1));
 
@@ -348,7 +351,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await blockchain.Build(SepoliaSpecProvider.Instance);
 
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 50 * delay;
+        TimeSpan timePerSlot = 1000 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(
             new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)),
             skipDuplicatedContext: true
@@ -526,7 +529,6 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
-        await improvementTask;
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
         getPayloadResult.Should().NotBeNull();
