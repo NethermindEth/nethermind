@@ -36,9 +36,9 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     private DisposableResettableList<Instruction> _buffer = new();
     private long _currentBlock;
     private long _initialBlock;
+    private Task _lastTask = Task.CompletedTask;
     private int _pos;
     private PatternAnalyzerTxTracer _tracer;
-
 
     public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer,
         HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
@@ -59,7 +59,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         _ct = ct;
         if (_logger.IsInfo)
             _logger.Info(
-                $"OpcodeStats file tracer is set with processing queue size: {_fileTracingQueueSize}, buffer size: {_bufferSize} and will write to file: {_fileName} ");
+                $"PatternAnalyzer file tracer is set with processing queue size: {_fileTracingQueueSize}, buffer size: {_bufferSize} and will write to file: {_fileName} ");
     }
 
 
@@ -68,26 +68,7 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         if (_fileTracingQueueSize < 1) return;
 
         _pos = (_pos + 1) % _writeFreq;
-
         if (_pos != 0) return;
-
-        if (_fileTracingQueue.Count >= _fileTracingQueueSize && _fileTracingQueue.Count > 0)
-            try
-            {
-                if (_processingMode == ProcessingMode.Sequential)
-                    if (!_ct.IsCancellationRequested)
-                        _fileTracingQueue[0].ContinueWith(t =>
-                        {
-                            _ct.ThrowIfCancellationRequested();
-                            if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
-                        }, _ct).Wait(_ct);
-
-                if (_processingMode == ProcessingMode.Bulk) CompleteAllTasks();
-            }
-            catch (AggregateException ex)
-            {
-                _logger.Error($"Error while waiting for task: {ex}");
-            }
 
         var tracer = _tracer;
         var initialBlockNumber = _initialBlock;
@@ -96,37 +77,48 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
         _buffer = new DisposableResettableList<Instruction>();
         _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer, _sort,
             _ct);
+
         var semaphore = _writeLock;
 
-        var task = Task.Run(() =>
+        var task = new Task(() =>
         {
-            try
-            {
-                _ct.ThrowIfCancellationRequested();
-                WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem,
-                    _serializerOptions, _ct, semaphore);
-                //processingLock.Release();
-            }
-            catch (IOException ex)
-            {
-                _logger.Error($"Error writing to file {_fileName}: {ex.Message}");
-                throw;
-            }
-            catch (OperationCanceledException)
-            {
-                _fileTracingQueue.Clear();
-                throw;
-            }
+            _ct.ThrowIfCancellationRequested();
+            WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem, _serializerOptions, _ct,
+                semaphore);
         }, _ct);
 
-        if (!_ct.IsCancellationRequested) _fileTracingQueue.Add(task);
+        _lastTask = _lastTask.ContinueWith(t =>
+        {
+            if (t.Exception != null)
+                _logger.Error($"Previous task failed: {t.Exception.Flatten()}");
+
+            task.Start();
+        }, _ct);
+
+        _fileTracingQueue.Add(task);
+
+        if (_fileTracingQueue.Count >= _fileTracingQueueSize)
+        {
+            if (_processingMode == ProcessingMode.Bulk)
+            {
+                Task.WaitAll(_fileTracingQueue.ToArray(), _ct);
+                _fileTracingQueue.Clear();
+            }
+
+            if (_processingMode == ProcessingMode.Sequential)
+            {
+                var firstUnfinishedTask = _fileTracingQueue.FirstOrDefault(t => !t.IsCompleted);
+                if (firstUnfinishedTask != null) firstUnfinishedTask.Wait(_ct);
+            }
+        }
 
         CleanUpCompletedTasks();
     }
 
+
     private void CleanUpCompletedTasks()
     {
-        _fileTracingQueue.RemoveAll(t => t.IsCompleted || t.IsFaulted || t.IsCanceled);
+        _fileTracingQueue.RemoveAll(t => t.IsCompleted);
     }
 
     public override void EndTxTrace()
