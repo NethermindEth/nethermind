@@ -9,6 +9,6 @@ namespace Nethermind.Optimism.CL;
 public interface IExecutionEngineManager
 {
     void Initialize();
-    Task ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes);
+    Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes);
     Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3);
 }

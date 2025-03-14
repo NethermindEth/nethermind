@@ -11,6 +11,5 @@ namespace Nethermind.Optimism.CL.Derivation;
 public interface IDerivationPipeline
 {
     Task Run(CancellationToken token);
-    ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes { get; }
     ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing { get; }
 }

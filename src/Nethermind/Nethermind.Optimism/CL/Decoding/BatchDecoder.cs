@@ -228,6 +228,7 @@ public class BatchDecoder
         ulong legacyTxCnt = 0;
         for (int i = 0; i < (int)totalTxCount; ++i)
         {
+            // TODO: a lot of allocations here
             (datas[i], types[i]) = DecodeTxData(ref data);
             if (types[i] == TxType.Legacy)
             {

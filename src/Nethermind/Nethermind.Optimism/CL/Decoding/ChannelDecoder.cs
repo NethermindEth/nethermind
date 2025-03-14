@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
-
 namespace Nethermind.Optimism.CL.Decoding;
 
 public class ChannelDecoder
@@ -18,6 +15,7 @@ public class ChannelDecoder
     public static byte[] DecodeChannel(byte[] data)
     {
         // TODO: avoid allocation
+        // TODO: zip bomb
         var memoryStream = new MemoryStream();
         if ((data[0] & 0x0F) == 8 || (data[0] & 0x0F) == 15)
         {

@@ -19,13 +19,11 @@ namespace Nethermind.Optimism.CL;
 
 public class OptimismCL : IDisposable
 {
-    private readonly IOptimismEthRpcModule _l2EthRpc;
-    private readonly IL2BlockTree _l2BlockTree;
     private readonly DecodingPipeline _decodingPipeline;
     private readonly IL1Bridge _l1Bridge;
-    private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly Driver _driver;
+    private readonly IL2Api _l2Api;
     private readonly OptimismCLP2P _p2p;
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -50,19 +48,18 @@ public class OptimismCL : IDisposable
         IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, logger, _cancellationTokenSource.Token);
 
-        _l2EthRpc = l2EthRpc;
-        _l2BlockTree = new L2BlockTree();
         _decodingPipeline = new DecodingPipeline(logger);
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, logManager);
-        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
-        _executionEngineManager = new ExecutionEngineManager(engineRpcModule, _l2EthRpc, logger);
+
+        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, logger);
+        _executionEngineManager = new ExecutionEngineManager(_l2Api, logger);
         _driver = new Driver(
             _l1Bridge,
             _decodingPipeline,
-            _l2EthRpc,
-            _l2BlockTree,
             engineParameters,
             _executionEngineManager,
+            _l2Api,
             specProvider.ChainId,
             logger);
         _p2p = new OptimismCLP2P(
@@ -77,7 +74,7 @@ public class OptimismCL : IDisposable
 
     public async Task Start()
     {
-        await SetupTest();
+        SetupTest();
 
         try
         {
@@ -85,8 +82,8 @@ public class OptimismCL : IDisposable
             await Task.WhenAll(
                 _decodingPipeline.Run(_cancellationTokenSource.Token),
                 _l1Bridge.Run(_cancellationTokenSource.Token),
-                _driver.Run(_cancellationTokenSource.Token),
-                _p2p.Run(_cancellationTokenSource.Token)
+                _driver.Run(_cancellationTokenSource.Token)
+                // _p2p.Run(_cancellationTokenSource.Token)
             );
         }
         catch (OperationCanceledException)
@@ -101,39 +98,9 @@ public class OptimismCL : IDisposable
         _driver.Dispose();
     }
 
-    private async Task SetupTest()
+    private void SetupTest()
     {
-        var block = _l2EthRpc.eth_getBlockByNumber(new(10567750), true).Data;
-        DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
-        SystemConfig config =
-            _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
-        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input!, block.ExtraData);
-        L1Block l1Block = await _l1Bridge.GetBlock(l1BlockInfo.Number);
-        if (l1Block.Hash != l1BlockInfo.BlockHash)
-        {
-            throw new ArgumentException("Unexpected block hash");
-        }
-        _l1Bridge.SetCurrentL1Head(l1BlockInfo.Number, l1BlockInfo.BlockHash);
-        L2Block nativeBlock = new()
-        {
-            Hash = block.Hash,
-            Number = (ulong)block.Number!.Value,
-            PayloadAttributes = new()
-            {
-                EIP1559Params = config.EIP1559Params,
-                GasLimit = block.GasLimit,
-                NoTxPool = true,
-                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
-                PrevRandao = block.MixHash,
-                SuggestedFeeRecipient = block.Miner,
-                Timestamp = block.Timestamp.ToUInt64(null),
-                Transactions = null,
-                Withdrawals = Array.Empty<Withdrawal>(),
-            },
-            ParentHash = block.ParentHash,
-            SystemConfig = config,
-            L1BlockInfo = l1BlockInfo,
-        };
-        _l2BlockTree.TryAddBlock(nativeBlock);
+        var block = _l2Api.GetBlockByNumber(10567750);
+        _l1Bridge.SetCurrentL1Head(block.L1BlockInfo.Number, block.L1BlockInfo.BlockHash);
     }
 }

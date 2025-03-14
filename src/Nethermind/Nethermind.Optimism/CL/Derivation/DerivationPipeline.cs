@@ -19,19 +19,19 @@ namespace Nethermind.Optimism.CL.Derivation;
 public class DerivationPipeline : IDerivationPipeline
 {
     private readonly IPayloadAttributesDeriver _payloadAttributesDeriver;
-    private readonly IL2BlockTree _l2BlockTree;
     private readonly IL1Bridge _l1Bridge;
+    private readonly IExecutionEngineManager _executionEngineManager;
     private readonly ILogger _logger;
 
     public DerivationPipeline(
         IPayloadAttributesDeriver payloadAttributesDeriver,
-        IL2BlockTree l2BlockTree,
         IL1Bridge l1Bridge,
+        IExecutionEngineManager executionEngineManager,
         ILogger logger)
     {
         _payloadAttributesDeriver = payloadAttributesDeriver;
-        _l2BlockTree = l2BlockTree;
         _l1Bridge = l1Bridge;
+        _executionEngineManager = executionEngineManager;
         _logger = logger;
     }
 
@@ -40,34 +40,22 @@ public class DerivationPipeline : IDerivationPipeline
         while (!token.IsCancellationRequested)
         {
             (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync(token);
-            var result = await ProcessOneBatch(l2Parent, batch);
-            foreach (PayloadAttributesRef payloadAttributes in result)
-            {
-                await _outputChannel.Writer.WriteAsync(payloadAttributes, token);
-            }
+            _logger.Error($"Got batch for derivation: {batch.RelTimestamp / 2 - 1}");
+            await ProcessOneBatch(l2Parent, batch);
         }
     }
 
     private readonly Channel<(L2Block L2Parent, BatchV1 Batch)> _inputChannel = Channel.CreateBounded<(L2Block, BatchV1)>(20);
     public ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing => _inputChannel.Writer;
 
-    private readonly Channel<PayloadAttributesRef> _outputChannel = Channel.CreateUnbounded<PayloadAttributesRef>();
-    public ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes => _outputChannel.Reader;
-
-    private async Task<PayloadAttributesRef[]> ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
+    private async Task ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
     {
         _logger.Error($"Processing batch RelTimestamp: {batch.RelTimestamp}");
         ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
-        if (expectedParentNumber < l2Parent.Number)
+        if (expectedParentNumber != l2Parent.Number)
         {
             throw new ArgumentException("Old batch");
-        }
-
-        if (!l2Parent.Hash.Bytes.StartsWith(batch.ParentCheck))
-        {
-            _logger.Error($"Unexpected L2Parent. Got: {l2Parent.Hash}, ParentCheck: {batch.ParentCheck.ToHexString()}");
-            throw new ArgumentException("Wrong L2 parent");
         }
 
         // TODO: proper error handling
@@ -107,8 +95,6 @@ public class DerivationPipeline : IDerivationPipeline
             SystemConfig = l2Parent.SystemConfig
         };
         int originIdx = 0;
-
-        List<PayloadAttributesRef> result = new();
         try
         {
             foreach (var singularBatch in batch.ToSingularBatches(480, 1719335639, 2))
@@ -120,7 +106,12 @@ public class DerivationPipeline : IDerivationPipeline
                     l1Origins[originIdx],
                     l1Receipts[originIdx]);
                 l2ParentPayloadAttributes = payloadAttributes;
-                result.Add(payloadAttributes);
+                bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
+                if (!valid)
+                {
+                    _logger.Warn($"Derived invalid payload attributes. Number: {payloadAttributes.Number}.");
+                    return; // Holocene: Drop everything that comes after invalid batch
+                }
             }
         }
         catch (Exception e)
@@ -128,10 +119,8 @@ public class DerivationPipeline : IDerivationPipeline
             _logger.Error($"Exception occured while processing batch RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
             throw;
         }
-        // var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
 
         _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
-        return result.ToArray();
     }
 
     private ulong GetNumberOfBits(BigInteger number)

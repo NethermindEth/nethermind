@@ -9,10 +9,11 @@ namespace Nethermind.Optimism.CL;
 
 public class L2Block
 {
-    public required ulong Number { get; set; }
     public required Hash256 Hash { get; set; }
     public required Hash256 ParentHash { get; set; }
-    public required OptimismPayloadAttributes PayloadAttributes { get; set; }
-    public required SystemConfig SystemConfig { get; set; }
-    public required L1BlockInfo L1BlockInfo { get; set; }
+    public required PayloadAttributesRef PayloadAttributesRef { get; set; }
+    public ulong Number => PayloadAttributesRef.Number;
+    public OptimismPayloadAttributes PayloadAttributes => PayloadAttributesRef.PayloadAttributes;
+    public SystemConfig SystemConfig => PayloadAttributesRef.SystemConfig;
+    public L1BlockInfo L1BlockInfo => PayloadAttributesRef.L1BlockInfo;
 }

@@ -21,33 +21,28 @@ public class Driver : IDisposable
 {
     private readonly ILogger _logger;
     private readonly IDerivationPipeline _derivationPipeline;
-    private readonly IL2BlockTree _l2BlockTree;
-    private readonly IEthRpcModule _l2EthRpc;
-    private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
+    private readonly IL2Api _il2Api;
     private readonly IDecodingPipeline _decodingPipeline;
-    private readonly IExecutionEngineManager _executionEngineManager;
+    private readonly ISystemConfigDeriver _systemConfigDeriver;
 
     public Driver(IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
-        IOptimismEthRpcModule l2EthRpc,
-        IL2BlockTree l2BlockTree,
         CLChainSpecEngineParameters engineParameters,
         IExecutionEngineManager executionEngineManager,
+        IL2Api il2Api,
         ulong chainId,
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         _logger = logger;
-        _l2BlockTree = l2BlockTree;
-        _l2EthRpc = l2EthRpc;
-        _executionEngineManager = executionEngineManager;
+        _il2Api = il2Api;
         _decodingPipeline = decodingPipeline;
-        _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
-            new SystemConfigDeriver(engineParameters),
+            _systemConfigDeriver,
             new DepositTransactionBuilder(chainId, engineParameters),
             logger);
-        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, l1Bridge, _logger);
+        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge, executionEngineManager, _logger);
     }
 
     public async Task Run(CancellationToken token)
@@ -62,89 +57,14 @@ public class Driver : IDisposable
     {
         while (!token.IsCancellationRequested)
         {
-            if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
-            {
-                await OnL2BlocksDerived(derivedPayloadAttributes);
-            }
-            else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
-            {
-                ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
-                // TODO: make it properly
-                L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
-                if (l2Parent is not null)
-                {
-                    await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch), token);
-                    await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
-                }
-                else
-                {
-                    if (_l2BlockTree.HeadBlockNumber > parentNumber)
-                    {
-                        _logger.Error($"Old batch. Skipping");
-                        await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
-                    }
-                }
-            }
+            BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
+
+            ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
+            _logger.Error($"Running derivation. Parent number: {parentNumber}");
+            L2Block l2Parent = _il2Api.GetBlockByNumber(parentNumber);
+
+            await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch), token);
         }
-    }
-
-    private async Task OnL2BlocksDerived(PayloadAttributesRef payloadAttributes)
-    {
-        await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
-
-        var blockResult = _l2EthRpc.eth_getBlockByNumber(new((long)payloadAttributes.Number), true);
-
-        if (blockResult.Result != Result.Success)
-        {
-            _logger.Error($"Unable to get block by number: {(long)payloadAttributes.Number}");
-            return;
-        }
-
-        var block = blockResult.Data;
-        var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
-
-        bool success = _l2BlockTree.TryAddBlock(new L2Block()
-        {
-            Hash = block.Hash,
-            Number = (ulong)block.Number!.Value,
-            PayloadAttributes = expectedPayloadAttributes,
-            ParentHash = block.ParentHash,
-            SystemConfig = payloadAttributes.SystemConfig,
-            L1BlockInfo = payloadAttributes.L1BlockInfo,
-        });
-
-        if (!success)
-        {
-            _logger.Error($"Unable to put block into block tree");
-            return;
-        }
-        else
-        {
-            _logger.Error($"Adding block into l2blockTree: {block.Number}, {block.Hash}");
-        }
-
-        _derivedBlocksVerifier.ComparePayloadAttributes(expectedPayloadAttributes,
-            payloadAttributes.PayloadAttributes, payloadAttributes.Number);
-    }
-
-    private OptimismPayloadAttributes PayloadAttributesFromBlockForRpc(BlockForRpc block)
-    {
-        ArgumentNullException.ThrowIfNull(block);
-        OptimismPayloadAttributes result = new()
-        {
-            NoTxPool = true,
-            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
-            GasLimit = block.GasLimit,
-            ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
-            PrevRandao = block.MixHash,
-            SuggestedFeeRecipient = block.Miner,
-            Timestamp = block.Timestamp.ToUInt64(null),
-            Withdrawals = block.Withdrawals?.ToArray()
-        };
-        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t => t.ToTransaction()).ToArray();
-        result.SetTransactions(txs);
-
-        return result;
     }
 
     public void Dispose()

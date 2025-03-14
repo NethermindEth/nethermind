@@ -7,6 +7,5 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public interface IDerivedBlocksVerifier
 {
-    public void ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual,
-        ulong blockNumber);
+    public bool ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber);
 }
