@@ -44,7 +44,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
         {
@@ -81,7 +81,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         }
         else
         {
-            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees);
         }
     }
 }

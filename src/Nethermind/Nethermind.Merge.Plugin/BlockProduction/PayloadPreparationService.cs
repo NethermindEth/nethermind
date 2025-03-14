@@ -4,10 +4,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -77,7 +80,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         if (!_payloadStorage.ContainsKey(payloadId))
         {
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow);
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default);
         }
         else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
@@ -92,9 +95,9 @@ public class PayloadPreparationService : IPayloadPreparationService
         return emptyBlock;
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees) =>
         _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
+            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees),
             (id, currentContext) =>
             {
                 // if there is payload improvement and its not yet finished leave it be
@@ -104,17 +107,29 @@ public class PayloadPreparationService : IPayloadPreparationService
                     return currentContext;
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees);
                 currentContext.Dispose();
                 return newContext;
             });
 
 
-    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
-        blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
+
+        long startTimestamp = Stopwatch.GetTimestamp();
+        IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
+        blockImprovementContext.ImprovementTask.ContinueWith((b) =>
+        {
+            if (b.IsCompletedSuccessfully)
+            {
+                Block? block = b.Result;
+                if (!ReferenceEquals(block, currentBestBlock))
+                {
+                    LogProductionResult(b, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
+                }
+            }
+        });
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             // if after delay we still have time to try producing the block in this slot
@@ -127,7 +142,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                 if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
                     Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
+                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees);
                 }
                 else
                 {
@@ -172,27 +187,30 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     }
 
-    private Block? LogProductionResult(Task<Block?> t)
+    private Block? LogProductionResult(Task<Block?> t, UInt256 blockFees, TimeSpan time)
     {
+        const long weiToEth = 1_000_000_000_000_000_000;
+
         if (t.IsCompletedSuccessfully)
         {
-            if (t.Result is not null)
+            Block? block = t.Result;
+            if (block is not null)
             {
-                BlockImproved?.Invoke(this, new BlockEventArgs(t.Result));
-                if (_logger.IsInfo) _logger.Info($"Improved post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                BlockImproved?.Invoke(this, new BlockEventArgs(block));
+                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,7:N2} ms");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info("Failed to improve post-merge block");
+                if (_logger.IsInfo) _logger.Info(" Block improvement attempt did not produce a better block");
             }
         }
         else if (t.IsFaulted)
         {
-            if (_logger.IsError) _logger.Error("Post merge block improvement failed", t.Exception);
+            if (_logger.IsError) _logger.Error(" Block improvement failed", t.Exception);
         }
         else if (t.IsCanceled)
         {
-            if (_logger.IsInfo) _logger.Info($"Post-merge block improvement was canceled");
+            if (_logger.IsInfo) _logger.Info(" Block improvement was canceled");
         }
 
         return t.Result;
