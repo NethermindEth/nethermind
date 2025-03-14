@@ -27,8 +27,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        TimeSpan? improvementDelay = null)
         : base(
             blockProducer,
             blockImprovementContextFactory,
@@ -36,8 +35,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             logManager,
             timePerSlot,
             slotsPerOldPayloadCleanup,
-            improvementDelay,
-            minTimeForProduction)
+            improvementDelay)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();

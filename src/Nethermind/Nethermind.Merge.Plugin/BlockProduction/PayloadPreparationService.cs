@@ -31,18 +31,12 @@ public class PayloadPreparationService : IPayloadPreparationService
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
     public static readonly TimeSpan GetPayloadWaitForFullBlockMillisecondsDelay = TimeSpan.FromMilliseconds(500);
-    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(3000);
-    public static readonly TimeSpan DefaultMinTimeForProduction = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
     /// Delay between block improvements
     /// </summary>
     private readonly TimeSpan _improvementDelay;
-
-    /// <summary>
-    /// Minimal time to try to improve block
-    /// </summary>
-    private readonly TimeSpan _minTimeForProduction;
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
@@ -57,8 +51,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        TimeSpan? improvementDelay = null)
     {
         _blockProducer = blockProducer;
         _blockImprovementContextFactory = blockImprovementContextFactory;
@@ -66,7 +59,6 @@ public class PayloadPreparationService : IPayloadPreparationService
         TimeSpan timeout = timePerSlot;
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
-        _minTimeForProduction = minTimeForProduction ?? DefaultMinTimeForProduction;
         ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
         timer.Elapsed += CleanupOldPayloads;
         timer.Start();
@@ -133,7 +125,8 @@ public class PayloadPreparationService : IPayloadPreparationService
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             // if after delay we still have time to try producing the block in this slot
-            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + _minTimeForProduction;
+            TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
+            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + lastBuildTime;
             DateTimeOffset slotFinished = startDateTime + _timePerSlot;
             if (whenWeCouldFinishNextProduction < slotFinished)
             {

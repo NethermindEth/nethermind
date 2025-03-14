@@ -30,9 +30,12 @@ public class BlockImprovementContext : IBlockImprovementContext
         CurrentBestBlock = currentBestBlock;
         BlockFees = currentBlockFees;
         StartDateTime = startDateTime;
-        ImprovementTask = blockProducer
-            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, _cancellationTokenSource.Token)
-            .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
+
+        CancellationToken ct = _cancellationTokenSource.Token;
+        // Task.Run so doesn't block FCU response while first block is being produced
+        ImprovementTask = Task.Run(() => blockProducer
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, ct)
+            .ContinueWith(SetCurrentBestBlock, ct), ct);
     }
 
     public Task<Block?> ImprovementTask { get; }

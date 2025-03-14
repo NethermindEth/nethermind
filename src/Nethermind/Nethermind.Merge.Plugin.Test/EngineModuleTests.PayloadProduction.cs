@@ -637,7 +637,6 @@ public partial class EngineModuleTests
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot,
-            improvementDelay: delay,
-            minTimeForProduction: delay);
+            improvementDelay: delay);
     }
 }
