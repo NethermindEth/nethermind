@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -10,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,7 +18,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -72,6 +71,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.PoSSwitcher,
             api.BlockTree,
             api.SealValidator,
+            api.SpecHelper,
             api.SpecProvider,
             api.LogManager);
 
@@ -107,7 +107,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            new OptimismWithdrawals.Processor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
             preWarmer: preWarmer);
     }
 
