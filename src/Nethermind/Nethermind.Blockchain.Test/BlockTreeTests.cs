@@ -1138,6 +1138,61 @@ public class BlockTreeTests
         Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_delete_blocks_before_timestamp()
+    {
+        BlockTree tree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .TestObject;
+
+        // Create blocks with incrementing timestamps (by 1)
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).WithTimestamp(1000).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).WithTimestamp(1001).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).WithTimestamp(1002).TestObject;
+        Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).WithTimestamp(1003).TestObject;
+        Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(block3).WithTimestamp(1004).TestObject;
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(6).WithParent(block4).WithTimestamp(1005).TestObject;
+
+        // Suggest all blocks
+        tree.SuggestBlock(block0);
+        tree.SuggestBlock(block1);
+        tree.SuggestBlock(block2);
+        tree.SuggestBlock(block3);
+        tree.SuggestBlock(block4);
+        tree.SuggestBlock(block5);
+        
+        // Set the main chain - this is the key part to correctly establish BestKnownNumber
+        // We need to process blocks so they're recognized as part of the main chain
+        List<Block> blocks = [block0, block1, block2, block3, block4, block5];
+        tree.UpdateMainChain(blocks, true);
+        
+        // Verify state before deletion
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should be 5 before deletion");
+        Assert.That(tree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should exist before deletion");
+        Assert.That(tree.FindBlock(1, BlockTreeLookupOptions.None), Is.Not.Null, "Block 1 should exist before deletion");
+        Assert.That(tree.FindBlock(2, BlockTreeLookupOptions.None), Is.Not.Null, "Block 2 should exist before deletion");
+        Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should exist before deletion");
+        
+        // Delete blocks with timestamp before 1003 (should delete blocks 1-2, but not delete block 0 since it's genesis)
+        tree.DeleteBlocksBeforeTimestamp(1003, CancellationToken.None);
+        
+        // Verify that the genesis block (block0) still exists
+        Assert.That(tree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist after deletion");
+        
+        // Verify that blocks 1-2 were deleted (timestamps before 1003)
+        Assert.That(tree.FindBlock(1, BlockTreeLookupOptions.None), Is.Null, "Block 1 should be deleted");
+        Assert.That(tree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null, "Block 2 should be deleted");
+        
+        // Verify that blocks 3-5 still exist (timestamps >= 1003)
+        Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should still exist");
+        Assert.That(tree.FindBlock(4, BlockTreeLookupOptions.None), Is.Not.Null, "Block 4 should still exist");
+        Assert.That(tree.FindBlock(5, BlockTreeLookupOptions.None), Is.Not.Null, "Block 5 should still exist");
+        
+        // Verify tree state after deletion
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
+        Assert.That(tree.Head?.Number, Is.EqualTo(5L), "Head should remain at block 5");
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(long beginIndex, long insertedBlocks)
     {

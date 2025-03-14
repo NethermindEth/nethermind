@@ -100,11 +100,13 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
 
     public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
     {
-        foreach ((byte[] _, byte[]? value) in blockDb.GetAll(true))
+        var blocks = blockDb.GetAll(true);
+        foreach ((byte[] _, byte[]? value) in blocks)
         {
             Block block = _blockDecoder.Decode(value.AsRlpStream());
             if (block.Timestamp >= timestamp)
             {
+                // exit early since the blocks are ordered by number
                 break;
             }
 

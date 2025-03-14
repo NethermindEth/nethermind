@@ -744,7 +744,8 @@ namespace Nethermind.Blockchain
             {
                 using var batch = _chainLevelInfoRepository.StartBatch();
 
-                foreach ((long number, Hash256 hash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+                var oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
+                foreach ((long number, Hash256 hash) in oldBlocks)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
