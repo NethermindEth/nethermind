@@ -1,6 +1,6 @@
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-public class CMSketchConfig
+public class CmSketchConfig
 {
     public int? Buckets { get; set; }
     public int? HashFunctions { get; set; }

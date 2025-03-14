@@ -36,9 +36,9 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
         return config;
     }
 
-    public CMSketchConfig GetSketchConfig()
+    public CmSketchConfig GetSketchConfig()
     {
-        var config = new CMSketchConfig
+        var config = new CmSketchConfig
         {
             Buckets = SketchBuckets,
             HashFunctions = SketchHashFunctions,

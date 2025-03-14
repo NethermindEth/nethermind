@@ -27,12 +27,12 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     private readonly ILogger _logger;
     private readonly McsLock _processingLock = new();
     private readonly SemaphoreSlim _processingLock2 = new(1, 1);
-    private readonly Semaphore _writeLock = new(1,1);
     private readonly ProcessingMode _processingMode;
     private readonly JsonSerializerOptions _serializerOptions = new();
     private readonly SortOrder _sort;
     private readonly StatsAnalyzer _statsAnalyzer;
     private readonly int _writeFreq = 1;
+    private readonly Semaphore _writeLock = new(1, 1);
     private DisposableResettableList<Instruction> _buffer = new();
     private long _currentBlock;
     private long _initialBlock;
@@ -75,11 +75,12 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
             try
             {
                 if (_processingMode == ProcessingMode.Sequential)
-                   if (!_ct.IsCancellationRequested) _fileTracingQueue[0].ContinueWith(t =>
-                    {
-                        _ct.ThrowIfCancellationRequested();
-                        if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
-                    }, _ct).Wait(_ct);
+                    if (!_ct.IsCancellationRequested)
+                        _fileTracingQueue[0].ContinueWith(t =>
+                        {
+                            _ct.ThrowIfCancellationRequested();
+                            if (t.IsFaulted) _logger.Error($"Task failed: {t.Exception}");
+                        }, _ct).Wait(_ct);
 
                 if (_processingMode == ProcessingMode.Bulk) CompleteAllTasks();
             }
@@ -97,26 +98,25 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
             _ct);
         var semaphore = _writeLock;
 
-        var task = Task.Run( () =>
+        var task = Task.Run(() =>
         {
-
-                try
-                {
-                    _ct.ThrowIfCancellationRequested();
-                    WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem,
-                        _serializerOptions, _ct, semaphore);
-                    //processingLock.Release();
-                }
-                catch (IOException ex)
-                {
-                    _logger.Error($"Error writing to file {_fileName}: {ex.Message}");
-                    throw;
-                }
-                catch (OperationCanceledException)
-                {
-                  _fileTracingQueue.Clear();
-                   throw;
-                }
+            try
+            {
+                _ct.ThrowIfCancellationRequested();
+                WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem,
+                    _serializerOptions, _ct, semaphore);
+                //processingLock.Release();
+            }
+            catch (IOException ex)
+            {
+                _logger.Error($"Error writing to file {_fileName}: {ex.Message}");
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                _fileTracingQueue.Clear();
+                throw;
+            }
         }, _ct);
 
         if (!_ct.IsCancellationRequested) _fileTracingQueue.Add(task);
@@ -135,7 +135,8 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
     }
 
     private static void WriteTrace(long initialBlockNumber, long currentBlockNumber, PatternAnalyzerTxTracer tracer,
-        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct, Semaphore semaphore)
+        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct,
+        Semaphore semaphore)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -154,10 +155,6 @@ public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace,
             {
                 JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
             }
-        }
-        catch (IOException)
-        {
-            throw;
         }
         finally
         {

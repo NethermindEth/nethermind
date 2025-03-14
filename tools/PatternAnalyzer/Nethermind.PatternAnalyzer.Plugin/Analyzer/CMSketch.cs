@@ -3,14 +3,14 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-public class CMSketchBuilder
+public class CmSketchBuilder
 {
     private double? _confidence;
     private int? _sketchBuckets;
     private double? _sketchError;
     private int? _sketchNumberOfHashFunctions;
 
-    public CMSketch Build(CMSketchConfig config)
+    public CmSketch Build(CmSketchConfig config)
     {
         if (config.Buckets.HasValue && config.MaxError.HasValue)
             throw new InvalidOperationException(
@@ -25,17 +25,17 @@ public class CMSketchBuilder
         return Build();
     }
 
-    public CMSketch Build()
+    public CmSketch Build()
     {
         if (_sketchBuckets.HasValue && _sketchNumberOfHashFunctions.HasValue)
         {
-            var sketch = new CMSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
+            var sketch = new CmSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
             if (_sketchError.HasValue)
-                Debug.Assert(sketch.error <= _sketchError,
-                    $" expected sketch error to be initialized to at most {_sketchError} found {sketch.error}");
+                Debug.Assert(sketch.Error <= _sketchError,
+                    $" expected sketch error to be initialized to at most {_sketchError} found {sketch.Error}");
             if (_confidence.HasValue)
-                Debug.Assert(sketch.confidence >= _confidence,
-                    $" expected sketch confidence to be at least {_confidence} found {sketch.confidence}");
+                Debug.Assert(sketch.Confidence >= _confidence,
+                    $" expected sketch confidence to be at least {_confidence} found {sketch.Confidence}");
             return sketch;
         }
 
@@ -43,26 +43,26 @@ public class CMSketchBuilder
             "(buckets or max error) and (hash functions or min confidence) must be set.");
     }
 
-    public CMSketchBuilder SetBuckets(int buckets)
+    public CmSketchBuilder SetBuckets(int buckets)
     {
         _sketchBuckets = buckets;
         return this;
     }
 
-    public CMSketchBuilder SetHashFunctions(int numberOfHashFunctions)
+    public CmSketchBuilder SetHashFunctions(int numberOfHashFunctions)
     {
         _sketchNumberOfHashFunctions = numberOfHashFunctions;
         return this;
     }
 
-    public CMSketchBuilder SetMinConfidence(double probability)
+    public CmSketchBuilder SetMinConfidence(double probability)
     {
         _sketchNumberOfHashFunctions = (int)Math.Ceiling(Math.Log2(1.0d / (1.0d - probability)));
         _confidence = probability;
         return this;
     }
 
-    public CMSketchBuilder SetMaxError(double error)
+    public CmSketchBuilder SetMaxError(double error)
     {
         _sketchError = error;
         _sketchBuckets = (int)Math.Ceiling(2.0d / error);
@@ -70,13 +70,13 @@ public class CMSketchBuilder
     }
 }
 
-public class CMSketch
+public class CmSketch
 {
-    public readonly int buckets;
-    public readonly double confidence;
+    public readonly int Buckets;
+    public readonly double Confidence;
 
-    public readonly double error;
-    public readonly int hashFunctions;
+    public readonly double Error;
+    public readonly int HashFunctions;
     private long[] _seeds;
 
     private ulong _seen;
@@ -87,28 +87,28 @@ public class CMSketch
      * Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
      * Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= _confidence
      * To maximize accuracy minimize maxError and maximize confidence */
-    public CMSketch(double maxError, double confidence) : this(
+    public CmSketch(double maxError, double confidence) : this(
         (int)Math.Ceiling(Math.Log2(1.0d / (1.0d - confidence))), (int)Math.Ceiling(2.0d / maxError))
     {
-        Debug.Assert(error <= maxError,
-            $" expected sketch error to be initialized to at most {maxError} found {error}");
-        Debug.Assert(this.confidence >= confidence,
+        Debug.Assert(Error <= maxError,
+            $" expected sketch error to be initialized to at most {maxError} found {Error}");
+        Debug.Assert(Confidence >= confidence,
             $" expected sketch confidence to be at least {confidence} found {confidence}");
     }
 
 
-    public CMSketch(int numberOfhashFunctions, int numberOfBuckets)
+    public CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     {
-        confidence = 1.0d - Math.Pow(0.5d, numberOfhashFunctions);
+        Confidence = 1.0d - Math.Pow(0.5d, numberOfhashFunctions);
         _sketch = new ulong[numberOfhashFunctions * numberOfBuckets];
-        buckets = numberOfBuckets;
-        error = 2.0d / numberOfBuckets;
-        hashFunctions = numberOfhashFunctions;
+        Buckets = numberOfBuckets;
+        Error = 2.0d / numberOfBuckets;
+        HashFunctions = numberOfhashFunctions;
         _seeds = GenerateSeed(numberOfhashFunctions);
     }
 
 
-    private CMSketch(ulong[] sketch, long[] seeds, int hashFunctions, int buckets) : this(hashFunctions, buckets)
+    private CmSketch(ulong[] sketch, long[] seeds, int hashFunctions, int buckets) : this(hashFunctions, buckets)
     {
         if (sketch.Length != buckets * hashFunctions)
             throw new ArgumentException(
@@ -117,12 +117,12 @@ public class CMSketch
         _seeds = seeds;
     }
 
-    public double errorPerItem => error * _seen;
+    public double ErrorPerItem => Error * _seen;
 
     public void Update(ulong item)
     {
         _seen++;
-        for (var hasher = 0; hasher < hashFunctions; hasher++)
+        for (var hasher = 0; hasher < HashFunctions; hasher++)
             Increment(item, hasher);
     }
 
@@ -140,15 +140,15 @@ public class CMSketch
     private ulong Increment(ulong item, int hasher)
     {
         return Interlocked.Increment(
-            ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)buckets)]);
+            ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)Buckets)]);
     }
 
     public ulong Query(ulong item)
     {
         var minCount = ulong.MaxValue;
-        for (var hasher = 0; hasher < hashFunctions; hasher++)
+        for (var hasher = 0; hasher < HashFunctions; hasher++)
             minCount = Math.Min(minCount,
-                _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)buckets)]);
+                _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)Buckets)]);
         return minCount;
     }
 
@@ -157,16 +157,16 @@ public class CMSketch
     {
         _seen++;
         var minCount = ulong.MaxValue;
-        for (var hasher = 0; hasher < hashFunctions; hasher++)
+        for (var hasher = 0; hasher < HashFunctions; hasher++)
             minCount = Math.Min(minCount, Increment(item, hasher));
         return minCount;
     }
 
-    public CMSketch Reset()
+    public CmSketch Reset()
     {
-        var cms = new CMSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), hashFunctions, buckets);
-        _sketch = new ulong[buckets * hashFunctions];
-        _seeds = GenerateSeed(hashFunctions);
+        var cms = new CmSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), HashFunctions, Buckets);
+        _sketch = new ulong[Buckets * HashFunctions];
+        _seeds = GenerateSeed(HashFunctions);
         return cms;
     }
 
@@ -178,34 +178,34 @@ public class CMSketch
         switch (hasher)
         {
             default:
-                return FNV1a64(value, _seeds[hasher]);
+                return Fnv1A64(value, _seeds[hasher]);
         }
     }
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong FNV1a64(ulong value, long seed)
+    public static ulong Fnv1A64(ulong value, long seed)
     {
         // http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
-        const ulong FNV_OFFSET_BASIS_64 = 14695981039346656037; //64-bit
-        const ulong FNV_PRIME_64 = 1099511628211; //64-bit
+        const ulong fnvOffsetBasis64 = 14695981039346656037; //64-bit
+        const ulong fnvPrime64 = 1099511628211; //64-bit
 
-        var hash = (FNV_OFFSET_BASIS_64 ^ (byte)(value & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)(seed & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 8) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 16) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 24) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 32) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 32) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 48) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME_64;
-        hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * FNV_PRIME_64;
+        var hash = (fnvOffsetBasis64 ^ (byte)(value & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)(seed & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 8) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 8) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 16) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 16) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 24) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 24) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 32) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 32) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 40) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 48) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 48) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((value >> 56) & 0xFF)) * fnvPrime64;
+        hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * fnvPrime64;
 
         return hash;
     }

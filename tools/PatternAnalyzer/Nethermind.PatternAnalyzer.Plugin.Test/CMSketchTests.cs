@@ -11,30 +11,30 @@ using NUnit.Framework;
 namespace Nethermind.PatternAnalyzer.Plugin.Test;
 
 [TestFixture]
-public class CMSketchTests
+public class CmSketchTests
 {
     [SetUp]
     public void SetUp()
     {
-        oneBucketOneHashFunction = new CMSketchBuilder().SetBuckets(1).SetHashFunctions(1).Build();
-        twoBucketsSixHashFunctions = new CMSketchBuilder().SetBuckets(2).SetHashFunctions(6).Build();
-        error01confidence99 = new CMSketchBuilder().SetMaxError(0.01).SetMinConfidence(0.99).Build();
-        highAccuracyHighConfidence =
-            new CMSketchBuilder().SetMaxError(0.0000001).SetMinConfidence(0.99999999).Build();
+        _oneBucketOneHashFunction = new CmSketchBuilder().SetBuckets(1).SetHashFunctions(1).Build();
+        _twoBucketsSixHashFunctions = new CmSketchBuilder().SetBuckets(2).SetHashFunctions(6).Build();
+        _error01Confidence99 = new CmSketchBuilder().SetMaxError(0.01).SetMinConfidence(0.99).Build();
+        _highAccuracyHighConfidence =
+            new CmSketchBuilder().SetMaxError(0.0000001).SetMinConfidence(0.99999999).Build();
     }
 
-    private CMSketch oneBucketOneHashFunction;
-    private CMSketch twoBucketsSixHashFunctions;
-    private CMSketch error01confidence99;
-    private CMSketch highAccuracyHighConfidence;
+    private CmSketch _oneBucketOneHashFunction;
+    private CmSketch _twoBucketsSixHashFunctions;
+    private CmSketch _error01Confidence99;
+    private CmSketch _highAccuracyHighConfidence;
 
-    private readonly ulong ulong0 = 0UL;
-    private readonly ulong ulong1 = 234UL;
-    private readonly ulong ulong2 = 1000000UL;
-    private readonly ulong ulong3 = 999999999999UL;
+    private readonly ulong _ulong0 = 0UL;
+    private readonly ulong _ulong1 = 234UL;
+    private readonly ulong _ulong2 = 1000000UL;
+    private readonly ulong _ulong3 = 999999999999UL;
 
     // n updates of the same item
-    public static void make_n_updates(ulong value, int numberOfUpdates, CMSketch sketch)
+    public static void make_n_updates(ulong value, int numberOfUpdates, CmSketch sketch)
     {
         for (var i = 0; i < numberOfUpdates; i++)
             sketch.Update(value);
@@ -43,77 +43,77 @@ public class CMSketchTests
     [Test]
     public void test_error_single_bucket()
     {
-        var sketch = oneBucketOneHashFunction;
-        sketch.errorPerItem.Should().Be(0d);
+        var sketch = _oneBucketOneHashFunction;
+        sketch.ErrorPerItem.Should().Be(0d);
         // error = 2 / buckets;
-        sketch.error.Should().Be(2d);
+        sketch.Error.Should().Be(2d);
 
-        sketch.Update(ulong0);
-        sketch.Update(ulong1);
+        sketch.Update(_ulong0);
+        sketch.Update(_ulong1);
 
         // we have made two updates error per item should be 4
-        sketch.errorPerItem.Should().Be(4d);
+        sketch.ErrorPerItem.Should().Be(4d);
         // querying an unseen item should give the total number of updates done;
-        sketch.Query(ulong2).Should().Be(2);
+        sketch.Query(_ulong2).Should().Be(2);
     }
 
     [Test]
     public void test_error_two_buckets()
     {
-        var sketch = twoBucketsSixHashFunctions;
-        sketch.errorPerItem.Should().Be(0d);
+        var sketch = _twoBucketsSixHashFunctions;
+        sketch.ErrorPerItem.Should().Be(0d);
         // error = 2 / buckets;
-        sketch.error.Should().Be(1d);
+        sketch.Error.Should().Be(1d);
 
-        sketch.Update(ulong0);
+        sketch.Update(_ulong0);
 
-        sketch.Update(ulong1);
-        sketch.Update(ulong1);
-        sketch.Update(ulong1);
+        sketch.Update(_ulong1);
+        sketch.Update(_ulong1);
+        sketch.Update(_ulong1);
 
         // we have made four updates error per item should be 4
-        sketch.errorPerItem.Should().Be(4d);
+        sketch.ErrorPerItem.Should().Be(4d);
 
-        sketch.Query(ulong0).Should().BeGreaterThanOrEqualTo(1);
-        sketch.Query(ulong0).Should().BeLessThanOrEqualTo(1 + 4);
+        sketch.Query(_ulong0).Should().BeGreaterThanOrEqualTo(1);
+        sketch.Query(_ulong0).Should().BeLessThanOrEqualTo(1 + 4);
 
-        sketch.Query(ulong1).Should().BeGreaterThanOrEqualTo(3);
-        sketch.Query(ulong1).Should().BeLessThanOrEqualTo(3 + 4);
+        sketch.Query(_ulong1).Should().BeGreaterThanOrEqualTo(3);
+        sketch.Query(_ulong1).Should().BeLessThanOrEqualTo(3 + 4);
 
         // unseen item error
-        sketch.Query(ulong2).Should().BeLessThanOrEqualTo(4);
+        sketch.Query(_ulong2).Should().BeLessThanOrEqualTo(4);
     }
 
     [Test]
     public void test_error_sketch_with_01_error()
     {
-        var sketch = error01confidence99;
-        sketch.error.Should().BeLessThanOrEqualTo(.01d);
-        sketch.Update(ulong0);
-        make_n_updates(ulong1, 40, sketch);
-        make_n_updates(ulong2, 59, sketch);
+        var sketch = _error01Confidence99;
+        sketch.Error.Should().BeLessThanOrEqualTo(.01d);
+        sketch.Update(_ulong0);
+        make_n_updates(_ulong1, 40, sketch);
+        make_n_updates(_ulong2, 59, sketch);
 
         // we have made 100 (1 + 40 + 59) updates, expected max error per item should be 100 * 0.01
-        sketch.errorPerItem.Should().BeLessThanOrEqualTo(1d);
+        sketch.ErrorPerItem.Should().BeLessThanOrEqualTo(1d);
 
-        sketch.Query(ulong0).Should().BeGreaterThanOrEqualTo(1);
-        sketch.Query(ulong0).Should().BeLessThanOrEqualTo(2);
+        sketch.Query(_ulong0).Should().BeGreaterThanOrEqualTo(1);
+        sketch.Query(_ulong0).Should().BeLessThanOrEqualTo(2);
 
-        sketch.Query(ulong1).Should().BeGreaterThanOrEqualTo(40);
-        sketch.Query(ulong1).Should().BeLessThanOrEqualTo(41);
+        sketch.Query(_ulong1).Should().BeGreaterThanOrEqualTo(40);
+        sketch.Query(_ulong1).Should().BeLessThanOrEqualTo(41);
 
-        sketch.Query(ulong2).Should().BeGreaterThanOrEqualTo(59);
-        sketch.Query(ulong2).Should().BeLessThanOrEqualTo(60);
+        sketch.Query(_ulong2).Should().BeGreaterThanOrEqualTo(59);
+        sketch.Query(_ulong2).Should().BeLessThanOrEqualTo(60);
 
         // unseen item error
-        sketch.Query(ulong3).Should().BeLessThanOrEqualTo(1);
+        sketch.Query(_ulong3).Should().BeLessThanOrEqualTo(1);
     }
 
 
     [Test]
     public void validate_reset()
     {
-        var sketch = new CMSketch(10, 10);
+        var sketch = new CmSketch(10, 10);
 
         for (ulong i = 0; i <= 10; i++)
             sketch.Update(i);
@@ -128,7 +128,7 @@ public class CMSketchTests
     public void test_buckets()
     {
         var buckets = 1000;
-        var sketch = highAccuracyHighConfidence;
+        var sketch = _highAccuracyHighConfidence;
         for (ulong i = 0; i < (ulong)buckets; i++)
         {
             sketch.Query(i).Should().Be(0UL);
@@ -151,7 +151,7 @@ public class CMSketchTests
         ulong randomUlong;
 
 
-        var sketch = new CMSketchBuilder().SetHashFunctions(hashFunctions).SetBuckets(buckets).Build();
+        var sketch = new CmSketchBuilder().SetHashFunctions(hashFunctions).SetBuckets(buckets).Build();
         Dictionary<ulong, ulong> actualCounts;
 
         double confidence = 100;
@@ -176,7 +176,7 @@ public class CMSketchTests
                                                 out _);
             }
 
-            observedConfidence += check_confidence(sketch, actualCounts, sketch.error, sketch.confidence) ? 1d : 0d;
+            observedConfidence += check_confidence(sketch, actualCounts, sketch.Error, sketch.Confidence) ? 1d : 0d;
         }
 
         // 99% certainity that the confidence holds
@@ -184,7 +184,7 @@ public class CMSketchTests
     }
 
     // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= confidence
-    private static bool check_confidence(CMSketch sketch, Dictionary<ulong, ulong> actualCounts, double error,
+    private static bool check_confidence(CmSketch sketch, Dictionary<ulong, ulong> actualCounts, double error,
         double confidence)
     {
         var countOfGreaterThanExpectedError = 0;
@@ -196,7 +196,7 @@ public class CMSketchTests
             var observedCount = sketch.Query(kvp.Key);
 
             // our upper error bound
-            var expectedMaxCount = trueCount + (ulong)Math.Round(sketch.errorPerItem);
+            var expectedMaxCount = trueCount + (ulong)Math.Round(sketch.ErrorPerItem);
             //our lower bound should never be violated
             trueCount.Should().BeLessThanOrEqualTo(observedCount);
             // we count the number of times our upper bound was broken

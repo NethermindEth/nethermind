@@ -5,21 +5,21 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
 public readonly struct NGram : IEquatable<NGram>
 {
-    public readonly ulong ulong0;
-    public const uint MAX_SIZE = 7;
-    public const ulong NULL = 0;
-    public const Instruction RESET = Instruction.STOP;
+    public readonly ulong Ulong0;
+    public const uint MaxSize = 7;
+    public const ulong Null = 0;
+    public const Instruction Reset = Instruction.STOP;
 
-    private const ulong twogramBitMask = (255UL << 8) | 255UL;
-    private const ulong threegramBitMask = (255UL << (8 * 2)) | twogramBitMask;
-    private const ulong fourgramBitMask = (255U << (8 * 3)) | threegramBitMask;
-    private const ulong fivegramBitMask = (255UL << (8 * 4)) | fourgramBitMask;
-    private const ulong sixgramBitMask = (255UL << (8 * 5)) | fivegramBitMask;
-    private const ulong sevengramBitMask = (255UL << (8 * 6)) | sixgramBitMask;
+    private const ulong TwogramBitMask = (255UL << 8) | 255UL;
+    private const ulong ThreegramBitMask = (255UL << (8 * 2)) | TwogramBitMask;
+    private const ulong FourgramBitMask = (255U << (8 * 3)) | ThreegramBitMask;
+    private const ulong FivegramBitMask = (255UL << (8 * 4)) | FourgramBitMask;
+    private const ulong SixgramBitMask = (255UL << (8 * 5)) | FivegramBitMask;
+    private const ulong SevengramBitMask = (255UL << (8 * 6)) | SixgramBitMask;
 
     public static ulong[] bitMasks =
     [
-        255UL, twogramBitMask, threegramBitMask, fourgramBitMask, fivegramBitMask, sixgramBitMask, sevengramBitMask
+        255UL, TwogramBitMask, ThreegramBitMask, FourgramBitMask, FivegramBitMask, SixgramBitMask, SevengramBitMask
     ];
 
     public static ulong[] byteIndexes =
@@ -32,9 +32,9 @@ public readonly struct NGram : IEquatable<NGram>
     {
     }
 
-    public NGram(ulong value = NULL)
+    public NGram(ulong value = Null)
     {
-        ulong0 = value;
+        Ulong0 = value;
     }
 
     public override bool Equals(object? obj)
@@ -44,12 +44,12 @@ public readonly struct NGram : IEquatable<NGram>
 
     public bool Equals(NGram other)
     {
-        return ulong0 == other.ulong0;
+        return Ulong0 == other.Ulong0;
     }
 
     public override int GetHashCode()
     {
-        return ulong0.GetHashCode();
+        return Ulong0.GetHashCode();
     }
 
     public static bool operator ==(NGram lhs, NGram rhs)
@@ -63,36 +63,40 @@ public readonly struct NGram : IEquatable<NGram>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void ProcessEachSubsequence(NGram ngram,
-        delegate*<ulong, int, int, CMSketch[], ulong, Dictionary<ulong, ulong>, void> action, int currentSketchPos,
-        int bufferSize, CMSketch[] sketchBuffer, ulong minSupport, Dictionary<ulong, ulong> topNMap)
+    public static unsafe ulong ProcessEachSubsequence(NGram ngram,
+        delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>, PriorityQueue<ulong, ulong>,
+            ulong> action, int currentSketchPos,
+        int bufferSize, ulong minSupport, ulong max, int topN, CmSketch[] sketchBuffer,
+        Dictionary<ulong, ulong> topNMap, PriorityQueue<ulong, ulong> topNQueue)
 
     {
-        for (var i = 1; i < MAX_SIZE; i++)
-            if (byteIndexes[i - 1] < ngram.ulong0)
-                action(ngram.ulong0 & bitMasks[i], currentSketchPos, bufferSize, sketchBuffer, minSupport, topNMap);
+        for (var i = 1; i < MaxSize; i++)
+            if (byteIndexes[i - 1] < ngram.Ulong0)
+                max = action(ngram.Ulong0 & bitMasks[i], currentSketchPos, bufferSize, minSupport, max, topN,
+                    sketchBuffer, topNMap, topNQueue);
+        return max;
     }
 
     public NGram ShiftAdd(Instruction instruction)
     {
-        return new NGram(ShiftAdd(ulong0, instruction));
+        return new NGram(ShiftAdd(Ulong0, instruction));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ShiftAdd(ulong ngram, Instruction instruction)
     {
-        if (instruction == (byte)RESET) return 0;
+        if (instruction == (byte)Reset) return 0;
         return (ngram << 8) | (byte)instruction;
     }
 
     public static byte[] ToBytes(ulong ngram)
     {
-        var instructions = new byte[MAX_SIZE];
+        var instructions = new byte[MaxSize];
         var i = 0;
         for (i = 0; i < instructions.Length; i++)
         {
             instructions[instructions.Length - 1 - i] = (byte)((ngram & byteIndexes[i]) >> (i * 8));
-            if (instructions[instructions.Length - 1 - i] == (byte)RESET) break;
+            if (instructions[instructions.Length - 1 - i] == (byte)Reset) break;
         }
 
         return instructions[(instructions.Length - i)..instructions.Length];
@@ -100,12 +104,12 @@ public readonly struct NGram : IEquatable<NGram>
 
     public byte[] ToBytes()
     {
-        return ToBytes(ulong0);
+        return ToBytes(Ulong0);
     }
 
     public string[] ToArray()
     {
-        return ToBytes(ulong0).Select(i => ((Instruction)i).ToString()).ToArray();
+        return ToBytes(Ulong0).Select(i => ((Instruction)i).ToString()).ToArray();
     }
 
     public static Instruction[] ToInstructions(ulong ngram)
@@ -115,7 +119,7 @@ public readonly struct NGram : IEquatable<NGram>
 
     public Instruction[] ToInstructions()
     {
-        return ToInstructions(ulong0);
+        return ToInstructions(Ulong0);
     }
 
     public static string ToString(ulong ngram)
@@ -132,26 +136,26 @@ public readonly struct NGram : IEquatable<NGram>
 
     public override string ToString()
     {
-        return ToString(ulong0);
+        return ToString(Ulong0);
     }
 
     private static ulong FromInstructions(Instruction[] instructions)
     {
-        if (instructions.Length > MAX_SIZE)
+        if (instructions.Length > MaxSize)
             throw new ArgumentException(
-                $"Instructions length {instructions.Length} given exceeds max length of {MAX_SIZE}");
+                $"Instructions length {instructions.Length} given exceeds max length of {MaxSize}");
 
-        ulong _ngram = 0;
-        foreach (var instruction in instructions) _ngram = ShiftAdd(_ngram, instruction);
+        ulong ngram = 0;
+        foreach (var instruction in instructions) ngram = ShiftAdd(ngram, instruction);
 
-        return _ngram;
+        return ngram;
     }
 
 
     public IEnumerable<NGram> GetSubsequences()
     {
-        for (var i = 1; i < MAX_SIZE; i++)
-            if (byteIndexes[i - 1] < ulong0)
-                yield return new NGram(ulong0 & bitMasks[i]);
+        for (var i = 1; i < MaxSize; i++)
+            if (byteIndexes[i - 1] < Ulong0)
+                yield return new NGram(Ulong0 & bitMasks[i]);
     }
 }

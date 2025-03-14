@@ -83,5 +83,5 @@ public interface IPatternAnalyzerConfig : IConfig
 
     StatsAnalyzerConfig GetStatsAnalyzerConfig();
 
-    CMSketchConfig GetSketchConfig();
+    CmSketchConfig GetSketchConfig();
 }

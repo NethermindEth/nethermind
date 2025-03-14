@@ -34,20 +34,20 @@ public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
             {
                 writer.WritePropertyName("stats"u8);
                 writer.WriteStartArray();
-                foreach (var OpCodePattern in value.Entries)
+                foreach (var opCodePattern in value.Entries)
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("pattern"u8);
-                    writer.WriteStringValue(OpCodePattern.Pattern);
+                    writer.WriteStringValue(opCodePattern.Pattern);
 
                     writer.WritePropertyName("bytes"u8);
                     writer.WriteStartArray();
-                    foreach (var opCode in OpCodePattern.Bytes)
+                    foreach (var opCode in opCodePattern.Bytes)
                         writer.WriteNumberValue(opCode);
                     writer.WriteEndArray();
 
                     writer.WritePropertyName("count"u8);
-                    JsonSerializer.Serialize(writer, OpCodePattern.Count, options);
+                    JsonSerializer.Serialize(writer, opCodePattern.Count, options);
                     writer.WriteEndObject();
                 }
 

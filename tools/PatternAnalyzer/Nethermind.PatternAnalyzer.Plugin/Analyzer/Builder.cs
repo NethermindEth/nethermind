@@ -3,7 +3,7 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 public abstract class Builder
 {
     public abstract StatsAnalyzer Build();
-    public abstract Builder SetSketch(CMSketch sketch);
+    public abstract Builder SetSketch(CmSketch sketch);
     public abstract Builder SetTopN(int topN);
     public abstract Builder SetMinSupport(ulong support);
     public abstract Builder SetCapacity(int capacity);
@@ -16,7 +16,7 @@ public class StatsAnalyzerBuilder : Builder
     private int? _bufferSizeForSketches;
     private int? _capacity;
     private ulong? _minSupport;
-    private CMSketch? _sketch;
+    private CmSketch? _sketch;
     private double? _sketchResetOrReuseThreshold;
     private int? _topN;
 
@@ -71,7 +71,7 @@ public class StatsAnalyzerBuilder : Builder
         return this;
     }
 
-    public override Builder SetSketch(CMSketch sketch)
+    public override Builder SetSketch(CmSketch sketch)
     {
         _sketch = sketch;
         return this;

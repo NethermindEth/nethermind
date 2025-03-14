@@ -33,20 +33,20 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
     {
         base.Setup();
         _fileSystem = new MockFileSystem();
-        ILogManager _logManager = LimboLogs.Instance;
+        ILogManager logManager = LimboLogs.Instance;
         var mockFileData = new MockFileData("File content");
         _testFileName = _fileSystem.Path.Combine(".", "test_opcode_stats.json");
         _testIgnoreFileName = _fileSystem.Path.Combine(".", "test_opcode_stats_ignore.json");
         _fileSystem.AddDirectory(_fileSystem.Path.GetTempPath());
         _fileSystem.AddFile(_testFileName, mockFileData);
         _fileSystem.AddFile(_testIgnoreFileName, mockFileData);
-        _logger = _logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger();
 
-        var sketch = new CMSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _statsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
-        var sketch2 = new CMSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _statsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
 

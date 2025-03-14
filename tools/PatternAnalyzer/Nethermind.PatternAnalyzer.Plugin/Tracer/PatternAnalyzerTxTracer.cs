@@ -35,7 +35,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
 
     public void AddTxEndMarker()
     {
-        _queue?.Enqueue(NGram.RESET);
+        _queue?.Enqueue(NGram.Reset);
     }
 
     private void DisposeQueue()
@@ -61,9 +61,9 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         {
             var entry = new PatternAnalyzerTraceEntry
             {
-                Pattern = stat.ngram.ToString(),
-                Bytes = stat.ngram.ToBytes(),
-                Count = stat.count
+                Pattern = stat.Ngram.ToString(),
+                Bytes = stat.Ngram.ToBytes(),
+                Count = stat.Count
             };
             trace.Entries.Add(entry);
         }

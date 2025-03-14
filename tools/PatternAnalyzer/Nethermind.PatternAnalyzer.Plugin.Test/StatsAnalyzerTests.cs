@@ -11,11 +11,11 @@ public class StatsAnalyzerTests
     [SetUp]
     public void SetUp()
     {
-        var sketch = new CMSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _statsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
-        var sketch2 = new CMSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _statsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
             .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
@@ -194,15 +194,15 @@ public class StatsAnalyzerTests
         foreach ((Instruction[] instructions, int count) expected in expectedNGrams)
         {
             var ngram = new NGram(expected.instructions);
-            counts[ngram.ulong0] = (ulong)expected.count;
+            counts[ngram.Ulong0] = (ulong)expected.count;
         }
 
         _statsAnalyzer.Add(executionOpCodes);
 
         foreach (var stat in _statsAnalyzer.Stats)
         {
-            var ulong0 = stat.ngram.ulong0;
-            Assert.That(counts[ulong0] == stat.count);
+            var ulong0 = stat.Ngram.Ulong0;
+            Assert.That(counts[ulong0] == stat.Count);
             counts.Remove(ulong0);
         }
 

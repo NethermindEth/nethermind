@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Evm;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 using NUnit.Framework;
@@ -173,28 +174,41 @@ public class NGramTests
         }
     }
 
+    [Test]
+    [TestCaseSource(nameof(SubsequenceTestCases))]
+    public unsafe void validate_ngram_subsequece_processing(Instruction[] testcase,
+        Instruction[][] expectedSubsequences)
+    {
+        var sketchBuffer = new CmSketch[1];
+        var topNMap = new Dictionary<ulong, ulong>();
+        var topNQueue = new PriorityQueue<ulong, ulong>();
+        var ngram = new NGram(testcase);
 
-    //    public void validate_ngrams_process_instructions(Instruction[] executionOpCodes, (Instruction[] ngram, int count)[] expectedNGrams)
-    //    {
-    //        Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
-    //        Action<ulong> CountNGrams = (ulong ngram) =>
-    //                                               {
-    //                                                   counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts, ngram, out bool _);
-    //                                               };
-    //        NGram Ngram = new NGram();
-    //        Ngram = NGram.ProcessInstructions(executionOpCodes, Ngram, CountNGrams);
+        static ulong CollectSubsequence(ulong subNgram, int currentSketchPos, int bufferSize,
+            ulong minSupport, ulong max, int topN, CmSketch[] sketchBuffer, Dictionary<ulong, ulong> topNMap,
+            PriorityQueue<ulong, ulong> topNQueue)
+        {
+            topNMap[subNgram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(topNMap, subNgram, out _);
+            return 0;
+        }
 
-    //        foreach ((Instruction[] ngram, int expectedCount) expected in expectedNGrams)
-    //        {
+        delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>, PriorityQueue<ulong, ulong>,
+            ulong> action = &CollectSubsequence;
 
-    //            NGram currentNGram = new NGram(expected.ngram);
-    //            Assert.That(counts.ContainsKey(currentNGram.ulong0),
-    //                    $"{currentNGram.ToString()} not present in testCase ");
-    //            Assert.That(counts[currentNGram.ulong0] == (ulong)expected.expectedCount,
-    //                                           $"Counts mismatch for {currentNGram.ToString()} expected {expected.expectedCount} found {counts[currentNGram.ulong0]}");
-    //        }
+        ulong minSupport = 0;
+        NGram.ProcessEachSubsequence(ngram, action, 0, 0, minSupport, 0, 0, sketchBuffer, topNMap, topNQueue);
 
-    //    }
+        Assert.That(expectedSubsequences.Length == topNMap.Count,
+            $"Expected: {expectedSubsequences.Length}, Found: {topNMap.Count}");
+
+        foreach (var expectedArray in expectedSubsequences)
+        {
+            var expectedNGram = new NGram(expectedArray);
+            var expectedHash = expectedNGram.Ulong0;
+            Assert.That(topNMap.ContainsKey(expectedHash),
+                $"Expected NGram {expectedNGram.ToString()} was not processed.");
+        }
+    }
 
 
     [Test]
@@ -203,9 +217,9 @@ public class NGramTests
         var ngrams = new NGram();
         ngrams = ngrams.ShiftAdd(Instruction.PUSH1);
         ngrams = ngrams.ShiftAdd(Instruction.PUSH1);
-        Assert.That(ngrams.ulong0 != NGram.NULL);
-        ngrams = ngrams.ShiftAdd(NGram.RESET);
-        Assert.That(ngrams.ulong0 == NGram.NULL,
-            $"Failed Reset Test found value {ngrams.ulong0} expected {NGram.NULL}");
+        Assert.That(ngrams.Ulong0 != NGram.Null);
+        ngrams = ngrams.ShiftAdd(NGram.Reset);
+        Assert.That(ngrams.Ulong0 == NGram.Null,
+            $"Failed Reset Test found value {ngrams.Ulong0} expected {NGram.Null}");
     }
 }

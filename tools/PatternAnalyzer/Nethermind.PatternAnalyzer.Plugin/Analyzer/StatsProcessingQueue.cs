@@ -9,7 +9,7 @@ public sealed class StatsProcessingQueue(
     CancellationToken ct)
     : IDisposable
 {
-    private bool disposed;
+    private bool _disposed;
 
     public void Dispose()
     {
@@ -24,14 +24,14 @@ public sealed class StatsProcessingQueue(
 
     private void Dispose(bool disposing)
     {
-        if (disposed) return;
+        if (_disposed) return;
         if (disposing && !ct.IsCancellationRequested)
         {
             statsAnalyzer.Add(buffer);
             buffer.Reset();
         }
 
-        disposed = true;
+        _disposed = true;
     }
 
     ~StatsProcessingQueue()
