@@ -18,12 +18,16 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
     private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly IBlockchainBridge _blockchainBridge;
+    private readonly ulong _secondsPerSlot;
     protected readonly IBlockValidator _blockValidator;
     protected readonly IRewardCalculatorSource _rewardCalculatorSource;
     protected readonly IReceiptStorage _receiptStorage;
@@ -44,6 +48,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge,
+        ulong secondsPerSlot,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculatorSource rewardCalculator,
@@ -60,6 +66,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        _secondsPerSlot = secondsPerSlot;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
         _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
@@ -106,7 +114,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _syncModeSelector,
             _badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
     }
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
