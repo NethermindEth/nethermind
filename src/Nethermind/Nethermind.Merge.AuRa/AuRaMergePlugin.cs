@@ -42,7 +42,6 @@ namespace Nethermind.Merge.AuRa
             {
                 await base.Init(nethermindApi);
                 _auraApi = (AuRaNethermindApi)nethermindApi;
-                _auraApi.PoSSwitcher = _poSSwitcher;
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>

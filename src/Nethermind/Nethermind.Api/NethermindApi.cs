@@ -167,6 +167,7 @@ namespace Nethermind.Api
         public string SealEngineType => ChainSpec.SealEngineType;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         private ISealEngine? _sealEngine;
+
         public ISealEngine SealEngine
         {
             get
@@ -183,16 +184,14 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
+        public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
-        public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
-        public ISyncPointers? SyncPointers => ApiWithNetworkServiceContainer?.Resolve<ISyncPointers>();
-        public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
-        public IPivot? Pivot { get; set; }
-        public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
-        public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
-        public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
+        public ISyncProgressResolver? SyncProgressResolver => Context.Resolve<ISyncProgressResolver>();
+        public ISyncPointers? SyncPointers => Context.Resolve<ISyncPointers>();
+        public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
+        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => Context.Resolve<IPeerDifficultyRefreshPool>();
+        public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();
+        public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
         public INodeStorage? MainNodeStorage { get; set; }
@@ -223,7 +222,6 @@ namespace Nethermind.Api
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
-        public IAdminEraService AdminEraService { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
@@ -243,7 +241,6 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-
-        public IContainer? ApiWithNetworkServiceContainer { get; set; }
+        public ILifetimeScope Context { get; set; } = null!;
     }
 }

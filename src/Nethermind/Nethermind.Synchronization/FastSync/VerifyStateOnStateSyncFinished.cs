@@ -6,17 +6,22 @@ using Nethermind.State;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class VerifyStateOnStateSyncFinished(IVerifyTrieStarter verifyTrieStarter, ITreeSync treeSync) : IStartable
+public class VerifyStateOnStateSyncFinished
 {
-    public void Start()
+    private readonly IVerifyTrieStarter _verifyTrieStarter;
+    private readonly ITreeSync _treeSync;
+
+    public VerifyStateOnStateSyncFinished(IVerifyTrieStarter verifyTrieStarter, ITreeSync treeSync)
     {
-        treeSync.SyncCompleted += TreeSyncOnOnVerifyPostSyncCleanup;
+        _verifyTrieStarter = verifyTrieStarter;
+        _treeSync = treeSync;
+        _treeSync.SyncCompleted += TreeSyncOnOnVerifyPostSyncCleanup;
     }
 
     private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.SyncCompletedEventArgs evt)
     {
-        treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
+        _treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
 
-        verifyTrieStarter.TryStartVerifyTrie(evt.Pivot);
+        _verifyTrieStarter.TryStartVerifyTrie(evt.Pivot);
     }
 }
