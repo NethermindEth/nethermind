@@ -152,19 +152,18 @@ namespace Nethermind.Db.Test
         public void Can_get_all_ordered()
         {
             MemDb memDb = new();
-            
+
             memDb.Set(TestItem.KeccakE, _sampleValue);
             memDb.Set(TestItem.KeccakC, _sampleValue);
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Set(TestItem.KeccakD, _sampleValue);
-            
+
             var orderedItems = memDb.GetAll(true);
-            
+
             orderedItems.Should().HaveCount(5);
-            
+
             byte[][] keys = [.. orderedItems.Select(kvp => kvp.Key)];
-            
             for (int i = 0; i < keys.Length - 1; i++)
             {
                 Bytes.BytesComparer.Compare(keys[i], keys[i + 1]).Should().BeLessThan(0,
