@@ -16,7 +16,8 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees)
     {
         return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime);
     }
