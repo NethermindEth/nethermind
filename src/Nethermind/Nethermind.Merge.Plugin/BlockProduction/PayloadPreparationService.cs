@@ -112,16 +112,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         long startTimestamp = Stopwatch.GetTimestamp();
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
         blockImprovementContext.ImprovementTask.ContinueWith((b) =>
-        {
-            if (b.IsCompletedSuccessfully)
-            {
-                Block? block = b.Result;
-                if (!ReferenceEquals(block, currentBestBlock))
-                {
-                    LogProductionResult(b, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
-                }
-            }
-        });
+            LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp)));
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             // if after delay we still have time to try producing the block in this slot
@@ -180,30 +171,30 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     }
 
-    private Block? LogProductionResult(Task<Block?> t, UInt256 blockFees, TimeSpan time)
+    private Block? LogProductionResult(Task<Block?> t, Block currentBestBlock, UInt256 blockFees, TimeSpan time)
     {
         const long weiToEth = 1_000_000_000_000_000_000;
 
         if (t.IsCompletedSuccessfully)
         {
             Block? block = t.Result;
-            if (block is not null)
+            if (block is not null && !ReferenceEquals(block, currentBestBlock))
             {
                 BlockImproved?.Invoke(this, new BlockEventArgs(block));
                 _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,7:N2} ms");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info(" Block improvement attempt did not produce a better block");
+                if (_logger.IsDebug) _logger.Debug(" Block improvement attempt did not produce a better block");
             }
         }
         else if (t.IsFaulted)
         {
-            if (_logger.IsError) _logger.Error(" Block improvement failed", t.Exception);
+            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Block improvement failed", t.Exception);
         }
         else if (t.IsCanceled)
         {
-            if (_logger.IsInfo) _logger.Info(" Block improvement was canceled");
+            if (_logger.IsDebug) _logger.Debug("Block improvement was canceled");
         }
 
         return t.Result;
