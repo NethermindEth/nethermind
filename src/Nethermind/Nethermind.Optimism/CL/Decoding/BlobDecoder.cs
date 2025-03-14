@@ -7,15 +7,21 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public class BlobDecoder
 {
-    static public byte[] DecodeBlob(byte[] blob)
+    public const int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
+    public const int BlobSize = 4096 * 32;
+    private const int EncodingVersion = 0;
+
+    public static byte[] DecodeBlob(byte[] blob)
     {
-        int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
-        int BlobSize = 4096 * 32;
-        int length = ((int)blob[2] << 16) | ((int)blob[3] << 8) |
-                     ((int)blob[4]);
+        if (blob[1] != EncodingVersion)
+        {
+            throw new FormatException($"Expected version {EncodingVersion}, got {blob[1]}");
+        }
+
+        int length = ((int)blob[2] << 16) | ((int)blob[3] << 8) | ((int)blob[4]);
         if (length > MaxBlobDataSize)
         {
-            throw new Exception("Blob size is too big");
+            throw new FormatException("Blob size is too big");
         }
 
         byte[] output = new byte[MaxBlobDataSize];
@@ -40,8 +46,7 @@ public class BlobDecoder
         {
             for (int j = 0; j < 4; j++)
             {
-                (encodedByte[j], outputPos, blobPos) =
-                    DecodeFieldElement(blob, outputPos, blobPos, output);
+                (encodedByte[j], outputPos, blobPos) = DecodeFieldElement(blob, outputPos, blobPos, output);
             }
 
             outputPos = ReassembleBytes(outputPos, encodedByte, output);
@@ -67,11 +72,11 @@ public class BlobDecoder
         return output;
     }
 
-    static private (byte, int, int) DecodeFieldElement(byte[] blob, int outPos, int blobPos, byte[] output) {
+    private static (byte, int, int) DecodeFieldElement(byte[] blob, int outPos, int blobPos, byte[] output) {
         // two highest order bits of the first byte of each field element should always be 0
         if ((blob[blobPos] & 0b1100_0000) != 0) {
             // TODO: remove exception
-            throw new Exception("Invalid field element");
+            throw new FormatException("Invalid field element");
         }
 
         for (int i = 0; i < 31; i++)

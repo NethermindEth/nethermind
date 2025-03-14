@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -50,5 +51,42 @@ public class BlobDecoderTests
 
         var decoded = BlobDecoder.DecodeBlob(hexEncoded);
         decoded.Should().BeEquivalentTo(expected);
+    }
+
+    private static IEnumerable<TestCaseData> InvalidEncodedBlobs()
+    {
+        byte[] ValidEncodedBlob()
+        {
+            var hexBlob = "0x2c000000277468697320697320612074657374206f6620696e76616c69642062106f62206465636f64696e67" + new string('0', 262056);
+            return Bytes.FromHexString(hexBlob);
+        }
+
+        {
+            var bytes = ValidEncodedBlob();
+            bytes[32] = 0b10000000;
+            yield return new TestCaseData(bytes).SetName("Highest order bit set");
+        }
+        {
+            var bytes = ValidEncodedBlob();
+            bytes[32] = 0b010000000;
+            yield return new TestCaseData(bytes).SetName("Second highest order bit set");
+        }
+        {
+            var bytes = ValidEncodedBlob();
+            bytes[1] = 0x01;
+            yield return new TestCaseData(bytes).SetName("Invalid encoding version");
+        }
+        {
+            var bytes = ValidEncodedBlob();
+            bytes[2] = 0xFF;
+            yield return new TestCaseData(bytes).SetName("Too long length prefix");
+        }
+    }
+
+    [TestCaseSource(nameof(InvalidEncodedBlobs))]
+    public void DecodeBlob_InvalidEncodedBlob(byte[] encoded)
+    {
+        var tryDecode = () => BlobDecoder.DecodeBlob(encoded);
+        tryDecode.Should().Throw<FormatException>();
     }
 }
