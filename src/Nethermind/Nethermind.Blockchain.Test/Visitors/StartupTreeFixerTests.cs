@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -108,20 +109,15 @@ public class StartupTreeFixerTests
         newBlockchainProcessor.Start();
         testRpc.BlockchainProcessor = newBlockchainProcessor;
 
+        Task waitTask = suggestedBlocksAmount != 0
+            ? testRpc.WaitForNewHeadWhere(b => b.Number == startingBlockNumber + suggestedBlocksAmount)
+            : Task.CompletedTask;
         // fixing after restart
         StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
+        await tree.Accept(fixer, CancellationToken.None);
 
         // waiting for N new heads
-        Task waitHeadTask = Task.Run(async () =>
-        {
-            for (int i = 0; i < suggestedBlocksAmount; ++i)
-            {
-                await testRpc.WaitForNewHead();
-            }
-        });
-
-        await tree.Accept(fixer, CancellationToken.None);
-        await waitHeadTask;
+        await waitTask;
 
         // add a new block at the end
         await testRpc.AddBlock();

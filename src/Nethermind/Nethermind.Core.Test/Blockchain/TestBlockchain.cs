@@ -22,6 +22,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -382,6 +383,15 @@ public class TestBlockchain : IDisposable
     public async Task WaitForNewHead()
     {
         await BlockTree.WaitForNewBlock(_cts.Token);
+    }
+
+    public Task WaitForNewHeadWhere(Func<Block, bool> predicate)
+    {
+        return Wait.ForEventCondition<BlockReplacementEventArgs>(
+            _cts.Token,
+            (h) => BlockTree.BlockAddedToMain += h,
+            (h) => BlockTree.BlockAddedToMain -= h,
+            (e) => predicate(e.Block));
     }
 
     public async Task AddBlock(params Transaction[] transactions)
