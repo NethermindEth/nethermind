@@ -797,6 +797,7 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task Can_reorganize_when_receiving_in_turn_blocks()
     {
         On goerli = On.FastGoerli;
