@@ -17,6 +17,7 @@ namespace Nethermind.JsonRpc.Modules.RBuilder;
 public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldStateManager worldStateManager)
     : IRbuilderRpcModule
 {
+
     private readonly ObjectPool<IOverridableWorldScope> _overridableWorldScopePool = new DefaultObjectPool<IOverridableWorldScope>(new PooledIWorldStatePolicy(worldStateManager));
 
     public ResultWrapper<byte[]> rbuilder_getCodeByHash(Hash256 hash)
@@ -100,10 +101,10 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 {
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
-                        byte[] bytes = changedSlot.Value.ToBigEndian();
+                        ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian();
                         bool newIsZero = bytes.IsZero();
-                        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : [0];
-                        worldState.Set(new StorageCell(address, changedSlot.Key), bytes);
+                        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : Bytes.ZeroByteSpan;
+                        worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
                     }
                 }
             }
@@ -124,7 +125,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<AccountState>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
         if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,

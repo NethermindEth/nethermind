@@ -27,7 +27,7 @@ public class Hash256Converter : JsonConverter<Hash256>
         ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
     }
 
-    // Confusingly these two method is needed only in test
+    // Methods needed to ser/de dictionary keys
     public override Hash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         byte[]? bytes = ByteArrayConverter.Convert(ref reader);
