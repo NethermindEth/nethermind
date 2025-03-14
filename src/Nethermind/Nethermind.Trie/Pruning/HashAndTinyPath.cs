@@ -10,17 +10,12 @@ namespace Nethermind.Trie.Pruning;
 [StructLayout(LayoutKind.Auto)]
 internal readonly struct HashAndTinyPath : IEquatable<HashAndTinyPath>
 {
-    public readonly ValueHash256 addr;
+    public readonly Hash256? addr;
     public readonly TinyTreePath path;
 
     public HashAndTinyPath(Hash256? hash, in TinyTreePath path)
     {
         addr = hash ?? default;
-        this.path = path;
-    }
-    public HashAndTinyPath(in ValueHash256 hash, in TinyTreePath path)
-    {
-        addr = hash;
         this.path = path;
     }
 
