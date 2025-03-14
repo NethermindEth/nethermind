@@ -759,7 +759,7 @@ namespace Nethermind.Blockchain
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}");
-                    DeleteBlock(number, hash, null, batch);
+                    DeleteBlock(number, hash, null, batch, null, true);
                     deletedBlocks++;
                 }
             }
@@ -770,7 +770,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null)
+        private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
         {
             currentLevel ??= LoadLevel(currentNumber);
 
@@ -791,7 +791,8 @@ namespace Nethermind.Blockchain
 
             if (shouldRemoveLevel)
             {
-                BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
+                // only need to update BestKnownNumber if we are deleting most recent block level
+                if (!isOldBlock) BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
                 _chainLevelInfoRepository.Delete(currentNumber, batch);
             }
             else if (currentLevel is not null)
