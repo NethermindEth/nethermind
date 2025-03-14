@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -103,10 +104,10 @@ namespace Nethermind.Init.Steps
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(new(
                         _api.WorldStateManager!,
-                        _api.BlockTree!,
+                        _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider,
-                        _api.LogManager,
-                        mainWorldState),
+                        _api.LogManager),
+                    mainWorldState,
                     _api.SpecProvider!,
                     blocksConfig,
                     _api.LogManager,

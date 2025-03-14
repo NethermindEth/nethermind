@@ -90,6 +90,7 @@
     "transactionPermissionContract": "0x7Dd7032AA75A37ea0b150f57F899119C7379A78b",
     "transactionPermissionContractTransition": 9186425,
     "terminalTotalDifficulty": "8626000000000000000000058750000000000000000000",
+    "depositContractAddress": "0x0B98057eA310F4d31F2a452B414647007d1645d9",
     "blobSchedule": {
       "cancun": {
         "target": 1,
