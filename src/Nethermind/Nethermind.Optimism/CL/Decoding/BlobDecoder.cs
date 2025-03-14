@@ -7,7 +7,8 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public static class BlobDecoder
 {
-    private const int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
+    public const int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
+
     private const int BlobSize = 4096 * 32;
     private const int EncodingVersion = 0;
 
@@ -15,12 +16,12 @@ public static class BlobDecoder
     {
         // TODO: This should be safe but we might want to use `Pools` instead
         Span<byte> buffer = stackalloc byte[MaxBlobDataSize];
-        DecodeBlob(blob, buffer, out var length);
+        int length = DecodeBlob(blob, buffer);
         // TODO: Can we avoid copying at all? Can we reduce the length of an array without copying?
         return buffer[..length].ToArray();
     }
 
-    private static void DecodeBlob(ReadOnlySpan<byte> blob, Span<byte> output, out int length)
+    public static int DecodeBlob(ReadOnlySpan<byte> blob, Span<byte> output)
     {
         if (output.Length < MaxBlobDataSize)
         {
@@ -32,7 +33,7 @@ public static class BlobDecoder
             throw new FormatException($"Expected version {EncodingVersion}, got {blob[1]}");
         }
 
-        length = (blob[2] << 16) | (blob[3] << 8) | blob[4];
+        int length = (blob[2] << 16) | (blob[3] << 8) | blob[4];
         if (length > MaxBlobDataSize)
         {
             throw new FormatException("Blob size is too big");
@@ -80,6 +81,8 @@ public static class BlobDecoder
                 throw new FormatException("Blob excess data");
             }
         }
+
+        return length;
     }
 
     private static (byte, int, int) DecodeFieldElement(ReadOnlySpan<byte> blob, int outPos, int blobPos, Span<byte> output) {
