@@ -26,4 +26,24 @@ public static class MemoryExtensions
 
         return memory.Span.ToArray();
     }
+
+    public static Memory<T> TakeAndMove<T>(this ref Memory<T> memory, int length)
+    {
+
+        var m = memory.Slice(0, length);
+        memory = m;
+        return m;
+    }
+
+    public static ReadOnlyMemory<T> TakeAndMove<T>(this ref ReadOnlyMemory<T> memory, int length)
+    {
+        var m = memory.Slice(0, length);
+        memory = m;
+        return m;
+    }
+
+    public static void Clear<T>(this ref Memory<T> memory)
+    {
+        memory.Span.Clear();
+    }
 }
