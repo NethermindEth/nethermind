@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -95,5 +96,21 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     public void Cache(Block block)
     {
         _blockCache.Set(block.Hash, block);
+    }
+
+    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
+    {
+        var blocks = blockDb.GetAll(true);
+        foreach ((byte[] _, byte[]? value) in blocks)
+        {
+            Block block = _blockDecoder.Decode(value.AsRlpStream());
+            if (block.Timestamp >= timestamp)
+            {
+                // exit early since the blocks are ordered by number
+                break;
+            }
+
+            yield return (block.Number, block.Hash);
+        }
     }
 }
