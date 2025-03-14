@@ -63,7 +63,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
-            
+
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
 
             IStateReader stateReader = setApi.StateReader!;
