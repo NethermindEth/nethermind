@@ -180,7 +180,6 @@ public class PayloadPreparationService : IPayloadPreparationService
             Block? block = t.Result;
             if (block is not null && !ReferenceEquals(block, currentBestBlock))
             {
-                BlockImproved?.Invoke(this, new BlockEventArgs(block));
                 _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,7:N2} ms");
             }
             else
@@ -218,6 +217,4 @@ public class PayloadPreparationService : IPayloadPreparationService
 
         return null;
     }
-
-    public event EventHandler<BlockEventArgs>? BlockImproved;
 }
