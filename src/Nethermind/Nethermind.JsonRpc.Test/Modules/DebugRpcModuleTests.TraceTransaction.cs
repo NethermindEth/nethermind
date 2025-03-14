@@ -111,7 +111,7 @@ public partial class DebugRpcModuleTests
     private static IEnumerable<TestCaseData> TraceTransactionTransferSource()
     {
         var transferTransaction = (TestRpcBlockchain b) => Build.A.Transaction
-            .WithNonce(b.State.GetNonce(TestItem.AddressA))
+            .WithNonce(b.ReadOnlyState.GetNonce(TestItem.AddressA))
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
@@ -193,7 +193,7 @@ public partial class DebugRpcModuleTests
             .Done;
 
         var contractTransaction = (TestRpcBlockchain b) => Build.A.Transaction
-            .WithNonce(b.State.GetNonce(TestItem.AddressA))
+            .WithNonce(b.ReadOnlyState.GetNonce(TestItem.AddressA))
             .WithCode(code)
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)

@@ -128,7 +128,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
         current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
         current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.Author = null;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)

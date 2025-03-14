@@ -95,6 +95,7 @@ namespace Nethermind.Api
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
+        [SkipServiceCollection]
         IAdminEraService AdminEraService { get; set; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)

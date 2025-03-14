@@ -716,7 +716,7 @@ public partial class EngineModuleTests
         Block? head = chain.BlockTree.Head!;
 
         // make sure AddressA has enough balance to send tx
-        chain.State.GetBalance(TestItem.AddressA).Should().BeGreaterThan(UInt256.One);
+        chain.ReadOnlyState.GetBalance(TestItem.AddressA).Should().BeGreaterThan(UInt256.One);
 
         // block is an invalid block, but it is impossible to detect until we process it.
         // it is invalid because after you processs its transactions, the root of the state trie
@@ -953,7 +953,7 @@ public partial class EngineModuleTests
             result.Data.PayloadId.Should().Be(null);
             testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
             testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
-            testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
+            testChain.WorldStateManager.GlobalWorldState.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
         }
 
         async Task CanReorganizeToLastBlock(MergeTestBlockchain testChain,
@@ -985,7 +985,7 @@ public partial class EngineModuleTests
             result.Data.PayloadId.Should().Be(null);
             testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
             testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
-            testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
+            testChain.WorldStateManager.GlobalWorldState.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
         }
 
         IReadOnlyList<ExecutionPayload> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
@@ -1553,21 +1553,15 @@ public partial class EngineModuleTests
         Hash256 safeBlockHash,
         ulong timestamp, Hash256 random, Address feeRecipient, bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        if (waitForBlockImprovement)
-        {
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
-        }
+        Task blockImprovementWait = waitForBlockImprovement
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
         string payloadId = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
-        if (waitForBlockImprovement)
-            await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
         ResultWrapper<ExecutionPayload?> getPayloadResult =
             await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
         return getPayloadResult.Data!;

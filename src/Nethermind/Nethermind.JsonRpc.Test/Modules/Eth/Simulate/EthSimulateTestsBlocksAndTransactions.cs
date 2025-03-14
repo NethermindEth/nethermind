@@ -47,7 +47,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txToFail = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 10_000_000);
         UInt256 nextNonceA = ++nonceA;
         Transaction tx = GetTransferTxData(nextNonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 4_000_000);
@@ -96,7 +96,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB2 = GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
@@ -137,9 +137,9 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         //Test that transfer tx works on mainchain
-        UInt256 before = chain.State.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(true, txMainnetAtoB);
-        UInt256 after = chain.State.GetBalance(TestItem.AddressA);
+        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
+        await chain.AddBlock(txMainnetAtoB);
+        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
@@ -170,7 +170,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
             GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
@@ -221,9 +221,9 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         //Test that transfer tx works on mainchain
-        UInt256 before = chain.State.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(true, txMainnetAtoB);
-        UInt256 after = chain.State.GetBalance(TestItem.AddressA);
+        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
+        await chain.AddBlock(txMainnetAtoB);
+        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);

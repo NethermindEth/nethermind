@@ -68,7 +68,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 
         if (_enablePerMethodMetrics)
         {
-            Metrics.JsonRpcCallLatencyMicros.Observe(new MetricLabel(report.Method, report.Success), elapsedMicroseconds);
+            Metrics.JsonRpcCallLatencyMicros.Observe(elapsedMicroseconds, new MetricLabel(report.Method, report.Success));
         }
 
         BuildReport();

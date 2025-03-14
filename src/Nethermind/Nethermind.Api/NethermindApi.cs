@@ -166,7 +166,7 @@ namespace Nethermind.Api
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
-        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
+        public string SealEngineType => ChainSpec.SealEngineType;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         private ISealEngine? _sealEngine;
         public ISealEngine SealEngine
