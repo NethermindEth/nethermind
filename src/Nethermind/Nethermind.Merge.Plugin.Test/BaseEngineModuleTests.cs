@@ -235,7 +235,11 @@ public partial class BaseEngineModuleTests
 
         public Task WaitForImprovedBlock(Hash256? parentHash = null)
         {
-            return StoringBlockImprovementContextFactory!.WaitForImprovedBlock(_cts.Token, parentHash);
+            if (parentHash == null)
+            {
+                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => true);
+            }
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
         }
 
         public Task WaitForImprovedBlockWithCondition(Func<Block, bool> predicate)

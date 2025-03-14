@@ -59,18 +59,6 @@ public partial class BaseEngineModuleTests
             return t.Result;
         }
 
-        public Task WaitForImprovedBlock(CancellationToken cancellationToken, Hash256? parentHash = null)
-        {
-            return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
-                e => BlockImproved += e,
-                e => BlockImproved -= e,
-                b =>
-                {
-                    if (parentHash is null) return true;
-                    return b.Block.ParentHash == parentHash;
-                });
-        }
-
         public Task WaitForImprovedBlockWithCondition(CancellationToken cancellationToken, Func<Block, bool> cond)
         {
             return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,

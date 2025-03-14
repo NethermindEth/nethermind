@@ -5,8 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -44,7 +42,6 @@ using Nethermind.State.Repositories;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using ZstdSharp.Unsafe;
 
 namespace Nethermind.Core.Test.Blockchain;
 

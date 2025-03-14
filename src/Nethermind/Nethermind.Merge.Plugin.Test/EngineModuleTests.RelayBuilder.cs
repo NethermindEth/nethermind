@@ -50,10 +50,10 @@ public partial class EngineModuleTests
 
         BoostBlockImprovementContextFactory improvementContextFactory = new(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         TimeSpan timePerSlot = TimeSpan.FromSeconds(10);
-        chain.StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(improvementContextFactory);
+        chain.BlockImprovementContextFactory = improvementContextFactory;
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
-            chain.StoringBlockImprovementContextFactory,
+            chain.BlockImprovementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot);
@@ -153,10 +153,10 @@ public partial class EngineModuleTests
         BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
         BoostBlockImprovementContextFactory improvementContextFactory = new(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5000), boostRelay, chain.StateReader);
         TimeSpan timePerSlot = TimeSpan.FromSeconds(1000);
-        chain.StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(improvementContextFactory);
+        chain.BlockImprovementContextFactory = improvementContextFactory;
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
-            chain.StoringBlockImprovementContextFactory,
+            chain.BlockImprovementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot);

@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -417,10 +416,7 @@ public partial class EngineModuleTests
                 return true;
             });
 
-        lock (improvementContextFactory.CreatedContexts)
-        {
-            improvementContextFactory.CreatedContexts.Should().HaveCount(2);
-        }
+        improvementContextFactory.CreatedContexts.Should().HaveCount(2);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
