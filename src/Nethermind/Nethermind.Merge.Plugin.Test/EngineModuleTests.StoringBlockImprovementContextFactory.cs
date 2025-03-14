@@ -32,7 +32,7 @@ public partial class BaseEngineModuleTests
 
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees)
         {
-            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
+            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
             if (_skipDuplicatedContext
                 && CreatedContexts.Count > 0
                 && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)
