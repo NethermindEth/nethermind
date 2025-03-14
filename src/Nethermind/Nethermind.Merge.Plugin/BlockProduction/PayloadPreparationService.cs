@@ -178,7 +178,6 @@ public class PayloadPreparationService : IPayloadPreparationService
         {
             if (t.Result is not null)
             {
-                BlockImproved?.Invoke(this, new BlockEventArgs(t.Result));
                 if (_logger.IsInfo) _logger.Info($"Improved post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
             }
             else
@@ -216,6 +215,4 @@ public class PayloadPreparationService : IPayloadPreparationService
 
         return null;
     }
-
-    public event EventHandler<BlockEventArgs>? BlockImproved;
 }
