@@ -66,9 +66,6 @@ namespace Nethermind.Consensus.Producers
             _logManager = logManager;
             _executionRequestsProcessor = executionRequestsProcessor;
 
-            ILogger logger = _logManager.GetClassLogger<BlockProducerEnvFactory>();
-            if (logger.IsInfo) logger.Info($"Block Gaslimit = {blocksConfig.TargetBlockGasLimit:N0}");
-
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
 
