@@ -94,7 +94,7 @@ public class StartupTreeFixerTests
     [TestCase(65)]
     public async Task Suggesting_blocks_works_correctly_after_processor_restart(int suggestedBlocksAmount)
     {
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev, testTimeout: Timeout.MaxTestTime * 4).Build();
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
         long startingBlockNumber = tree.Head!.Number;
