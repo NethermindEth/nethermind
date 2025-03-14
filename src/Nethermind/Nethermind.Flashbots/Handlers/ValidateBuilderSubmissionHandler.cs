@@ -36,17 +36,15 @@ public class ValidateSubmissionHandler
          | ProcessingOptions.ForceProcessing
          | ProcessingOptions.StoreReceipts;
 
-    private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
-
     private readonly IBlockTree _blockTree;
     private readonly IHeaderValidator _headerValidator;
     private readonly IBlockValidator _blockValidator;
     private readonly ILogger _logger;
-
     private readonly IFlashbotsConfig _flashbotsConfig;
-
-    private readonly ILogManager _logManager;
     private readonly ISpecProvider _specProvider;
+    private readonly IEthereumEcdsa _ethereumEcdsa;
+    private readonly IReadOnlyTxProcessingScope _processingScope;
+    private readonly BlockProcessor _blockProcessor;
 
     public ValidateSubmissionHandler(
         IHeaderValidator headerValidator,
@@ -55,16 +53,36 @@ public class ValidateSubmissionHandler
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
         ILogManager logManager,
         ISpecProvider specProvider,
-        IFlashbotsConfig flashbotsConfig)
+        IFlashbotsConfig flashbotsConfig,
+        IEthereumEcdsa ethereumEcdsa)
     {
-        _headerValidator = headerValidator;
-        _blockValidator = blockValidator;
-        _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
-        _specProvider = specProvider;
-        _logManager = logManager;
         _blockTree = blockTree;
-        _logger = logManager!.GetClassLogger();
+        _blockValidator = blockValidator;
+        _ethereumEcdsa = ethereumEcdsa;
         _flashbotsConfig = flashbotsConfig;
+        _headerValidator = headerValidator;
+        _logger = logManager!.GetClassLogger();
+        _specProvider = specProvider;
+
+        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+        var worldState = _processingScope.WorldState;
+        ITransactionProcessor transactionProcessor = _processingScope.TransactionProcessor;
+        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, worldState, _specProvider, 0, logManager);
+        _blockProcessor = new BlockProcessor(
+            _specProvider,
+            _blockValidator,
+            new Consensus.Rewards.RewardCalculator(_specProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            worldState,
+            NullReceiptStorage.Instance,
+            transactionProcessor,
+            new BeaconBlockRootHandler(transactionProcessor, worldState),
+            new BlockhashStore(_specProvider, worldState),
+            logManager: logManager,
+            withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
+            receiptsRootCalculator: new ReceiptsRootCalculator(),
+            preWarmer: preWarmer
+        );
     }
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
@@ -172,7 +190,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!KzgPolynomialCommitments.AreProofsValid(blobsBundle.Proofs, blobsBundle.Commitments, blobsBundle.Blobs))
+        if (!KzgPolynomialCommitments.AreProofsValid(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs))
         {
             error = "Invalid KZG proofs";
             return false;
@@ -200,20 +218,14 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        using IReadOnlyTxProcessingScope processingScope = _readOnlyTxProcessingEnvFactory.Create().Build(parentHeader.StateRoot!);
-        IWorldState currentState = processingScope.WorldState;
-        ITransactionProcessor transactionProcessor = processingScope.TransactionProcessor;
-
-        UInt256 feeRecipientBalanceBefore = currentState.HasStateForRoot(currentState.StateRoot) ? (currentState.AccountExists(feeRecipient) ? currentState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
-
-        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(_readOnlyTxProcessingEnvFactory, _specProvider, 0, _logManager);
-
-        BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor, _flashbotsConfig.EnablePreWarmer ? preWarmer : null);
-
-        EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
+        using var scope = _processingScope;
+        IWorldState worldState = _processingScope.WorldState;
+        Hash256 stateRoot = parentHeader.StateRoot!;
+        worldState.StateRoot = stateRoot;
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
-        RecoverSenderAddress(block, ecdsa, spec);
+        RecoverSenderAddress(block, spec);
+        UInt256 feeRecipientBalanceBefore = worldState.HasStateForRoot(stateRoot) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -224,7 +236,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            Block processedBlock = blockProcessor.Process(currentState.StateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = _blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
         {
@@ -232,7 +244,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        UInt256 feeRecipientBalanceAfter = currentState.GetBalance(feeRecipient);
+        UInt256 feeRecipientBalanceAfter = worldState.GetBalance(feeRecipient);
 
         UInt256 amtBeforeOrWithdrawn = feeRecipientBalanceBefore;
 
@@ -263,13 +275,13 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private void RecoverSenderAddress(Block block, EthereumEcdsa ecdsa, IReleaseSpec spec)
+    private void RecoverSenderAddress(Block block, IReleaseSpec spec)
     {
         foreach (Transaction tx in block.Transactions)
         {
             if (tx.SenderAddress is null)
             {
-                tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                tx.SenderAddress = _ethereumEcdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
         }
     }
@@ -405,24 +417,5 @@ public class ValidateSubmissionHandler
 
         error = null;
         return true;
-    }
-
-    private BlockProcessor CreateBlockProcessor(IWorldState stateProvider, ITransactionProcessor transactionProcessor, IBlockCachePreWarmer? preWarmer = null)
-    {
-        return new BlockProcessor(
-            _specProvider,
-            _blockValidator,
-            new Consensus.Rewards.RewardCalculator(_specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-            stateProvider,
-            NullReceiptStorage.Instance,
-            transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            new BlockhashStore(_specProvider, stateProvider),
-            logManager: _logManager,
-            withdrawalProcessor: new WithdrawalProcessor(stateProvider, _logManager!),
-            receiptsRootCalculator: new ReceiptsRootCalculator(),
-            preWarmer: preWarmer
-        );
     }
 }
