@@ -79,11 +79,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         {
                             worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
                         }
-
-                        if (worldState.GetBalance(address) != accountChange.Balance.Value)
-                        {
-                            throw new Exception("Balance is not same!? Why?");
-                        }
                     }
                 }
                 else
@@ -93,7 +88,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.CodeHash is not null)
                 {
-                    // Note, this set CodeDb, but since this is a read only world state, it should do nothing.
+                    // Note, this also set CodeDb, but since this is a read only world state, it should do nothing.
                     worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false);
                 }
 
