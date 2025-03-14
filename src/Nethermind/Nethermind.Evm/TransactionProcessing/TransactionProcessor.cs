@@ -687,11 +687,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 statusCode = StatusCode.Success;
             }
-
             gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
                 env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
             goto Complete;
-   
+
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
