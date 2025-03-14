@@ -2028,7 +2028,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCaseSource(nameof(SetCodeReplacedTxCases))]
-        public void SetCode_tx_can_be_replaced_itself_and_remove_pending_delegation_restriction(
+        public void SetCode_tx_can_be_replaced_and_remove_pending_delegation_restriction(
             PrivateKey sponsor, Action<IWorldState, Address, IReleaseSpec> accountSetup, AcceptTxResult lastExpectation)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
@@ -2109,7 +2109,7 @@ namespace Nethermind.TxPool.Test
                 .WithAuthorizationCode(authTuple)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
-                        
+
             //Submit SetCode tx so signer has pending delegation
             AcceptTxResult result = _txPool.SubmitTx(setCodeTx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
