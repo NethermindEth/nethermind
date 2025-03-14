@@ -1154,7 +1154,7 @@ public class BlockTreeTests
                 .WithNumber(i)
                 .WithDifficulty((ulong)i + 1)
                 .WithTimestamp(1000 + (ulong)i);
-            
+
             if (parentBlock != null)
             {
                 blockBuilder.WithParent(parentBlock);
@@ -1177,7 +1177,7 @@ public class BlockTreeTests
             Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should exist before deletion");
             Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
         }
-        
+
         tree.DeleteBlocksBeforeTimestamp(1003, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
