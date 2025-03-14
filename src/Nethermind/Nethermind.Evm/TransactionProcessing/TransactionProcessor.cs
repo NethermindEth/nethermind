@@ -613,91 +613,85 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayValue(tx, spec, opts);
 
-            try
+            if (tx.IsContractCreation)
             {
+                // if transaction is a contract creation then recipient address is the contract deployment address
+                if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                {
+                    goto FailContractCreate;
+                }
+            }
+
+            using (EvmState state = EvmState.RentTopLevel(
+                unspentGas,
+                tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
+                snapshot,
+                env,
+                accessedItems))
+            {
+
+                substate = !tracer.IsTracingActions
+                    ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
+                    : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
+
+                unspentGas = state.GasAvailable;
+
+                if (tracer.IsTracingAccess)
+                {
+                    tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
+                }
+            }
+
+            if (substate.ShouldRevert || substate.IsError)
+            {
+                if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                WorldState.Restore(snapshot);
+            }
+            else
+            {
+                // tks: there is similar code fo contract creation from init and from CREATE
+                // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                 if (tx.IsContractCreation)
                 {
-                    // if transaction is a contract creation then recipient address is the contract deployment address
-                    if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                    long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
+                    if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                     {
                         goto FailContractCreate;
                     }
-                }
 
-                using (EvmState state = EvmState.RentTopLevel(
-                    unspentGas,
-                    tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
-                    snapshot,
-                    env,
-                    accessedItems))
-                {
-
-                    substate = !tracer.IsTracingActions
-                        ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
-                        : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
-
-                    unspentGas = state.GasAvailable;
-
-                    if (tracer.IsTracingAccess)
+                    if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                     {
-                        tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
+                        goto FailContractCreate;
+                    }
+
+                    if (unspentGas >= codeDepositGasCost)
+                    {
+                        var code = substate.Output.ToArray();
+                        _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+
+                        unspentGas -= codeDepositGasCost;
                     }
                 }
 
-                if (substate.ShouldRevert || substate.IsError)
+                foreach (Address toBeDestroyed in substate.DestroyList)
                 {
-                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                    WorldState.Restore(snapshot);
-                }
-                else
-                {
-                    // tks: there is similar code fo contract creation from init and from CREATE
-                    // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
-                    if (tx.IsContractCreation)
-                    {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
-                        {
-                            goto FailContractCreate;
-                        }
+                    if (Logger.IsTrace)
+                        Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
-                        {
-                            goto FailContractCreate;
-                        }
+                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.DeleteAccount(toBeDestroyed);
 
-                        if (unspentGas >= codeDepositGasCost)
-                        {
-                            var code = substate.Output.ToArray();
-                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
-
-                            unspentGas -= codeDepositGasCost;
-                        }
-                    }
-
-                    foreach (Address toBeDestroyed in substate.DestroyList)
-                    {
-                        if (Logger.IsTrace)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                        WorldState.ClearStorage(toBeDestroyed);
-                        WorldState.DeleteAccount(toBeDestroyed);
-
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
-                    }
-
-                    statusCode = StatusCode.Success;
+                    if (tracer.IsTracingRefunds)
+                        tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                 }
 
-                gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
-                    env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
-                goto Complete;
+                statusCode = StatusCode.Success;
             }
-            catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
-            {
-                if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
-            }
+
+            gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
+                env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
+            goto Complete;
+   
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
