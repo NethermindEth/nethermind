@@ -41,8 +41,10 @@ public class EthereumBeaconApi : IBeaconApi
         if (data is null) return null;
         for (int i = 0; i < data.Value.Data.Length; ++i)
         {
-            data.Value.Data[i].BlobVersionedHash = (new byte[]{1}).Concat(SHA256.HashData(data.Value.Data[i].KzgCommitment)[1..]).ToArray();
+            data.Value.Data[i].BlobVersionedHash = (new byte[] { 1 })
+                .Concat(SHA256.HashData(data.Value.Data[i].KzgCommitment)[1..]).ToArray();
         }
+
         return data.Value.Data;
     }
 

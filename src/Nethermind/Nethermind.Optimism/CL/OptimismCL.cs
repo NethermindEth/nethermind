@@ -83,7 +83,6 @@ public class OptimismCL : IDisposable
                 _decodingPipeline.Run(_cancellationTokenSource.Token),
                 _l1Bridge.Run(_cancellationTokenSource.Token),
                 _driver.Run(_cancellationTokenSource.Token)
-                // _p2p.Run(_cancellationTokenSource.Token)
             );
         }
         catch (OperationCanceledException)

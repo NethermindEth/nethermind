@@ -7,7 +7,7 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public class BlobDecoder
 {
-    static public byte[] DecodeBlob(byte[] blob)
+    public static byte[] DecodeBlob(byte[] blob)
     {
         int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
         int BlobSize = 4096 * 32;
@@ -67,9 +67,11 @@ public class BlobDecoder
         return output;
     }
 
-    static private (byte, int, int) DecodeFieldElement(byte[] blob, int outPos, int blobPos, byte[] output) {
+    private static (byte, int, int) DecodeFieldElement(byte[] blob, int outPos, int blobPos, byte[] output)
+    {
         // two highest order bits of the first byte of each field element should always be 0
-        if ((blob[blobPos] & 0b1100_0000) != 0) {
+        if ((blob[blobPos] & 0b1100_0000) != 0)
+        {
             // TODO: remove exception
             throw new Exception("Invalid field element");
         }
