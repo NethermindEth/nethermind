@@ -62,7 +62,7 @@ public class ParityStyleTracerTests
 
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();

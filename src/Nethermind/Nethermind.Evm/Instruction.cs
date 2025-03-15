@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
+
+using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm
 {
@@ -81,6 +85,8 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
+        TLOAD = 0x5c, // EIP-1153
+        TSTORE = 0x5d,
         MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
@@ -157,9 +163,25 @@ namespace Nethermind.Evm
         LOG3 = 0xa3,
         LOG4 = 0xa4,
 
-        // EIP-1153
-        TLOAD = 0x5c,
-        TSTORE = 0x5d,
+        DATALOAD = 0xd0,
+        DATALOADN = 0xd1,
+        DATASIZE = 0xd2,
+        DATACOPY = 0xd3,
+
+        RJUMP = 0xe0,
+        RJUMPI = 0xe1,
+        RJUMPV = 0xe2,
+        CALLF = 0xe3,
+        RETF = 0xe4,
+        JUMPF = 0xe5,
+        DUPN = 0xe6,
+        SWAPN = 0xe7,
+        EXCHANGE = 0xe8, // random value opcode spec has collision
+
+        EOFCREATE = 0xec,
+
+        RETURNCODE = 0xee,
+
 
         CREATE = 0xf0,
         CALL = 0xf1,
@@ -167,19 +189,197 @@ namespace Nethermind.Evm
         RETURN = 0xf3,
         DELEGATECALL = 0xf4,
         CREATE2 = 0xf5,
+        RETURNDATALOAD = 0xf7,
+        // opcode value not spec-ed 
+        EXTCALL = 0xf8,
+        EXTDELEGATECALL = 0xf9, // DelegateCallEnabled
         STATICCALL = 0xfa,
+        EXTSTATICCALL = 0xfb, // StaticCallEnabled
         REVERT = 0xfd,
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
-    }
 
+    }
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
+
+        public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
+            =>
             instruction switch
             {
-                Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
+                Instruction.RJUMPV => IsEofContext ? jumpvCount * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH : 0,
+                >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
+                _ => IsEofContext ? instruction.StackRequirements().immediates.Value : 0
             };
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
+        {
+            Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            Instruction.JUMPF or Instruction.RETURNCODE => true,
+            Instruction.RJUMP => true,
+            // Instruction.SELFDESTRUCT => true
+            _ => false
+        };
+
+        public static bool IsValid(this Instruction instruction, bool IsEofContext)
+        {
+            if (!Enum.IsDefined(instruction))
+            {
+                return false;
+            }
+
+            return instruction switch
+            {
+                Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
+                Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
+                Instruction.RETURNCODE or Instruction.EOFCREATE => IsEofContext,
+                Instruction.DATACOPY or Instruction.DATASIZE or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
+                Instruction.EXTSTATICCALL or Instruction.EXTDELEGATECALL or Instruction.EXTCALL => IsEofContext,
+                Instruction.RETURNDATALOAD => IsEofContext,
+                Instruction.CALL => !IsEofContext,
+                Instruction.CALLCODE => !IsEofContext,
+                Instruction.DELEGATECALL => !IsEofContext,
+                Instruction.STATICCALL => !IsEofContext,
+                Instruction.SELFDESTRUCT => !IsEofContext,
+                Instruction.JUMP => !IsEofContext,
+                Instruction.JUMPI => !IsEofContext,
+                Instruction.PC => !IsEofContext,
+                Instruction.CREATE2 or Instruction.CREATE => !IsEofContext,
+                Instruction.CODECOPY => !IsEofContext,
+                Instruction.CODESIZE => !IsEofContext,
+                Instruction.EXTCODEHASH => !IsEofContext,
+                Instruction.EXTCODECOPY => !IsEofContext,
+                Instruction.EXTCODESIZE => !IsEofContext,
+                Instruction.GAS => !IsEofContext,
+                _ => true
+            };
+        }
+
+        //Note() : Extensively test this, refactor it,
+        public static (ushort? InputCount, ushort? OutputCount, ushort? immediates) StackRequirements(this Instruction instruction) => instruction switch
+        {
+            Instruction.STOP => (0, 0, 0),
+            Instruction.ADD => (2, 1, 0),
+            Instruction.MUL => (2, 1, 0),
+            Instruction.SUB => (2, 1, 0),
+            Instruction.DIV => (2, 1, 0),
+            Instruction.SDIV => (2, 1, 0),
+            Instruction.MOD => (2, 1, 0),
+            Instruction.SMOD => (2, 1, 0),
+            Instruction.ADDMOD => (3, 1, 0),
+            Instruction.MULMOD => (3, 1, 0),
+            Instruction.EXP => (2, 1, 0),
+            Instruction.SIGNEXTEND => (2, 1, 0),
+            Instruction.LT => (2, 1, 0),
+            Instruction.GT => (2, 1, 0),
+            Instruction.SLT => (2, 1, 0),
+            Instruction.SGT => (2, 1, 0),
+            Instruction.EQ => (2, 1, 0),
+            Instruction.ISZERO => (1, 1, 0),
+            Instruction.AND => (2, 1, 0),
+            Instruction.OR => (2, 1, 0),
+            Instruction.XOR => (2, 1, 0),
+            Instruction.NOT => (1, 1, 0),
+            Instruction.BYTE => (2, 1, 0),
+            Instruction.SHL => (2, 1, 0),
+            Instruction.SHR => (2, 1, 0),
+            Instruction.SAR => (2, 1, 0),
+            Instruction.KECCAK256 => (2, 1, 0),
+            Instruction.ADDRESS => (0, 1, 0),
+            Instruction.BALANCE => (1, 1, 0),
+            Instruction.ORIGIN => (0, 1, 0),
+            Instruction.CALLER => (0, 1, 0),
+            Instruction.CALLVALUE => (0, 1, 0),
+            Instruction.CALLDATALOAD => (1, 1, 0),
+            Instruction.CALLDATASIZE => (0, 1, 0),
+            Instruction.CALLDATACOPY => (3, 0, 0),
+            Instruction.CODESIZE => (0, 1, 0),
+            Instruction.CODECOPY => (3, 0, 0),
+            Instruction.GASPRICE => (0, 1, 0),
+            Instruction.EXTCODESIZE => (1, 1, 0),
+            Instruction.EXTCODECOPY => (4, 0, 0),
+            Instruction.RETURNDATASIZE => (0, 1, 0),
+            Instruction.RETURNDATACOPY => (3, 0, 0),
+            Instruction.RETURNDATALOAD => (1, 1, 0),
+            Instruction.EXTCODEHASH => (1, 1, 0),
+            Instruction.BLOCKHASH => (1, 1, 0),
+            Instruction.COINBASE => (0, 1, 0),
+            Instruction.TIMESTAMP => (0, 1, 0),
+            Instruction.NUMBER => (0, 1, 0),
+            Instruction.PREVRANDAO => (0, 1, 0),
+            Instruction.GASLIMIT => (0, 1, 0),
+            Instruction.CHAINID => (0, 1, 0),
+            Instruction.SELFBALANCE => (0, 1, 0),
+            Instruction.BASEFEE => (0, 1, 0),
+            Instruction.POP => (1, 0, 0),
+            Instruction.MLOAD => (1, 1, 0),
+            Instruction.MSTORE => (2, 0, 0),
+            Instruction.MSTORE8 => (2, 0, 0),
+            Instruction.SLOAD => (1, 1, 0),
+            Instruction.SSTORE => (2, 0, 0),
+            Instruction.MSIZE => (0, 1, 0),
+            Instruction.GAS => (0, 1, 0),
+            Instruction.JUMPDEST => (0, 0, 0),
+            Instruction.RJUMP => (0, 0, 2),
+            Instruction.RJUMPI => (1, 0, 2),
+            Instruction.BLOBHASH => (1, 1, 0),
+            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
+            Instruction.LOG0 => (2, 0, 0),
+            Instruction.LOG1 => (3, 0, 0),
+            Instruction.LOG2 => (4, 0, 0),
+            Instruction.LOG3 => (5, 0, 0),
+            Instruction.LOG4 => (6, 0, 0),
+            Instruction.CALLF => (0, 0, 2),
+            Instruction.JUMPF => (0, 0, 2),
+            Instruction.RETF => (0, 0, 0),
+            Instruction.CREATE => (3, 1, 0),
+            Instruction.CALL => (6, 1, 0),
+            Instruction.RETURN => (2, 0, 0),
+            Instruction.DELEGATECALL => (6, 1, 0),
+            Instruction.CREATE2 => (4, 1, 0),
+            Instruction.STATICCALL => (6, 1, 0),
+            Instruction.REVERT => (2, 0, 0),
+            Instruction.INVALID => (0, 0, 0),
+
+            Instruction.TLOAD => (1, 1, 0),
+            Instruction.TSTORE => (2, 0, 0),
+            Instruction.MCOPY => (3, 0, 0),
+            Instruction.CALLCODE => (6, 1, 0),
+            Instruction.SELFDESTRUCT => (1, 0, 0),
+            Instruction.JUMP => (1, 0, 0),
+            Instruction.JUMPI => (2, 0, 0),
+            Instruction.PC => (0, 1, 0),
+            Instruction.BLOBBASEFEE => (0, 1, 0),
+
+            Instruction.EOFCREATE => (4, 1, 1),
+            Instruction.RETURNCODE => (2, 2, 1),
+            Instruction.DATALOAD => (1, 1, 0),
+            Instruction.DATALOADN => (0, 1, 2),
+            Instruction.DATASIZE => (0, 1, 0),
+            Instruction.DATACOPY => (3, 0, 0),
+
+            Instruction.RJUMPV => (1, 0, null), // null indicates this is a dynamic multi-bytes opcode
+            Instruction.SWAPN => (null, null, 1),
+            Instruction.DUPN => (null, null, 1),
+            Instruction.EXCHANGE => (null, null, 1),
+
+            Instruction.EXTCALL => (4, 1, 0),
+            Instruction.EXTSTATICCALL => (3, 1, 0),
+            Instruction.EXTDELEGATECALL => (3, 1, 0),
+            _ => throw new NotImplementedException($"opcode {instruction} not implemented yet"),
+        };
+
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+        {
+            spec ??= Frontier.Instance;
+            return instruction switch
+            {
+                Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
+                Instruction.JUMPDEST => spec.IsEofEnabled ? "NOP" : "JUMPDEST",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
+            };
+        }
     }
 }
