@@ -4,10 +4,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -28,18 +31,12 @@ public class PayloadPreparationService : IPayloadPreparationService
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
     public static readonly TimeSpan GetPayloadWaitForFullBlockMillisecondsDelay = TimeSpan.FromMilliseconds(500);
-    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(3000);
-    public static readonly TimeSpan DefaultMinTimeForProduction = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
     /// Delay between block improvements
     /// </summary>
     private readonly TimeSpan _improvementDelay;
-
-    /// <summary>
-    /// Minimal time to try to improve block
-    /// </summary>
-    private readonly TimeSpan _minTimeForProduction;
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
@@ -54,8 +51,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        TimeSpan? improvementDelay = null)
     {
         _blockProducer = blockProducer;
         _blockImprovementContextFactory = blockImprovementContextFactory;
@@ -63,7 +59,6 @@ public class PayloadPreparationService : IPayloadPreparationService
         TimeSpan timeout = timePerSlot;
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
-        _minTimeForProduction = minTimeForProduction ?? DefaultMinTimeForProduction;
         ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
         timer.Elapsed += CleanupOldPayloads;
         timer.Start();
@@ -77,7 +72,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         if (!_payloadStorage.ContainsKey(payloadId))
         {
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow);
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default);
         }
         else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
@@ -92,9 +87,9 @@ public class PayloadPreparationService : IPayloadPreparationService
         return emptyBlock;
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees) =>
         _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
+            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees),
             (id, currentContext) =>
             {
                 // if there is payload improvement and its not yet finished leave it be
@@ -104,21 +99,25 @@ public class PayloadPreparationService : IPayloadPreparationService
                     return currentContext;
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees);
                 currentContext.Dispose();
                 return newContext;
             });
 
 
-    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
-        blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
+
+        long startTimestamp = Stopwatch.GetTimestamp();
+        IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
+        blockImprovementContext.ImprovementTask.ContinueWith((b) =>
+            LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp)));
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             // if after delay we still have time to try producing the block in this slot
-            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + _minTimeForProduction;
+            TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
+            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + lastBuildTime;
             DateTimeOffset slotFinished = startDateTime + _timePerSlot;
             if (whenWeCouldFinishNextProduction < slotFinished)
             {
@@ -127,7 +126,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                 if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
                     Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
+                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees);
                 }
                 else
                 {
@@ -172,27 +171,29 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     }
 
-    private Block? LogProductionResult(Task<Block?> t)
+    private Block? LogProductionResult(Task<Block?> t, Block currentBestBlock, UInt256 blockFees, TimeSpan time)
     {
+        const long weiToEth = 1_000_000_000_000_000_000;
+
         if (t.IsCompletedSuccessfully)
         {
-            if (t.Result is not null)
+            Block? block = t.Result;
+            if (block is not null && !ReferenceEquals(block, currentBestBlock))
             {
-                BlockImproved?.Invoke(this, new BlockEventArgs(t.Result));
-                if (_logger.IsInfo) _logger.Info($"Improved post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,7:N2} ms");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info("Failed to improve post-merge block");
+                if (_logger.IsDebug) _logger.Debug(" Block improvement attempt did not produce a better block");
             }
         }
         else if (t.IsFaulted)
         {
-            if (_logger.IsError) _logger.Error("Post merge block improvement failed", t.Exception);
+            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Block improvement failed", t.Exception);
         }
         else if (t.IsCanceled)
         {
-            if (_logger.IsInfo) _logger.Info($"Post-merge block improvement was canceled");
+            if (_logger.IsDebug) _logger.Debug("Block improvement was canceled");
         }
 
         return t.Result;
@@ -216,6 +217,4 @@ public class PayloadPreparationService : IPayloadPreparationService
 
         return null;
     }
-
-    public event EventHandler<BlockEventArgs>? BlockImproved;
 }
