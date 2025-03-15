@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -11,6 +12,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Evm;
 using Int256;
 using Word = Vector256<byte>;
+using static Unsafe;
 
 internal static partial class EvmInstructions
 {
@@ -90,7 +92,7 @@ internal static partial class EvmInstructions
             {
                 // Directly push the single byte.
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.PushByte(Unsafe.Add(ref bytes, programCounter));
+                stack.PushByte(Add(ref bytes, programCounter));
             }
             else
             {
@@ -103,30 +105,88 @@ internal static partial class EvmInstructions
     /// <summary>
     /// 2 item operations.
     /// </summary>
-    public struct Op2 : IOpCount
+    public struct Op2 : IOpCount { public static int Count => 2; }
+
+    /// <summary>
+    /// Push operation for two bytes.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionPush2<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         const int Size = sizeof(ushort);
-        public static int Count => Size;
+        // Deduct a very low gas cost for the push operation.
+        gasAvailable -= GasCostOf.VeryLow;
+        // Retrieve the code segment containing immediate data.
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
 
-        /// <summary>
-        /// Push operation for two bytes.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        ref byte bytes = ref MemoryMarshal.GetReference(code);
+        int remainingCode = code.Length - programCounter;
+        Instruction nextInstruction;
+        if (!TTracingInstructions.IsActive &&
+            remainingCode > Size &&
+            ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
+                is Instruction.JUMP or Instruction.JUMPF))
         {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
+            // If next instruction is a JUMP we can skip the PUSH+POP from stack
+            ushort destination = As<byte, ushort>(ref Add(ref bytes, programCounter));
+            if (BitConverter.IsLittleEndian)
             {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                // Optimized push for exactly two bytes.
-                stack.Push2Bytes(ref Unsafe.Add(ref bytes, programCounter));
+                destination = BinaryPrimitives.ReverseEndianness(destination);
+            }
+            UInt256 result = default;
+            AsRef(in result.u0) = destination;
+            if (nextInstruction == Instruction.JUMP)
+            {
+                // Deduct the mid gas cost for performing a jump.
+                gasAvailable -= GasCostOf.Mid;
             }
             else
             {
-                // Use default padding behavior.
-                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                // Deduct the high gas cost for a conditional jump.
+                gasAvailable -= GasCostOf.High;
+                // Pop the condition as a byte reference.
+                ref byte condition = ref stack.PopBytesByRef();
+                if (IsNullRef(in condition)) goto StackUnderflow;
+                // If the condition is zero (i.e. false), don't perform the jump.
+                if (As<byte, Word>(ref condition) == default)
+                {
+                    // Move forward by 2 bytes + JUMPF
+                    programCounter += Size + 1;
+                    goto Success;
+                }
             }
+
+            // Validate the jump destination and update the program counter if valid.
+            if (!Jump(in result, ref programCounter, in vm.EvmState.Env))
+                goto InvalidJumpDestination;
+
+            goto Success;
         }
+        else if (remainingCode >= Size)
+        {
+            // Optimized push for exactly two bytes.
+            stack.Push2Bytes(ref Add(ref bytes, programCounter));
+        }
+        else if (remainingCode == Op1.Count)
+        {
+            // Directly push the single byte.
+            stack.PushByte(Add(ref bytes, programCounter));
+        }
+        else
+        {
+            // Fallback when immediate data is incomplete.
+            stack.PushZero();
+        }
+
+        programCounter += Size;
+    Success:
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     /// <summary>
@@ -151,7 +211,7 @@ internal static partial class EvmInstructions
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
                 // Direct push of a 4-byte value.
-                stack.Push4Bytes(ref Unsafe.Add(ref bytes, programCounter));
+                stack.Push4Bytes(ref Add(ref bytes, programCounter));
             }
             else
             {
@@ -196,7 +256,7 @@ internal static partial class EvmInstructions
             if (usedFromCode == Size)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push8Bytes(ref Unsafe.Add(ref bytes, programCounter));
+                stack.Push8Bytes(ref Add(ref bytes, programCounter));
             }
             else
             {
@@ -262,7 +322,7 @@ internal static partial class EvmInstructions
             if (usedFromCode == Size)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push16Bytes(ref Unsafe.Add(ref bytes, programCounter));
+                stack.Push16Bytes(ref Add(ref bytes, programCounter));
             }
             else
             {
@@ -308,7 +368,7 @@ internal static partial class EvmInstructions
             {
                 // Optimized push for address size data.
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push20Bytes(ref Unsafe.Add(ref bytes, programCounter));
+                stack.Push20Bytes(ref Add(ref bytes, programCounter));
             }
             else
             {
@@ -402,7 +462,7 @@ internal static partial class EvmInstructions
             if (usedFromCode == Size)
             {
                 // Leverage reinterpretation of bytes as a 256-bit vector.
-                stack.Push32Bytes(in Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter)));
+                stack.Push32Bytes(in As<byte, Word>(ref Add(ref MemoryMarshal.GetReference(code), programCounter)));
             }
             else
             {

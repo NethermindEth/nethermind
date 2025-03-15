@@ -164,7 +164,7 @@ internal static unsafe partial class EvmInstructions
 
         // PUSH opcodes (PUSH1 to PUSH32).
         lookup[(int)Instruction.PUSH1] = &InstructionPush<Op1>;
-        lookup[(int)Instruction.PUSH2] = &InstructionPush<Op2>;
+        lookup[(int)Instruction.PUSH2] = &InstructionPush2<TTracingInstructions>;
         lookup[(int)Instruction.PUSH3] = &InstructionPush<Op3>;
         lookup[(int)Instruction.PUSH4] = &InstructionPush<Op4>;
         lookup[(int)Instruction.PUSH5] = &InstructionPush<Op5>;
