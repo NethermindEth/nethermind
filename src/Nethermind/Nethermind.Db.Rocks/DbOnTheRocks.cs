@@ -490,7 +490,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 _logger.Debug(
                     $"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000} MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000} MB + {blockCacheSize / 1000 / 1000} MB)");
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
-            ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000} MB".PadLeft(8));
         }
 
         #endregion

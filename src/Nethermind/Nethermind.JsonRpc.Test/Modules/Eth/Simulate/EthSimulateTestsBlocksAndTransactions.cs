@@ -139,7 +139,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //Test that transfer tx works on mainchain
         UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(true, txMainnetAtoB);
+        await chain.AddBlock(txMainnetAtoB);
         UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         Assert.That(after, Is.LessThan(before));
 
@@ -223,7 +223,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //Test that transfer tx works on mainchain
         UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(true, txMainnetAtoB);
+        await chain.AddBlock(txMainnetAtoB);
         UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
         Assert.That(after, Is.LessThan(before));
 

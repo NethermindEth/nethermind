@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
     {
         public static class Scenario
         {
-            public const long FastSyncCatchUpHeightDelta = 64;
+            public const long FastSyncCatchUpHeightDelta = 1024;
             public const long FastSyncLag = 32;
 
             public static BlockHeader Pivot { get; } = Build.A.Block
@@ -397,23 +397,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
-                {
-                    _syncProgressSetups.Add(
-                        () =>
-                        {
-                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncLag - 7);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
-                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
-                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
-                            return "just finished state sync and needs to catch up";
-                        }
-                    );
-                    return this;
-                }
-
                 public ScenarioBuilder IfThisNodeJustFinishedStateSyncCatchUp()
                 {
                     _syncProgressSetups.Add(
@@ -737,7 +720,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     IfThisNodeFinishedFastBlocksButNotFastSync();
                     fastBlocksStates.ForEach(s => IfThisNodeJustFinishedFastBlocksAndFastSync(s));
                     IfThisNodeFinishedStateSyncButNotFastBlocks();
-                    IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders();
                     fastBlocksStates.ForEach(s => IfThisNodeJustFinishedStateSyncAndFastBlocks(s));
                     fastBlocksStates.ForEach(s => IfThisNodeJustStartedFullSyncProcessing(s));
                     fastBlocksStates.ForEach(s => IfThisNodeRecentlyStartedFullSyncProcessing(s));

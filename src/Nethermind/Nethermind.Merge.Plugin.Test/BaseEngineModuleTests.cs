@@ -51,7 +51,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public class BaseEngineModuleTests
+public partial class BaseEngineModuleTests
 {
     [SetUp]
     public Task Setup()
@@ -231,17 +231,20 @@ public class BaseEngineModuleTests
         public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
 
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
+        public StoringBlockImprovementContextFactory? StoringBlockImprovementContextFactory { get; set; }
 
-        public Task WaitForImprovedBlocck(Hash256? parentHash = null)
+        public Task WaitForImprovedBlock(Hash256? parentHash = null)
         {
-            return Wait.ForEventCondition<BlockEventArgs>(default,
-                e => PayloadPreparationService!.BlockImproved += e,
-                e => PayloadPreparationService!.BlockImproved -= e,
-                b =>
-                {
-                    if (parentHash is null) return true;
-                    return b.Block.ParentHash == parentHash;
-                });
+            if (parentHash == null)
+            {
+                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => true);
+            }
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
+        }
+
+        public Task WaitForImprovedBlockWithCondition(Func<Block, bool> predicate)
+        {
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, predicate);
         }
 
         public ISealValidator? SealValidator { get; set; }
@@ -317,9 +320,10 @@ public class BaseEngineModuleTests
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
+            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                BlockImprovementContextFactory,
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -368,7 +372,15 @@ public class BaseEngineModuleTests
         }
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
-        public IBlockImprovementContextFactory BlockImprovementContextFactory { get; set; } = null!;
+
+        public IBlockImprovementContextFactory BlockImprovementContextFactory
+        {
+            get => StoringBlockImprovementContextFactory!;
+            set
+            {
+                StoringBlockImprovementContextFactory = value as StoringBlockImprovementContextFactory ?? new StoringBlockImprovementContextFactory(value);
+            }
+        }
 
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
