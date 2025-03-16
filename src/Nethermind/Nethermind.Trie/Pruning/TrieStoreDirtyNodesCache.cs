@@ -225,7 +225,6 @@ internal class TrieStoreDirtyNodesCache
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
         INodeStorage? nodeStorage = null)
     {
-        bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
         long totalMemory = 0;
         long dirtyMemory = 0;
         long totalNode = 0;
@@ -248,7 +247,7 @@ internal class TrieStoreDirtyNodesCache
                         {
                             if (CanDelete(key.Address, key.Path, key.Keccak, lastPersistedHash))
                             {
-                                Delete(key, tinyKey, writeBatcher);
+                                Delete(key, writeBatcher);
                                 continue;
                             }
                         }
@@ -286,11 +285,6 @@ internal class TrieStoreDirtyNodesCache
                             if (node.Keccak is null)
                             {
                                 throw new InvalidOperationException($"Removed {node}");
-                            }
-
-                            if (shouldTrackPersistedNode)
-                            {
-                                TrackPersistedNode(key, node);
                             }
 
                             Metrics.PrunedPersistedNodesCount++;
@@ -335,11 +329,10 @@ internal class TrieStoreDirtyNodesCache
         _totalDirtyMemory = dirtyMemory;
     }
 
-    private void Delete(Key key, HashAndTinyPath tinyKey, INodeStorage.IWriteBatch writeBatch)
+    private void Delete(Key key, INodeStorage.IWriteBatch writeBatch)
     {
         Metrics.RemovedNodeCount++;
         Remove(key);
-        _pastPathHash?.Delete(tinyKey);
         writeBatch.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
