@@ -173,7 +173,7 @@ namespace Nethermind.Facade
             SimulateOutput<TTrace> result = new();
             try
             {
-                if(!_simulateBridgeHelper.TrySimulate(header, payload, tracer, env, result, cancellationToken, out string error))
+                if (!_simulateBridgeHelper.TrySimulate(header, payload, tracer, env, result, cancellationToken, out string error))
                 {
                     result.Error = error;
                 }

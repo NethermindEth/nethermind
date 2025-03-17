@@ -16,7 +16,8 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
 
     protected override SimulateTxMutatorTracer OnStart(Transaction? tx)
     {
-        if (tx?.Hash is not null){
+        if (tx?.Hash is not null)
+        {
             _txIndex++;
             return new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, _txIndex);
         }
@@ -29,6 +30,6 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
     {
         _txIndex = 0;
         _currentBlock = block;
-        TxTraces.Reset();
+        base.StartNewBlockTrace(block);
     }
 }
