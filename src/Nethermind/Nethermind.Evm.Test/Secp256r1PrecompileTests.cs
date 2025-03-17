@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Test
             yield return "p256Verify.json";
         }
 
-        public static IPrecompile Precompile() => Secp256r1FastCryptoPrecompile.Instance;
+        public static IPrecompile Precompile() => Secp256r1GoBoringPrecompile.Instance;
 
         [Test]
         [TestCase(
