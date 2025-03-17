@@ -134,22 +134,17 @@ internal static partial class EvmInstructions
             {
                 destination = BinaryPrimitives.ReverseEndianness(destination);
             }
-            UInt256 result = default;
-            AsRef(in result.u0) = destination;
+
             if (nextInstruction == Instruction.JUMP)
             {
-                // Deduct the mid gas cost for performing a jump.
-                gasAvailable -= GasCostOf.Mid;
+                gasAvailable -= GasCostOf.Jump;
             }
             else
             {
-                // Deduct the high gas cost for a conditional jump.
-                gasAvailable -= GasCostOf.High;
-                // Pop the condition as a byte reference.
-                ref byte condition = ref stack.PopBytesByRef();
-                if (IsNullRef(in condition)) goto StackUnderflow;
-                // If the condition is zero (i.e. false), don't perform the jump.
-                if (As<byte, Word>(ref condition) == default)
+                gasAvailable -= GasCostOf.JumpF;
+                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
+                if (isOverflow) goto StackUnderflow;
+                if (!shouldJump)
                 {
                     // Move forward by 2 bytes + JUMPF
                     programCounter += Size + 1;
@@ -158,7 +153,7 @@ internal static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump(in result, ref programCounter, in vm.EvmState.Env))
+            if (!Jump((int)destination, ref programCounter, in vm.EvmState.Env))
                 goto InvalidJumpDestination;
 
             goto Success;

@@ -72,7 +72,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the gas cost for performing a jump.
-        gasAvailable -= GasCostOf.Mid;
+        gasAvailable -= GasCostOf.Jump;
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
@@ -104,14 +104,13 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the high gas cost for a conditional jump.
-        gasAvailable -= GasCostOf.High;
+        gasAvailable -= GasCostOf.JumpF;
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        // Pop the condition as a byte reference.
-        ref byte condition = ref stack.PopBytesByRef();
-        if (Unsafe.IsNullRef(in condition)) goto StackUnderflow;
-        // If the condition is non-zero (i.e., true), attempt to perform the jump.
-        if (Unsafe.As<byte, Vector256<byte>>(ref condition) != default)
+
+        bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
+        if (isOverflow) goto StackUnderflow;
+        if (shouldJump)
         {
             if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
         }
@@ -122,6 +121,22 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TestJumpCondition(ref EvmStack stack, out bool isOverflow)
+    {
+        isOverflow = false;
+        // Pop the condition as a byte reference.
+        ref byte condition = ref stack.PopBytesByRef();
+        if (Unsafe.IsNullRef(in condition))
+        {
+            isOverflow = true;
+            return false;
+        }
+        // If the condition is non-zero (i.e., true), attempt to perform the jump.
+        return (Unsafe.As<byte, Vector256<byte>>(ref condition) != default);
     }
 
     /// <summary>
@@ -288,28 +303,29 @@ internal static partial class EvmInstructions
     [SkipLocalsInit]
     private static bool Jump(in UInt256 jumpDestination, ref int programCounter, in ExecutionEnvironment env)
     {
-        bool isJumpDestination = true;
         // Check if the jump destination exceeds the maximum allowed integer value.
         if (jumpDestination > int.MaxValue)
         {
-            isJumpDestination = false;
+            return false;
+        }
+
+        // Extract the jump destination from the lowest limb of the UInt256.
+        return Jump((int)jumpDestination.u0, ref programCounter, in env);
+    }
+
+    private static bool Jump(int jumpDestination, ref int programCounter, in ExecutionEnvironment env)
+    {
+        // Validate that the jump destination corresponds to a valid jump marker in the code.
+        if (!env.CodeInfo.ValidateJump(jumpDestination))
+        {
+            return false;
         }
         else
         {
-            // Extract the jump destination from the lowest limb of the UInt256.
-            int jumpDestinationInt = (int)jumpDestination.u0;
-            // Validate that the jump destination corresponds to a valid jump marker in the code.
-            if (!env.CodeInfo.ValidateJump(jumpDestinationInt))
-            {
-                isJumpDestination = false;
-            }
-            else
-            {
-                // Update the program counter to the valid jump destination.
-                programCounter = jumpDestinationInt;
-            }
+            // Update the program counter to the valid jump destination.
+            programCounter = jumpDestination;
         }
 
-        return isJumpDestination;
+        return true;
     }
 }
