@@ -141,7 +141,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
-        if (!spec.RequestsEnabled)
+        if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
         using ArrayPoolList<byte[]> requests = new(3);
