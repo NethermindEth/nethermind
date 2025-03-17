@@ -110,10 +110,21 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 {
                     Calls = tracer.BuildResult(),
                 };
+                CheckMissingAndSetDefaults(result, processedBlock);
                 yield return result;
                 parent = processedBlock.Header;
             }
         }
+    }
+
+    private static void CheckMissingAndSetDefaults<TTrace>(SimulateBlockResult<TTrace> current, Block processedBlock)
+    {
+        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
+        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
+        current.TransactionsRoot = processedBlock.Header.TxRoot;
+        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
+        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
+        current.Withdrawals = processedBlock.Withdrawals ?? [];
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
