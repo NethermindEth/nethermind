@@ -11,12 +11,14 @@ using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -33,6 +35,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncReport _syncReport;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
+        private readonly IPoSSwitcher _poSSwitcher;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
 
         private readonly Lock _handlerLock = new();
@@ -150,6 +153,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
+            IPoSSwitcher? poSSwitcher,
             ILogManager? logManager,
             ITotalDifficultyStrategy? totalDifficultyStrategy = null,
             bool alwaysStartHeaderSync = false)
@@ -159,6 +163,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
@@ -194,7 +199,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             (_pivotNumber, _nextHeaderHash) = _blockTree.SyncPivot;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _nextHeaderTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
+            _nextHeaderTotalDifficulty = TryGetPivotTotalDifficulty();
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
@@ -220,6 +225,25 @@ namespace Nethermind.Synchronization.FastBlocks
                     _lowestRequestedHeaderNumber = lowestInserted.Number;
                 }
             }
+        }
+
+        private UInt256 TryGetPivotTotalDifficulty()
+        {
+            if (_pivotNumber == LongConverter.FromString(_syncConfig.PivotNumber))
+                return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
+
+            // Got from header
+            BlockHeader? pivotHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.RequireCanonical);
+            if (pivotHeader is not null && pivotHeader.TotalDifficulty is not null)
+            {
+                return pivotHeader.TotalDifficulty.Value;
+            }
+
+            // Probably PoS
+            if (_poSSwitcher.FinalTotalDifficulty is not null) return _poSSwitcher.FinalTotalDifficulty.Value;
+
+            throw new InvalidOperationException(
+                $"Unable to determine final total difficulty of pivot ({_pivotNumber}, {_nextHeaderHash})");
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -812,6 +836,7 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         private bool _disposed = false;
+
         public override void Dispose()
         {
             if (!_disposed)
