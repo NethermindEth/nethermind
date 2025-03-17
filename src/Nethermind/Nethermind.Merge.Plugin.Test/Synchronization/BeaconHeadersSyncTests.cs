@@ -171,6 +171,9 @@ public class BeaconHeadersSyncTests
     [Test]
     public async Task Finishes_when_all_downloaded()
     {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
+        blockTree.SyncPivot.Returns((1000, Keccak.Zero));
         ISyncReport report = Substitute.For<ISyncReport>();
         ProgressLogger progressLogger = new("", LimboLogs.Instance);
         report.BeaconHeaders.Returns(progressLogger);
@@ -181,9 +184,6 @@ public class BeaconHeadersSyncTests
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
-        blockTree.SyncPivot.Returns((1000, Keccak.Zero));
 
         Context ctx = new()
         {

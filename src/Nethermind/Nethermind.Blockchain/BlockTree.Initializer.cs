@@ -383,6 +383,7 @@ public partial class BlockTree
 
         if (updatedPivotBlockHash.IsZero)
         {
+            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 

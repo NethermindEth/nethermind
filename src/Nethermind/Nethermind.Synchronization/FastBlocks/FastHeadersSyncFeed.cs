@@ -234,10 +234,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // Got from header
             BlockHeader? pivotHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.RequireCanonical);
-            if (pivotHeader is not null && pivotHeader.TotalDifficulty is not null)
-            {
-                return pivotHeader.TotalDifficulty.Value;
-            }
+            if (pivotHeader?.TotalDifficulty is not null) return pivotHeader.TotalDifficulty.Value;
 
             // Probably PoS
             if (_poSSwitcher.FinalTotalDifficulty is not null) return _poSSwitcher.FinalTotalDifficulty.Value;
