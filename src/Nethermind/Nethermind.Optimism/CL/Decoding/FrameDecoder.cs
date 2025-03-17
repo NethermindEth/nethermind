@@ -2,64 +2,110 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Network.Rlpx;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class FrameDecoder
+public static class FrameDecoder
 {
-    private static (Frame, int) DecodeFrame(byte[] data)
+    public static IEnumerable<Frame> DecodeFrames(Memory<byte> source)
     {
-        UInt128 channelId = BitConverter.ToUInt128(data[..16]);
-        UInt16 frameNumber = BitConverter.ToUInt16(data[16..18].Reverse().ToArray());
-        UInt32 frameDataLength = BitConverter.ToUInt32(data[18..22].Reverse().ToArray());
-        byte[] frameData = data[22..(22 + (int)frameDataLength)];
-        byte isLast = data[22 + (int)frameDataLength];
-        if (isLast != 0 && isLast != 1)
+        while (source.Length != 0)
         {
-            throw new Exception("Invalid isLast flag");
+            byte version = source.TakeAndMove(1).Span[0];
+            switch (version)
+            {
+                case 0:
+                    int bytesRead = Frame.FromBytes(source.Span, out Frame frame);
+                    yield return frame;
+                    source = source[bytesRead..];
+                    break;
+                default:
+                    throw new Exception($"Frame Decoder version {version} is not supported.");
+            }
         }
-
-        return (new Frame()
-        {
-            ChannelId = channelId,
-            FrameNumber = frameNumber,
-            FrameData = frameData,
-            IsLast = isLast == 1
-        }, 23 + (int)frameDataLength);
-    }
-
-    public static Frame[] DecodeFrames(byte[] data)
-    {
-        byte version = data[0];
-        if (version != 0)
-        {
-            throw new Exception($"Frame Decoder version {version} is not supported.");
-        }
-
-        List<Frame> frames = new List<Frame>();
-        int pos = 1;
-        while (pos < data.Length)
-        {
-            (Frame frame, int decoded) = DecodeFrame(data[pos..]);
-            pos += decoded;
-            frames.Add(frame);
-        }
-
-        if (pos != data.Length)
-        {
-            throw new Exception("Excess frame data");
-        }
-        return frames.ToArray();
     }
 }
 
-public struct Frame
+/// <remarks>
+/// https://specs.optimism.io/protocol/derivation.html#frame-format
+/// </remarks>
+public struct Frame : IEquatable<Frame>
 {
     public UInt128 ChannelId;
     public UInt16 FrameNumber;
     public byte[] FrameData;
     public bool IsLast;
+
+    public int Size
+    {
+        get
+        {
+            unsafe
+            {
+                return sizeof(UInt128) + sizeof(UInt16) + sizeof(UInt32) + FrameData.Length + sizeof(byte);
+            }
+        }
+    }
+
+    public bool Equals(Frame other)
+    {
+        return ChannelId.Equals(other.ChannelId) && FrameNumber == other.FrameNumber && FrameData.SequenceEqual(other.FrameData) && IsLast == other.IsLast;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is Frame other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(ChannelId, FrameNumber, FrameData, IsLast);
+    }
+
+    public static int FromBytes(ReadOnlySpan<byte> buffer, out Frame frame)
+    {
+        unsafe
+        {
+            UInt128 channelId = BinaryPrimitives.ReadUInt128BigEndian(buffer.TakeAndMove(sizeof(UInt128)));
+            UInt16 frameNumber = BinaryPrimitives.ReadUInt16BigEndian(buffer.TakeAndMove(sizeof(UInt16)));
+            UInt32 frameDataLength = BinaryPrimitives.ReadUInt32BigEndian(buffer.TakeAndMove(sizeof(UInt32)));
+            ReadOnlySpan<byte> frameData = buffer.TakeAndMove((int)frameDataLength);
+            byte isLast = buffer.TakeAndMove(1)[0];
+            if (isLast != 0 && isLast != 1)
+            {
+                throw new FormatException($"Invalid {nameof(IsLast)} flag");
+            }
+
+            frame = new Frame
+            {
+                ChannelId = channelId,
+                FrameNumber = frameNumber,
+                // TODO: Can we avoid this copying?
+                FrameData = frameData.ToArray(),
+                IsLast = isLast == 1
+            };
+
+            return frame.Size;
+        }
+    }
+
+    public int WriteTo(Span<byte> span)
+    {
+        int initialLength = span.Length;
+
+        unsafe
+        {
+            BinaryPrimitives.WriteUInt128BigEndian(span.TakeAndMove(sizeof(UInt128)), ChannelId);
+            BinaryPrimitives.WriteUInt16BigEndian(span.TakeAndMove(sizeof(UInt16)), FrameNumber);
+            BinaryPrimitives.WriteUInt32BigEndian(span.TakeAndMove(sizeof(UInt32)), (UInt32)FrameData.Length);
+            FrameData.CopyTo(span.TakeAndMove(FrameData.Length));
+            span.TakeAndMove(1)[0] = (byte)(IsLast ? 1 : 0);
+        }
+
+        return initialLength - span.Length;
+    }
 }
