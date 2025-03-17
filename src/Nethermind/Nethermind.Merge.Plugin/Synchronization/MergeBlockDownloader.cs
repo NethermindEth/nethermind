@@ -10,7 +10,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -79,44 +78,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
             await base.Dispatch(bestPeer, blocksRequest, cancellation);
         }
 
-        public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
-            CancellationToken cancellation)
-        {
-            // Note: Redundant with Dispatch, but test uses it.
-            if (ShouldUsePreMerge())
-            {
-                if (_logger.IsDebug)
-                    _logger.Debug("Using pre merge block downloader");
-                return await _preMergeBlockDownloader.DownloadBlocks(bestPeer, blocksRequest, cancellation);
-            }
-
-            return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
-        }
-
-        public override async Task<long> DownloadHeaders(PeerInfo? bestPeer, BlocksRequest blocksRequest,
-            CancellationToken cancellation)
-        {
-            // Note: Redundant with Dispatch, but test uses it.
-            if (ShouldUsePreMerge())
-            {
-                if (_logger.IsDebug)
-                    _logger.Debug("Using pre merge block downloader");
-                return await _preMergeBlockDownloader.DownloadHeaders(bestPeer, blocksRequest, cancellation);
-            }
-
-            return await base.DownloadHeaders(bestPeer, blocksRequest, cancellation);
-        }
-
-        protected override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, long currentNumber, BlocksRequest blocksRequest, CancellationToken cancellation)
+        protected override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
             int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-
             BlockHeader?[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
             if (headers is null || headers.Length <= 1)
             {
@@ -129,18 +96,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ValidateSeals(headers!, cancellation);
 
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
-        }
-
-        protected override bool CheckAncestorJump(PeerInfo? bestPeer, Hash256? startHeaderHash, ref long currentNumber)
-        {
-            // No ancestor jump check post merge.
-            return true;
-        }
-
-        protected override bool CheckAncestorJump(PeerInfo? bestPeer, BlockDownloadContext context, ref long currentNumber)
-        {
-            // No ancestor jump check post merge.
-            return true;
         }
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
