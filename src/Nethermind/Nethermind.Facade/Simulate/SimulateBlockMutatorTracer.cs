@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 
@@ -12,8 +9,6 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<SimulateCallResult, SimulateTxMutatorTracer>
 {
-    private readonly bool _isTracingLogs = isTracingLogs;
-
     private ulong _txIndex = 0;
 
     private Block? _currentBlock;
@@ -21,7 +16,7 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
     protected override SimulateTxMutatorTracer OnStart(Transaction? tx)
     {
         _txIndex++;
-        return new SimulateTxMutatorTracer(_isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, _txIndex);
+        return new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, _txIndex);
     }
 
     protected override SimulateCallResult OnEnd(SimulateTxMutatorTracer txTracer) => txTracer.TraceResult;

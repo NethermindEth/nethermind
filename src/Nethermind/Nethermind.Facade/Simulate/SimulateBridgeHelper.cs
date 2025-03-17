@@ -61,8 +61,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
-        CancellationToken cancellationToken,
-        SimulateReadOnlyBlocksProcessingEnv env)
+        SimulateReadOnlyBlocksProcessingEnv env,
+        CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -108,14 +108,23 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 SimulateBlockResult<TTrace> result = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
-                    Calls = [.. tracer.BuildResult()],
+                    Calls = tracer.BuildResult(),
                 };
+                CheckMissingAndSetDefaults(result, processedBlock);
                 yield return result;
                 parent = processedBlock.Header;
             }
-            yield break;
         }
-        yield break;
+    }
+
+    private static void CheckMissingAndSetDefaults<TTrace>(SimulateBlockResult<TTrace> current, Block processedBlock)
+    {
+        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
+        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
+        current.TransactionsRoot = processedBlock.Header.TxRoot;
+        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
+        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
+        current.Withdrawals = processedBlock.Withdrawals ?? [];
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)

@@ -30,7 +30,7 @@ class TaikoDebugModuleFactory :
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
-        IBlockchainBridgeFactory blockchainBridgeFactory,
+        IBlockchainBridge blockchainBridge,
         ulong secondsPerSlot,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
@@ -42,7 +42,7 @@ class TaikoDebugModuleFactory :
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
-        ILogManager logManager) : base(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridgeFactory, secondsPerSlot, blockValidator, recoveryStep, rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector, badBlockStore, fileSystem, logManager)
+        ILogManager logManager) : base(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep, rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector, badBlockStore, fileSystem, logManager)
     {
     }
 

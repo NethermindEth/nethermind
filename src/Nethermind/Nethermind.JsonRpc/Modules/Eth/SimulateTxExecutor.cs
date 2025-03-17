@@ -17,7 +17,7 @@ using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, SimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong? secondsPerSlot = null)
+public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {

@@ -16,6 +16,7 @@ public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransacti
     [JsonIgnore]
     public new UInt256 TotalDifficulty { get => base.TotalDifficulty; set => base.TotalDifficulty = value; }
     public string? Error { get; set; }
+    [JsonIgnore]
     public bool Success { get; set; } = true;
-    public List<TTrace> Calls { get; set; } = new();
+    public IReadOnlyCollection<TTrace> Calls { get; set; } = [];
 }

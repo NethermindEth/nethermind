@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -94,9 +95,9 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             TraceTransfers = true
         };
 
-        SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, new SimulateBlockTracerFactory<SimulateCallResult>(), CancellationToken.None);
+        SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, new SimulateBlockMutatorTracerFactory<SimulateCallResult>(), CancellationToken.None);
 
-        byte[] addressBytes = result.Items[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
+        byte[] addressBytes = result.Items[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 

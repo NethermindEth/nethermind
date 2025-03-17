@@ -69,7 +69,7 @@ public class TraceRpcModuleTests
                 Blockchain.WorldStateManager,
                 Blockchain.BlockTree,
                 JsonRpcConfig,
-                Substitute.For<IBlockchainBridgeFactory>(),
+                Substitute.For<IBlockchainBridge>(),
                 new BlocksConfig().SecondsPerSlot,
                 Blockchain.BlockPreprocessorStep,
                 new RewardCalculator(Blockchain.SpecProvider),
