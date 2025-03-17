@@ -16,8 +16,8 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
     {
         // Environment.SetEnvironmentVariable("GOGC", "off");
         // Environment.SetEnvironmentVariable("GOMEMLIMIT", "9999MiB");
-        //Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1,harddecommit=1,panicnil=1,invalidptr=0,scavtrace=1");
-        Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1,gcshrinkstackoff=1");
+        // Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1,harddecommit=1,panicnil=1,invalidptr=0,scavtrace=1");
+        // Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1,gcshrinkstackoff=1");
     }
 
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
@@ -42,20 +42,20 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
-        Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} ...");
+        //Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} ...");
 
         bool isValid;
         fixed (byte* ptr = input.Span)
         {
             isValid = VerifyBytes(ptr, input.Length) != 0;
-            Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} -> {isValid}");
+            //Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} -> {isValid}");
         }
 
         Metrics.Secp256r1Precompile++;
 
-        Console.WriteLine("Secp256r1GoPrecompile: Reporting Go GC");
-        ReportGC();
-        Console.WriteLine("Secp256r1GoPrecompile: Reported Go GC");
+        // Console.WriteLine("Secp256r1GoPrecompile: Reporting Go GC");
+        // ReportGC();
+        // Console.WriteLine("Secp256r1GoPrecompile: Reported Go GC");
 
         return (isValid ? ValidResult : null, true);
     }
