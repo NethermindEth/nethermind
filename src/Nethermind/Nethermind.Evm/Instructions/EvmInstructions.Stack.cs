@@ -122,43 +122,44 @@ internal static partial class EvmInstructions
 
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
-        Instruction nextInstruction;
-        if (!TTracingInstructions.IsActive &&
-            remainingCode > Size &&
-            ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
-                is Instruction.JUMP or Instruction.JUMPF))
-        {
-            // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = As<byte, ushort>(ref Add(ref bytes, programCounter));
-            if (BitConverter.IsLittleEndian)
-            {
-                destination = BinaryPrimitives.ReverseEndianness(destination);
-            }
+        //Instruction nextInstruction;
+        //if (!TTracingInstructions.IsActive &&
+        //    remainingCode > Size &&
+        //    ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
+        //        is Instruction.JUMP or Instruction.JUMPF))
+        //{
+        //    // If next instruction is a JUMP we can skip the PUSH+POP from stack
+        //    ushort destination = As<byte, ushort>(ref Add(ref bytes, programCounter));
+        //    if (BitConverter.IsLittleEndian)
+        //    {
+        //        destination = BinaryPrimitives.ReverseEndianness(destination);
+        //    }
 
-            if (nextInstruction == Instruction.JUMP)
-            {
-                gasAvailable -= GasCostOf.Jump;
-            }
-            else
-            {
-                gasAvailable -= GasCostOf.JumpF;
-                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-                if (isOverflow) goto StackUnderflow;
-                if (!shouldJump)
-                {
-                    // Move forward by 2 bytes + JUMPF
-                    programCounter += Size + 1;
-                    goto Success;
-                }
-            }
+        //    if (nextInstruction == Instruction.JUMP)
+        //    {
+        //        gasAvailable -= GasCostOf.Jump;
+        //    }
+        //    else
+        //    {
+        //        gasAvailable -= GasCostOf.JumpF;
+        //        bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
+        //        if (isOverflow) goto StackUnderflow;
+        //        if (!shouldJump)
+        //        {
+        //            // Move forward by 2 bytes + JUMPF
+        //            programCounter += Size + 1;
+        //            goto Success;
+        //        }
+        //    }
 
-            // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, in vm.EvmState.Env))
-                goto InvalidJumpDestination;
+        //    // Validate the jump destination and update the program counter if valid.
+        //    if (!Jump((int)destination, ref programCounter, in vm.EvmState.Env))
+        //        goto InvalidJumpDestination;
 
-            goto Success;
-        }
-        else if (remainingCode >= Size)
+        //    goto Success;
+        //}
+        //else
+        if (remainingCode >= Size)
         {
             // Optimized push for exactly two bytes.
             stack.Push2Bytes(ref Add(ref bytes, programCounter));
@@ -175,13 +176,13 @@ internal static partial class EvmInstructions
         }
 
         programCounter += Size;
-    Success:
+    //Success:
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    InvalidJumpDestination:
-        return EvmExceptionType.InvalidJumpDestination;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+    //// Jump forward to be unpredicted by the branch predictor.
+    //InvalidJumpDestination:
+    //    return EvmExceptionType.InvalidJumpDestination;
+    //StackUnderflow:
+    //    return EvmExceptionType.StackUnderflow;
     }
 
     /// <summary>
