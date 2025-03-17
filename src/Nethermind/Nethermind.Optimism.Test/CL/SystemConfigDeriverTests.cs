@@ -4,10 +4,8 @@
 using System;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -115,7 +113,7 @@ public class SystemConfigDeriverTests
 
         actualConfig.Should().Be(expectedConfig);
     }
-/*
+
     [Test]
     public void UpdateSystemConfigFromL1BLockReceipts_UpdatedFeeScalars_Ecotone()
     {
@@ -129,37 +127,36 @@ public class SystemConfigDeriverTests
         var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
 
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
         var specHelper = Substitute.For<IOptimismSpecHelper>();
-        specHelper.IsEcotone(blockHeader).Returns(true);
+        specHelper.IsEcotone(Arg.Any<BlockHeader>()).Returns(true);
 
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithData(encodedData)
-                        .WithTopics(
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Data = encodedData,
+                        Topics =
+                        [
                             SystemConfigUpdate.EventABIHash,
                             SystemConfigUpdate.EventVersion0,
-                            SystemConfigUpdate.FeeScalars)
-                        .TestObject
+                            SystemConfigUpdate.FeeScalars
+                        ]
+                    }
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             specHelper
         );
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), blockHeader);
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         var expectedConfig = new SystemConfig
         {
@@ -187,38 +184,37 @@ public class SystemConfigDeriverTests
         var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
 
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
         var specHelper = Substitute.For<IOptimismSpecHelper>();
-        specHelper.IsEcotone(blockHeader).Returns(true);
+        specHelper.IsEcotone(Arg.Any<BlockHeader>()).Returns(true);
 
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithData(encodedData)
-                        .WithTopics(
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Data = encodedData,
+                        Topics =
+                        [
                             SystemConfigUpdate.EventABIHash,
                             SystemConfigUpdate.EventVersion0,
-                            SystemConfigUpdate.FeeScalars)
-                        .TestObject
+                            SystemConfigUpdate.FeeScalars
+                        ]
+                    },
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             specHelper
         );
         var initialConfig = new SystemConfig();
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(initialConfig, blockHeader);
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         // Invalid scalars should be ignored and we should keep the initial config.
         actualConfig.Should().Be(initialConfig);
@@ -234,41 +230,39 @@ public class SystemConfigDeriverTests
         var encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
 
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
         var specHelper = Substitute.For<IOptimismSpecHelper>();
 
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithData(encodedData)
-                        .WithTopics(
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Data = encodedData,
+                        Topics =
+                        [
                             SystemConfigUpdate.EventABIHash,
                             SystemConfigUpdate.EventVersion0,
-                            SystemConfigUpdate.UnsafeBlockSigner)
-                        .TestObject
+                            SystemConfigUpdate.UnsafeBlockSigner
+                        ]
+                    }
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             specHelper
         );
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), blockHeader);
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         var expectedConfig = new SystemConfig();
 
-        // The log data is ignored by consensus and no modifications to the
-        // system config occur.
+        // The log data is ignored by consensus and no modification to the `SystemConfig` is made.
         actualConfig.Should().Be(expectedConfig);
     }
 
@@ -280,36 +274,35 @@ public class SystemConfigDeriverTests
         var encodedGasLimit = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedGasLimit);
 
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
         var specHelper = Substitute.For<IOptimismSpecHelper>();
 
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithData(encodedData)
-                        .WithTopics(
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Data = encodedData,
+                        Topics =
+                        [
                             SystemConfigUpdate.EventABIHash,
                             SystemConfigUpdate.EventVersion0,
-                            SystemConfigUpdate.GasLimit)
-                        .TestObject
+                            SystemConfigUpdate.GasLimit
+                        ]
+                    }
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             specHelper
         );
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), blockHeader);
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         var expectedConfig = new SystemConfig
         {
@@ -328,36 +321,35 @@ public class SystemConfigDeriverTests
         var encodedEIP1559Params = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, eip1559Params);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedEIP1559Params);
 
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
         var specHelper = Substitute.For<IOptimismSpecHelper>();
 
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithData(encodedData)
-                        .WithTopics(
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Data = encodedData,
+                        Topics =
+                        [
                             SystemConfigUpdate.EventABIHash,
                             SystemConfigUpdate.EventVersion0,
-                            SystemConfigUpdate.EIP1559Params)
-                        .TestObject
+                            SystemConfigUpdate.EIP1559Params
+                        ]
+                    }
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             specHelper
         );
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), blockHeader);
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         var expectedConfig = new SystemConfig
         {
@@ -370,32 +362,29 @@ public class SystemConfigDeriverTests
     [Test]
     public void UpdateSystemConfigFromL1BLockReceipts_InvalidTopics()
     {
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
         var specHelper = Substitute.For<IOptimismSpecHelper>();
 
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithTopics(SystemConfigUpdate.EventABIHash)
-                        .TestObject
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Topics = [SystemConfigUpdate.EventABIHash]
+                    }
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             specHelper
         );
-        var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), blockHeader);
+        var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         update.Should().Throw<ArgumentException>();
     }
@@ -409,37 +398,34 @@ public class SystemConfigDeriverTests
         var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
 
-        var blockHeader = Build.A.BlockHeader
-            .WithHash(TestItem.KeccakA)
-            .TestObject;
-
-        var receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(TestItem.KeccakA).Returns([
-            new TxReceipt
+        ReceiptForRpc[] receipts =
+        [
+            new()
             {
-                StatusCode = StatusCode.Success,
+                Status = StatusCode.Success,
                 Logs =
                 [
-                    Build.A.LogEntry
-                        .WithAddress(L1SystemConfigAddress)
-                        .WithData([..encodedData, 0x00]) // One extra empty byte
-                        .WithTopics(
+                    new()
+                    {
+                        Address = L1SystemConfigAddress,
+                        Data = [..encodedData, 0x00], // One extra empty byte
+                        Topics =
+                        [
                             SystemConfigUpdate.EventABIHash,
                             SystemConfigUpdate.EventVersion0,
-                            SystemConfigUpdate.FeeScalars)
-                        .TestObject
+                            SystemConfigUpdate.FeeScalars
+                        ]
+                    }
                 ]
             }
-        ]);
+        ];
 
         var deriver = new SystemConfigDeriver(
             new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             Substitute.For<IOptimismSpecHelper>()
         );
-        var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), blockHeader);
+        var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), new L1Block(), receipts);
 
         update.Should().Throw<AbiException>();
-
-        ReceiptForRpc
-    }*/
+    }
 }
