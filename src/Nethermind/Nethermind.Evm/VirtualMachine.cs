@@ -32,6 +32,7 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 using Int256;
 using Nethermind.Evm.Config;
+using Sigil;
 using System.Diagnostics;
 using ZstdSharp.Unsafe;
 
@@ -81,7 +82,7 @@ public class VirtualMachine : IVirtualMachine
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmAnalysisThreshold = 2,
             IlEvmAnalysisQueueMaxSize = 2,
-            IsIlEvmAggressiveModeEnabled = true,
+            IsIlEvmAggressiveModeEnabled = false,
         };
 
         switch (_vmConfig.IlEvmEnabledMode)
@@ -688,8 +689,12 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
 
-        }
+            if(vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
+            {
+                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+            }
 
+        }
         if (env.CodeInfo.MachineCode.Length == 0)
         {
             if (!vmState.IsTopLevel)
@@ -733,7 +738,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger,
                     ref chunkExecutionState))
                 {
-                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
+                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
                     return new CallResult(chunkExecutionState.CallResult);
                 }
 
