@@ -33,6 +33,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Facade.Eth;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using Lantern.Discv5.Rlp;
+using System.Text;
 #pragma warning disable CS0219 // Variable is assigned but its value is never used
 
 int localPort = 30304;
@@ -613,4 +615,17 @@ static class Shared
 {
     public static IPAddress? Ip { get; set; } = IPAddress.Parse("178.172.225.183");
     public static int Port { get; set; } = 30304;
+}
+
+public class RawEntry(string key, byte[] value) : IEntry
+{
+
+    public string Key { get; } = key;
+    public byte[] Value { get; } = value;
+    EnrEntryKey IEntry.Key => new(Key);
+    public IEnumerable<byte> EncodeEntry()
+    {
+        return ByteArrayUtils.JoinByteArrays(RlpEncoder.EncodeString(Key, Encoding.ASCII),
+        RlpEncoder.EncodeBytes(Value));
+    }
 }

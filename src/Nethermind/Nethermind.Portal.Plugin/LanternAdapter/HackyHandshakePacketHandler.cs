@@ -69,7 +69,8 @@ public class HackyHandshakePacketHandler : HandshakePacketHandler
         _logger.LogInformation("Received HANDSHAKE packet from {RemoteEndPoint}", returnedResult.RemoteEndPoint);
         var packet = returnedResult.Buffer;
 
-        if (!_packetProcessor.TryGetStaticHeader(packet, out var staticHeader))
+        var staticHeader = _packetProcessor.GetStaticHeader(packet);
+        if (staticHeader is null)
         {
             _logger.LogInformation("Could not decode header from {addr}", returnedResult.RemoteEndPoint.Address);
             return;

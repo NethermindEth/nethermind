@@ -67,7 +67,8 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     {
         _logger.LogInformation("HL Received ORDINARY packet from {Address}", returnedResult.RemoteEndPoint.Address);
 
-        if (!_packetProcessor.TryGetStaticHeader(returnedResult.Buffer, out var staticHeader))
+        var staticHeader = _packetProcessor.GetStaticHeader(returnedResult.Buffer);
+        if (staticHeader is null)
         {
             _logger.LogInformation("Could not decode header from {addr}", returnedResult.RemoteEndPoint.Address);
             return;

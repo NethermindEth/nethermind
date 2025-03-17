@@ -37,6 +37,8 @@ using System.Net.Sockets;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Network.Kademlia;
 using Nethermind.Blockchain.Synchronization;
+using Lantern.Discv5.Rlp;
+using System.Text;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -550,5 +552,18 @@ public class DiscoveryV5App : IDiscoveryApp
     {
         var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
         routingTable.UpdateFromEnr(GetEnr(node));
+    }
+}
+
+public class RawEntry(string key, byte[] value) : IEntry
+{
+
+    public string Key { get; } = key;
+    public byte[] Value { get; } = value;
+    EnrEntryKey IEntry.Key => new(Key);
+    public IEnumerable<byte> EncodeEntry()
+    {
+        return ByteArrayUtils.JoinByteArrays(RlpEncoder.EncodeString(Key, Encoding.ASCII),
+        RlpEncoder.EncodeBytes(Value));
     }
 }

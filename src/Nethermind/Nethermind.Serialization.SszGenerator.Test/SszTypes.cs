@@ -4,7 +4,6 @@
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 using System.Collections;
-using System.ComponentModel;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {
@@ -110,10 +109,10 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public Test2[]? Test2UnionList { get; set; }
 
         [SszVector(10)]
-        public BitArray? BitVec { get; set; }
+        public BitArray BitVec { get; set; }
 
         [SszList(10)]
-        public BitArray? BitList { get; set; }
+        public BitArray BitList { get; set; }
     }
 
     [SszSerializable]
