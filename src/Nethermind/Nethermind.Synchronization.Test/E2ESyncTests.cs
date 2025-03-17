@@ -324,8 +324,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
 
             timestamper.Add(TimeSpan.FromSeconds(1));
-            await manualBlockProductionTrigger.BuildBlock();
-            await newBlockTask;
+            try
+            {
+                (await manualBlockProductionTrigger.BuildBlock()).Should().NotBeNull();
+                await newBlockTask;
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Error building block. Head: {blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, {e}");
+            }
         }
 
 

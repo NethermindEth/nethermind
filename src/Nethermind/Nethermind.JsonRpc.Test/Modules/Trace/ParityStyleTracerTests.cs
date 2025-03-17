@@ -88,9 +88,8 @@ public class ParityStyleTracerTests
         _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
-        _tracer = new Tracer(stateProvider, _processor, _processor);
-        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource, blockchainBridge, new BlocksConfig().SecondsPerSlot);
+        _tracer = new Tracer(new ReadOnlyTxProcessingScope(transactionProcessor, stateProvider, stateProvider.StateRoot), _processor, _processor);
+        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot);
     }
 
     [TearDown]

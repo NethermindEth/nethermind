@@ -36,29 +36,26 @@ namespace Nethermind.JsonRpc.Modules.Trace
     /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
     /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
     /// </summary>
-    public class TraceRpcModule : ITraceRpcModule
+    public class TraceRpcModule(
+        IReceiptFinder? receiptFinder,
+        ITracer? tracer,
+        IBlockFinder? blockFinder,
+        IJsonRpcConfig? jsonRpcConfig,
+        IStateReader? stateReader,
+        IOverridableTxProcessorSource? env,
+        IBlockchainBridge? blockchainBridge,
+        ulong? secondsPerSlot)
+        : ITraceRpcModule
     {
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly ITracer _tracer;
-        private readonly IBlockFinder _blockFinder;
+        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+        private readonly ITracer _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly IStateReader _stateReader;
-        private readonly IOverridableTxProcessorSource _env;
-        private readonly IBlockchainBridge _blockchainBridge;
-        private readonly ulong _secondsPerSlot;
-
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader? stateReader, IOverridableTxProcessorSource? env, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot)
-        {
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _env = env ?? throw new ArgumentNullException(nameof(env));
-            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
-        }
+        private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        private readonly IOverridableTxProcessorSource _env = env ?? throw new ArgumentNullException(nameof(env));
+        private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        private readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
 
         public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot)
             : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env, blockchainBridge, secondsPerSlot) { }
