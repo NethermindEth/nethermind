@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
@@ -26,9 +27,11 @@ public static class SystemConfigUpdate
 }
 
 public class SystemConfigDeriver(
-    CLChainSpecEngineParameters rollupConfig
+    CLChainSpecEngineParameters rollupConfig,
+    IOptimismSpecHelper specHelper
 ) : ISystemConfigDeriver
 {
+
     public SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit)
     {
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, extraData);
@@ -36,7 +39,7 @@ public class SystemConfigDeriver(
         scalar[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(28), l1BlockInfo.BaseFeeScalar);
-        return new SystemConfig()
+        return new SystemConfig
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = gasLimit,
@@ -45,7 +48,7 @@ public class SystemConfigDeriver(
         };
     }
 
-    public SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, ReceiptForRpc[] receipts)
+    public SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, L1Block l1Origin, ReceiptForRpc[] receipts)
     {
         var config = systemConfig;
 
@@ -57,7 +60,7 @@ public class SystemConfigDeriver(
             {
                 if (log.Address == rollupConfig.L1SystemConfigAddress && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
                 {
-                    config = UpdateSystemConfigFromLogEvent(config, log);
+                    config = UpdateSystemConfigFromLogEvent(config, l1Origin, log);
                 }
             }
         }
@@ -65,7 +68,7 @@ public class SystemConfigDeriver(
         return config;
     }
 
-    private SystemConfig UpdateSystemConfigFromLogEvent(SystemConfig systemConfig, LogEntryForRpc log)
+    private SystemConfig UpdateSystemConfigFromLogEvent(SystemConfig systemConfig, L1Block l1Origin, LogEntryForRpc log)
     {
         if (log.Topics.Length != 3) throw new ArgumentException($"Expected 3 event topics (event identity, indexed version, indexed updateType), got {log.Topics.Length}");
         if (log.Topics[0] != SystemConfigUpdate.EventABIHash) throw new ArgumentException($"Invalid {nameof(SystemConfig)} update event: {log.Topics[0]}, expected {SystemConfigUpdate.EventABIHash}");
@@ -97,7 +100,7 @@ public class SystemConfigDeriver(
             var overhead = (byte[])decoded[2];
             var scalar = (byte[])decoded[3];
 
-            // if (specHelper.IsEcotone(header))
+            if (specHelper.IsEcotone(new BlockHeader { Timestamp = (ulong)l1Origin.Timestamp })) // TODO: Unsafe cast
             {
                 if (!ValidEcotoneL1SystemConfigScalar(scalar))
                 {
@@ -113,14 +116,14 @@ public class SystemConfigDeriver(
                     Overhead = new byte[32]
                 };
             }
-            // else
-            // {
-            //     systemConfig = systemConfig with
-            //     {
-            //         Overhead = overhead,
-            //         Scalar = scalar,
-            //     };
-            // }
+            else
+            {
+                systemConfig = systemConfig with
+                {
+                    Overhead = overhead,
+                    Scalar = scalar,
+                };
+            }
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
@@ -152,7 +155,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.UnsafeBlockSigner)
         {
-            // Ignored in derivation. This configurable applies to runtime configuration outside of the derivation.
+            // Ignored in derivation. This configurable applies to runtime configuration outside the derivation.
             return systemConfig;
         }
         else

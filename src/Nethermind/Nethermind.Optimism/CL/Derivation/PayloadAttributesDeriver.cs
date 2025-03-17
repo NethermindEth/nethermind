@@ -36,8 +36,7 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
 
         if (batch.IsFirstBlockInEpoch)
         {
-            systemConfig =
-                _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(systemConfig, l1Receipts);
+            systemConfig = _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(systemConfig, l1Origin, l1Receipts);
         }
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, systemConfig, batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1);
 

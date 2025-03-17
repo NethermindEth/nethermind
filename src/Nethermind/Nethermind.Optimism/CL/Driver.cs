@@ -25,9 +25,11 @@ public class Driver : IDisposable
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
 
-    public Driver(IL1Bridge l1Bridge,
+    public Driver(
+        IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
         CLChainSpecEngineParameters engineParameters,
+        IOptimismSpecHelper specHelper,
         IExecutionEngineManager executionEngineManager,
         IL2Api il2Api,
         ulong chainId,
@@ -37,7 +39,7 @@ public class Driver : IDisposable
         _logger = logger;
         _il2Api = il2Api;
         _decodingPipeline = decodingPipeline;
-        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters, specHelper);
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
             _systemConfigDeriver,
             new DepositTransactionBuilder(chainId, engineParameters),

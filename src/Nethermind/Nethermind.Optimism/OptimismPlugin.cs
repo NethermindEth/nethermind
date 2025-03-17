@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -34,7 +32,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
@@ -235,6 +232,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+        ArgumentNullException.ThrowIfNull(_api.SpecHelper!);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
         ArgumentNullException.ThrowIfNull(_api.SyncModeSelector);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -332,6 +330,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(
                 _api.SpecProvider,
+                _api.SpecHelper!,
                 chainSpecEngineParameters,
                 clConfig,
                 _api.EthereumJsonSerializer,

@@ -6,13 +6,14 @@ using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.CL;
 
 public interface ISystemConfigDeriver
 {
     SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit);
-    SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, ReceiptForRpc[] receipts);
+    SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, L1Block l1Origin, ReceiptForRpc[] receipts);
 }
 
 /// <summary>

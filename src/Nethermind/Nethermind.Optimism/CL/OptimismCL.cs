@@ -30,6 +30,7 @@ public class OptimismCL : IDisposable
 
     public OptimismCL(
         ISpecProvider specProvider,
+        IOptimismSpecHelper optimismSpecHelper,
         CLChainSpecEngineParameters engineParameters,
         ICLConfig config,
         IJsonSerializer jsonSerializer,
@@ -51,13 +52,14 @@ public class OptimismCL : IDisposable
         _decodingPipeline = new DecodingPipeline(logger);
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, logManager);
 
-        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters, optimismSpecHelper);
         _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, logger);
         _executionEngineManager = new ExecutionEngineManager(_l2Api, logger);
         _driver = new Driver(
             _l1Bridge,
             _decodingPipeline,
             engineParameters,
+            optimismSpecHelper,
             _executionEngineManager,
             _l2Api,
             specProvider.ChainId,
