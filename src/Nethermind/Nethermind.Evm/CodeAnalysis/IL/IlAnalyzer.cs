@@ -277,6 +277,7 @@ public static class IlAnalyzer
                     coststack += op.Metadata.GasCost;
                     subSegment.End = pc;
                     hasInvalidOpcode |= op.IsInvalid;
+                    hasJumpdest |= op.Operation is Instruction.JUMPDEST;
                     // handle stack analysis 
                     currentStackSize -= op.Metadata.StackBehaviorPop;
                     if (currentStackSize < subSegment.RequiredStack)
@@ -313,6 +314,8 @@ public static class IlAnalyzer
                             hasInvalidOpcode = false;
                             costStart = pc + 1;             // start with the next again
                             coststack = 0;
+                            notStart = true;
+                            continue;
                         }
                         else
                         {
