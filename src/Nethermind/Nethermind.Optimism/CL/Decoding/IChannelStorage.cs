@@ -7,12 +7,4 @@ public interface IChannelStorage
 {
     BatchV1[]? GetReadyBatches();
     void ConsumeFrame(Frame frames);
-
-    void ConsumeFrames(Frame[] frames)
-    {
-        foreach (var frame in frames)
-        {
-            ConsumeFrame(frame);
-        }
-    }
 }
