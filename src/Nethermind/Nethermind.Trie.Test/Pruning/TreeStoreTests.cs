@@ -255,7 +255,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 540560L : 610708L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 589124 : 659272L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -691,7 +691,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (fullTrieStore.BeginBlockCommit(1))
             {
-                using (ICommitter committer = fullTrieStore.GetTrieStore(Hash256.Zero).BeginCommit(storage1))
+                using (ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(storage1))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
@@ -895,7 +895,7 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage;
+        private long ExpectedPerNodeKeyMemorySize => (_scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
 
         [Test]
         public void After_commit_should_have_has_root()
@@ -944,11 +944,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             if (_scheme == INodeStorage.KeyScheme.Hash)
             {
-                memDb.Count.Should().NotBe(2);
+                memDb.Count.Should().NotBe(1);
             }
             else
             {
-                memDb.Count.Should().Be(2);
+                memDb.Count.Should().Be(1);
             }
         }
 
@@ -1020,7 +1020,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 736 : 944);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 880 : 1088);
         }
 
         [Test]
@@ -1059,8 +1059,8 @@ namespace Nethermind.Trie.Test.Pruning
             UInt256 slot = 1;
 
             INodeStorage nodeStorage = new NodeStorage(memDbProvider.StateDb, _scheme);
-            (Hash256 stateRoot, Hash256 storageRoot) = SetupStartingState();
-            nodeStorage.Get(address.ToAccountPath, TreePath.Empty, storageRoot).Should().NotBeNull();
+            (Hash256 stateRoot, ValueHash256 storageRoot) = SetupStartingState();
+            nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDbProvider.StateDb,
@@ -1073,8 +1073,8 @@ namespace Nethermind.Trie.Test.Pruning
                 LimboLogs.Instance);
 
             // Simulate some kind of cache access which causes unresolved node to remain.
-            IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address.ToAccountPath);
-            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot);
+            IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
+            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
 
             worldState.StateRoot = stateRoot;
             worldState.IncrementNonce(address, 1);
@@ -1082,11 +1082,11 @@ namespace Nethermind.Trie.Test.Pruning
             worldState.CommitTree(2);
 
             fullTrieStore.PersistCache(default);
-            nodeStorage.Get(address.ToAccountPath, TreePath.Empty, storageRoot).Should().NotBeNull();
+            nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
 
             return;
 
-            (Hash256, Hash256) SetupStartingState()
+            (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 worldState.StateRoot = Keccak.EmptyTreeHash;
@@ -1100,6 +1100,43 @@ namespace Nethermind.Trie.Test.Pruning
                 return (stateRoot, storageRoot);
             }
 
+        }
+
+        [Test]
+        public async Task When_Prune_ClearRecommittedPersistedNode()
+        {
+            MemDb memDb = new();
+
+            IPersistenceStrategy isPruningPersistenceStrategy = Substitute.For<IPersistenceStrategy>();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 64, 100000),
+                persistenceStrategy: isPruningPersistenceStrategy);
+
+            TreePath emptyPath = TreePath.Empty;
+            TaskCompletionSource tcs = new TaskCompletionSource();
+            fullTrieStore.OnMemoryPruneCompleted += (sender, args) => tcs.TrySetResult();
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
+
+                // Pruning is done in background
+                await tcs.Task;
+                tcs = new TaskCompletionSource();
+            }
+
+            memDb.Count.Should().Be(0);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 14080 : 17408);
+
+            fullTrieStore.PersistCache(default);
+            memDb.Count.Should().Be(64);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
     }
 }

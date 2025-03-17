@@ -86,7 +86,7 @@ public class ParityStyleTracerTests
         _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
-        _tracer = new Tracer(stateProvider, _processor, _processor);
+        _tracer = new Tracer(new ReadOnlyTxProcessingScope(transactionProcessor, stateProvider, stateProvider.StateRoot), _processor, _processor);
         _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource);
     }
 

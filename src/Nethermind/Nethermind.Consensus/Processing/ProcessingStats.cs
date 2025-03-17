@@ -159,6 +159,12 @@ namespace Nethermind.Consensus.Processing
             _lastBlockNumber = blockNumber;
             double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
 
+            // We want the rate here
+            double mgas = block.GasUsed / 1_000_000.0;
+            double timeSec = data.ProcessingMicroseconds / 1_000_000.0;
+            Metrics.BlockMGasPerSec.Observe(mgas / timeSec);
+            Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+
             Metrics.Mgas += block.GasUsed / 1_000_000.0;
             Transaction[] txs = block.Transactions;
             double chunkMicroseconds = (_chunkProcessingMicroseconds += data.ProcessingMicroseconds);
@@ -342,7 +348,7 @@ namespace Nethermind.Consensus.Processing
                 var recoveryQueue = Metrics.RecoveryQueueSize;
                 var processingQueue = Metrics.ProcessingQueueSize;
 
-                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0}  " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
+                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
                 {
                     true => $" blobs {blobs,10:N0}       ",

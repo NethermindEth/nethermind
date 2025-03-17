@@ -5,29 +5,47 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.IO;
+using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Hive;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko;
+using Nethermind.Taiko.TaikoSpec;
+using Nethermind.UPnP.Plugin;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
 
-[TestFixture, Parallelizable(ParallelScope.All)]
+[TestFixture, Parallelizable(ParallelScope.None)]
 public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
@@ -53,6 +71,17 @@ public class EthereumRunnerTests
         });
 
         return result;
+    }
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown()
+    {
+        // Optimism override decoder globally, which mess up other test
+        Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+        if (assembly is not null)
+        {
+            Rlp.RegisterDecoders(assembly, true);
+        }
     }
 
     public static IEnumerable ChainSpecRunnerTests
@@ -94,6 +123,55 @@ public class EthereumRunnerTests
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(300000)]
+    public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
+        {
+            return;
+        }
+
+        PluginLoader pluginLoader = new(
+            "plugins",
+            new FileSystem(),
+            NullLogger.Instance,
+            typeof(AuRaPlugin),
+            typeof(CliquePlugin),
+            typeof(OptimismPlugin),
+            typeof(TaikoPlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin),
+            typeof(HivePlugin),
+            typeof(UPnPPlugin)
+        );
+        pluginLoader.Load();
+
+        ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+
+        INethermindApi api = runner.Api;
+        api.FileSystem = Substitute.For<IFileSystem>();
+        api.BlockTree = Substitute.For<IBlockTree>();
+        api.ReceiptStorage = Substitute.For<IReceiptStorage>();
+        api.BlockValidator = Substitute.For<IBlockValidator>();
+        api.DbProvider = Substitute.For<IDbProvider>();
+
+        try
+        {
+            var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (var step in stepsLoader.ResolveStepsImplementations(runner.Api.GetType()))
+            {
+                runner.LifetimeScope.Resolve(step.StepType);
+            }
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
         // An ugly hack to keep unused types
@@ -108,14 +186,34 @@ public class EthereumRunnerTests
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             initConfig.BaseDbPath = tempPath.Path;
 
+            IDbConfig dbConfig = configProvider.GetConfig<IDbConfig>();
+            dbConfig.FlushOnExit = false;
+
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
             int port = basePort + testIndex;
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
-            INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
-            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
-            EthereumRunner runner = new(nethermindApi);
+            PluginLoader pluginLoader = new(
+                "plugins",
+                new FileSystem(),
+                NullLogger.Instance,
+                typeof(AuRaPlugin),
+                typeof(CliquePlugin),
+                typeof(OptimismPlugin),
+                typeof(TaikoPlugin),
+                typeof(EthashPlugin),
+                typeof(NethDevPlugin),
+                typeof(HivePlugin),
+                typeof(UPnPPlugin)
+            );
+            pluginLoader.Load();
+
+            ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+            IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+            EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+            INethermindApi nethermindApi = runner.Api;
+            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
 
             using CancellationTokenSource cts = new();
 
