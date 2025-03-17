@@ -18,7 +18,6 @@ public class Pivot : IPivot
         _syncconfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
         (PivotNumber, PivotHash) = blockTree.SyncPivot;
-        PivotTotalDifficulty = _syncconfig.PivotTotalDifficultyParsed;
         PivotDestinationNumber = 0L;
     }
 
@@ -27,8 +26,6 @@ public class Pivot : IPivot
     public Hash256? PivotHash { get; }
 
     public Hash256? PivotParentHash => null;
-
-    public UInt256? PivotTotalDifficulty { get; }
 
     public long PivotDestinationNumber { get; }
 }

@@ -70,9 +70,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         // we can I guess?
         public Hash256? PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _blockTree.SyncPivot.BlockHash;
 
-        public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
-            _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
-
         // The stopping point (inclusive) for the reverse beacon header sync.
         public long PivotDestinationNumber
         {
