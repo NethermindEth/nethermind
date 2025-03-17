@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -24,7 +23,7 @@ public class HistoryPruner(
     private readonly bool _enabled = historyConfig.Enabled;
     private readonly ulong _epochLength = secondsPerSlot * 32;
 
-    public void TryPruneHistory(CancellationToken cancellationToken)
+    public async Task TryPruneHistory(CancellationToken cancellationToken)
     {
         if (!ShouldPruneHistory())
         {
@@ -38,8 +37,9 @@ public class HistoryPruner(
                 return;
             }
 
-            _pruneHistoryTask = ExecuteHistoryPruningAsync(cancellationToken);
+            _pruneHistoryTask = PruneHistory(cancellationToken);
         }
+        await _pruneHistoryTask;
     }
 
     private bool ShouldPruneHistory()
@@ -53,7 +53,7 @@ public class HistoryPruner(
         return cutoffTimestamp > _lastPrunedTimestamp;
     }
 
-    private async Task ExecuteHistoryPruningAsync(CancellationToken cancellationToken)
+    private async Task PruneHistory(CancellationToken cancellationToken)
     {
         if (blockTree.Head is null)
         {

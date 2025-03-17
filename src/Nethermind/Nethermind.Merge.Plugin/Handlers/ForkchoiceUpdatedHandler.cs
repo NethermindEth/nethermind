@@ -92,7 +92,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        _historyPruner?.TryPruneHistory(CancellationToken.None);
+        _ = Task.Run(() => _historyPruner?.TryPruneHistory(CancellationToken.None));
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)

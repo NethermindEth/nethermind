@@ -102,6 +102,8 @@ public class TestBlockchain : IDisposable
     public static Address AccountC = TestItem.AddressC;
     private IBlockFinder _blockFinder = null!;
 
+    public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
+
     public static readonly UInt256 InitialValue = 1000.Ether();
     private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
     public IHeaderValidator HeaderValidator { get; set; } = null!;
@@ -131,7 +133,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
-        Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
+        Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
@@ -235,7 +237,6 @@ public class TestBlockchain : IDisposable
         _testUtil = new TestBlockchainUtil(
             BlockProducerRunner,
             BlockProductionTrigger,
-            Timestamper,
             BlockTree,
             TxPool
         );

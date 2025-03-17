@@ -17,7 +17,6 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchainUtil(
     IBlockProducerRunner blockProducerRunner,
     IManualBlockProductionTrigger blockProductionTrigger,
-    ManualTimestamper timestamper,
     IBlockTree blockTree,
     ITxPool txPool
 )
@@ -33,7 +32,6 @@ public class TestBlockchainUtil(
         Task waitForNewBlock = WaitAsync(WaitForBlockProducerBlockProduced(cancellationToken), "timeout waiting for block producer");
 
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
-        timestamper.Add(TimeSpan.FromSeconds(1));
         await blockProductionTrigger.BuildBlock().ConfigureAwait(false);
 
         await waitForNewBlock.ConfigureAwait(false);

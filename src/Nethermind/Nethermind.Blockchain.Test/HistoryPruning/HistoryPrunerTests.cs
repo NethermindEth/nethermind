@@ -1,0 +1,199 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.HistoryPruning;
+using Nethermind.Config;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Logging;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Blockchain.Test.HistoryPruning;
+
+public class HistoryPrunerTests
+{
+    private const long SecondsPerSlot = 12;
+    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (49 * SecondsPerSlot);
+    
+    [Test]
+    public async Task Can_prune_blocks_older_than_specified_epochs()
+    {
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        
+        for (int i = 0; i < 100; i++)
+        {
+            await testBlockchain.AddBlock();
+            testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
+        }
+        
+        var head = testBlockchain.BlockTree.Head;
+        Assert.That(head, Is.Not.Null);
+        
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryPruneEpochs = 2,
+            DropPreMerge = false
+        };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        
+        HistoryPruner historyPruner = new(
+            testBlockchain.BlockTree,
+            specProvider, 
+            historyConfig, 
+            SecondsPerSlot, 
+            LimboLogs.Instance);
+        
+        await historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
+            Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
+        }
+
+        for (int i = 1; i <= 100; i++)
+        {
+            var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
+            var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+
+            if (i < 100 - 64)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(block, Is.Null, $"Block {i} should be pruned");
+                    Assert.That(header, Is.Null, $"Header {i} should be pruned");
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned (part of the last 64 blocks)");
+                    Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned (part of the last 64 blocks)");
+                }
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.BestKnownNumber, Is.EqualTo(100L), "BestKnownNumber should be maintained");
+            Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo(100L), "Head block number should be maintained");
+        }
+    }
+    
+    [Test]
+    public async Task Can_prune_pre_merge_blocks()
+    {
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        
+        for (int i = 0; i < 100; i++)
+        {
+            await testBlockchain.AddBlock();
+            testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
+        }
+        
+        var head = testBlockchain.BlockTree.Head;
+        Assert.That(head, Is.Not.Null);
+        
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryPruneEpochs = null,
+            DropPreMerge = true
+        };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
+        
+        HistoryPruner historyPruner = new(
+            testBlockchain.BlockTree,
+            specProvider, 
+            historyConfig, 
+            SecondsPerSlot, 
+            LimboLogs.Instance);
+        
+        await historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
+            Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
+        }
+
+        for (int i = 1; i <= 100; i++)
+        {
+            var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
+            var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+
+            // block 50 is beacon chain genesis
+            if (i < 50)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(block, Is.Null, $"Block {i} should be pruned");
+                    Assert.That(header, Is.Null, $"Header {i} should be pruned");
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned (part of the last 64 blocks)");
+                    Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned (part of the last 64 blocks)");
+                }
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.BestKnownNumber, Is.EqualTo(100L), "BestKnownNumber should be maintained");
+            Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo(100L), "Head block number should be maintained");
+        }
+    }
+    
+    [Test]
+    public async Task Does_not_prune_when_disabled()
+    {
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        
+        for (int i = 0; i < 10; i++)
+        {
+            await testBlockchain.AddBlock();
+            testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
+        }
+        
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryPruneEpochs = null,
+            DropPreMerge = false
+        };
+        
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        
+        HistoryPruner historyPruner = new(
+            testBlockchain.BlockTree,
+            specProvider, 
+            historyConfig, 
+            SecondsPerSlot, 
+            LimboLogs.Instance);
+        
+        await historyPruner.TryPruneHistory(CancellationToken.None);
+        
+        for (int i = 0; i <= 10; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"Block {i} should still exist");
+                Assert.That(testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None), Is.Not.Null, $"Header {i} should still exist");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.BestKnownNumber, Is.EqualTo(10L), "BestKnownNumber should be maintained");
+            Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo(10L), "Head should be maintained");
+        }
+    }
+}
