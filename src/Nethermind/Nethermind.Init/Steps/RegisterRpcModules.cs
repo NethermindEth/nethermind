@@ -23,7 +23,6 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
-using Nethermind.JsonRpc.Modules.RBuilder;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -184,9 +183,6 @@ public class RegisterRpcModules : IStep
 
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
-
-        RbuilderRpcModule rbuilderRpcModule = new(_api.BlockTree, _api.SpecProvider, _api.WorldStateManager);
-        rpcModuleProvider.RegisterSingle<IRbuilderRpcModule>(rbuilderRpcModule);
 
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");

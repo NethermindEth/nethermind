@@ -10,9 +10,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.State;
 
-namespace Nethermind.JsonRpc.Modules.RBuilder;
+namespace Nethermind.Flashbots.Modules.Rbuilder;
 
 public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldStateManager worldStateManager)
     : IRbuilderRpcModule
@@ -20,9 +21,9 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     private readonly ObjectPool<IOverridableWorldScope> _overridableWorldScopePool = new DefaultObjectPool<IOverridableWorldScope>(new PooledIWorldStatePolicy(worldStateManager));
 
-    public ResultWrapper<byte[]> rbuilder_getCodeByHash(Hash256 hash)
+    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
     {
-        return ResultWrapper<byte[]>.Success(worldStateManager.GlobalStateReader.GetCode(hash));
+        return ResultWrapper<byte[]?>.Success(worldStateManager.GlobalStateReader.GetCode(hash));
     }
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
@@ -113,29 +114,29 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     }
 
 
-    public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
+    public ResultWrapper<AccountState?> rbuilder_getAccount(Address address, BlockParameter block)
     {
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            return ResultWrapper<AccountState>.Fail("Block not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<AccountState?>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
         if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                 out AccountStruct account))
         {
-            return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
+            return ResultWrapper<AccountState?>.Success(new AccountState(account.Nonce, account.Balance,
                 account.CodeHash));
         }
 
-        return ResultWrapper<AccountState>.Success(null);
+        return ResultWrapper<AccountState?>.Success(null);
     }
 
-    public ResultWrapper<Hash256> rbuilder_getBlockHash(BlockParameter block)
+    public ResultWrapper<Hash256?> rbuilder_getBlockHash(BlockParameter block)
     {
 
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
-        return ResultWrapper<Hash256>.Success(blockHeader?.Hash);
+        return ResultWrapper<Hash256?>.Success(blockHeader?.Hash);
     }
 
     private class PooledIWorldStatePolicy(IWorldStateManager worldStateManager)

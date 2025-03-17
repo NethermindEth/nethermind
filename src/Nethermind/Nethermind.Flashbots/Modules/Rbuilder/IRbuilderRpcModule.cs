@@ -7,8 +7,10 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 
-namespace Nethermind.JsonRpc.Modules.RBuilder;
+namespace Nethermind.Flashbots.Modules.Rbuilder;
 
 [RpcModule(ModuleType.Rbuilder)]
 public interface IRbuilderRpcModule
@@ -18,7 +20,7 @@ public interface IRbuilderRpcModule
         Description = "Returns bytecode based on hash.",
         IsSharable = true,
         ExampleResponse = "0xffff")]
-    ResultWrapper<byte[]> rbuilder_getCodeByHash(Hash256 hash);
+    ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash);
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Calculate the state root on top of the state trie at specified block given a set of change.",
@@ -30,14 +32,14 @@ public interface IRbuilderRpcModule
     [JsonRpcMethod(IsImplemented = true,
         Description = "Get account data",
         IsSharable = true)]
-    ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block);
+    ResultWrapper<AccountState?> rbuilder_getAccount(Address address, BlockParameter block);
 
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Gets block hash",
         IsSharable = true,
         ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-    ResultWrapper<Hash256> rbuilder_getBlockHash(BlockParameter block);
+    ResultWrapper<Hash256?> rbuilder_getBlockHash(BlockParameter block);
 }
 
 public class AccountChange

@@ -10,8 +10,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.RBuilder;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -19,7 +20,7 @@ using Nethermind.State;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
-namespace Nethermind.JsonRpc.Test.Modules.Rbuilder;
+namespace Nethermind.Flashbots.Test.Rbuilder;
 
 public class RbuilderRpcModuleTests
 {
