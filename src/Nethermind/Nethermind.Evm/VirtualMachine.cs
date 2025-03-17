@@ -82,7 +82,7 @@ public class VirtualMachine : IVirtualMachine
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmAnalysisThreshold = 2,
             IlEvmAnalysisQueueMaxSize = 2,
-            IsIlEvmAggressiveModeEnabled = false,
+            IsIlEvmAggressiveModeEnabled = true,
         };
 
         switch (_vmConfig.IlEvmEnabledMode)
