@@ -58,12 +58,43 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate<TTrace>(
+    public SimulateOutput<TTrace> TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingEnv env,
-        SimulateOutput<TTrace> output,
+        CancellationToken cancellationToken)
+    {
+        List<SimulateBlockResult<TTrace>> list = new();
+        SimulateOutput<TTrace> result = new SimulateOutput<TTrace>()
+        {
+            Items = list
+        };
+
+        try
+        {
+            if (!TrySimulate(parent, payload, tracer, env, list, cancellationToken, out string? error))
+            {
+                result.Error = error;
+            }
+        }
+        catch (InsufficientBalanceException ex)
+        {
+            result.Error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            result.Error = ex.ToString();
+        }
+
+        return result;
+    }
+
+    private bool TrySimulate<TTrace>(BlockHeader parent,
+        SimulatePayload<TransactionWithSourceDetails> payload,
+        IBlockTracer<TTrace> tracer,
+        SimulateReadOnlyBlocksProcessingEnv env,
+        List<SimulateBlockResult<TTrace>> output,
         CancellationToken cancellationToken,
         [NotNullWhen(false)] out string? error)
     {
@@ -72,12 +103,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         parent = GetParent(parent, payload, blockTree);
         IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
 
-        output.Items ??= [];
-
         if (payload.BlockStateCalls is not null)
         {
             Dictionary<Address, UInt256> nonceCache = new();
             List<Block> suggestedBlocks = [null];
+            IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
             {
@@ -102,16 +132,16 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 suggestedBlocks[0] = currentBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer.WithCancellation(cancellationToken))[0];
+                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, cancellationBlockTracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
 
-                SimulateBlockResult<TTrace> result = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
+                SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
                     Calls = [.. tracer.BuildResult()],
                 };
-                CheckMissingAndSetDefaults(result, processedBlock);
-                output.Items.Add(result);
+                CheckMissingAndSetDefaults(blockResult, processedBlock);
+                output.Add(blockResult);
                 parent = processedBlock.Header;
             }
         }

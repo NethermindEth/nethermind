@@ -4,13 +4,12 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
-public class SimulateBlockMutatorTracerFactory<SimulateCallResult> : ISimulateBlockTracerFactory<SimulateCallResult>
+public class SimulateBlockMutatorTracerFactory : ISimulateBlockTracerFactory<SimulateCallResult>
 {
-    public IBlockTracer<SimulateCallResult> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block)
-    {
-        return (IBlockTracer<SimulateCallResult>)new SimulateBlockMutatorTracer(isTracingLogs);
-    }
+    public IBlockTracer<SimulateCallResult> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) =>
+        new SimulateBlockMutatorTracer(isTracingLogs);
 }

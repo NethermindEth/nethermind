@@ -170,23 +170,7 @@ namespace Nethermind.Facade
         {
             SimulateReadOnlyBlocksProcessingEnv env = _simulateProcessingEnvFactory.Create(payload.Validation);
             IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, _specProvider, header);
-            SimulateOutput<TTrace> result = new();
-            try
-            {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, tracer, env, result, cancellationToken, out string error))
-                {
-                    result.Error = error;
-                }
-            }
-            catch (InsufficientBalanceException ex)
-            {
-                result.Error = ex.Message;
-            }
-            catch (Exception ex)
-            {
-                result.Error = ex.ToString();
-            }
-            return result;
+            return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, cancellationToken);
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)

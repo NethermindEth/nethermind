@@ -19,12 +19,12 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
         if (tx?.Hash is not null)
         {
             _txIndex++;
-            return new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, _txIndex);
+            return new(isTracingLogs, tx.Hash, (ulong)_currentBlock!.Number, _currentBlock!.Hash!, _txIndex);
         }
         return (SimulateTxMutatorTracer)NullTxTracer.Instance;
     }
 
-    protected override SimulateCallResult OnEnd(SimulateTxMutatorTracer txTracer) => txTracer.TraceResult;
+    protected override SimulateCallResult OnEnd(SimulateTxMutatorTracer txTracer) => txTracer.TraceResult!;
 
     public override void StartNewBlockTrace(Block block)
     {

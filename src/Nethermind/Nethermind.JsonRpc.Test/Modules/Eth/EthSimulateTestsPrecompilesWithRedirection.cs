@@ -61,7 +61,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory<SimulateCallResult>());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
@@ -176,7 +176,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory<SimulateCallResult>());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.That(chain.ReadOnlyState.AccountExists(contractAddress), Is.True);

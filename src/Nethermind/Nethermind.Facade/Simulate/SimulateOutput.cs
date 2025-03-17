@@ -11,5 +11,5 @@ public class SimulateOutput<TTrace>
     public string? Error { get; set; }
     public int? ErrorCode { get; set; }
 
-    public IList<SimulateBlockResult<TTrace>> Items { get; set; }
+    public IReadOnlyList<SimulateBlockResult<TTrace>> Items { get; init; }
 }

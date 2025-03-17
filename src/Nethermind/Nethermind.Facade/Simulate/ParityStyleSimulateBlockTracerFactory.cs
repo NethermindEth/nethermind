@@ -8,10 +8,8 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
-public class ParityStyleSimulateBlockTracerFactory<ParityLikeTxTrace>(ParityTraceTypes Types) : ISimulateBlockTracerFactory<ParityLikeTxTrace>
+public class ParityStyleSimulateBlockTracerFactory(ParityTraceTypes types) : ISimulateBlockTracerFactory<ParityLikeTxTrace>
 {
-    public IBlockTracer<ParityLikeTxTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block)
-    {
-        return (IBlockTracer<ParityLikeTxTrace>)new ParityLikeBlockTracer(Types);
-    }
+    public IBlockTracer<ParityLikeTxTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) =>
+        new ParityLikeBlockTracer(types);
 }

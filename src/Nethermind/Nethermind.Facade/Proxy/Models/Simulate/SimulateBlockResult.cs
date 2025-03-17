@@ -12,9 +12,9 @@ namespace Nethermind.Facade.Proxy.Models.Simulate;
 public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
-    [JsonIgnore]
-    public string? Error { get; set; }
-    [JsonIgnore]
-    public bool Success { get; set; } = true;
     public IReadOnlyCollection<TTrace> Calls { get; set; } = [];
+    public IReadOnlyCollection<TTrace> Traces => Calls;
+
+    private bool ShouldSerializeCalls() => typeof(TTrace) == typeof(SimulateCallResult);
+    private bool ShouldSerializeTraces() => !ShouldSerializeCalls();
 }
