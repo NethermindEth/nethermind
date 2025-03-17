@@ -631,92 +631,85 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayValue(tx, spec, opts);
 
-            try
+            if (env.CodeInfo is not null)
             {
-                if (env.CodeInfo is not null)
+                if (tx.IsContractCreation)
                 {
-                    if (tx.IsContractCreation)
+                    // if transaction is a contract creation then recipient address is the contract deployment address
+                    if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
                     {
-                        // if transaction is a contract creation then recipient address is the contract deployment address
-                        if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                        goto FailContractCreate;
+                    }
+                }
+            }
+            else
+            {
+                // If EOF header parsing or full container validation fails, transaction is considered valid and failing.
+                // Gas for initcode execution is not consumed, only intrinsic creation transaction costs are charged.
+                gasConsumed = gas.MinimalGas;
+                // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
+                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - gas.MinimalGas) * env.TxExecutionContext.GasPrice, spec);
+                goto Complete;
+            }
+
+            ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
+
+            using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
+            {
+                substate = VirtualMachine.ExecuteTransaction<TTracingInstructions>(state, WorldState, tracer);
+
+                unspentGas = state.GasAvailable;
+
+                if (tracer.IsTracingAccess)
+                {
+                    tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
+                }
+            }
+
+            if (substate.ShouldRevert || substate.IsError)
+            {
+                if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                WorldState.Restore(snapshot);
+            }
+            else
+            {
+                if (tx.IsContractCreation)
+                {
+                    if (tx.IsLegacyContractCreation)
+                    {
+                        if (!DeployLegacyContract(spec, env.ExecutingAccount, substate, ref unspentGas))
+                        {
+                            goto FailContractCreate;
+                        }
+                    }
+                    else
+                    {
+                        if (!DeployEofContract(spec, env.ExecutingAccount, substate, ref unspentGas))
                         {
                             goto FailContractCreate;
                         }
                     }
                 }
-                else
+
+                foreach (Address toBeDestroyed in substate.DestroyList)
                 {
-                    // If EOF header parsing or full container validation fails, transaction is considered valid and failing.
-                    // Gas for initcode execution is not consumed, only intrinsic creation transaction costs are charged.
-                    gasConsumed = gas.MinimalGas;
-                    // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
-                    if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                        WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - gas.MinimalGas) * env.TxExecutionContext.GasPrice, spec);
-                    goto Complete;
+                    if (Logger.IsTrace)
+                        Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.DeleteAccount(toBeDestroyed);
+
+                    if (tracer.IsTracingRefunds)
+                        tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                 }
 
-                ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
-
-                using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
-                {
-                    substate = VirtualMachine.ExecuteTransaction<TTracingInstructions>(state, WorldState, tracer);
-
-                    unspentGas = state.GasAvailable;
-
-                    if (tracer.IsTracingAccess)
-                    {
-                        tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
-                    }
-                }
-
-                if (substate.ShouldRevert || substate.IsError)
-                {
-                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                    WorldState.Restore(snapshot);
-                }
-                else
-                {
-                    if (tx.IsContractCreation)
-                    {
-                        if (tx.IsLegacyContractCreation)
-                        {
-                            if (!DeployLegacyContract(spec, env.ExecutingAccount, substate, ref unspentGas))
-                            {
-                                goto FailContractCreate;
-                            }
-                        }
-                        else
-                        {
-                            if (!DeployEofContract(spec, env.ExecutingAccount, substate, ref unspentGas))
-                            {
-                                goto FailContractCreate;
-                            }
-                        }
-                    }
-
-                    foreach (Address toBeDestroyed in substate.DestroyList)
-                    {
-                        if (Logger.IsTrace)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                        WorldState.ClearStorage(toBeDestroyed);
-                        WorldState.DeleteAccount(toBeDestroyed);
-
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
-                    }
-
-                    statusCode = StatusCode.Success;
-                }
-
-                gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
-                    env.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
-                goto Complete;
+                statusCode = StatusCode.Success;
             }
-            catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
-            {
-                if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
-            }
+
+            gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
+                env.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+            goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
