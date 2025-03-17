@@ -1,5 +1,6 @@
 ## Implementations:
 - `Secp256r1GoPrecompile` - Go version using built-in [crypto/ecdsa package](https://pkg.go.dev/crypto/ecdsa). Same one as **OP Geth** [uses](https://github.com/ethereum-optimism/op-geth/blob/optimism/crypto/secp256r1/verifier.go) and the fastest one.
+- `Secp256r1GoBoringPrecompile` - Go version using BoringSSL crypto module.
 - `Secp256r1FastCryptoPrecompile` - Rust implementation using [fastcrypto library](https://github.com/MystenLabs/fastcrypto/). A bit slower than Go variant.
 - `Secp256r1RustPrecompile` - Rust implementation using [p256 crate](https://docs.rs/p256/latest/p256/). Same one as **Revm (Reth)** [uses](https://github.com/bluealloy/revm/blob/main/crates/precompile/src/secp256r1.rs). Much slower than Go.
 - `Secp256r1Precompile` - initial version that uses built-in .NET `ECDsa`. Slowest of all, at least on Windows.
@@ -31,24 +32,28 @@
 
 ## Linux
 
-| Method   | Precompile Name               | Input   | Mean      | Error     | StdDev    | Ratio | RatioSD | Gas  | Throughput   | Throughput CI-Lower | Throughput CI-Upper | Allocated | Alloc Ratio |
-|--------- |------------------------------ |-------- |----------:|----------:|----------:|------:|--------:|-----:|-------------:|--------------------:|--------------------:|----------:|------------:|
-| Baseline | Secp256r1GoPrecompile         | Invalid |  71.63 us |  1.723 us |  2.471 us |  1.00 |    0.05 | 3450 | 48.16 MGas/s |        49.05 MGas/s |        47.31 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1FastCryptoPrecompile | Invalid |  98.72 us |  2.653 us |  3.889 us |  1.38 |    0.07 | 3450 | 34.95 MGas/s |        35.67 MGas/s |        34.26 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1RustPrecompile       | Invalid | 261.75 us | 24.672 us | 35.384 us |  3.66 |    0.50 | 3450 | 13.18 MGas/s |        14.18 MGas/s |        12.31 MGas/s |       3 B |        3.00 |
-| Baseline | Secp256r1Precompile           | Invalid | 234.15 us |  9.142 us | 13.400 us |  3.27 |    0.21 | 3450 | 14.73 MGas/s |        15.18 MGas/s |        14.31 MGas/s |    1794 B |    1,794.00 |
-|          |                               |         |           |           |           |       |         |      |              |                     |                     |           |             |
-| Baseline | Secp256r1GoPrecompile         | Valid1  |  70.82 us |  1.434 us |  2.056 us |  1.00 |    0.04 | 3450 | 48.72 MGas/s |        49.47 MGas/s |        47.99 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1FastCryptoPrecompile | Valid1  |  95.12 us |  2.092 us |  3.066 us |  1.34 |    0.06 | 3450 | 36.27 MGas/s |        36.88 MGas/s |        35.68 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1RustPrecompile       | Valid1  | 239.19 us |  4.953 us |  7.260 us |  3.38 |    0.14 | 3450 | 14.42 MGas/s |        14.65 MGas/s |        14.20 MGas/s |       2 B |        2.00 |
-| Baseline | Secp256r1Precompile           | Valid1  | 212.04 us |  6.818 us | 10.205 us |  3.00 |    0.17 | 3450 | 16.27 MGas/s |        16.67 MGas/s |        15.89 MGas/s |    1794 B |    1,794.00 |
-|          |                               |         |           |           |           |       |         |      |              |                     |                     |           |             |
-| Baseline | Secp256r1GoPrecompile         | Valid2  |  70.18 us |  1.101 us |  1.580 us |  1.00 |    0.03 | 3450 | 49.16 MGas/s |        49.75 MGas/s |        48.59 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1FastCryptoPrecompile | Valid2  |  91.32 us |  1.746 us |  2.559 us |  1.30 |    0.05 | 3450 | 37.78 MGas/s |        38.33 MGas/s |        37.25 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1RustPrecompile       | Valid2  | 235.51 us |  3.956 us |  5.922 us |  3.36 |    0.11 | 3450 | 14.65 MGas/s |        14.84 MGas/s |        14.47 MGas/s |       2 B |        2.00 |
-| Baseline | Secp256r1Precompile           | Valid2  | 206.81 us |  3.474 us |  4.982 us |  2.95 |    0.10 | 3450 | 16.68 MGas/s |        16.90 MGas/s |        16.47 MGas/s |    1794 B |    1,794.00 |
-|          |                               |         |           |           |           |       |         |      |              |                     |                     |           |             |
-| Baseline | Secp256r1GoPrecompile         | Valid3  |  71.40 us |  1.943 us |  2.787 us |  1.00 |    0.05 | 3450 | 48.32 MGas/s |        49.32 MGas/s |        47.35 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1FastCryptoPrecompile | Valid3  |  97.99 us |  3.384 us |  5.064 us |  1.37 |    0.09 | 3450 | 35.21 MGas/s |        36.15 MGas/s |        34.32 MGas/s |       1 B |        1.00 |
-| Baseline | Secp256r1RustPrecompile       | Valid3  | 245.85 us |  2.765 us |  4.053 us |  3.45 |    0.14 | 3450 | 14.03 MGas/s |        14.15 MGas/s |        13.92 MGas/s |       2 B |        2.00 |
-| Baseline | Secp256r1Precompile           | Valid3  | 215.99 us |  4.179 us |  6.254 us |  3.03 |    0.14 | 3450 | 15.97 MGas/s |        16.21 MGas/s |        15.74 MGas/s |    1794 B |    1,794.00 |
+| Method   | Precompile Name               | Input   | Mean      | Error    | StdDev   | Ratio | RatioSD | Gas  | Throughput   | Throughput CI-Lower | Throughput CI-Upper | Allocated | Alloc Ratio |
+|--------- |------------------------------ |-------- |----------:|---------:|---------:|------:|--------:|-----:|-------------:|--------------------:|--------------------:|----------:|------------:|
+| Baseline | Secp256r1GoBoringPrecompile   | Invalid |  50.48 us | 0.295 us | 0.393 us |  0.76 |    0.02 | 3450 | 68.35 MGas/s |        68.65 MGas/s |        68.05 MGas/s |         - |        0.00 |
+| Baseline | Secp256r1GoPrecompile         | Invalid |  66.51 us | 0.986 us | 1.446 us |  1.00 |    0.03 | 3450 | 51.87 MGas/s |        52.46 MGas/s |        51.30 MGas/s |       1 B |        1.00 |
+| Baseline | Secp256r1FastCryptoPrecompile | Invalid | 105.33 us | 1.563 us | 2.140 us |  1.58 |    0.05 | 3450 | 32.75 MGas/s |        33.12 MGas/s |        32.39 MGas/s |       1 B |        1.00 |
+| Baseline | Secp256r1Precompile           | Invalid | 192.38 us | 1.817 us | 2.488 us |  2.89 |    0.07 | 3450 | 17.93 MGas/s |        18.06 MGas/s |        17.81 MGas/s |    1794 B |    1,794.00 |
+| Baseline | Secp256r1RustPrecompile       | Invalid | 220.08 us | 0.578 us | 0.829 us |  3.31 |    0.07 | 3450 | 15.68 MGas/s |        15.71 MGas/s |        15.65 MGas/s |       2 B |        2.00 |
+|          |                               |         |           |          |          |       |         |      |              |                     |                     |           |             |
+| Baseline | Secp256r1GoBoringPrecompile   | Valid1  |  50.99 us | 0.321 us | 0.461 us |  0.26 |    0.00 | 3450 | 67.66 MGas/s |        67.99 MGas/s |        67.35 MGas/s |         - |        0.00 |
+| Baseline | Secp256r1GoPrecompile         | Valid1  |  65.38 us | 0.442 us | 0.648 us |  0.34 |    0.00 | 3450 | 52.77 MGas/s |        53.04 MGas/s |        52.50 MGas/s |       1 B |        0.00 |
+| Baseline | Secp256r1FastCryptoPrecompile | Valid1  | 104.03 us | 1.687 us | 2.473 us |  0.54 |    0.01 | 3450 | 33.16 MGas/s |        33.57 MGas/s |        32.76 MGas/s |       1 B |        0.00 |
+| Baseline | Secp256r1Precompile           | Valid1  | 193.10 us | 1.170 us | 1.601 us |  1.00 |    0.01 | 3450 | 17.87 MGas/s |        17.95 MGas/s |        17.79 MGas/s |    1794 B |        1.00 |
+| Baseline | Secp256r1RustPrecompile       | Valid1  | 222.05 us | 1.226 us | 1.759 us |  1.15 |    0.01 | 3450 | 15.54 MGas/s |        15.60 MGas/s |        15.47 MGas/s |       2 B |        0.00 |
+|          |                               |         |           |          |          |       |         |      |              |                     |                     |           |             |
+| Baseline | Secp256r1GoBoringPrecompile   | Valid2  |  50.10 us | 0.424 us | 0.595 us |  1.00 |    0.02 | 3450 | 68.86 MGas/s |        69.30 MGas/s |        68.43 MGas/s |         - |          NA |
+| Baseline | Secp256r1GoPrecompile         | Valid2  |  65.66 us | 0.421 us | 0.604 us |  1.31 |    0.02 | 3450 | 52.55 MGas/s |        52.80 MGas/s |        52.29 MGas/s |       1 B |          NA |
+| Baseline | Secp256r1FastCryptoPrecompile | Valid2  |  98.76 us | 1.044 us | 1.498 us |  1.97 |    0.04 | 3450 | 34.93 MGas/s |        35.21 MGas/s |        34.66 MGas/s |       1 B |          NA |
+| Baseline | Secp256r1Precompile           | Valid2  | 191.90 us | 1.013 us | 1.452 us |  3.83 |    0.05 | 3450 | 17.98 MGas/s |        18.05 MGas/s |        17.91 MGas/s |    1794 B |          NA |
+| Baseline | Secp256r1RustPrecompile       | Valid2  | 219.10 us | 0.845 us | 1.128 us |  4.37 |    0.06 | 3450 | 15.75 MGas/s |        15.79 MGas/s |        15.70 MGas/s |       2 B |          NA |
+|          |                               |         |           |          |          |       |         |      |              |                     |                     |           |             |
+| Baseline | Secp256r1GoBoringPrecompile   | Valid3  |  53.78 us | 2.048 us | 3.002 us |  0.53 |    0.03 | 3450 | 64.14 MGas/s |        66.04 MGas/s |        62.36 MGas/s |         - |        0.00 |
+| Baseline | Secp256r1GoPrecompile         | Valid3  |  65.48 us | 0.201 us | 0.301 us |  0.65 |    0.01 | 3450 | 52.69 MGas/s |        52.81 MGas/s |        52.57 MGas/s |       1 B |        1.00 |
+| Baseline | Secp256r1FastCryptoPrecompile | Valid3  | 101.48 us | 1.047 us | 1.502 us |  1.00 |    0.02 | 3450 | 34.00 MGas/s |        34.26 MGas/s |        33.74 MGas/s |       1 B |        1.00 |
+| Baseline | Secp256r1RustPrecompile       | Valid3  | 225.32 us | 4.349 us | 6.509 us |  2.22 |    0.07 | 3450 | 15.31 MGas/s |        15.54 MGas/s |        15.09 MGas/s |       2 B |        2.00 |
+| Baseline | Secp256r1Precompile           | Valid3  | 192.99 us | 1.502 us | 2.155 us |  1.90 |    0.03 | 3450 | 17.88 MGas/s |        17.98 MGas/s |        17.77 MGas/s |    1794 B |    1,794.00 |
