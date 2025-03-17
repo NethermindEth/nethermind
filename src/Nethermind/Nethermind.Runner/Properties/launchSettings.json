@@ -49,6 +49,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "EthSimulate": {
+      "commandName": "Project",
+      "commandLineArgs": "-c eth_simulate --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "JOC Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c joc-mainnet -dd .data",

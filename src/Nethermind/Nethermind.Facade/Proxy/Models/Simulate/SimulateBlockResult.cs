@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
@@ -13,6 +14,7 @@ public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransacti
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
     [JsonIgnore]
+    public new UInt256 TotalDifficulty { get => base.TotalDifficulty; set => base.TotalDifficulty = value; }
     public string? Error { get; set; }
     [JsonIgnore]
     public bool Success { get; set; } = true;
