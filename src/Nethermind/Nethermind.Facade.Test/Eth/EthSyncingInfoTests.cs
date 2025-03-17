@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
@@ -99,6 +100,7 @@ namespace Nethermind.Facade.Test.Eth
                 PivotNumber = "1000"
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.SyncPivot.Returns((1000, Keccak.Zero));
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);

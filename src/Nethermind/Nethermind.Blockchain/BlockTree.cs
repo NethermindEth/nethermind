@@ -130,6 +130,8 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
+            LoadSyncPivot();
+
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
             {
@@ -959,8 +961,20 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public (long BlockNumber, Hash256 BlockHash) SyncPivot => (LongConverter.FromString(_syncConfig.PivotNumber),
-            _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+        private (long BlockNumber, Hash256 BlockHash) _syncPivot;
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot
+        {
+            get => _syncPivot;
+            set
+            {
+                RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+                pivotData.Encode(value.BlockNumber);
+                pivotData.Encode(value.BlockHash);
+                _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+                _syncPivot = value;
+            }
+        }
+
 
         public bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better

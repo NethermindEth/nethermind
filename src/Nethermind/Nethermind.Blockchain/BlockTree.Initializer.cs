@@ -5,7 +5,9 @@ using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
@@ -364,5 +366,29 @@ public partial class BlockTree
 
         headBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
         Head = headBlock;
+    }
+
+    private void LoadSyncPivot()
+    {
+        if (!_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotData))
+        {
+            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            return;
+        }
+
+        byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
+        RlpStream pivotStream = new(pivotFromDb!);
+        long updatedPivotBlockNumber = pivotStream.DecodeLong();
+        Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+
+        if (updatedPivotBlockHash.IsZero)
+        {
+            return;
+        }
+
+        SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
+        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updator
+
+        if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
     }
 }

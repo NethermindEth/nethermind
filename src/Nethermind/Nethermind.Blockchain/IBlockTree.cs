@@ -179,6 +179,6 @@ namespace Nethermind.Blockchain
 
         void RecalculateTreeLevels();
 
-        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
     }
 }

@@ -51,6 +51,7 @@ public class BeaconPivotTests
     public void Beacon_pivot_set_to_pivot_when_set(int processedBlocks, int expectedPivotDestinationNumber)
     {
         IBlockTree blockTree = Build.A.BlockTree()
+            .WithSyncConfig(_syncConfig)
             .WithOnlySomeBlocksProcessed(1000, processedBlocks)
             .TestObject;
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
