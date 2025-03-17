@@ -29,16 +29,15 @@ public static class MemoryExtensions
 
     public static Memory<T> TakeAndMove<T>(this ref Memory<T> memory, int length)
     {
-
-        var m = memory.Slice(0, length);
-        memory = m;
+        var m = memory[..length];
+        memory = memory[length..];
         return m;
     }
 
     public static ReadOnlyMemory<T> TakeAndMove<T>(this ref ReadOnlyMemory<T> memory, int length)
     {
-        var m = memory.Slice(0, length);
-        memory = m;
+        var m = memory[..length];
+        memory = memory[length..];
         return m;
     }
 
