@@ -25,8 +25,6 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloader : ISyncDownloader<BlocksRequest>
     {
-        public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
-
         // This includes both body and receipt
         public static readonly TimeSpan SyncBatchDownloadTimeUpperBound = TimeSpan.FromMilliseconds(8000);
         public static readonly TimeSpan SyncBatchDownloadTimeLowerBound = TimeSpan.FromMilliseconds(5000);

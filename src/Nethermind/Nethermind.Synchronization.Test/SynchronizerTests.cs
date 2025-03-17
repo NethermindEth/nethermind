@@ -823,10 +823,10 @@ public class SynchronizerTests
     public async Task Will_not_reorganize_more_than_max_reorg_length()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(BlockDownloader.MaxReorganizationLength + 1);
+        peerA.AddBlocksUpTo(PowForwardHeaderProvider.MaxReorganizationLength + 1);
 
         SyncPeerMock peerB = new("B");
-        peerB.AddBlocksUpTo(BlockDownloader.MaxReorganizationLength + 2, 0, 1);
+        peerB.AddBlocksUpTo(PowForwardHeaderProvider.MaxReorganizationLength + 2, 0, 1);
 
         await When.Syncing
             .AfterProcessingGenesis()
