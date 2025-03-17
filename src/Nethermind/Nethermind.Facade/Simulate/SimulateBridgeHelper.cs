@@ -21,6 +21,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.ExecutionRequest;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -127,6 +128,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
         current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
         current.Withdrawals = processedBlock.Withdrawals ?? [];
+        current.RequestsHash = processedBlock.RequestsHash;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
@@ -281,10 +283,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent.Number + 1,
                 parent.GasLimit,
                 parent.Timestamp + blocksConfig.SecondsPerSlot,
-                [])
+                [],
+                requestsHash: parent.RequestsHash)
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
+                RequestsHash = parent.RequestsHash
             };
         result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
