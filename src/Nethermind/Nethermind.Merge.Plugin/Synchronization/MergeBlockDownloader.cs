@@ -6,8 +6,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -43,46 +41,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _beaconPivot = beaconPivot;
             _logger = logManager.GetClassLogger();
         }
-
-        /*
-        private bool ShouldUsePreMerge()
-        {
-            return _beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false;
-        }
-
-        public override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
-        {
-            if (ShouldUsePreMerge())
-            {
-                if (_logger.IsDebug)
-                    _logger.Debug("Using pre merge dispatcher");
-                await _preMergeBlockDownloader.Dispatch(bestPeer, blocksRequest, cancellation);
-                return;
-            }
-
-            await base.Dispatch(bestPeer, blocksRequest, cancellation);
-        }
-
-        protected override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
-        {
-            if (_logger.IsDebug)
-                _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-            int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-            BlockHeader?[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-            if (headers is null || headers.Length <= 1)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace("Chain level helper got no headers suggestion");
-                return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(null);
-            }
-
-            // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
-            ValidateSeals(headers!, cancellation);
-
-            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
-        }
-        */
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
