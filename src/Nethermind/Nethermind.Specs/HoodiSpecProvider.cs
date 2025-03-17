@@ -28,7 +28,6 @@ public class HoodiSpecProvider : ISpecProvider
         return forkActivation.Timestamp switch
         {
             null or < ShanghaiTimestamp => GenesisSpec,
-            < CancunTimestamp => Shanghai.Instance,
             < PragueTimestamp => Cancun.Instance,
             _ => Prague
         };

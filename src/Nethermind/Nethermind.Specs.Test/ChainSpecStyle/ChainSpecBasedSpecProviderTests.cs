@@ -263,16 +263,13 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(0));
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(0));
-        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
-        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
         IReleaseSpec postPragueSpec = provider.GetSpec((2, HoodiSpecProvider.PragueTimestamp));
         Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.HoodiDepositContractAddress));
-        // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
-        //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-        //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
     }
 
     public static IEnumerable<TestCaseData> ChiadoActivations
