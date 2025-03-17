@@ -57,17 +57,21 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public IEnumerable<SimulateBlockResult<TTrace>> TrySimulate<TTrace>(
+    public bool TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingEnv env,
-        CancellationToken cancellationToken)
+        SimulateOutput<TTrace> output,
+        CancellationToken cancellationToken,
+        [NotNullWhen(false)] out string? error)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
         IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
+
+        output.Items ??= [];
 
         if (payload.BlockStateCalls is not null)
         {
@@ -85,14 +89,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
                 callHeader.Hash = callHeader.CalculateHash();
 
-                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out string error))
+                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
                 {
-                    yield return new SimulateBlockResult<TTrace>(currentBlock, payload.ReturnFullTransactionObjects, specProvider)
-                    {
-                        Error = error,
-                        Success = false,
-                    };
-                    yield break;
+                    return false;
                 }
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -108,13 +107,16 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 SimulateBlockResult<TTrace> result = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
-                    Calls = tracer.BuildResult(),
+                    Calls = [.. tracer.BuildResult()],
                 };
                 CheckMissingAndSetDefaults(result, processedBlock);
-                yield return result;
+                output.Items.Add(result);
                 parent = processedBlock.Header;
             }
         }
+
+        error = null;
+        return true;
     }
 
     private static void CheckMissingAndSetDefaults<TTrace>(SimulateBlockResult<TTrace> current, Block processedBlock)

@@ -218,9 +218,9 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         }
 
         return results.Error is null
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success(results.Items)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value, results.Items)
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error, results.Items);
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value, [.. results.Items])
+                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error, [.. results.Items]);
     }
 }

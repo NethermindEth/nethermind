@@ -173,24 +173,17 @@ namespace Nethermind.Facade
             SimulateOutput<TTrace> result = new();
             try
             {
-                IEnumerable<SimulateBlockResult<TTrace>> simulateResults = _simulateBridgeHelper.TrySimulate<TTrace>(header, payload, tracer, env, cancellationToken);
-                result.Items = [.. simulateResults];
-
-                if (result.Items.Count > 0)
+                if(!_simulateBridgeHelper.TrySimulate(header, payload, tracer, env, result, cancellationToken, out string error))
                 {
-                    var last = result.Items[^1];
-                    if (!last.Success) result.Error = last.Error;
+                    result.Error = error;
                 }
-
             }
             catch (InsufficientBalanceException ex)
             {
-                result.Items = [];
                 result.Error = ex.Message;
             }
             catch (Exception ex)
             {
-                result.Items = [];
                 result.Error = ex.ToString();
             }
             return result;
