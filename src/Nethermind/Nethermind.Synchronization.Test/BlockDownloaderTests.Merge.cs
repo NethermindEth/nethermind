@@ -488,24 +488,6 @@ public partial class BlockDownloaderTests
         }, configs);
     }
 
-    /**
-    private record PostMergeContext(
-        IBeaconPivot BeaconPivot,
-        IPoSSwitcher PosSwitcher,
-        ResponseBuilder ResponseBuilder,
-        SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
-        SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
-        IBlockTree BlockTree,
-        InMemoryReceiptStorage ReceiptStorage,
-        ISyncPeerPool PeerPool) : Context(
-        ResponseBuilder,
-        FastSyncFeedComponent,
-        FullSyncFeedComponent,
-        BlockTree,
-        ReceiptStorage,
-        PeerPool);
-        */
-
     private record PostMergeContext(
         IBeaconPivot BeaconPivot,
         IPoSSwitcher PosSwitcher,
