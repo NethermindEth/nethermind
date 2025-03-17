@@ -107,7 +107,7 @@ public class InitializeNetwork : IStep
             await plugin.InitSynchronization();
         }
 
-        _api.Pivot ??= new Pivot(_syncConfig);
+        _api.Pivot ??= new Pivot(_api.BlockTree, _syncConfig);
 
         if (_api.Synchronizer is null)
         {

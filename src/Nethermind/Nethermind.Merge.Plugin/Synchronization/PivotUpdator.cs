@@ -237,7 +237,7 @@ public class PivotUpdator
     {
         long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
         bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
-        bool newPivotHigherThanOld = potentialPivotBlockNumber > _syncConfig.PivotNumberParsed;
+        bool newPivotHigherThanOld = potentialPivotBlockNumber > _blockTree.SyncPivot.BlockNumber;
 
         if (isCloseToHead && newPivotHigherThanOld)
         {

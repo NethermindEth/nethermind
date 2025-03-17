@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain
 {
@@ -957,6 +958,9 @@ namespace Nethermind.Blockchain
                 }
             }
         }
+
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot => (LongConverter.FromString(_syncConfig.PivotNumber),
+            _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
 
         public bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better

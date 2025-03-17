@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -12,12 +13,11 @@ public class Pivot : IPivot
 {
     private readonly ISyncConfig _syncconfig;
 
-    public Pivot(ISyncConfig syncConfig)
+    public Pivot(IBlockTree blockTree, ISyncConfig syncConfig)
     {
         _syncconfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
-        PivotNumber = _syncconfig.PivotNumberParsed;
-        PivotHash = _syncconfig.PivotHashParsed;
+        (PivotNumber, PivotHash) = blockTree.SyncPivot;
         PivotTotalDifficulty = _syncconfig.PivotTotalDifficultyParsed;
         PivotDestinationNumber = 0L;
     }

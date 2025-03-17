@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) <= 1;
 
-        protected virtual long TotalBlocks => _syncConfig.PivotNumberParsed;
+        protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
@@ -192,9 +192,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual void ResetPivot()
         {
-            _pivotNumber = _syncConfig.PivotNumberParsed;
+            (_pivotNumber, _nextHeaderHash) = _blockTree.SyncPivot;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _nextHeaderHash = _syncConfig.PivotHashParsed;
             _nextHeaderTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
 
             // Resume logic

@@ -136,7 +136,7 @@ public partial class BlockTree
         {
             // Old style binary search.
             long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
+            long right = SyncPivot.BlockNumber;
 
             LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
         }
@@ -147,7 +147,7 @@ public partial class BlockTree
     private void LoadBestKnown()
     {
         long left = (Head?.Number ?? 0) == 0
-            ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
+            ? Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0) - 1
             : Head.Number;
 
         long right = Math.Max(0, left) + BestKnownSearchLimit;
