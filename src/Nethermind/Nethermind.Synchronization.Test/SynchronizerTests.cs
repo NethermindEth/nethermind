@@ -219,11 +219,6 @@ public class SynchronizerTests
         {
             return $"SyncPeerMock:{ClientId}";
         }
-
-        public override string ToString()
-        {
-            return ClientId;
-        }
     }
 
     private WhenImplementation When => new(_synchronizerType);
