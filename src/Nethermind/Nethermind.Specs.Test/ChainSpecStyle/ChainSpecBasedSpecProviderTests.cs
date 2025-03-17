@@ -235,6 +235,46 @@ public class ChainSpecBasedSpecProviderTests
         });
     }
 
+
+    public static IEnumerable<TestCaseData> HoodiActivations
+    {
+        get
+        {
+            yield return new TestCaseData(new ForkActivation(0, HoodiSpecProvider.GenesisTimestamp)) { TestName = "Genesis" };
+            yield return new TestCaseData(new ForkActivation(1, HoodiSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
+            yield return new TestCaseData(new ForkActivation(3, HoodiSpecProvider.ShanghaiTimestamp)) { TestName = "Post Shanghai" };
+            yield return new TestCaseData(new ForkActivation(4, HoodiSpecProvider.CancunTimestamp)) { TestName = "Before Cancun" };
+            yield return new TestCaseData(new ForkActivation(5, HoodiSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(6, HoodiSpecProvider.CancunTimestamp)) { TestName = "Post Cancun" };
+            yield return new TestCaseData(new ForkActivation(7, HoodiSpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
+            yield return new TestCaseData(new ForkActivation(8, HoodiSpecProvider.PragueTimestamp)) { TestName = "Prague" };
+            yield return new TestCaseData(new ForkActivation(9, HoodiSpecProvider.PragueTimestamp + 100000000)) { TestName = "Future Prague" };
+        }
+    }
+
+    [TestCaseSource(nameof(HoodiActivations))]
+    public void Hoodi_loads_properly(ForkActivation forkActivation)
+    {
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("hoodi");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ISpecProvider hardCodedSpec = HoodiSpecProvider.Instance;
+
+        CompareSpecs(hardCodedSpec, provider, forkActivation);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(0));
+        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(0));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
+
+        IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
+        VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, HoodiSpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.HoodiDepositContractAddress));
+        // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
+        //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+        //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
+    }
+
     public static IEnumerable<TestCaseData> ChiadoActivations
     {
         get
