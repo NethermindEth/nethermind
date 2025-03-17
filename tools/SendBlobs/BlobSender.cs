@@ -138,7 +138,7 @@ internal class BlobSender
                     }
                 }
 
-                (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
+                (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs, spec.GetBlobProofVersion());
 
 
                 BlockModel<Hash256>? blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
@@ -237,7 +237,7 @@ internal class BlobSender
             Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
         }
 
-        (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
+        (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs, spec.GetBlobProofVersion());
 
         BlockModel<Hash256>? blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
@@ -303,7 +303,7 @@ internal class BlobSender
         return result;
     }
 
-    private static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobData(byte[][] blobs)
+    private static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobData(byte[][] blobs, int proofVersion)
     {
         byte[][] commitments = new byte[blobs.Length][];
         byte[][] proofs = new byte[blobs.Length][];
@@ -313,14 +313,15 @@ internal class BlobSender
         foreach (var blob in blobs)
         {
             commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-            proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
+            proofs[blobIndex] = new byte[proofVersion switch { 1 => Ckzg.Ckzg.BytesPerProof, 2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
             blobhashes[blobIndex] = new byte[32];
 
             KzgPolynomialCommitments.KzgifyBlob(
                 blobs[blobIndex].AsSpan(),
                 commitments[blobIndex].AsSpan(),
                 proofs[blobIndex].AsSpan(),
-                blobhashes[blobIndex].AsSpan());
+                blobhashes[blobIndex].AsSpan(),
+                proofVersion);
             blobIndex++;
         }
         return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs));

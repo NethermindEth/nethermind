@@ -111,7 +111,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             rlpStream.Encode(networkWrapper.Blobs);
             rlpStream.Encode(networkWrapper.Commitments);
             rlpStream.Encode(networkWrapper.Proofs);
-            if (networkWrapper.BlobProofs is not null) rlpStream.Encode(networkWrapper.BlobProofs);
+            if (networkWrapper.Proofs is not null) rlpStream.Encode(networkWrapper.Proofs);
         }
     }
 
@@ -147,7 +147,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             blobProofs = rlpStream.DecodeByteArrays();
         }
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, blobProofs);
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, int positionAfterNetworkWrapper)
@@ -160,7 +160,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             blobProofs = decoderContext.DecodeByteArrays();
         }
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, blobProofs);
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
     private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
@@ -187,7 +187,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                    + Rlp.LengthOf(networkWrapper.Blobs)
                    + Rlp.LengthOf(networkWrapper.Commitments)
                    + Rlp.LengthOf(networkWrapper.Proofs)
-                   + (networkWrapper.BlobProofs is null ? 0 : Rlp.LengthOf(networkWrapper.BlobProofs));
+                   + (networkWrapper.Proofs is null ? 0 : Rlp.LengthOf(networkWrapper.Proofs));
         }
     }
 

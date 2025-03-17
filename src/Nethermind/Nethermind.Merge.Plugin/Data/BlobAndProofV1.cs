@@ -8,3 +8,9 @@ public class BlobAndProofV1(byte[] blob, byte[] proof)
     public byte[] Blob { get; set; } = blob;
     public byte[] Proof { get; set; } = proof;
 }
+
+public class BlobAndProofV2(byte[] blob, byte[] proof)
+{
+    public byte[] Blob { get; set; } = blob;
+    public byte[] CellProof { get; set; } = proof;
+}

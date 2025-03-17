@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -432,4 +433,11 @@ namespace Nethermind.Core.Specs
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
+}
+
+
+
+public static class C
+{
+    public static int GetBlobProofVersion(this IReleaseSpec spec) => spec.IsEip4844Enabled ? 2 : 1;
 }

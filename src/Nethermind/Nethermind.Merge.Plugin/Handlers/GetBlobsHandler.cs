@@ -24,6 +24,17 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
         return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
     }
 
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> HandleV2Async(byte[][] request)
+    {
+        if (request.Length > MaxRequest)
+        {
+            var error = $"The number of requested blobs must not exceed {MaxRequest}";
+            return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+        }
+
+        return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Success(GetBlobsAndProofsV2(request));
+    }
+
     private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
     {
         Metrics.NumberOfRequestedBlobs += request.Length;
@@ -34,6 +45,24 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
             {
                 Metrics.NumberOfSentBlobs++;
                 yield return new BlobAndProofV1(blob, proof);
+            }
+            else
+            {
+                yield return null;
+            }
+        }
+    }
+
+    private IEnumerable<BlobAndProofV2?> GetBlobsAndProofsV2(byte[][] request)
+    {
+        Metrics.NumberOfRequestedBlobs += request.Length;
+
+        foreach (byte[] requestedBlobVersionedHash in request)
+        {
+            if (txPool.TryGetBlobAndProof(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
+            {
+                Metrics.NumberOfSentBlobs++;
+                yield return new BlobAndProofV2(blob, proof);
             }
             else
             {

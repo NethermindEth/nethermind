@@ -188,11 +188,22 @@ public static class KzgPolynomialCommitments
     /// <summary>
     /// Method to generate correct data for tests only, not safe
     /// </summary>
-    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
+    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1, int proofVersion)
     {
         Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
-        Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
         TryComputeCommitmentHashV1(commitment, hashV1);
+
+        switch (proofVersion)
+        {
+            case 1:
+                Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
+                break;
+            case 2:
+                Span<byte> cells = stackalloc byte[Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob];
+                Ckzg.Ckzg.ComputeCellsAndKzgProofs(cells, proof, blob, _ckzgSetup);
+                break;
+        }
+
     }
 
     public static void GetCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)

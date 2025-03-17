@@ -344,21 +344,15 @@ namespace Nethermind.Core
     /// </summary>
     public class ShardBlobNetworkWrapper
     {
-        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, byte[][]? blobProofs = null)
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
         {
             Blobs = blobs;
             Commitments = commitments;
             Proofs = proofs;
-            BlobProofs = blobProofs;
         }
 
         public byte[][] Commitments { get; set; }
         public byte[][] Blobs { get; set; }
-
-        // After EIP-7594 it's cell kzg proofs
         public byte[][] Proofs { get; set; }
-
-        // TODO: to be removed after transition to Fusaka
-        public byte[][]? BlobProofs { get; set; }
     }
 }

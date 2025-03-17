@@ -164,7 +164,7 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
         // Execution-payload version verification
         { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
         { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
-        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransaction,
+        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransactionForm,
         _ => ValidationResult.Success
     };
 }
@@ -235,7 +235,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
             : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Proofs.Length != blobCount && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob? TxErrorMessages.InvalidBlobData
+            : wrapper.Proofs.Length != blobCount && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData
             : ValidateBlobs();
 
         ValidationResult ValidateBlobs()
@@ -273,7 +273,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             // TODO: remove after Fusaka
             SetBlobProofsAndCellProofs(transaction);
 
-            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.BlobProofs)
+            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                    || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
@@ -289,13 +289,12 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         if (networkWrapper.Proofs.Length == networkWrapper.Blobs.Length)
         {
             // setting old-style blob proofs as BlobProofs and setting cell proofs as Proofs
-            networkWrapper.BlobProofs = networkWrapper.Proofs;
-            networkWrapper.Proofs = GetCellProofs(networkWrapper.Blobs).ToArray();
+            networkWrapper.Proofs = networkWrapper.Proofs;
         }
         else
         {
             // it means that incoming tx already has cell proofs. Calculating and setting old-style blob proofs
-            networkWrapper.BlobProofs = GetBlobProofs(networkWrapper.Blobs).ToArray();
+            networkWrapper.Proofs = GetBlobProofs(networkWrapper.Blobs).ToArray();
         }
     }
 

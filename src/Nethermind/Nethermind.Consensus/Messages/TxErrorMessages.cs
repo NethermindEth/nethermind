@@ -31,7 +31,7 @@ public static class TxErrorMessages
     public const string NotAllowedBlobVersionedHashes =
         "NotAllowedBlobVersionedHashes: Cannot be set.";
 
-    public const string InvalidTransaction =
+    public const string InvalidTransactionForm =
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
     public const string NotAllowedCreateTransaction =
