@@ -124,9 +124,25 @@ public class ExecutionProcessorTests
     }
 
     [Test]
+    public void ShouldNotProcessExecutionRequestsForGenesisBlock()
+    {
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+
+        TxReceipt[] txReceipts = [
+            Build.A.Receipt.WithLogs(
+                CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
+            ).TestObject
+        ];
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+
+        Assert.That(block.Header.RequestsHash, Is.Null);
+    }
+
+    [Test]
     public void ShouldProcessExecutionRequests()
     {
-        Block block = Build.A.Block.TestObject;
+        Block block = Build.A.Block.WithNumber(1).TestObject;
         ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
 
         TxReceipt[] txReceipts = [
@@ -141,13 +157,13 @@ public class ExecutionProcessorTests
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
-        static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
-            Build.A.LogEntry
-                .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
-                .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
-                .WithAddress(DepositContractAddress).TestObject;
     }
 
+    static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
+        Build.A.LogEntry
+            .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+            .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
+            .WithAddress(DepositContractAddress).TestObject;
     [Test]
     public void ShouldUseCorrectDepositTopic()
     {
