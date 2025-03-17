@@ -38,6 +38,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;

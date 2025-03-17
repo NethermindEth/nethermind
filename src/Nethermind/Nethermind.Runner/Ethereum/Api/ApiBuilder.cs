@@ -58,14 +58,12 @@ public class ApiBuilder
             throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {ChainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
         }
 
-        ISpecProvider specProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
-        FollowOtherMiners gasLimitCalculator = new FollowOtherMiners(specProvider);
-
         IConsensusPlugin enginePlugin = consensusPlugins.First();
         INethermindApi nethermindApi =
             enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
-        nethermindApi.SpecProvider = specProvider;
-        nethermindApi.GasLimitCalculator = gasLimitCalculator;
+
+        nethermindApi.SpecProvider ??= new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
+        nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
         nethermindApi.ProcessExit = _processExitSource;
         ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
