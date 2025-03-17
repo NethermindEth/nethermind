@@ -29,7 +29,6 @@ public static class IServiceCollectionExtensions
     {
         return collection
             .AddSingleton<IKademliaContent<TContentKey, TContent>, KademliaContent<TNode, TContentKey, TContent>>()
-            .AddSingleton<IContentMessageReceiver<TNode, TContentKey, TContent>, KademliaContentMessageReceiver<TNode, TContentKey, TContent>>()
             .AddSingleton<IContentMessageReceiver<TNode, TContentKey, TContent>, KademliaContentMessageReceiver<TNode, TContentKey, TContent>>();
     }
 }

@@ -67,12 +67,24 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     {
         _logger.LogInformation("HL Received ORDINARY packet from {Address}", returnedResult.RemoteEndPoint.Address);
 
-        var staticHeader = _packetProcessor.GetStaticHeader(returnedResult.Buffer);
+        if (!_packetProcessor.TryGetStaticHeader(returnedResult.Buffer, out var staticHeader))
+        {
+            _logger.LogInformation("Could not decode header from {addr}", returnedResult.RemoteEndPoint.Address);
+            return;
+        }
+
         var maskingIv = _packetProcessor.GetMaskingIv(returnedResult.Buffer);
         var encryptedMessage = _packetProcessor.GetEncryptedMessage(returnedResult.Buffer);
+        if (encryptedMessage == null)
+        {
+            _logger.LogInformation("Cannot descrypt message {NodeId} with {IpAddress}", Convert.ToHexString(staticHeader.AuthData), returnedResult.RemoteEndPoint.Address);
+            await SendWhoAreYouPacketWithoutEnrAsync(staticHeader, returnedResult.RemoteEndPoint, _udpConnection);
+            return;
+        }
+
         var nodeEntry = _routingTable.GetNodeEntryForNodeId(staticHeader.AuthData);
 
-        _logger.LogInformation("Received ORDINARY packet from {NodeId}", Convert.ToHexString(staticHeader.AuthData));
+        _logger.LogInformation("Received ORDINARY packet from {NodeId}", Convert.ToHexString(staticHeader.AuthData).ToLower());
 
         if (nodeEntry == null)
         {
@@ -158,10 +170,10 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         }
     }
 
-    private async Task SendWhoAreYouPacketWithoutEnrAsync(StaticHeader staticHeader, IPEndPoint destEndPoint, IUdpConnection connection)
+    private async Task SendWhoAreYouPacketWithoutEnrAsync(StaticHeader? staticHeader, IPEndPoint destEndPoint, IUdpConnection connection)
     {
         var maskingIv = RandomUtility.GenerateRandomData(PacketConstants.MaskingIvSize);
-        var whoAreYouPacket = _packetBuilder.BuildWhoAreYouPacketWithoutEnr(staticHeader.AuthData, staticHeader.Nonce, maskingIv);
+        var whoAreYouPacket = _packetBuilder.BuildWhoAreYouPacketWithoutEnr(staticHeader!.AuthData, staticHeader.Nonce, maskingIv);
         var session = _sessionManager.CreateSession(SessionType.Recipient, staticHeader.AuthData, destEndPoint);
 
         session.SetChallengeData(maskingIv, whoAreYouPacket.Header.GetHeader());
@@ -170,10 +182,10 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         _logger.LogInformation("Sent WHOAREYOU packet to {RemoteEndPoint}", destEndPoint);
     }
 
-    private async Task SendWhoAreYouPacketAsync(StaticHeader staticHeader, IEnr destNode, IPEndPoint destEndPoint, IUdpConnection connection)
+    private async Task SendWhoAreYouPacketAsync(StaticHeader? staticHeader, IEnr destNode, IPEndPoint destEndPoint, IUdpConnection connection)
     {
         var maskingIv = RandomUtility.GenerateRandomData(PacketConstants.MaskingIvSize);
-        var constructedWhoAreYouPacket = _packetBuilder.BuildWhoAreYouPacket(staticHeader.AuthData, staticHeader.Nonce, destNode, maskingIv);
+        var constructedWhoAreYouPacket = _packetBuilder.BuildWhoAreYouPacket(staticHeader!.AuthData, staticHeader.Nonce, destNode, maskingIv);
         var session = _sessionManager.CreateSession(SessionType.Recipient, staticHeader.AuthData, destEndPoint);
 
         session.SetChallengeData(maskingIv, constructedWhoAreYouPacket.Header.GetHeader());

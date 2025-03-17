@@ -597,15 +597,15 @@ public partial class SszEncoding
             root = 0;
             return;
         }")}
-        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
+{Whitespace}
         switch(container.Selector) {{
-{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.HandledByStd ? $"merkleizer.Feed(container.{m.Name}{(m.Kind == Kind.List || m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
-                                    : m.Kind == Kind.List ? $"MerkleizeList(container.{m.Name}, {m.Limit}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);"
-                                                          : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);"
-                                                                                  : $"Merkleize(container.{m.Name}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);")} break;"))}
+{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.HandledByStd ? $"Merkle.Merkleize(out root, container.{m.Name}{(m.Kind == Kind.List || m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
+                                    : m.Kind == Kind.List ? $"MerkleizeList(container.{m.Name}, {m.Limit}, out root);"
+                                                          : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out root);"
+                                                                                  : $"Merkleize(container.{m.Name}, out root);")} break;"))}
+{Shift(3, "default: throw new Exception(\"Unknown selector used in union\");")}
         }};
 {Whitespace}
-        merkleizer.CalculateRoot(out root);
         Merkle.MixIn(ref root, (byte)container.Selector);
     }}
 {Whitespace}

@@ -68,7 +68,14 @@ public class HackyHandshakePacketHandler : HandshakePacketHandler
     {
         _logger.LogInformation("Received HANDSHAKE packet from {RemoteEndPoint}", returnedResult.RemoteEndPoint);
         var packet = returnedResult.Buffer;
-        var handshakePacket = HandshakePacketBase.CreateFromStaticHeader(_packetProcessor.GetStaticHeader(packet));
+
+        if (!_packetProcessor.TryGetStaticHeader(packet, out var staticHeader))
+        {
+            _logger.LogInformation("Could not decode header from {addr}", returnedResult.RemoteEndPoint.Address);
+            return;
+        }
+
+        var handshakePacket = HandshakePacketBase.CreateFromStaticHeader(staticHeader);
         var publicKey = ObtainPublicKey(handshakePacket, handshakePacket.SrcId!);
         _logger.LogInformation("Obtain pubkey {RemoteEndPoint}", returnedResult.RemoteEndPoint);
 
@@ -96,7 +103,14 @@ public class HackyHandshakePacketHandler : HandshakePacketHandler
             return;
         }
 
-        var decryptedMessage = session.DecryptMessageWithNewKeys(_packetProcessor.GetStaticHeader(packet), _packetProcessor.GetMaskingIv(packet), _packetProcessor.GetEncryptedMessage(packet), handshakePacket, _identityManager.Record.NodeId);
+        var encryptedMessage = _packetProcessor.GetEncryptedMessage(packet);
+        if (encryptedMessage == null)
+        {
+            _logger.LogInformation("Cannot descrypt message {NodeId} with {IpAddress}", Convert.ToHexString(staticHeader.AuthData), returnedResult.RemoteEndPoint.Address);
+            return;
+        }
+
+        var decryptedMessage = session.DecryptMessageWithNewKeys(staticHeader, _packetProcessor.GetMaskingIv(packet), encryptedMessage, handshakePacket, _identityManager.Record.NodeId);
 
         if (decryptedMessage == null)
         {

@@ -243,6 +243,15 @@ public static partial class Merkle
         MixIn(ref root, length);
     }
 
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<ValueHash256> value, int? limit = 0)
+    {
+        Merkleize(out root, MemoryMarshal.Cast<ValueHash256, UInt256>(value));
+        if (limit is not null)
+        {
+            MixIn(ref root, (int)limit);
+        }
+    }
+
     private static int ResetLastBit(ref byte lastByte)
     {
         if ((lastByte >> 7) % 2 == 1)

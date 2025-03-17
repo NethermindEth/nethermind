@@ -12,7 +12,7 @@ public class ContentNetworkConfig
     /// <summary>
     /// The protocol id for the content
     /// </summary>
-    public byte[] ProtocolId { get; set; } = Array.Empty<byte>();
+    public byte[] ProtocolId { get; set; } = [];
 
     /// <summary>
     /// Kademlia k. As in how many item per bucket.
@@ -32,7 +32,7 @@ public class ContentNetworkConfig
     /// <summary>
     /// Bootnodes for the content network
     /// </summary>
-    public IEnr[] BootNodes { get; set; } = Array.Empty<IEnr>();
+    public IEnr[] BootNodes { get; set; } = [];
 
     /// <summary>
     /// The radius of content that this peer will store.
@@ -67,5 +67,5 @@ public class ContentNetworkConfig
     /// <summary>
     /// Timeout for looking up content and downloading them
     /// </summary>
-    public TimeSpan LookupContentHardTimeout { get; set; } = TimeSpan.FromSeconds(6000);
+    public TimeSpan LookupContentHardTimeout { get; set; } = TimeSpan.FromSeconds(60);
 };

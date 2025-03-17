@@ -31,21 +31,25 @@ using DotNetty.Transport.Bootstrapping;
 using Nethermind.Serialization.Json;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Facade.Eth;
+using System.Buffers.Binary;
+using System.Diagnostics;
+#pragma warning disable CS0219 // Variable is assigned but its value is never used
+
+int localPort = 30304;
+IPAddress localIPAddress = IPAddress.Any;
 
 EthereumJsonSerializer json = new();
-//var trin = "enr:-JS4QEHRg3Hx-tRSiy-8LbnvGY3iptPSX-q1IBTqmle2beD_FINOR8j5EuBKd4BqCZS8oexrCwz4RFE2Siv6rMr2UuCEZ3I8rGOKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgiMx";
+var trin = "enr:-JS4QP-LPN7KyeBC1x0IUDgua0-AdQyeAlr7mgbaG2ceyKqMIESTDaH1yvwuyQ6etcWUJOCBYR_6M_es0mOU3GGTcMCEZ4EQT2OKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgiMx";
 
-int port = 30303;
-IPAddress addr = await TryGetIP(); //IPAddress.Parse("127.0.0.1");
 TaskCompletionSource tcs = new();
 
 Nethermind.Logging.ILogger _logger = SimpleConsoleLogManager.Instance.GetClassLogger();
 
-var _connections = new DiscoveryConnectionsPool(SimpleConsoleLogManager.Instance.GetClassLogger<DiscoveryConnectionsPool>(), new NetworkConfig() { LocalIp = "0.0.0.0", DiscoveryPort = port, P2PPort = port }, new DiscoveryConfig());
+var _connections = new DiscoveryConnectionsPool(SimpleConsoleLogManager.Instance.GetClassLogger<DiscoveryConnectionsPool>(), new NetworkConfig() { LocalIp = "0.0.0.0" }, new DiscoveryConfig());
 
 IdentityVerifierV4 identityVerifier = new();
 
-PrivateKey k = new(Convert.FromHexString($"DDB9DB40CAAA9D145481D0C5B77F54BA61F33F59B6E0427616FCCB0326C{port.ToString().PadLeft(5, '0')}"));
+PrivateKey k = new(Convert.FromHexString($"DDB9DB40CAAA9D145481D0C5B77F54BA61F33F59B6E0427616FCCB0326C{localPort.ToString().PadLeft(5, '0')}"));
 
 SessionOptions _sessionOptions = new()
 {
@@ -53,6 +57,7 @@ SessionOptions _sessionOptions = new()
     Verifier = identityVerifier,
     SessionKeys = new SessionKeys(k.KeyBytes),
 };
+NettyDiscoveryV5Handler handler = new NettyDiscoveryV5Handler(SimpleConsoleLogManager.Instance)!;
 
 IServiceCollection services = new ServiceCollection()
    .AddSingleton<ILoggerFactory, NullLoggerFactory>()
@@ -60,7 +65,8 @@ IServiceCollection services = new ServiceCollection()
    .AddSingleton<ISyncConfig>(new SyncConfig())
    .AddSingleton((IReceiptStorage)new EmptyReceiptStorage())
    .AddSingleton((IReceiptFinder)new EmptyReceiptFinder())
-   .AddSingleton<NettyDiscoveryV5Handler>()
+   .AddSingleton<NettyDiscoveryV5Handler>(handler)
+   .AddSingleton<IUdpConnection>(handler)
    .AddSingleton(SimpleConsoleLogManager.Instance)
    .AddSingleton(_sessionOptions.Verifier)
    .AddSingleton(_sessionOptions.Signer);
@@ -75,6 +81,7 @@ registry.RegisterEntry("v4", (b) => new RawEntry("v4", b));
 registry.RegisterEntry("opstack", (b) => new RawEntry("opstack", b));
 
 EnrFactory enrFactory = new(registry);
+var s = $"{enrFactory.CreateFromString(trin, identityVerifier):ea}";
 
 IPAddress heh = NetworkInterface.GetAllNetworkInterfaces()!
 .Where(i => i.Name == "eth0" ||
@@ -87,21 +94,36 @@ IPAddress heh = NetworkInterface.GetAllNetworkInterfaces()!
          .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork).Select(a => a.Address).First();
 
 
-_logger.Warn($"Discv5 IP address: {addr}");
+
+Bootstrap bootstrap = new();
+bootstrap.Group(new MultithreadEventLoopGroup(1));
+bootstrap.Channel<SocketDatagramChannel2>();
+
+bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>((channel) =>
+{
+    handler.InitializeChannel(channel);
+    channel.Pipeline.AddLast(handler);
+    tcs.SetResult();
+}));
+
+await _connections.BindAsync(bootstrap, localPort);
+
+await tcs.Task;
+
+_logger.Warn($"Discv5 IP address: {Shared.Ip!.MapToIPv4()}:{Shared.Port}");
 
 EnrBuilder enrBuilder = new EnrBuilder()
     .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
     .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
     .WithEntry("c", new RawEntry("c", "n"u8.ToArray()))
     .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
-    .WithEntry(EnrEntryKey.Ip, new EntryIp(addr))
-    .WithEntry(EnrEntryKey.Tcp, new EntryTcp(port))
-    .WithEntry(EnrEntryKey.Udp, new EntryUdp(port));
+    .WithEntry(EnrEntryKey.Ip, new EntryIp(Shared.Ip!.MapToIPv4()))
+    .WithEntry(EnrEntryKey.Udp, new EntryUdp(Shared.Port));
 
 IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
     .WithConnectionOptions(new ConnectionOptions
     {
-        UdpPort = port
+        UdpPort = localPort
     })
     .WithSessionOptions(_sessionOptions)
     .WithTableOptions(new TableOptions([]))
@@ -116,50 +138,40 @@ IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
         .ConfigureLanternPortalAdapter();
     });
 
-IDiscv5Protocol proto = discv5Builder.Build();
 //var _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, port);
+IDiscv5Protocol proto = discv5Builder.Build();
 
 IServiceProvider _serviceProvider = discv5Builder.GetServiceProvider();
 
-NettyDiscoveryV5Handler handler = _serviceProvider.GetService<NettyDiscoveryV5Handler>()!;
 
-Bootstrap bootstrap = new();
-bootstrap.Group(new MultithreadEventLoopGroup(1));
-bootstrap.Channel<SocketDatagramChannel2>();
-
-bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>((channel) =>
-{
-    handler.InitializeChannel(channel);
-    channel.Pipeline.AddLast(handler);
-    tcs.SetResult();
-}));
-
-await _connections.BindAsync(bootstrap, port);
-
-await tcs.Task;
 
 _logger.Warn($"My enr: {proto.SelfEnr}");
 
 await proto.InitAsync();
 string[] bootNodesStr =
 [
-    //Trin bootstrap nodes
-    //trin,
-    "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
-    "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
-    "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+    ////Trin bootstrap nodes
+    ////trin,
+    //"enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+    //"enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
+    //"enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
 
-    //Fluffy bootstrap nodes
-    "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
-    "enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
-    "enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
-    "enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+    ////Fluffy bootstrap nodes
+    //"enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+    //"enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
+    //"enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
+    //"enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
 
-    //Ultralight bootstrap nodes
-    "enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
-    "enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
-    "enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
-    "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
+    ////Ultralight bootstrap nodes
+    //"enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
+    ////"enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
+    //"enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
+    //"enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
+
+    //"enr:-Ii4QFAIi3_aJfuHapjnVCfDh4BgHqND2PVTBncv1iPELQj-egf71SVrLVWpZtNcwVSOmtu3wHwoIwjT2zOCUi2ykR-CGSdjZoJpZIJ2NIJpcITCIStZiXNlY3AyNTZrMaEDMOi5OBRftLAQpfK2gN5L0CPAeEnd9FTLQBRkYR191bWDdWRwgiOM",
+    //"enr:-Ii4QLyPY1f3EpQjww8I31V2knEsYTllk74hGXsK5-tCuViPDLvCzFuozVJpM_t0oc9RXXTOJ0YmD1ON5Lqe1KcajSGCEodjZoJpZIJ2NIJpcITCIStNiXNlY3AyNTZrMaECDNlp0U6kzM_snZBXWnv-JXk1IwzWJP5e8lbfb6RjxOyDdWRwgiOM",
+    //"enr:-Ii4QHoeGc7ytlq4V2gq77U9Uyqn2FhVx8abdFDskl-7n0LXbnD4iaADqGYMCDjKszALBFxOACMC9pdnl6kDBr_GjlmCFB9jZoJpZIJ2NIJpcITCISsliXNlY3AyNTZrMaECNiZslK14i4CFMYBHGxPkH_Z3VWsdf3Zg0K5t2QunMR-DdWRwgiOM",
+    "enr:-Ii4QADcN5hwh2ezIyWq2iCt4kkRocrahpiAsWhsq_RqffYpKDHa22w267lOyMActkcVhQq2ZP1ok09zWwHxPhFsbLWCFcdjZoJpZIJ2NIJpcITCISsuiXNlY3AyNTZrMaECc52FNY8CKrp0Ie4LFvh1BQJc6wkI03WU3GQSzQP14TWDdWRwgiOM"
 ];
 IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
 
@@ -175,37 +187,76 @@ IPortalHistoryNetwork net = historyNetworkServiceProvider.GetService<IPortalHist
 
 _logger.Warn($"Ready");
 
-while (true)
+int h = 0, b = 0, r = 0;
+
+Console.WriteLine("Started: {0}", DateTime.Now);
+var sw = Stopwatch.StartNew();
+await Task.Delay(3000);
+ulong N = 1;
+ulong startAt = 20537393;
+ulong i = 0;
+
+for (i = startAt - N; i < startAt; i++)
 {
-    string? input = Console.ReadLine();
-    if (input is null or "exit")
+    try
     {
-        break;
+        Console.WriteLine("Querying: {0}", i);
+
+        BlockHeader? head = await net.LookupBlockHeader(i, default);
+        Console.WriteLine("Header: {0}", json.Serialize(head));
+
+        if (head is null)
+        {
+            Console.WriteLine("Retry: head is null {0}", i);
+            i--;
+            h++;
+            if (h > 0)
+            {
+                Console.WriteLine("Retry: head is null {0}", i);
+
+                break;
+            }
+            continue;
+        }
+
+        BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
+        Console.WriteLine("Body: {0}", bodyByHash is not null ? json.Serialize(new BlockForRpc(new Block(head!, bodyByHash), true, null)) : null);
+
+        if (bodyByHash is null)
+        {
+            Console.WriteLine("Retry: body is null {0}", i);
+            i--;
+            b++;
+            continue;
+        }
+
+
+        TxReceipt[]? receiptsByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
+        Console.WriteLine("Receitps: {0}", receiptsByHash?.Length);
+
+        if (receiptsByHash is null)
+        {
+            Console.WriteLine("Retry: receipts are null {0}", i);
+            i--;
+            r++;
+            continue;
+        }
+        //BlockHeader? headByHash = head is not null ? await net.LookupBlockHeader(head.Hash, default) : null;
+        //BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
+        //TxReceipt[]? receiptByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
     }
+    catch
+    {
 
-    Hash256 hash = new Hash256(input);
-    BlockHeader? head = await net.LookupBlockHeader(hash, default);
-    Console.WriteLine("Header: {0}", json.Serialize(head));
-
-    BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
-    Console.WriteLine("Body: {0}", bodyByHash is not null ? json.Serialize(new BlockForRpc(new Block(head!, bodyByHash), true, null)) : null);
-
-    TxReceipt[]? receiptsByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
-    Console.WriteLine("Receitps: {0}", receiptsByHash?.Length);
-
-    //BlockHeader? headByHash = head is not null ? await net.LookupBlockHeader(head.Hash, default) : null;
-    //BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
-    //TxReceipt[]? receiptByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
+    }
 }
 
-static async Task<IPAddress> TryGetIP()
-{
-    using HttpClient httpClient = new() { Timeout = TimeSpan.FromSeconds(3) };
-    string ip = await httpClient.GetStringAsync("http://ipv4.icanhazip.com");
-    bool result = IPAddress.TryParse(ip.Trim(), out IPAddress? ipAddress);
-    return ipAddress!;
-}
+i++;
 
+Console.WriteLine("Ended: {0} {1} {2} {3} {4} {5} {6}", DateTime.Now, h, b, r, sw.Elapsed, i, i - startAt);
+
+
+#region stub
 class EmptyBlockTree : IBlockTree
 {
     public ulong NetworkId => 1;
@@ -409,8 +460,6 @@ class EmptyBlockTree : IBlockTree
     }
 }
 
-
-
 internal class EmptyReceiptFinder : IReceiptFinder
 {
     public bool CanGetReceiptsByHash(long blockNumber)
@@ -491,7 +540,7 @@ internal class EmptyReceiptStorage : IReceiptStorage
     }
 }
 
-
+#endregion
 class SocketDatagramChannel2 : SocketDatagramChannel
 {
     public SocketDatagramChannel2()
@@ -512,15 +561,56 @@ class SocketDatagramChannel2 : SocketDatagramChannel
 
     protected override void DoBind(EndPoint localAddress)
     {
-        base.DoBind(localAddress);
+        try
+        {
+            this.Socket.Bind(localAddress);
+            this.CacheLocalAddress();
+
+            EndPoint handMadeStunAddr = IPEndPoint.Parse("139.177.181.61:9003");
+            // EndPoint handMadeStunAddr = IPEndPoint.Parse("127.0.0.1:9003");
+            //Thread.Sleep(100);
+            Socket.SendTo(new[] { (byte)0x42 }, handMadeStunAddr);
+            byte[] buf = new byte[1280];
+            Thread.Sleep(130);
+
+            Socket.ReceiveFrom(buf, ref handMadeStunAddr);
+            Shared.Ip = new IPAddress(buf[0..4]);
+            Shared.Port = BinaryPrimitives.ReadUInt16BigEndian(buf[4..6]);
+            //Shared.Ip = IPAddress.Parse("178.172.225.183");
+            //Shared.Port = 30304;
+            this.SetState(StateFlags.Active);
+        }
+        catch
+        {
+            throw;
+        }
     }
 
     protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress)
     {
         return base.DoConnect(remoteAddress, localAddress);
     }
+
+    protected override int DoReadMessages(List<object> buf)
+    {
+        return base.DoReadMessages(buf);
+    }
+
     protected override void DoWrite(ChannelOutboundBuffer input)
     {
-        base.DoWrite(input);
+        try
+        {
+            base.DoWrite(input);
+        }
+        catch
+        {
+            throw;
+        }
     }
+}
+
+static class Shared
+{
+    public static IPAddress? Ip { get; set; } = IPAddress.Parse("178.172.225.183");
+    public static int Port { get; set; } = 30304;
 }

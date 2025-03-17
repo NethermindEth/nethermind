@@ -15,11 +15,11 @@ namespace Nethermind.Network.Discovery;
 /// <remarks> Not thread-safe </remarks>
 public class DiscoveryConnectionsPool : IConnectionsPool
 {
-    private readonly ILogger _logger;
+    protected readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly IPAddress _ip;
-    private readonly Dictionary<int, Task<IChannel>> _byPort = new();
+    protected readonly Dictionary<int, Task<IChannel>> _byPort = new();
 
     public DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
     {

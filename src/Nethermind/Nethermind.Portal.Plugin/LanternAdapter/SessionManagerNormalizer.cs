@@ -40,14 +40,23 @@ public class SessionManagerNormalizer(
             endPoint = new IPEndPoint(endPoint.Address.MapToIPv6(), endPoint.Port);
 
         var key = new SessionCacheKey(nodeId, endPoint);
-        return _sessions.Get(key);
+        var res = _sessions.Get(key);
+
+        if (res is null)
+        {
+            _logger.LogInformation("GetSession not found for {nodeId} {endPoint}", nodeId.ToHexString(), endPoint);
+
+            return null;
+        }
+
+        return res;
     }
 
     public int TotalSessionCount => _sessions.Count;
 
     public ISessionMain CreateSession(SessionType sessionType, byte[] nodeId, IPEndPoint endPoint)
     {
-        _logger.LogInformation("Creating session {sessionType} {nodeId}", sessionType, nodeId.ToHexString());
+        _logger.LogInformation("Creating session {sessionType} {nodeId} {endPoint}", sessionType, nodeId.ToHexString(), endPoint);
         if (endPoint.AddressFamily == AddressFamily.InterNetwork)
             endPoint = new IPEndPoint(endPoint.Address.MapToIPv6(), endPoint.Port);
 

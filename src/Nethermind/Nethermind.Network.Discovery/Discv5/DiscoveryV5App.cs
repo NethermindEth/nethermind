@@ -91,6 +91,7 @@ public class DiscoveryV5App : IDiscoveryApp
                .AddSingleton(receiptFinder)
                .AddSingleton(logManager)
                .AddSingleton(_sessionOptions.Verifier)
+               .AddSingleton<NettyDiscoveryV5Handler>()
                .AddSingleton(_sessionOptions.Signer);
 
             IEnrEntryRegistry registry = new EnrEntryRegistry();
@@ -205,100 +206,100 @@ public class DiscoveryV5App : IDiscoveryApp
             List<BlockHeader?> blocks = new List<BlockHeader?>();
 
 
-            _ = Task.Run(async () =>
-            {
-                //for (var i = 1; i < 10; i++)
-                //{
-                //    blocks.Add(await net.LookupBlockHeader(1, default));
-                //}
-                async IAsyncEnumerable<IEnr> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
-                {
-                    Channel<IEnr> channel = Channel.CreateBounded<IEnr>(1);
+            //_ = Task.Run(async () =>
+            //{
+            //    for (var i = 1; i < 10; i++)
+            //    {
+            //        blocks.Add(await net.LookupBlockHeader(1, default));
+            //    }
+            //    async IAsyncEnumerable<IEnr> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
+            //    {
+            //        Channel<IEnr> channel = Channel.CreateBounded<IEnr>(1);
 
-                    async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
-                    {
-                        Queue<IEnr> nodesToCheck = new(startingNode);
-                        HashSet<IEnr> checkedNodes = [];
+            //        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+            //        {
+            //            Queue<IEnr> nodesToCheck = new(startingNode);
+            //            HashSet<IEnr> checkedNodes = [];
 
-                        while (!token.IsCancellationRequested)
-                        {
-                            if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
-                            {
-                                return;
-                            }
+            //            while (!token.IsCancellationRequested)
+            //            {
+            //                if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+            //                {
+            //                    return;
+            //                }
 
-                            if (TryGetNodeFromEnr(newEntry, out Node? node2))
-                            {
-                                await channel.Writer.WriteAsync(newEntry!, token);
-                                if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
-                                _discoveryReport?.NodeFound();
-                            }
+            //                if (TryGetNodeFromEnr(newEntry, out Node? node2))
+            //                {
+            //                    await channel.Writer.WriteAsync(newEntry!, token);
+            //                    if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+            //                    _discoveryReport?.NodeFound();
+            //                }
 
-                            if (node2 is null || !checkedNodes.Add(newEntry))
-                            {
-                                continue;
-                            }
+            //                if (node2 is null || !checkedNodes.Add(newEntry))
+            //                {
+            //                    continue;
+            //                }
 
-                            IEnumerable<IEnr>? newNodesFound = (await kad.LookupNodesClosest(node2!.IdHash.ValueHash256, token))?.Where(x => !checkedNodes.Contains(x));
+            //                IEnumerable<IEnr>? newNodesFound = (await kad.LookupNodesClosest(node2!.IdHash.ValueHash256, token))?.Where(x => !checkedNodes.Contains(x));
 
-                            if (newNodesFound is not null)
-                            {
-                                foreach (IEnr? node in newNodesFound)
-                                {
-                                    nodesToCheck.Enqueue(node);
-                                }
-                            }
-                        }
-                    }
+            //                if (newNodesFound is not null)
+            //                {
+            //                    foreach (IEnr? node in newNodesFound)
+            //                    {
+            //                        nodesToCheck.Enqueue(node);
+            //                    }
+            //                }
+            //            }
+            //        }
 
-                    IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
-                    Random random = new();
+            //        IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
+            //        Random random = new();
 
-                    const int RandomNodesToLookupCount = 3;
+            //        const int RandomNodesToLookupCount = 3;
 
-                    Task discoverTask = Task.Run(async () =>
-                    {
-                        byte[] randomNodeId = new byte[32];
-                        while (!token.IsCancellationRequested)
-                        {
-                            try
-                            {
-                                List<Task> discoverTasks = [DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId)];
+            //        Task discoverTask = Task.Run(async () =>
+            //        {
+            //            byte[] randomNodeId = new byte[32];
+            //            while (!token.IsCancellationRequested)
+            //            {
+            //                try
+            //                {
+            //                    List<Task> discoverTasks = [DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId)];
 
-                                for (int i = 0; i < RandomNodesToLookupCount; i++)
-                                {
-                                    random.NextBytes(randomNodeId);
-                                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
-                                }
+            //                    for (int i = 0; i < RandomNodesToLookupCount; i++)
+            //                    {
+            //                        random.NextBytes(randomNodeId);
+            //                        discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
+            //                    }
 
-                                await Task.WhenAll(discoverTasks);
-                            }
-                            catch (Exception ex)
-                            {
-                                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-                            }
-                        }
-                    });
+            //                    await Task.WhenAll(discoverTasks);
+            //                }
+            //                catch (Exception ex)
+            //                {
+            //                    if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
+            //                }
+            //            }
+            //        });
 
-                    try
-                    {
-                        await foreach (IEnr node in channel.Reader.ReadAllAsync(token))
-                        {
-                            yield return node;
-                        }
-                    }
-                    finally
-                    {
-                        await discoverTask;
-                    }
-                }
+            //        try
+            //        {
+            //            await foreach (IEnr node in channel.Reader.ReadAllAsync(token))
+            //            {
+            //                yield return node;
+            //            }
+            //        }
+            //        finally
+            //        {
+            //            await discoverTask;
+            //        }
+            //    }
 
-                await foreach (IEnr a in DiscoverNodes(default))
-                {
-                    kad.AddOrRefresh(a);
-                    _logger.Warn($"Added to kad, state: {kad}");
-                }
-            });
+            //    await foreach (IEnr a in DiscoverNodes(default))
+            //    {
+            //        kad.AddOrRefresh(a);
+            //        _logger.Warn($"Added to kad, state: {kad}");
+            //    }
+            //});
         }
         catch
         {

@@ -33,7 +33,7 @@ namespace Nethermind.Logging
 
         public void Trace(string text)
         {
-            WriteEntry(text);
+            //WriteEntry(text);
         }
 
         public void Error(string text, Exception ex = null)

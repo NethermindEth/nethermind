@@ -20,7 +20,7 @@ public class KademliaContent<TNode, TContentKey, TContent>(
 
     public async Task<TContent?> LookupValue(TContentKey contentKey, CancellationToken token)
     {
-        if (_logger.IsInfo) _logger.Info($"LA 1");
+        if (_logger.IsInfo) _logger.Info($"LA 1 {contentKey}");
         var result = default(TContent);
         var resultWasFound = false;
 
@@ -31,7 +31,7 @@ public class KademliaContent<TNode, TContentKey, TContent>(
         if (kademliaContentStore.TryGetValue(contentKey, out TContent? content))
             return content;
 
-        if (_logger.IsInfo) _logger.Info($"LA 2");
+        if (_logger.IsInfo) _logger.Info($"LA 2 {contentKey}");
         ValueHash256 targetHash = contentHashProvider.GetHash(contentKey);
 
         try
@@ -41,26 +41,28 @@ public class KademliaContent<TNode, TContentKey, TContent>(
                 {
                     try
                     {
-                        if (_logger.IsInfo) _logger.Info($"LA 3");
+                        if (_logger.IsInfo) _logger.Info($"LA 3 {Convert.ToHexString((byte[])(object)contentKey!)} {nextNode:a/i}");
+                        //var to = new CancellationTokenSource(); to.CancelAfter(3); 
+                        //FindValueResponse<TNode, TContent> valueResponse = await contentMessageSender.FindValue(nextNode, contentKey, CancellationTokenSource.CreateLinkedTokenSource(token, to.Token).Token);
                         FindValueResponse<TNode, TContent> valueResponse = await contentMessageSender.FindValue(nextNode, contentKey, token);
 
-                        if (_logger.IsInfo) _logger.Info($"LA 4");
+                        if (_logger.IsInfo) _logger.Info($"LA 4 {Convert.ToHexString((byte[])(object)contentKey!)} {nextNode:a/i}");
                         if (valueResponse.HasValue)
                         {
                             if (_logger.IsInfo) _logger.Info($"Value response has value {valueResponse.Value}");
                             resultWasFound = true;
                             result = valueResponse.Value; // Shortcut so that once it find the value, it should stop.
-                            if (_logger.IsInfo) _logger.Info($"LA 5");
+                            if (_logger.IsInfo) _logger.Info($"LA 5 {Convert.ToHexString((byte[])(object)contentKey!)} {nextNode:a/i}");
                             await cts.CancelAsync();
                         }
 
                         if (_logger.IsInfo) _logger.Info($"Value response has no value. Returning {valueResponse.Neighbours.Length} neighbours");
-                        if (_logger.IsInfo) _logger.Info($"LA 6 {valueResponse.Neighbours.Length}");
+                        if (_logger.IsInfo) _logger.Info($"LA 6 {Convert.ToHexString((byte[])(object)contentKey!)} {nextNode:a/i} {valueResponse.Neighbours.Length}: {string.Join(",", valueResponse.Neighbours.Select(n => $"{n:a/i}"))}");
                         return valueResponse.Neighbours;
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsInfo) _logger.Info($"LA 8 {e.Message} {e.StackTrace}");
+                        if (_logger.IsInfo) _logger.Info($"LA 8 {Convert.ToHexString((byte[])(object)contentKey!)} {nextNode:a/i} {e.Message} {e.StackTrace}");
                         throw;
                     }
                 },
@@ -72,7 +74,7 @@ public class KademliaContent<TNode, TContentKey, TContent>(
             if (!resultWasFound) throw;
         }
 
-        if (_logger.IsInfo) _logger.Info($"LA 7");
+        if (_logger.IsInfo) _logger.Info($"LA 9");
         return result;
     }
 
