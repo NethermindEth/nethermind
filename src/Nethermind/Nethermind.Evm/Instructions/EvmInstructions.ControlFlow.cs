@@ -104,7 +104,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the high gas cost for a conditional jump.
-        gasAvailable -= GasCostOf.JumpF;
+        gasAvailable -= GasCostOf.JumpI;
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 

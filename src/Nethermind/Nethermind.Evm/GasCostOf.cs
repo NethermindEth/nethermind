@@ -11,7 +11,7 @@ namespace Nethermind.Evm
         public const long Mid = 8;
         public const long High = 10;
         public const long Jump = Mid;
-        public const long JumpF = High;
+        public const long JumpI = High;
         public const long ExtCode = 20;
         public const long ExtCodeEip150 = 700;
         public const long Balance = 20;
