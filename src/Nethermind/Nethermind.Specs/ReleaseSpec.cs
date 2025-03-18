@@ -141,6 +141,8 @@ namespace Nethermind.Specs
             set => _eip2935ContractAddress = value;
         }
 
+        public bool IsEip5920Enabled { get; set; }
+
         Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }

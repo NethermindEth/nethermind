@@ -314,6 +314,8 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEofEnabled { get; }
 
+        bool IsEip5920Enabled { get; }
+
         /// <summary>
         /// <summary>
         /// Transactions that allows code delegation for EOA

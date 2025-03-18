@@ -259,6 +259,11 @@ internal static unsafe partial class EvmInstructions
             lookup[(int)Instruction.RETURNCODE] = &InstructionReturnCode;
         }
 
+        if (spec.IsEip5920Enabled)
+        {
+            lookup[(int)Instruction.PAY] = &InstructionPay;
+        }
+
         // Contract creation and call opcodes.
         lookup[(int)Instruction.CREATE] = &InstructionCreate<OpCreate, TTracingInstructions>;
         lookup[(int)Instruction.CALL] = &InstructionCall<OpCall, TTracingInstructions>;

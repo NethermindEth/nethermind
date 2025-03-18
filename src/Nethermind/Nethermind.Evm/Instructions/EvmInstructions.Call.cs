@@ -351,4 +351,103 @@ internal static partial class EvmInstructions
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
+
+    /// <summary>
+    /// Executes a pay operation.
+    /// </summary>
+    /// A type implementing <see cref="IFlag"/> that indicates whether instruction tracing is active.
+    /// </typeparam>
+    /// <param name="vm">The current virtual machine instance containing execution state.</param>
+    /// <param name="stack">The EVM stack for retrieving call parameters and pushing results.</param>
+    /// <param name="gasAvailable">Reference to the available gas, which is deducted according to various call costs.</param>
+    /// <param name="programCounter">Reference to the current program counter (not modified by this method).</param>
+    /// <returns>
+    /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
+    /// </returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionPay(
+        VirtualMachine vm,
+        ref EvmStack stack,
+        ref long gasAvailable,
+        ref int programCounter)
+    {
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        IWorldState state = vm.WorldState;
+
+        // Enforce static call restrictions: no value transfer allowed.
+        if (vm.EvmState.IsStatic)
+            return EvmExceptionType.StaticCallViolation;
+
+        // Pop full 256bit for the address
+        if (!stack.PopWord256(out Span<byte> word)) goto StackUnderflow;
+
+        if (word[..(EvmStack.WordSize - EvmStack.AddressSize)]
+            .ContainsAnyExcept((byte)0))
+        {
+            // We do not automatically truncate the address to allow for address extensions
+            // However addresses are not extended, so this is an error.
+            goto AddressOutOfRange;
+        }
+
+        Address target = new(word.Slice(EvmStack.WordSize - EvmStack.AddressSize, EvmStack.AddressSize).ToArray());
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, target))
+        {
+            goto OutOfGas;
+        }
+
+        if (!stack.PopUInt256(out UInt256 transferValue))
+        {
+            goto StackUnderflow;
+        }
+
+        long gasExtra = 0L;
+        // Add extra gas cost if value is transferred.
+        if (!transferValue.IsZero)
+        {
+            gasExtra += GasCostOf.CallValue;
+        }
+
+        IReleaseSpec spec = vm.Spec;
+        // Charge additional gas if the target account is new or considered empty.
+        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        {
+            gasExtra += GasCostOf.NewAccount;
+        }
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
+        {
+            gasExtra += GasCostOf.NewAccount;
+        }
+
+        if (UpdateGas(gasExtra, ref gasAvailable))
+            goto OutOfGas;
+
+        // Check balance of the caller.
+        if (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue)
+        {
+            // If the PAY cannot proceed, push zero on the stack.
+            stack.PushZero();
+
+            return EvmExceptionType.None;
+        }
+
+        // Subtract the transfer value from the caller's balance.
+        state.SubtractFromBalance(env.ExecutingAccount, transferValue, spec);
+
+        // Add the transfer value to the target balance.
+        state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+
+        // Push success to stack
+        stack.PushBytes(StatusCode.SuccessBytes.Span);
+
+        return EvmExceptionType.None;
+
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    AddressOutOfRange:
+        return EvmExceptionType.AddressOutOfRange;
+    }
 }
