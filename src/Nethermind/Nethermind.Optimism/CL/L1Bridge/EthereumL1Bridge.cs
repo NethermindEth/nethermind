@@ -3,11 +3,12 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
@@ -49,8 +50,8 @@ public class EthereumL1Bridge : IL1Bridge
         _logger.Error("Starting L1Bridge");
         while (!token.IsCancellationRequested)
         {
-            // TODO: can we do it with subscription?
-            L1Block newHead = await GetHead();
+            // TODO: head block instead of finalized
+            L1Block newHead = await GetFinalized();
             ulong newHeadNumber = newHead.Number;
 
             int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHeadNumber - 1;
@@ -90,39 +91,47 @@ public class EthereumL1Bridge : IL1Bridge
             await ProcessBlock(newHead);
             await TryUpdateFinalized();
 
-            // TODO: fix number
-            await Task.Delay(50000, token);
+            await Task.Delay(12000, token);
         }
     }
 
     private async Task ProcessBlock(L1Block block)
     {
-        ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
-
-        _logger.Error($"New L1 Block. Number {block.Number}");
-        int startingBlobIndex = 0;
-        // Filter batch submitter transaction
-        foreach (L1Transaction transaction in block.Transactions!)
+        try
         {
-            if (transaction.Type == TxType.Blob)
+            ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
+
+            if (_logger.IsInfo) _logger.Info($"New L1 Block. Number {block.Number}");
+            int startingBlobIndex = 0;
+            // Filter batch submitter transaction
+            foreach (L1Transaction transaction in block.Transactions!)
             {
-                if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                    _engineParameters.BatchSubmitter == transaction.From)
+                if (transaction.Type == TxType.Blob)
                 {
-                    ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
-                    await ProcessBlobBatcherTransaction(transaction,
-                        startingBlobIndex, slotNumber);
+                    if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                        _engineParameters.BatchSubmitter == transaction.From)
+                    {
+                        ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
+                        await ProcessBlobBatcherTransaction(transaction,
+                            startingBlobIndex, slotNumber);
+                    }
+
+                    startingBlobIndex += transaction.BlobVersionedHashes!.Length;
                 }
-                startingBlobIndex += transaction.BlobVersionedHashes!.Length;
-            }
-            else
-            {
-                if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                    _engineParameters.BatchSubmitter == transaction.From)
+                else
                 {
-                    ProcessCalldataBatcherTransaction(transaction);
+                    if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                        _engineParameters.BatchSubmitter == transaction.From)
+                    {
+                        ProcessCalldataBatcherTransaction(transaction);
+                    }
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Processing block failed: {ex.Message}");
+            throw;
         }
     }
 
@@ -136,8 +145,19 @@ public class EthereumL1Bridge : IL1Bridge
 
     private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
     {
-        BlobSidecar[] blobSidecars = await GetBlobSidecars(slotNumber, startingBlobIndex,
-            startingBlobIndex + transaction.BlobVersionedHashes!.Length);
+        BlobSidecar[]? blobSidecars = await _beaconApi.GetBlobSidecars(slotNumber, startingBlobIndex,
+            startingBlobIndex + transaction.BlobVersionedHashes!.Length - 1);
+
+        if (blobSidecars is null)
+        {
+            if (_logger.IsWarn)
+            {
+                string blobVersionedHashes = string.Join(',', transaction.BlobVersionedHashes.Select(hash => hash.ToHexString()));
+                _logger.Warn($"Failed to get blob sidecars for slot {slotNumber}. Transaction: {transaction.Hash}. BlobVersionedHashes: {blobVersionedHashes}");
+            }
+
+            throw new ArgumentNullException(nameof(blobSidecars));
+        }
 
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
@@ -212,7 +232,6 @@ public class EthereumL1Bridge : IL1Bridge
 
     public Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo)
     {
-        // TODO: retry here
         return _beaconApi.GetBlobSidecars(slotNumber, indexFrom, indexTo)!;
     }
 

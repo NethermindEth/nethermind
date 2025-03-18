@@ -730,7 +730,7 @@ public class DepositTransactionBuilderTest
 
         Transaction expected = Build.A.Transaction
             .WithType(TxType.DepositTx)
-            .WithData([.._L1BlockInfo.DepositsCompleteBytes4])
+            .WithData([.. _L1BlockInfo.DepositsCompleteBytes4])
             .WithGasLimit((long)_L1BlockInfo.DepositsCompleteGas) // WARNING: Dangerous cast
             .WithIsOPSystemTransaction(false)
             .WithValue(0)

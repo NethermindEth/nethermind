@@ -29,7 +29,11 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         _logger = logger;
     }
 
-    public PayloadAttributesRef DerivePayloadAttributes(SingularBatch batch, PayloadAttributesRef parentPayloadAttributes, L1Block l1Origin, ReceiptForRpc[] l1Receipts)
+    public PayloadAttributesRef DerivePayloadAttributes(
+        SingularBatch batch,
+        PayloadAttributesRef parentPayloadAttributes,
+        L1Block l1Origin,
+        ReceiptForRpc[] l1Receipts)
     {
         ulong number = parentPayloadAttributes.Number + 1;
         SystemConfig systemConfig = parentPayloadAttributes.SystemConfig;
@@ -39,7 +43,9 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
             systemConfig =
                 _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(systemConfig, l1Receipts);
         }
-        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, systemConfig, batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1);
+
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, systemConfig,
+            batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1);
 
         Transaction systemTransaction = _depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
         systemTransaction.Nonce = number + 1;

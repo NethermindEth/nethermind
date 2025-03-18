@@ -101,20 +101,24 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         tx.GasPrice = GasPrice ?? 20.GWei();
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.SystemUser;
-        ulong v;
-        if (V is null)
+        if (R != 0 || S != 0)
         {
-            v = 0;
+            ulong v;
+            if (V is null)
+            {
+                v = 0;
+            }
+            else if (V.Value > 1)
+            {
+                v = V.Value.ToUInt64(null); // non protected
+            }
+            else
+            {
+                v = EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
+            }
+
+            tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }
-        else if (V.Value > 1)
-        {
-            v = V.Value.ToUInt64(null); // non protected
-        }
-        else
-        {
-            v = EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
-        }
-        tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
 
         return tx;
     }

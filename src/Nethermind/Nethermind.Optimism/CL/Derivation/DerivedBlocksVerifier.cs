@@ -24,7 +24,7 @@ public class DerivedBlocksVerifier : IDerivedBlocksVerifier
         bool result = true;
         if (expected.NoTxPool != actual.NoTxPool)
         {
-            _logger.Error($"Invalid NoTxPool. Expected {expected.NoTxPool}, Actual {actual.NoTxPool}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid NoTxPool. Expected {expected.NoTxPool}, Actual {actual.NoTxPool}");
             result = false;
         }
 
@@ -33,49 +33,49 @@ public class DerivedBlocksVerifier : IDerivedBlocksVerifier
             (expected.EIP1559Params is not null && actual.EIP1559Params is not null &&
              !expected.EIP1559Params.SequenceEqual(actual.EIP1559Params)))
         {
-            _logger.Error($"Invalid Eip1559Params expected: {expected.EIP1559Params?.ToHexString()}, actual: {actual.EIP1559Params?.ToHexString()}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid Eip1559Params expected: {expected.EIP1559Params?.ToHexString()}, actual: {actual.EIP1559Params?.ToHexString()}");
             result = false;
         }
 
         if (expected.GasLimit != actual.GasLimit)
         {
-            _logger.Error($"Invalid GasLimit. Expected {expected.GasLimit}, Actual {actual.GasLimit}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid GasLimit. Expected {expected.GasLimit}, Actual {actual.GasLimit}");
             result = false;
         }
 
         if (expected.ParentBeaconBlockRoot != actual.ParentBeaconBlockRoot)
         {
-            _logger.Error($"Invalid ParentBeaconBlockRoot. Expected {expected.ParentBeaconBlockRoot}, Actual {actual.ParentBeaconBlockRoot}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid ParentBeaconBlockRoot. Expected {expected.ParentBeaconBlockRoot}, Actual {actual.ParentBeaconBlockRoot}");
             result = false;
         }
 
         if (expected.PrevRandao != actual.PrevRandao)
         {
-            _logger.Error($"Invalid PrevRandao. Expected {expected.PrevRandao}, Actual {actual.PrevRandao}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid PrevRandao. Expected {expected.PrevRandao}, Actual {actual.PrevRandao}");
             result = false;
         }
 
         if (expected.SuggestedFeeRecipient != actual.SuggestedFeeRecipient)
         {
-            _logger.Error($"Invalid SuggestedFeeRecipient. Expected {expected.SuggestedFeeRecipient}, Actual {actual.SuggestedFeeRecipient}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid SuggestedFeeRecipient. Expected {expected.SuggestedFeeRecipient}, Actual {actual.SuggestedFeeRecipient}");
             result = false;
         }
 
         if (expected.Timestamp != actual.Timestamp)
         {
-            _logger.Error($"Invalid Timestamp. Expected {expected.Timestamp}, Actual {actual.Timestamp}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid Timestamp. Expected {expected.Timestamp}, Actual {actual.Timestamp}");
             result = false;
         }
 
         if (expected.Withdrawals != actual.Withdrawals)
         {
-            _logger.Error($"Invalid Withdrawals");
+            if (_logger.IsWarn) _logger.Warn($"Invalid Withdrawals");
             result = false;
         }
 
         if (expected.Transactions!.Length != actual.Transactions!.Length)
         {
-            _logger.Error($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
             result = false;
         }
         else
@@ -86,9 +86,9 @@ public class DerivedBlocksVerifier : IDerivedBlocksVerifier
                 {
                     Transaction actualDecoded = Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
                     Transaction expectedDecoded = Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
-                    _logger.Error($"Invalid transaction. Index {i}. Block {blockNumber}");
-                    _logger.Error($"Expected: {expectedDecoded}");
-                    _logger.Error($"Actual: {actualDecoded}");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid transaction. Index {i}. Block {blockNumber}");
+                    if (_logger.IsWarn) _logger.Warn($"Expected: {expectedDecoded}");
+                    if (_logger.IsWarn) _logger.Warn($"Actual: {actualDecoded}");
                     result = false;
                 }
             }

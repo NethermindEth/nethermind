@@ -83,7 +83,6 @@ public class OptimismCL : IDisposable
                 _decodingPipeline.Run(_cancellationTokenSource.Token),
                 _l1Bridge.Run(_cancellationTokenSource.Token),
                 _driver.Run(_cancellationTokenSource.Token)
-                // _p2p.Run(_cancellationTokenSource.Token)
             );
         }
         catch (OperationCanceledException)
@@ -100,7 +99,7 @@ public class OptimismCL : IDisposable
 
     private void SetupTest()
     {
-        var block = _l2Api.GetBlockByNumber(10567750);
+        var block = _l2Api.GetBlockByNumber(11300000);
         _l1Bridge.SetCurrentL1Head(block.L1BlockInfo.Number, block.L1BlockInfo.BlockHash);
     }
 }

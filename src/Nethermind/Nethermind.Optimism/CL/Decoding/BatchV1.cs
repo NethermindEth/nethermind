@@ -57,7 +57,8 @@ public class BatchV1
         }
     }
 
-    private (Transaction[], ulong, ulong) BuildUserTransactions(ulong chainId, ulong from, ulong txCount, ulong tosFrom, ulong legacyTxFrom)
+    private (Transaction[], ulong, ulong) BuildUserTransactions(ulong chainId, ulong from, ulong txCount, ulong tosFrom,
+        ulong legacyTxFrom)
     {
         var userTransactions = new Transaction[txCount];
         ulong tosIdx = tosFrom;
@@ -79,42 +80,45 @@ public class BatchV1
                 tx.To = Txs.Tos[tosIdx];
                 tosIdx++;
             }
+
             ulong v;
             switch (Txs.Types[txIdx])
             {
                 case TxType.Legacy:
-                {
-                    bool protectedBit = ((Txs.ProtectedBits >> (int)legacyTxIdx) & 1) == 1;
-                    legacyTxIdx++;
-                    if (protectedBit)
+                    {
+                        bool protectedBit = ((Txs.ProtectedBits >> (int)legacyTxIdx) & 1) == 1;
+                        legacyTxIdx++;
+                        if (protectedBit)
+                        {
+                            v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
+                        }
+                        else
+                        {
+                            v = 27u + (parityBit ? 1u : 0u);
+                        }
+
+                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Datas[txIdx]);
+                        break;
+                    }
+                case TxType.AccessList:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
+                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Datas[txIdx]);
+                        break;
                     }
-                    else
-                    {
-                        v = 27u + (parityBit ? 1u : 0u);
-                    }
-
-                    (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Datas[txIdx]);
-                    break;
-                }
-                case TxType.AccessList:
-                {
-                    v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                    (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Datas[txIdx]);
-                    break;
-                }
                 case TxType.EIP1559:
-                {
-                    v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                    (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) = DecodeEip1559Transaction(Txs.Datas[txIdx]);
-                    break;
-                }
+                    {
+                        v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
+                        (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) =
+                            DecodeEip1559Transaction(Txs.Datas[txIdx]);
+                        break;
+                    }
                 default:
-                {
-                    throw new ArgumentException($"Invalid tx type {Txs.Types[txIdx]}");
-                }
+                    {
+                        throw new ArgumentException($"Invalid tx type {Txs.Types[txIdx]}");
+                    }
             }
+
             Signature signature = new(Txs.Signatures[txIdx].R, Txs.Signatures[txIdx].S, v);
             tx.Signature = signature;
             userTransactions[i] = tx;

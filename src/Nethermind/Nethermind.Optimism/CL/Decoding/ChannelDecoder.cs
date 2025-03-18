@@ -23,7 +23,8 @@ public class ChannelDecoder
             // TODO: test
             var deflateStream = new DeflateStream(new MemoryStream(data[2..]), CompressionMode.Decompress);
             deflateStream.CopyTo(memoryStream);
-        } else if (data[0] == 1)
+        }
+        else if (data[0] == 1)
         {
             // brotli
             BrotliStream stream = new BrotliStream(new MemoryStream(data[1..]), CompressionMode.Decompress);

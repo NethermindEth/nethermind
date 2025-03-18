@@ -35,6 +35,7 @@ public struct L1Block
 
 public struct L1Transaction
 {
+    public Hash256? Hash { get; set; }
     public TxType? Type { get; set; }
     public Address? From { get; set; }
     public Address? To { get; set; }
