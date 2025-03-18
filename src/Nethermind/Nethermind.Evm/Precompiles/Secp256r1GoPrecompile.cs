@@ -42,20 +42,20 @@ public partial class Secp256r1GoPrecompile : IPrecompile<Secp256r1GoPrecompile>
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
-        //Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} ...");
+        Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} ...");
 
         bool isValid;
         fixed (byte* ptr = input.Span)
         {
             isValid = VerifyBytes(ptr, input.Length) != 0;
-            //Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} -> {isValid}");
+            Console.WriteLine($"Secp256r1GoPrecompile: {Convert.ToHexString(input.Span)} -> {isValid}");
         }
 
         Metrics.Secp256r1Precompile++;
 
-        // Console.WriteLine("Secp256r1GoPrecompile: Reporting Go GC");
-        // ReportGC();
-        // Console.WriteLine("Secp256r1GoPrecompile: Reported Go GC");
+        Console.WriteLine("Secp256r1GoPrecompile: Reporting Go GC");
+        ReportGC();
+        Console.WriteLine("Secp256r1GoPrecompile: Reported Go GC");
 
         return (isValid ? ValidResult : null, true);
     }
