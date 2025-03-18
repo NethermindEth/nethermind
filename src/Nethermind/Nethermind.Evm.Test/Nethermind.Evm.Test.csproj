@@ -89,5 +89,8 @@
     <None Update="PrecompileVectors\Bls\pairing_check_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="PrecompileVectors\p256Verify.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

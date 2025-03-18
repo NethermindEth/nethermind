@@ -37,12 +37,16 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
             return IPrecompile.Failure;
         }
 
-        G1 res = new G1(stackalloc long[G1.Sz]);
+        G1 res = new(stackalloc long[G1.Sz]);
         if (!BlsExtensions.ValidRawFp(inputData.Span))
         {
             return IPrecompile.Failure;
         }
-        res.MapTo(inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span);
+
+        // map field point to G1
+        ReadOnlySpan<byte> fp = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
+        res.MapTo(fp);
+
         return (res.EncodeRaw(), true);
     }
 }

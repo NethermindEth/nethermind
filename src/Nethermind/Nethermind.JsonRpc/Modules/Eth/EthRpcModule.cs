@@ -407,9 +407,11 @@ public partial class EthRpcModule(
             return ResultWrapper<string?>.Success(null);
         }
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.None));
+        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
+
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
         using NettyRlpStream stream = new(buffer);
-        TxDecoder.Instance.Encode(stream, transaction);
+        TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
 
         return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
     }

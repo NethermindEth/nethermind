@@ -16,7 +16,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-public class ShutterIntegrationTests : EngineModuleTests
+public class ShutterIntegrationTests : BaseEngineModuleTests
 {
     private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private const ulong BuildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;

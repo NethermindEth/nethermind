@@ -20,6 +20,11 @@ namespace Nethermind.Serialization.Rlp
                 result[i] = decoder.Decode(rlpStream, rlpBehaviors);
             }
 
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                rlpStream.Check(checkPosition);
+            }
+
             return result;
         }
 
@@ -30,6 +35,11 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                decoderContext.Check(checkPosition);
             }
 
             return result;
