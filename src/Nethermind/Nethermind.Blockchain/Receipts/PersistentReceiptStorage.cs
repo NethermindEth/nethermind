@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Receipts
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
-                        RemoveBlockTx(newOldTx);
+                        RemoveReceipts(newOldTx);
                     }
                 }
             });
@@ -333,7 +333,7 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(block, null);
         }
 
-        public void RemoveBlockTx(Block block)
+        public void RemoveReceipts(Block block)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)

@@ -87,11 +87,11 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void RemoveBlockTx(Block block)
+        public void RemoveReceipts(Block block)
         {
+            _receipts.TryRemove(block.Hash, out _);
             foreach (var tx in block.Transactions)
             {
-                _receipts.TryRemove(tx.Hash, out _);
                 _transactions.TryRemove(tx.Hash, out _);
             }
         }

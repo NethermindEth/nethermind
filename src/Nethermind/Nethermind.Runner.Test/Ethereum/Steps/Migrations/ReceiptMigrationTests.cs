@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
             }
 
-            public void RemoveBlockTx(Block block)
+            public void RemoveReceipts(Block block)
             {
             }
 

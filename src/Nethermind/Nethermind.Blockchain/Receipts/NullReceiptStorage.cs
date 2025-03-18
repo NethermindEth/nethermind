@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
-        public void RemoveBlockTx(Block block)
+        public void RemoveReceipts(Block block)
         {
         }
     }

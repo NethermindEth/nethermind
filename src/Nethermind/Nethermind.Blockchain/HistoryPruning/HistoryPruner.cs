@@ -86,7 +86,7 @@ public class HistoryPruner(
     {
         foreach (Block block in blocks)
         {
-            receiptStorage.RemoveBlockTx(block);
+            receiptStorage.RemoveReceipts(block);
         }
     }
 
