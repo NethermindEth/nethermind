@@ -217,7 +217,7 @@ public class BlockTreeOverlay : IBlockTree
         _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
 
 
-    public void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken) =>
+    public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken) =>
         _overlayTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
 
     public bool IsBetterThanHead(BlockHeader? header) => _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);

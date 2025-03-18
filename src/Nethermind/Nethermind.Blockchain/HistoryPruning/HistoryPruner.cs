@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
@@ -11,6 +14,7 @@ namespace Nethermind.Blockchain.HistoryPruning;
 
 public class HistoryPruner(
     IBlockTree blockTree,
+    IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IHistoryConfig historyConfig,
     ulong secondsPerSlot,
@@ -69,10 +73,21 @@ public class HistoryPruner(
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        await Task.Run(() => blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken), cancellationToken);
+        await Task.Run(() => {
+            var deletedBlocks = blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
+            PruneReceipts(deletedBlocks);
+        }, cancellationToken);
 
         _lastPrunedTimestamp = cutoffTimestamp;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
+    }
+
+    private void PruneReceipts(IEnumerable<Block> blocks)
+    {
+        foreach (Block block in blocks)
+        {
+            receiptStorage.RemoveBlockTx(block);
+        }
     }
 
     private ulong CalculateCutoffTimestamp()

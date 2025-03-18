@@ -21,5 +21,5 @@ public interface IBlockStore
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash);
     void Cache(Block block);
     bool HasBlock(long blockNumber, Hash256 blockHash);
-    IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp);
+    IEnumerable<Block> GetBlocksOlderThan(ulong timestamp);
 }

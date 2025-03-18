@@ -166,7 +166,13 @@ namespace Nethermind.Init.Steps
 
             if (historyConfig.Enabled)
             {
-                IHistoryPruner historyPruner = new HistoryPruner(_api.BlockTree!, _api.SpecProvider!, historyConfig, blocksConfig.SecondsPerSlot, _api.LogManager);
+                IHistoryPruner historyPruner = new HistoryPruner(
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.SpecProvider!,
+                    historyConfig,
+                    blocksConfig.SecondsPerSlot,
+                    _api.LogManager);
                 setApi.HistoryPruner = historyPruner;
             }
 

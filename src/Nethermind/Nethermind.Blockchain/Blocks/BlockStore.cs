@@ -98,7 +98,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
         _blockCache.Set(block.Hash, block);
     }
 
-    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
+    public IEnumerable<Block> GetBlocksOlderThan(ulong timestamp)
     {
         var blocks = blockDb.GetAll(true);
         foreach ((byte[] _, byte[]? value) in blocks)
@@ -110,7 +110,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
                 break;
             }
 
-            yield return (block.Number, block.Hash);
+            yield return block;
         }
     }
 }

@@ -334,7 +334,7 @@ public partial class BaseEngineModuleTests
                 50000); // by default we want to avoid cleanup payload effects in testing
 
             ExecutionRequestsProcessor ??= new ExecutionRequestsProcessor(TxProcessor);
-            HistoryPruner = new HistoryPruner(BlockTree, SpecProvider, new HistoryConfig(), MergeConfig.SecondsPerSlot, LogManager);
+            HistoryPruner = new HistoryPruner(BlockTree, ReceiptStorage, SpecProvider, new HistoryConfig(), MergeConfig.SecondsPerSlot, LogManager);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

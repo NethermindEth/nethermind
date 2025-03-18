@@ -74,7 +74,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         return _blockNumDict.ContainsKey(blockNumber);
     }
 
-    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
+    public IEnumerable<Block> GetBlocksOlderThan(ulong timestamp)
     {
         foreach (KeyValuePair<long, Block> kv in _blockNumDict)
         {
@@ -82,7 +82,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
             {
                 yield break;
             }
-            yield return (kv.Key, kv.Value.Hash);
+            yield return kv.Value;
         }
     }
 }

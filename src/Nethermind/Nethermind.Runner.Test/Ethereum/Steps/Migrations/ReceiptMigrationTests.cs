@@ -153,6 +153,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
             }
 
+            public void RemoveBlockTx(Block block)
+            {
+            }
+
 #pragma warning disable CS0067
             public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
 #pragma warning restore CS0067

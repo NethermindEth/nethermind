@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain
 
         }
 
-        public void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+        public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
             => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBlocksBeforeTimestamp)} calls");
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);

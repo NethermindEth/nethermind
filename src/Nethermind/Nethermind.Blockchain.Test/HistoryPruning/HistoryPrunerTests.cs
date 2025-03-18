@@ -43,6 +43,7 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = new(
             testBlockchain.BlockTree,
+            testBlockchain.ReceiptStorage,
             specProvider,
             historyConfig,
             SecondsPerSlot,
@@ -114,6 +115,7 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = new(
             testBlockchain.BlockTree,
+            testBlockchain.ReceiptStorage,
             specProvider,
             historyConfig,
             SecondsPerSlot,
@@ -182,6 +184,7 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = new(
             testBlockchain.BlockTree,
+            testBlockchain.ReceiptStorage,
             specProvider,
             historyConfig,
             SecondsPerSlot,

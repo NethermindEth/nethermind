@@ -736,7 +736,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+        public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
         {
             BlockAcceptingNewBlocks();
             int deletedBlocks = 0;
@@ -745,8 +745,11 @@ namespace Nethermind.Blockchain
                 using var batch = _chainLevelInfoRepository.StartBatch();
 
                 var oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
-                foreach ((long number, Hash256 hash) in oldBlocks)
+                foreach (Block block in oldBlocks)
                 {
+                    long number = block.Number;
+                    Hash256 hash = block.Hash;
+
                     if (cancellationToken.IsCancellationRequested)
                     {
                         if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
@@ -761,6 +764,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}");
                     DeleteBlock(number, hash, null, batch, null, true);
                     deletedBlocks++;
+                    yield return block;
                 }
             }
             finally

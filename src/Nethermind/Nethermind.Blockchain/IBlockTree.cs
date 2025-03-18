@@ -179,6 +179,6 @@ namespace Nethermind.Blockchain
 
         void RecalculateTreeLevels();
 
-        void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken);
+        IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken);
     }
 }

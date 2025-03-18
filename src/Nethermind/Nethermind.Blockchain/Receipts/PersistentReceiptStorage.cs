@@ -16,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-#pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -80,7 +79,6 @@ namespace Nethermind.Blockchain.Receipts
             // Dont block main loop
             Task.Run(() =>
             {
-
                 Block newMain = e.Block;
 
                 // Delete old tx index
@@ -335,6 +333,15 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(block, null);
         }
 
+        public void RemoveBlockTx(Block block)
+        {
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            foreach (Transaction tx in block.Transactions)
+            {
+                writeBatch[tx.Hash.Bytes] = null;
+            }
+        }
+
         private void EnsureCanonical(Block block, long? lastBlockNumber)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
@@ -348,7 +355,8 @@ namespace Nethermind.Blockchain.Receipts
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
                 foreach (Transaction tx in block.Transactions)
                 {
-                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    tx.Hash ??= tx.CalculateHash();
+                    Hash256 hash = tx.Hash;
                     writeBatch[hash.Bytes] = blockNumber;
                 }
             }
@@ -357,18 +365,10 @@ namespace Nethermind.Blockchain.Receipts
                 byte[] blockHash = block.Hash.BytesToArray();
                 foreach (Transaction tx in block.Transactions)
                 {
-                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    tx.Hash ??= tx.CalculateHash();
+                    Hash256 hash = tx.Hash;
                     writeBatch[hash.Bytes] = blockHash;
                 }
-            }
-        }
-
-        private void RemoveBlockTx(Block block)
-        {
-            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-            foreach (Transaction tx in block.Transactions)
-            {
-                writeBatch[tx.Hash.Bytes] = null;
             }
         }
     }
