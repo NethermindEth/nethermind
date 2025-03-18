@@ -199,7 +199,7 @@ namespace Nethermind.Serialization.Rlp
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
             int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);

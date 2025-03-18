@@ -148,18 +148,10 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
         }
     }
 
-    public static bool IsCompactEncoding(Span<byte> receiptsData)
-    {
-        return receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
-    }
+    public static bool IsCompactEncoding(Span<byte> receiptsData) => receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
 
-    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
-    {
-        if (IsCompactEncoding(receiptsData))
-        {
-            return (IReceiptRefDecoder)CompactValueDecoder;
-        }
-
-        return (IReceiptRefDecoder)ValueDecoder;
-    }
+    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData) =>
+        IsCompactEncoding(receiptsData)
+            ? (IReceiptRefDecoder)CompactValueDecoder
+            : (IReceiptRefDecoder)ValueDecoder;
 }
