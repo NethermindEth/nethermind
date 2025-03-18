@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Channels;
@@ -40,7 +39,6 @@ public class DerivationPipeline : IDerivationPipeline
         while (!token.IsCancellationRequested)
         {
             (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync(token);
-            _logger.Error($"Got batch for derivation: {batch.RelTimestamp / 2 - 1}");
             await ProcessOneBatch(l2Parent, batch);
         }
     }
@@ -58,33 +56,10 @@ public class DerivationPipeline : IDerivationPipeline
             throw new ArgumentException("Old batch");
         }
 
-        // TODO: proper error handling
-        ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
-        ulong lastL1OriginNum = batch.L1OriginNum;
-        L1Block? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
-        ArgumentNullException.ThrowIfNull(lastL1Origin);
-        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck))
+        (L1Block[]? l1Origins, ReceiptForRpc[][]? l1Receipts) = await GetL1Origins(batch);
+        if (l1Origins is null || l1Receipts is null)
         {
-            // TODO: potential L1 reorg
-            throw new ArgumentException("Invalid batch origin");
-        }
-        L1Block[] l1Origins = new L1Block[numberOfL1Origins];
-        ReceiptForRpc[][] l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
-        l1Origins[numberOfL1Origins - 1] = lastL1Origin.Value;
-        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Value.Hash);
-        ArgumentNullException.ThrowIfNull(lastReceipts);
-        l1Receipts[numberOfL1Origins - 1] = lastReceipts;
-        Hash256 parentHash = lastL1Origin.Value.ParentHash;
-        for (ulong i = 1; i < numberOfL1Origins; i++)
-        {
-            // TODO: try to save time here
-            L1Block? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
-            ReceiptForRpc[] receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
-            ArgumentNullException.ThrowIfNull(l1Origin);
-            ArgumentNullException.ThrowIfNull(receipts);
-            l1Origins[numberOfL1Origins - i - 1] = l1Origin.Value;
-            l1Receipts[numberOfL1Origins - i - 1] = receipts;
-            parentHash = l1Origin.Value.ParentHash;
+            return;
         }
 
         PayloadAttributesRef l2ParentPayloadAttributes = new()
@@ -116,11 +91,59 @@ public class DerivationPipeline : IDerivationPipeline
         }
         catch (Exception e)
         {
-            _logger.Error($"Exception occured while processing batch RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
+            _logger.Error($"Exception occured while processing batch. RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
             throw;
         }
 
         _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+    }
+
+    private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch)
+    {
+        ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
+        ulong lastL1OriginNum = batch.L1OriginNum;
+        L1Block? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
+        if (lastL1Origin is null)
+        {
+            _logger.Warn($"L1Origin unavailable. Number: {lastL1OriginNum}, L1 origin check: {batch.L1OriginCheck.ToHexString()}");
+            return (null, null);
+        }
+        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck))
+        {
+            _logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Value.Hash}");
+            return (null, null);
+        }
+        var l1Origins = new L1Block[numberOfL1Origins];
+        var l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
+        l1Origins[numberOfL1Origins - 1] = lastL1Origin.Value;
+        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Value.Hash);
+        if (lastReceipts is null)
+        {
+            _logger.Warn($"Receipts unavailable during derivation. Block hash: {lastL1Origin.Value.Hash}");
+            return (null, null);
+        }
+        l1Receipts[numberOfL1Origins - 1] = lastReceipts;
+        Hash256 parentHash = lastL1Origin.Value.ParentHash;
+        for (ulong i = 1; i < numberOfL1Origins; i++)
+        {
+            L1Block? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
+            ReceiptForRpc[]? receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
+            if (l1Origin is null)
+            {
+                _logger.Warn($"L1Origin unavailable. Number: {lastL1OriginNum - i}, Hash: {parentHash}");
+                return (null, null);
+            }
+
+            if (receipts is null)
+            {
+                _logger.Warn($"Receipts unavailable during derivation. Block hash: {parentHash}");
+                return (null, null);
+            }
+            l1Origins[numberOfL1Origins - i - 1] = l1Origin.Value;
+            l1Receipts[numberOfL1Origins - i - 1] = receipts;
+            parentHash = l1Origin.Value.ParentHash;
+        }
+        return (l1Origins, l1Receipts);
     }
 
     private ulong GetNumberOfBits(BigInteger number)

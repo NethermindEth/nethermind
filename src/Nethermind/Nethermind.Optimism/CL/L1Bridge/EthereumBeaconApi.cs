@@ -36,9 +36,15 @@ public class EthereumBeaconApi : IBeaconApi
 
     public async Task<BlobSidecar[]?> GetBlobSidecars(ulong slot, int indexFrom, int indexTo)
     {
-        GetBlobSidecarsResponse? data = await GetData<GetBlobSidecarsResponse>(
-            $"/eth/v1/beacon/blob_sidecars/{slot}?indices={string.Join(',', Enumerable.Range(indexFrom, indexTo - indexFrom + 1))}");
+        string req =
+            $"/eth/v1/beacon/blob_sidecars/{slot}?indices={string.Join(',', Enumerable.Range(indexFrom, indexTo - indexFrom + 1))}";
+        GetBlobSidecarsResponse? data = await GetData<GetBlobSidecarsResponse>(req);
         if (data is null) return null;
+        if (indexTo - indexFrom + 1 != data.Value.Data.Length)
+        {
+            _logger.Warn($"Invalid number of blobs in slot {slot}. Expected {indexTo - indexFrom + 1}. Got {data.Value.Data.Length}");
+            return null;
+        }
         for (int i = 0; i < data.Value.Data.Length; ++i)
         {
             data.Value.Data[i].BlobVersionedHash = (new byte[] { 1 })

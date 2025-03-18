@@ -56,8 +56,6 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
             return nativeTx;
         }).ToArray();
 
-
-
         payloadAttributes.SetTransactions(txs);
 
         L1BlockInfo l1BlockInfo =
@@ -99,6 +97,24 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
         {
             logger.Error($"Unable to get L2 finalized block");
             throw new Exception($"Unable to get L2 finalized block");
+        }
+        var block = blockResult.Data;
+        var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
+        return new L2Block
+        {
+            Hash = block.Hash,
+            ParentHash = block.ParentHash,
+            PayloadAttributesRef = payloadAttributes
+        };
+    }
+
+    public L2Block GetSafeBlock()
+    {
+        var blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Safe, true);
+        if (blockResult.Result != Result.Success)
+        {
+            logger.Error($"Unable to get L2 safe block");
+            throw new Exception($"Unable to get L2 safe block");
         }
         var block = blockResult.Data;
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
