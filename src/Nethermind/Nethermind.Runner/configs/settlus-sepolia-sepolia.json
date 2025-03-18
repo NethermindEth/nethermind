@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/op-sepolia.json.zst",
-    "GenesisHash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
-    "BaseDbPath": "nethermind_db/op-sepolia",
-    "LogFileName": "op-sepolia.logs.txt"
+    "ChainSpecPath": "chainspec/settlus-sepolia-sepolia.json.zst",
+    "GenesisHash": "0xa055eed3718c2ed1f04692c707b7045a804505b5e5184a37143514ba9d14281e",
+    "BaseDbPath": "nethermind_db/settlus-sepolia-sepolia",
+    "LogFileName": "settlus-sepolia-sepolia.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 25130000,
-    "PivotHash": "0xd6510a94709efe278962ef6c17479244a13d288b573f941f49f4d7c38ac50d73"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -28,12 +26,12 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 2
+    "SecondsPerSlot": 1
   },
   "Merge": {
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://sepolia-sequencer.optimism.io"
+    "SequencerUrl": "https://settlus-sep-testnet-sequencer.g.alchemy.com/"
   }
 }

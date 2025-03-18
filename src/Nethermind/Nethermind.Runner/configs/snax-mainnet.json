@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-sepolia.json.zst",
-    "GenesisHash": "0xf1deb67ee953f94d8545d2647918687fa8ba1f30fa6103771f11b7c483984070",
-    "BaseDbPath": "nethermind_db/worldchain-sepolia",
-    "LogFileName": "worldchain-sepolia.logs.txt"
+    "ChainSpecPath": "chainspec/snax-mainnet.json.zst",
+    "GenesisHash": "0x518aadbc56e4ca8b03aa141c13b2fc246a9eae88edea09ee477f3d620b00d5ae",
+    "BaseDbPath": "nethermind_db/snax-mainnet",
+    "LogFileName": "snax-mainnet.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 10760000,
-    "PivotHash": "0x76f550872111416bd35051d048e8d67923346504e392a4fee3eabfdfd9aaa328"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -34,6 +32,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://worldchain-sepolia-sequencer.g.alchemy.com"
+    "SequencerUrl": "https://mainnet.snaxchain.io"
   }
 }
