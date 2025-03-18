@@ -14,6 +14,7 @@ on:
           - sepolia
           - chiado
           - holesky
+          - hoodi
           - op-mainnet
           - op-sepolia
           - base-mainnet
