@@ -19,35 +19,35 @@ public class HistoryPrunerTests
     private const long SecondsPerSlot = 12;
     private const long BeaconGenesisBlockNumber = 50;
     private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + ((BeaconGenesisBlockNumber - 1) * SecondsPerSlot);
-    
+
     [Test]
     public async Task Can_prune_blocks_older_than_specified_epochs()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        
+
         for (int i = 0; i < 100; i++)
         {
             await testBlockchain.AddBlock();
             testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
         }
-        
+
         var head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
-        
+
         IHistoryConfig historyConfig = new HistoryConfig
         {
             HistoryPruneEpochs = 2,
             DropPreMerge = false
         };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        
+
         HistoryPruner historyPruner = new(
             testBlockchain.BlockTree,
-            specProvider, 
-            historyConfig, 
-            SecondsPerSlot, 
+            specProvider,
+            historyConfig,
+            SecondsPerSlot,
             LimboLogs.Instance);
-        
+
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -89,21 +89,21 @@ public class HistoryPrunerTests
             Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo(100L), "Head block number should be maintained");
         }
     }
-    
+
     [Test]
     public async Task Can_prune_pre_merge_blocks()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        
+
         for (int i = 0; i < 100; i++)
         {
             await testBlockchain.AddBlock();
             testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
         }
-        
+
         var head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
-        
+
         IHistoryConfig historyConfig = new HistoryConfig
         {
             HistoryPruneEpochs = null,
@@ -111,14 +111,14 @@ public class HistoryPrunerTests
         };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
-        
+
         HistoryPruner historyPruner = new(
             testBlockchain.BlockTree,
-            specProvider, 
-            historyConfig, 
-            SecondsPerSlot, 
+            specProvider,
+            historyConfig,
+            SecondsPerSlot,
             LimboLogs.Instance);
-        
+
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -160,35 +160,35 @@ public class HistoryPrunerTests
             Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo(100L), "Head block number should be maintained");
         }
     }
-    
+
     [Test]
     public async Task Does_not_prune_when_disabled()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        
+
         for (int i = 0; i < 10; i++)
         {
             await testBlockchain.AddBlock();
             testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
         }
-        
+
         IHistoryConfig historyConfig = new HistoryConfig
         {
             HistoryPruneEpochs = null,
             DropPreMerge = false
         };
-        
+
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        
+
         HistoryPruner historyPruner = new(
             testBlockchain.BlockTree,
-            specProvider, 
-            historyConfig, 
-            SecondsPerSlot, 
+            specProvider,
+            historyConfig,
+            SecondsPerSlot,
             LimboLogs.Instance);
-        
+
         await historyPruner.TryPruneHistory(CancellationToken.None);
-        
+
         for (int i = 0; i <= 10; i++)
         {
             using (Assert.EnterMultipleScope())
