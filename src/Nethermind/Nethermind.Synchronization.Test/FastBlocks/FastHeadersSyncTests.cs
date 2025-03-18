@@ -786,6 +786,30 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
     }
 
+    [Test]
+    public void When_cant_determine_pivot_total_difficulty_then_throw()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        using HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: Substitute.For<ISyncPeerPool>(),
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = "1000",
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000",
+            },
+            syncReport: new NullSyncReport(),
+            totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy(),
+            poSSwitcher: Substitute.For<IPoSSwitcher>(),
+            logManager: LimboLogs.Instance);
+        blockTree.SyncPivot.Returns((1010, TestItem.KeccakB));
+
+        Action act = () => feed.InitializeFeed();
+        act.Should().Throw<InvalidOperationException>();
+    }
+
     private class ResettableHeaderSyncFeed : HeadersSyncFeed
     {
         private readonly ManualResetEventSlim? _hangLatch;
