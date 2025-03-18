@@ -1434,13 +1434,16 @@ namespace Nethermind.Serialization.Rlp
                 return [];
             }
 
-            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            int checkPosition = Position + length;
+            int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
             byte[][] result = new byte[itemsCount][];
 
             for (int i = 0; i < itemsCount; i++)
             {
                 result[i] = DecodeByteArray();
             }
+
+            Check(checkPosition);
 
             return result;
         }

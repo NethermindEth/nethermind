@@ -1549,13 +1549,16 @@ namespace Nethermind.Serialization.Rlp
                     return [];
                 }
 
-                int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+                int checkPosition = Position + length;
+                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
                 byte[][] result = new byte[itemsCount][];
 
                 for (int i = 0; i < itemsCount; i++)
                 {
                     result[i] = DecodeByteArray();
                 }
+
+                Check(checkPosition);
 
                 return result;
             }
@@ -1584,8 +1587,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Unexpected value while decoding byte {byteValue}");
             }
 
-            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
-                T defaultElement = default)
+            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default)
             {
                 if (decoder is null)
                 {
@@ -1609,6 +1611,11 @@ namespace Nethermind.Serialization.Rlp
                     {
                         result[i] = decoder.Decode(ref this);
                     }
+                }
+
+                if (checkPositions)
+                {
+                    Check(positionCheck);
                 }
 
                 return result;

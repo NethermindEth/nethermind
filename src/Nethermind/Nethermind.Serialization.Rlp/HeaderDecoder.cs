@@ -96,7 +96,6 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(headerCheck);
