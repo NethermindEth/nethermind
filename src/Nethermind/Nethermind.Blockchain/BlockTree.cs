@@ -802,6 +802,7 @@ namespace Nethermind.Blockchain
 
             _blockStore.Delete(currentNumber, currentHash);
             _headerStore.Delete(currentHash);
+            if (isOldBlock) _blockInfoDb.Delete(currentHash);
         }
 
         private Hash256? FindChild(ChainLevelInfo level, Hash256 parentHash)

@@ -54,12 +54,14 @@ public class HistoryPrunerTests
         {
             Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
             Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
+            Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(0), Is.Not.Null, "Genesis block info should still exist");
         }
 
         for (int i = 1; i <= 100; i++)
         {
             var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
             var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+            var blockInfo = testBlockchain.BlockTree.FindCanonicalBlockInfo(i);
 
             if (i < 100 - 64)
             {
@@ -67,6 +69,7 @@ public class HistoryPrunerTests
                 {
                     Assert.That(block, Is.Null, $"Block {i} should be pruned");
                     Assert.That(header, Is.Null, $"Header {i} should be pruned");
+                    Assert.That(blockInfo, Is.Null, $"Block info {i} should be pruned");
                 }
             }
             else
@@ -75,6 +78,7 @@ public class HistoryPrunerTests
                 {
                     Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned (part of the last 64 blocks)");
                     Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned (part of the last 64 blocks)");
+                    Assert.That(blockInfo, Is.Not.Null, $"Block info {i} should not be pruned (part of the last 64 blocks)");
                 }
             }
         }
@@ -121,12 +125,14 @@ public class HistoryPrunerTests
         {
             Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
             Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
+            Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(0), Is.Not.Null, "Genesis block info should still exist");
         }
 
         for (int i = 1; i <= 100; i++)
         {
             var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
             var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+            var blockInfo = testBlockchain.BlockTree.FindCanonicalBlockInfo(i);
 
             if (i < BeaconGenesisBlockNumber)
             {
@@ -134,6 +140,7 @@ public class HistoryPrunerTests
                 {
                     Assert.That(block, Is.Null, $"Block {i} should be pruned");
                     Assert.That(header, Is.Null, $"Header {i} should be pruned");
+                    Assert.That(blockInfo, Is.Null, $"Block info {i} should be pruned");
                 }
             }
             else
@@ -142,6 +149,7 @@ public class HistoryPrunerTests
                 {
                     Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned (part of the last 64 blocks)");
                     Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned (part of the last 64 blocks)");
+                    Assert.That(blockInfo, Is.Not.Null, $"Block info {i} should not be pruned (part of the last 64 blocks)");
                 }
             }
         }
@@ -187,6 +195,7 @@ public class HistoryPrunerTests
             {
                 Assert.That(testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"Block {i} should still exist");
                 Assert.That(testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None), Is.Not.Null, $"Header {i} should still exist");
+                Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(i), Is.Not.Null, $"Block info {i} should still exist");
             }
         }
 
