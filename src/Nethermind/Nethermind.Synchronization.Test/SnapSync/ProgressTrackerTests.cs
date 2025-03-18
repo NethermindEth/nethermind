@@ -166,7 +166,7 @@ public class ProgressTrackerTests
     [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     public void Should_partition_storage_request_if_last_processed_less_than_threshold(string start, string lastProcessed, string? limit, string expectedSplit)
     {
-        using ProgressTracker progressTracker = CreateProgressTracker();
+        using ProgressTracker progressTracker = CreateProgressTracker(enableStorageSplits: true);
 
         var lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
@@ -228,10 +228,10 @@ public class ProgressTrackerTests
         batch1?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
-        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }
