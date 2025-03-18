@@ -40,8 +40,6 @@ namespace Nethermind.Blockchain
         /// </summary>
         Block? BestSuggestedBody { get; }
 
-        BlockHeader? BestSuggestedBeaconHeader { get; }
-
         /// <summary>
         /// Lowest header added in reverse fast sync insert
         /// </summary>

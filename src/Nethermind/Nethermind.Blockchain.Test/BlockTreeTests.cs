@@ -72,7 +72,7 @@ public class BlockTreeTests
         blockTree.NewHeadBlock += (_, _) => { hasNotified = true; };
 
         bool hasNotifiedNewSuggested = false;
-        blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
+        blockTree.NewBestSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
         Block block = Build.A.Block.WithNumber(0).TestObject;
         AddBlockResult result = blockTree.SuggestBlock(block);
@@ -90,15 +90,11 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
         blockTree.NewBestSuggestedBlock += (_, _) => { hasNotified = true; };
 
-        bool hasNotifiedNewSuggested = false;
-        blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
-
         Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
         AddBlockResult result = blockTree.SuggestBlock(block);
 
         Assert.That(hasNotified, Is.True, "notification");
         Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -122,14 +118,14 @@ public class BlockTreeTests
         blockTree.NewHeadBlock += (_, _) => { hasNotified = true; };
 
         bool hasNotifiedNewSuggested = false;
-        blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
+        blockTree.NewBestSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
         blockTree.UpdateMainChain(block1);
 
         Assert.That(hasNotified, Is.True, "notification");
         Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        Assert.That(hasNotifiedNewSuggested, Is.True, "NewBestSuggestedBlock");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -167,14 +163,10 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
         blockTree.NewBestSuggestedBlock += (_, _) => { hasNotified = true; };
 
-        bool hasNotifiedNewSuggested = false;
-        blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
-
         AddBlockResult result = blockTree.SuggestBlock(block1);
 
         Assert.That(hasNotified, Is.True, "notification");
         Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -191,15 +183,11 @@ public class BlockTreeTests
         blockTree.NewHeadBlock += (_, _) => { hasNotifiedHead = true; };
         blockTree.NewBestSuggestedBlock += (_, _) => { hasNotifiedBest = true; };
 
-        bool hasNotifiedNewSuggested = false;
-        blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
-
         AddBlockResult result = blockTree.SuggestBlock(block2);
 
         Assert.That(hasNotifiedBest, Is.False, "notification best");
         Assert.That(hasNotifiedHead, Is.False, "notification head");
         Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

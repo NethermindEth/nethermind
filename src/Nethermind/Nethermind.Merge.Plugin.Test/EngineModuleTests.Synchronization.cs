@@ -726,7 +726,6 @@ public partial class EngineModuleTests
 
         chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
     }
 
     [Test]
@@ -800,7 +799,6 @@ public partial class EngineModuleTests
         AssertBlockTreePointers(chain.BlockTree, pointers);
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
 
         // finish beacon forwards sync
         foreach (Block block in missingBlocks)
@@ -828,7 +826,6 @@ public partial class EngineModuleTests
 
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeTrue();
     }
 
     [Test]
@@ -936,7 +933,6 @@ public partial class EngineModuleTests
         AssertBlockTreePointers(chain.BlockTree, pointers);
         chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
         // TODO: post merge sync checking pointers after state sync
     }
 
@@ -1051,7 +1047,6 @@ public partial class EngineModuleTests
         blockTree.BestSuggestedHeader.Should().Be(pointers.BestSuggestedHeader);
         blockTree.BestSuggestedBody.Should().Be(pointers.BestSuggestedBody);
         // TODO: post merge sync change to best beacon block
-        (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
     }
 

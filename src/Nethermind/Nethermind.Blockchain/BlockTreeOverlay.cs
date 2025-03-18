@@ -29,7 +29,6 @@ public class BlockTreeOverlay : IBlockTree
     public BlockHeader? Genesis => _baseTree.Genesis;
     public BlockHeader? BestSuggestedHeader => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
     public Block? BestSuggestedBody => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
-    public BlockHeader? BestSuggestedBeaconHeader => _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
     public BlockHeader? LowestInsertedHeader
     {
         get => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
