@@ -133,26 +133,6 @@ public class BlockTreeOverlay : IBlockTree
         }
     }
 
-    public event EventHandler<BlockEventArgs>? NewSuggestedBlock
-    {
-        add
-        {
-            if (value is not null)
-            {
-                _baseTree.NewSuggestedBlock += value;
-                _overlayTree.NewSuggestedBlock += value;
-            }
-        }
-        remove
-        {
-            if (value is not null)
-            {
-                _baseTree.NewSuggestedBlock -= value;
-                _overlayTree.NewSuggestedBlock -= value;
-            }
-        }
-    }
-
     public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain
     {
         add

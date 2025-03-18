@@ -153,7 +153,6 @@ namespace Nethermind.Blockchain
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
-        event EventHandler<BlockEventArgs> NewSuggestedBlock;
 
         /// <summary>
         /// A block is marked as canon

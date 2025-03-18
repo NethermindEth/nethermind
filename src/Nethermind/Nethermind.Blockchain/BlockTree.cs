@@ -372,7 +372,6 @@ namespace Nethermind.Blockchain
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain);
-                NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
             }
 
             if (header.IsGenesis)
@@ -1410,8 +1409,6 @@ namespace Nethermind.Blockchain
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
-
-        public event EventHandler<BlockEventArgs>? NewSuggestedBlock;
 
         public event EventHandler<BlockEventArgs>? NewHeadBlock;
 
