@@ -215,14 +215,13 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
 
-        _ = new UnsafePivotUpdator(
+        _ = new UnsafeStartingSyncPivotUpdater(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool!,
             _syncConfig,
             _blockCacheService,
             _beaconSync,
-            _api.DbProvider.MetadataDb,
             _api.LogManager);
 
         return Task.CompletedTask;
