@@ -17,7 +17,8 @@ namespace Nethermind.Blockchain.Test.HistoryPruning;
 public class HistoryPrunerTests
 {
     private const long SecondsPerSlot = 12;
-    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (49 * SecondsPerSlot);
+    private const long BeaconGenesisBlockNumber = 50;
+    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + ((BeaconGenesisBlockNumber - 1) * SecondsPerSlot);
     
     [Test]
     public async Task Can_prune_blocks_older_than_specified_epochs()
@@ -127,8 +128,7 @@ public class HistoryPrunerTests
             var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
             var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
 
-            // block 50 is beacon chain genesis
-            if (i < 50)
+            if (i < BeaconGenesisBlockNumber)
             {
                 using (Assert.EnterMultipleScope())
                 {
