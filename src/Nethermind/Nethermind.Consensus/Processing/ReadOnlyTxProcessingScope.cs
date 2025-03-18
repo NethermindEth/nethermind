@@ -15,10 +15,14 @@ public class ReadOnlyTxProcessingScope(
 {
     public void Dispose()
     {
-        worldState.StateRoot = originalStateRoot;
-        worldState.Reset();
+        Reset();
     }
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
     public IWorldState WorldState => worldState;
+    public void Reset()
+    {
+        worldState.StateRoot = originalStateRoot;
+        worldState.Reset();
+    }
 }
