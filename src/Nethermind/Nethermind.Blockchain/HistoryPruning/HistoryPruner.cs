@@ -73,7 +73,8 @@ public class HistoryPruner(
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        await Task.Run(() => {
+        await Task.Run(() =>
+        {
             var deletedBlocks = blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
             PruneReceipts(deletedBlocks);
         }, cancellationToken);
