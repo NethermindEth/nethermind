@@ -182,9 +182,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
-#pragma warning disable CS9080
                 receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
-#pragma warning restore CS9080
 
                 return receiptsData;
             }
@@ -198,9 +196,7 @@ namespace Nethermind.Blockchain.Receipts
                     receiptsData = _blocksDb.GetSpan(blockHash);
                 }
 
-#pragma warning disable CS9080
                 return receiptsData;
-#pragma warning restore CS9080
             }
         }
 
