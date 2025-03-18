@@ -34,6 +34,7 @@ namespace Nethermind.Core
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
         public const int Holesky = 17000;
+        public const int Hoodi = 560048;
 
         // A generic network that does not exist and id is not claimed by any other actual network
         public const int GenericNonRealNetwork = 9999;
@@ -57,6 +58,7 @@ namespace Nethermind.Core
                 Volta => nameof(Volta),
                 Sepolia => nameof(Sepolia),
                 Holesky => nameof(Holesky),
+                Hoodi => nameof(Hoodi),
                 _ => networkId.ToString()
             };
         }
