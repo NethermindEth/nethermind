@@ -20,7 +20,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -28,7 +27,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain
 {
@@ -911,10 +909,55 @@ namespace Nethermind.Blockchain
 
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
+
+                // Where head is set if wereProcessed is true
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
 
+            TryUpdateSyncPivot();
+
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
+        }
+
+        private void TryUpdateSyncPivot()
+        {
+            if (Head is null) return;
+
+            BlockHeader? newPivotHeader = null;
+            if (FinalizedHash is not null)
+            {
+                newPivotHeader = FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical);
+            }
+            else
+            {
+                newPivotHeader = FindHeader(Math.Max(0, Head.Number - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
+            }
+
+            if (newPivotHeader is null)
+            {
+                if (_logger.IsWarn) _logger.Warn("Did not update sync pivot because unable to find finalized header");
+                return;
+            }
+
+            long? bestPersisted = BestPersistedState;
+            if (bestPersisted is null)
+            {
+                if (_logger.IsTrace) _logger.Trace("Did not update sync pivot because no best persisted state");
+                return;
+            }
+
+            if (bestPersisted < newPivotHeader.Number)
+            {
+                if (_logger.IsWarn) _logger.Warn("Best persisted is lower than sync pivot. Using best persisted stata as pivot.");
+                newPivotHeader = FindHeader(bestPersisted.Value, BlockTreeLookupOptions.RequireCanonical);
+            }
+            if (newPivotHeader is null) return;
+
+            if (SyncPivot.BlockNumber >= newPivotHeader.Number) return;
+
+            (long BlockNumber, Hash256 BlockHash) newSyncPivot = (newPivotHeader.Number, newPivotHeader.Hash);
+            if (_logger.IsWarn) _logger.Warn($"Sync pivot updated from {SyncPivot} to {newSyncPivot}");
+            SyncPivot = newSyncPivot;
         }
 
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
@@ -967,6 +1010,8 @@ namespace Nethermind.Blockchain
             get => _syncPivot;
             set
             {
+                _logger.Warn($"Sync pivot updated to {value}");
+
                 RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
                 pivotData.Encode(value.BlockNumber);
                 pivotData.Encode(value.BlockHash);
@@ -1544,6 +1589,8 @@ namespace Nethermind.Blockchain
                 {
                     _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
+
+                TryUpdateSyncPivot();
             }
         }
 
