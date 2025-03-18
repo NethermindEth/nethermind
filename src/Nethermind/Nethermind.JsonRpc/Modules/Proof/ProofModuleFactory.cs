@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 traceExecutor);
 
             Tracer tracer = new(
-                scope.WorldState,
+                scope,
                 chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 
