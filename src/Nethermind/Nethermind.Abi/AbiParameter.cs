@@ -39,8 +39,8 @@ namespace Nethermind.Blockchain.Contracts.Json
         /// <remarks>
         /// Groups:
         /// T - type or base type if array
-        /// M - length of type https://solidity.readthedocs.io/en/v0.5.3/abi-spec.html#types 
-        /// N - precision of type https://solidity.readthedocs.io/en/v0.5.3/abi-spec.html#types
+        /// M - length of type  https://docs.soliditylang.org/en/v0.5.3/abi-spec.html#types 
+        /// N - precision of type  https://docs.soliditylang.org/en/v0.5.3/abi-spec.html#types
         /// A - if matched type is array
         /// L - if matched, denotes length of fixed length array 
         /// </remarks>
