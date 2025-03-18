@@ -11,7 +11,7 @@ public enum RlpBehaviors
     None,
     AllowExtraBytes = 1,
     ForSealing = 2,
-    Storage = 4 | AllowExtraBytes,
+    Storage = 4,
     Eip658Receipts = 8,
     AllowUnsigned = 16,
 

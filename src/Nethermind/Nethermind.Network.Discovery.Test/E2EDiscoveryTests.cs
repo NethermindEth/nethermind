@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture(DiscoveryVersion.V5)]
 public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Common code for all node
@@ -90,7 +90,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             HashSet<PublicKey> expectedKeys = new HashSet<PublicKey>(nodeKeys);
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
-            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(), Is.EquivalentTo(expectedKeys).After(1000, 100));
+            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(), Is.EquivalentTo(expectedKeys).After((int)TestTimeout.TotalMilliseconds, 100));
         }
     }
 }
