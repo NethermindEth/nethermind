@@ -73,7 +73,11 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
-        void UpdateHeadBlock(Hash256 blockHash);
+        /// <summary>
+        /// Force update head block for debug rpc.
+        /// </summary>
+        /// <param name="blockHash"></param>
+        void ForceUpdateHeadBlock(Hash256 blockHash);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.

@@ -89,7 +89,7 @@ public class DebugBridge : IDebugBridge
 
     public int DeleteChainSlice(long startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 
-    public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
+    public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.ForceUpdateHeadBlock(blockHash);
 
     public Task<bool> MigrateReceipts(long from, long to) => _receiptsMigration.Run(from, to);
 

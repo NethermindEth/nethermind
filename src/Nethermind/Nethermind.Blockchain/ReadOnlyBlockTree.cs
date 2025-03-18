@@ -69,10 +69,10 @@ namespace Nethermind.Blockchain
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
-        public void UpdateHeadBlock(Hash256 blockHash)
+        public void ForceUpdateHeadBlock(Hash256 blockHash)
         {
             // hacky while there is not special tree for RPC
-            _wrapped.UpdateHeadBlock(blockHash);
+            _wrapped.ForceUpdateHeadBlock(blockHash);
         }
 
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");

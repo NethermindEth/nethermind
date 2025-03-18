@@ -60,8 +60,8 @@ public class BlockTreeOverlay : IBlockTree
         WriteFlags bodiesWriteFlags = WriteFlags.None) =>
         _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
 
-    public void UpdateHeadBlock(Hash256 blockHash) =>
-        _overlayTree.UpdateHeadBlock(blockHash);
+    public void ForceUpdateHeadBlock(Hash256 blockHash) =>
+        _overlayTree.ForceUpdateHeadBlock(blockHash);
 
     public AddBlockResult SuggestBlock(Block block,
         BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>

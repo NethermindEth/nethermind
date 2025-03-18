@@ -136,7 +136,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         stateProvider.Commit(currentSpec);
         stateProvider.CommitTree(currentBlock.Number);
         blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-        blockTree.UpdateHeadBlock(processedBlock.Hash!);
+        blockTree.ForceUpdateHeadBlock(processedBlock.Hash!);
     }
 
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)

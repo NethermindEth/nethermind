@@ -72,7 +72,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+        chain.BlockTree.ForceUpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
@@ -146,7 +146,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+        chain.BlockTree.ForceUpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
@@ -230,7 +230,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+        chain.BlockTree.ForceUpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());

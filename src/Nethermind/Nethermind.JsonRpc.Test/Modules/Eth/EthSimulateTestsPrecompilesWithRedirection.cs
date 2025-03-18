@@ -137,7 +137,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         EthRpcSimulateTestsBase.EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+        chain.BlockTree.ForceUpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);
         chain.WorldStateManager.GlobalWorldState.StateRoot = chain.BlockFinder.Head!.StateRoot!;
