@@ -20,19 +20,18 @@ public class HistoryPrunerTests
 {
     private const long SecondsPerSlot = 12;
     private const long BeaconGenesisBlockNumber = 50;
-    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + ((BeaconGenesisBlockNumber - 1) * SecondsPerSlot);
+    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
 
     [Test]
     public async Task Can_prune_blocks_older_than_specified_epochs()
     {
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(SecondsPerSlot);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         for (int i = 0; i < 100; i++)
         {
             await testBlockchain.AddBlock();
-            testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
@@ -103,14 +102,13 @@ public class HistoryPrunerTests
     [Test]
     public async Task Can_prune_pre_merge_blocks()
     {
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(SecondsPerSlot);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         for (int i = 0; i < 100; i++)
         {
             await testBlockchain.AddBlock();
-            testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
@@ -181,14 +179,13 @@ public class HistoryPrunerTests
     [Test]
     public async Task Does_not_prune_when_disabled()
     {
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(SecondsPerSlot);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         for (int i = 0; i < 10; i++)
         {
             await testBlockchain.AddBlock();
-            testBlockchain.Timestamper.Add(TimeSpan.FromSeconds(SecondsPerSlot));
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 

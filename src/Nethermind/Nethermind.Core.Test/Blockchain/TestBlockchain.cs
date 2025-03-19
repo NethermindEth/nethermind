@@ -131,7 +131,7 @@ public class TestBlockchain : IDisposable
 
     private PreBlockCaches PreBlockCaches { get; } = new();
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
     {
         Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
@@ -153,9 +153,9 @@ public class TestBlockchain : IDisposable
             state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
         }
 
-        state.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        state.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        state.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+        state.CreateAccount(TestItem.AddressA, initialValues ?? InitialValue);
+        state.CreateAccount(TestItem.AddressB, initialValues ?? InitialValue);
+        state.CreateAccount(TestItem.AddressC, initialValues ?? InitialValue);
 
         InitialStateMutator?.Invoke(state);
 
@@ -237,8 +237,10 @@ public class TestBlockchain : IDisposable
         _testUtil = new TestBlockchainUtil(
             BlockProducerRunner,
             BlockProductionTrigger,
+            Timestamper,
             BlockTree,
-            TxPool
+            TxPool,
+            slotTime
         );
 
         Task waitGenesis = WaitForNewHead();
