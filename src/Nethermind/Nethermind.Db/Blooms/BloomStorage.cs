@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -141,11 +142,23 @@ namespace Nethermind.Db.Blooms
 
         public IEnumerable<Average> Averages => _storageLevels.Select(static l => l.Average);
 
-        public void Store(params ReadOnlySpan<(long BlockNumber, Bloom Bloom)> blooms)
+        public void Store(params IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms)
         {
-            for (int i = 0; i < _storageLevels.Length; i++)
+            bool shouldParallelize = blooms.Count > 1;
+
+            if (shouldParallelize)
             {
-                _storageLevels[i].Store(blooms);
+                Parallel.For(0, _storageLevels.Length, (i) =>
+                {
+                    _storageLevels[i].Store(blooms);
+                });
+            }
+            else
+            {
+                for (int i = 0; i < _storageLevels.Length; i++)
+                {
+                    _storageLevels[i].Store(blooms);
+                }
             }
 
             foreach ((long blockNumber, Bloom _) in blooms)
@@ -253,12 +266,13 @@ namespace Nethermind.Db.Blooms
                 _cache = new LruCache<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
             }
 
-            public void Store(params ReadOnlySpan<(long BlockNumber, Bloom Bloom)> blooms)
+            public void Store(params IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms)
             {
                 lock (_fileStore)
                 {
                     long currentBucket = -1;
                     Bloom currentBloom = null;
+                    byte[] bloomBuff = new byte[Bloom.ByteLength];
 
                     void WriteCurrentBloom()
                     {
@@ -282,10 +296,9 @@ namespace Nethermind.Db.Blooms
                                 currentBloom = _cache.Get(bucket);
                                 if (currentBloom is null)
                                 {
-                                    byte[] bytes = new byte[Bloom.ByteLength];
-                                    int bytesRead = _fileStore.Read(bucket, bytes);
+                                    int bytesRead = _fileStore.Read(bucket, bloomBuff);
                                     bool bloomRead = bytesRead == Bloom.ByteLength;
-                                    currentBloom = bloomRead ? new Bloom(bytes) : new Bloom();
+                                    currentBloom = bloomRead ? new Bloom(bloomBuff) : new Bloom();
                                 }
                             }
 

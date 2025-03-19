@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -11,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -163,7 +163,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
     }
 
-    protected override void InsertHeaders(ReadOnlySpan<BlockHeader> headersToAdd)
+    protected override void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
     {
         if (_chainMerged)
         {
@@ -174,11 +174,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         BlockHeader? originalFirstHeader = null;
-        if (headersToAdd.Length > 0) originalFirstHeader = headersToAdd[0];
+        if (headersToAdd.Count > 0) originalFirstHeader = headersToAdd[0];
 
         bool mergeWhenInserted = false;
-        int lowestIndex = headersToAdd.Length;
-        for (int i = headersToAdd.Length-1; i >= 0; i--)
+        int lowestIndex = headersToAdd.Count;
+        for (int i = headersToAdd.Count-1; i >= 0; i--)
         {
             BlockHeader header = headersToAdd[i];
 
@@ -201,17 +201,14 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         }
 
-        headersToAdd = headersToAdd[lowestIndex..];
+        headersToAdd = headersToAdd.Slice(lowestIndex);
 
         if (_logger.IsTrace)
             _logger.Trace(
-                $"Adding {headersToAdd.Length} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
+                $"Adding {headersToAdd.Count} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         AddBlockResult insertOutcome = AddBlockResult.Added;
-        foreach (var header in headersToAdd)
-        {
-            insertOutcome = _blockTree.Insert(header, headerOptions);
-        }
+        _blockTree.BulkInsertHeader(headersToAdd, headerOptions);
 
         if (_logger.IsTrace)
             _logger.Trace(

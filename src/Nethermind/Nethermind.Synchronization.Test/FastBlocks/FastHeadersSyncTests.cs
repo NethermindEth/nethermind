@@ -762,7 +762,7 @@ public class FastHeadersSyncTests
             InitializeFeed();
         }
 
-        protected override void InsertHeaders(ReadOnlySpan<BlockHeader> headersToAdd)
+        protected override void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
         {
             foreach (var header in headersToAdd)
             {

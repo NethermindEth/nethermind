@@ -26,7 +26,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         InsertBlockNumber(header.Hash, header.Number);
     }
 
-    public void BulkInsert(ReadOnlySpan<BlockHeader> headers)
+    public void BulkInsert(IReadOnlyList<BlockHeader> headers)
     {
         foreach (var header in headers)
         {

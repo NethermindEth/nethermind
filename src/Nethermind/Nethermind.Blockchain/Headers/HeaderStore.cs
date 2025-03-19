@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -38,7 +39,7 @@ public class HeaderStore : IHeaderStore
         InsertBlockNumber(header.Hash, header.Number);
     }
 
-    public void BulkInsert(ReadOnlySpan<BlockHeader> headers)
+    public void BulkInsert(IReadOnlyList<BlockHeader> headers)
     {
         using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
         using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();

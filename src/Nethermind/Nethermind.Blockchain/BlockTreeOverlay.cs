@@ -55,7 +55,7 @@ public class BlockTreeOverlay : IBlockTree
     public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
         _overlayTree.Insert(header, headerOptions);
 
-    public void BulkInsertHeader(Span<BlockHeader> headers,
+    public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
         _overlayTree.BulkInsertHeader(headers, headerOptions);
 

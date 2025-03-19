@@ -278,11 +278,17 @@ namespace Nethermind.Synchronization.FastBlocks
             _sent.Clear(); // we my still be waiting for some bad branches
         }
 
+        private bool CanHandleDependentBatch()
+        {
+            long? lowest = LowestInsertedBlockHeader?.Number;
+            return lowest.HasValue && _dependencies.ContainsKey(lowest.Value - 1);
+        }
+
         private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
             long processedBatchCount = 0;
-            const long maxBatchToProcess = 4;
+            long maxBatchToProcess = (MemoryInQueue < _fastHeadersMemoryBudget / 2) ? 2 : 4; // Try to keep queue large
             while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch dependentBatch))
             {
                 using (dependentBatch)
@@ -353,6 +359,17 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch = BuildNewBatch();
                 batch = ProcessPersistedPortion(batch);
+
+                if (batch is null)
+                {
+                    // Return new pending batch first
+                    if (_pending.TryDequeue(out batch)) return batch;
+
+                    // If it can process new batch, do it otherwise, this loop will keep filling up the memory
+                    // and a lot of the CPU cycle is spent on calculating memory.
+                    if (CanHandleDependentBatch()) HandleDependentBatches(cancellationToken);
+                }
+
             } while (batch is null && ShouldBuildANewBatch() && !cancellationToken.IsCancellationRequested);
             return batch;
         }
@@ -533,7 +550,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
             }
 
-            if (newRequestSize == 0) return null;
+            if (newRequestSize == 0)
+            {
+                return null;
+            }
 
             batch.RequestSize = newRequestSize;
             return batch;
@@ -627,7 +647,7 @@ namespace Nethermind.Synchronization.FastBlocks
             headersToAdd.AsSpan().Reverse();
             if (headersToAdd.Count > 0)
             {
-                InsertHeaders(headersToAdd.AsSpan());
+                InsertHeaders(headersToAdd);
                 lowestInsertedHeader = headersToAdd[0];
             }
 
@@ -789,15 +809,12 @@ namespace Nethermind.Synchronization.FastBlocks
             Volatile.Write(ref _memoryEstimate, ulong.MaxValue);
         }
 
-        protected virtual void InsertHeaders(ReadOnlySpan<BlockHeader> headersToAdd)
+        protected virtual void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
         {
-            if (headersToAdd.IsEmpty) return;
+            if (headersToAdd.Count > 0) return;
             if (headersToAdd[0].IsGenesis) headersToAdd = headersToAdd.Slice(1);
 
-            foreach (var header in headersToAdd)
-            {
-                _blockTree.Insert(header);
-            }
+            _blockTree.BulkInsertHeader(headersToAdd);
         }
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)

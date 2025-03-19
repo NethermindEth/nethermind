@@ -349,7 +349,7 @@ public class LogFinderTests
         {
             for (int i = 0; i <= _blockTree.Head!.Number; i++)
             {
-                _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
+                _bloomStorage.Store((i, _blockTree.FindHeader(i)!.Bloom!));
             }
         }
     }
