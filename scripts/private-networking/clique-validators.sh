@@ -136,7 +136,7 @@ cat <<EOF > node_$1/configs/config.json
         "IsMining": true,
         "ChainSpecPath": "/config/genesis/goerli.json",
         "BaseDbPath": "nethermind_db/clique",
-        "LogFileName": "clique.logs.txt",
+        "LogFileName": "clique.log",
         "StaticNodesPath": "Data/static-nodes.json"
     },
     "Network": {

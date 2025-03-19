@@ -231,9 +231,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out _))
+                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid");
+                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
                     }
                     else
                     {
@@ -260,19 +260,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 StackAccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
-                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
-                if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN
-                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || (authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1))
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                if ((authorizationTuple.ChainId != 0
-                    && SpecProvider.ChainId != authorizationTuple.ChainId)
-                    )
+                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
                     return false;
@@ -284,17 +272,22 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
+                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                if (authorizationTuple.Authority is null
+                    || s > Secp256K1Curve.HalfN
+                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
+                {
+                    error = "Bad signature.";
+                    return false;
+                }
+
                 if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
                 {
                     error = "Bad signature.";
                     return false;
                 }
 
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
@@ -302,6 +295,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                     return false;
                 }
+
                 UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
                 if (authNonce != authorizationTuple.Nonce)
                 {
