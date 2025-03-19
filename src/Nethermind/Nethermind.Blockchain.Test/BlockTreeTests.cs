@@ -1492,7 +1492,7 @@ public class BlockTreeTests
             tree.Insert(block.Header);
             Received.InOrder(() =>
             {
-                bloomStorage.Store(block.Header.Number, block.Bloom!);
+                bloomStorage.Store((block.Header.Number, block.Bloom!));
                 chainLevelInfoRepository.PersistLevel(block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
             });
         }
@@ -1554,7 +1554,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block1A);
         blockTree.UpdateMainChain(block1A);
 
-        bloomStorage.Received().Store(block1A.Number, block1A.Bloom!);
+        bloomStorage.Received().Store((block1A.Number, block1A.Bloom!));
     }
 
 

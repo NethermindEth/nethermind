@@ -57,7 +57,7 @@ public class BloomStorageTests
 
         for (long i = 1; i < 11; i++)
         {
-            storage.Store(i, Core.Bloom.Empty);
+            storage.Store((i, Core.Bloom.Empty));
         }
 
         return storage.ContainsRange(from, to);
@@ -125,7 +125,7 @@ public class BloomStorageTests
             {
                 // Assert.Fail($"Missing blocks. Trying inserting {blockNumber}, when current max block is {storage.MaxBlockNumber}.");
             }
-            storage.Store(blockNumber, bloom);
+            storage.Store((blockNumber, bloom));
         }
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
@@ -153,7 +153,7 @@ public class BloomStorageTests
 
         for (long i = 0; i < bucketItems; i++)
         {
-            storage.Store(i, Core.Bloom.Empty);
+            storage.Store((i, Core.Bloom.Empty));
         }
 
         return storage;
@@ -180,7 +180,7 @@ public class BloomStorageTests
                 {
                     Core.Bloom bloom = new();
                     bloom.Set(i % Core.Bloom.BitLength);
-                    storage.Store(i, bloom);
+                    storage.Store((i, bloom));
                 });
 
             IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
