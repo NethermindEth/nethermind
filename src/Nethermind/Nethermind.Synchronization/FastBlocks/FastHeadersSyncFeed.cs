@@ -550,10 +550,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
             }
 
-            if (newRequestSize == 0)
-            {
-                return null;
-            }
+            if (newRequestSize == 0) return null;
 
             batch.RequestSize = newRequestSize;
             return batch;
