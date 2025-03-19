@@ -13,10 +13,20 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct ValueRlpStream(in CappedArray<byte> data)
+public ref struct ValueRlpStream
 {
-    public readonly ReadOnlySpan<byte> Data = data.AsSpan();
+    public readonly ReadOnlySpan<byte> Data;
     private int _position = 0;
+
+    public ValueRlpStream(in CappedArray<byte> data)
+    {
+        Data = data.AsSpan();
+    }
+
+    public ValueRlpStream(ReadOnlySpan<byte> data)
+    {
+        Data = data;
+    }
 
     internal readonly string Description =>
         Data[..Math.Min(Rlp.DebugMessageContentLength, Data.Length)].ToHexString() ?? "0x";
@@ -280,6 +290,11 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
     public void SkipBytes(int length)
     {
         _position += length;
+    }
+
+    public readonly bool IsSequenceNext()
+    {
+        return PeekByte() >= 192;
     }
 
     public ReadOnlySpan<byte> Read(int length)

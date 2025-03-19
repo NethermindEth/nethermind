@@ -139,19 +139,20 @@ public class BatchDecoder
         byte firstByte = data[0];
         int n = 0;
         byte type;
-        RlpStream rlpStream;
+
+        ValueRlpStream rlpStream;
         if (firstByte <= 0x7F)
         {
             // Tx with type
             n++;
             type = firstByte;
-            rlpStream = new(data[1..].ToArray());
+            rlpStream = new(data[1..]);
         }
         else
         {
             // Legacy tx
             type = 0;
-            rlpStream = new(data.ToArray());
+            rlpStream = new(data);
         }
 
         if (!rlpStream.IsSequenceNext())
