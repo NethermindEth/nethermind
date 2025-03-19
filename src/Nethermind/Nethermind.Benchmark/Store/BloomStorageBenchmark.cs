@@ -36,7 +36,7 @@ public class BloomStorageBenchmark
                 {
                     Bloom bloom = new();
                     bloom.Set(i % Bloom.BitLength);
-                    storage.Store(i, bloom);
+                    storage.Store((i, bloom));
                 });
 
             IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
