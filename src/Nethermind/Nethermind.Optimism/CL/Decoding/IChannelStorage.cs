@@ -6,5 +6,5 @@ namespace Nethermind.Optimism.CL.Decoding;
 public interface IChannelStorage
 {
     BatchV1[]? GetReadyBatches();
-    void ConsumeFrame(Frame frames);
+    void ConsumeFrame(Frame frame);
 }
