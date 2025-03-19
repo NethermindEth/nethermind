@@ -97,9 +97,9 @@ public class TestBlockchain : IDisposable
 
     public string SealEngineType { get; set; } = null!;
 
-    public static Address AccountA = TestItem.AddressA;
-    public static Address AccountB = TestItem.AddressB;
-    public static Address AccountC = TestItem.AddressC;
+    public static readonly Address AccountA = TestItem.AddressA;
+    public static readonly Address AccountB = TestItem.AddressB;
+    public static readonly Address AccountC = TestItem.AddressC;
     private IBlockFinder _blockFinder = null!;
 
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);

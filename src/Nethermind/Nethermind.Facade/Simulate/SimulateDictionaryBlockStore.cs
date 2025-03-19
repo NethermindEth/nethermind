@@ -12,8 +12,8 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
 {
-    private readonly SortedDictionary<Hash256AsKey, Block> _blockDict = new();
-    private readonly SortedDictionary<long, Block> _blockNumDict = new();
+    private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
+    private readonly Dictionary<long, Block> _blockNumDict = [];
     private readonly BlockDecoder _blockDecoder = new();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -80,7 +80,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         {
             if (kv.Value.Timestamp >= timestamp)
             {
-                yield break;
+                continue;
             }
             yield return kv.Value;
         }
