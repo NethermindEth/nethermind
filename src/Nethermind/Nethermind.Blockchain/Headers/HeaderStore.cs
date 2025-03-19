@@ -38,6 +38,22 @@ public class HeaderStore : IHeaderStore
         InsertBlockNumber(header.Hash, header.Number);
     }
 
+    public void BulkInsert(ReadOnlySpan<BlockHeader> headers)
+    {
+        using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
+        using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
+
+        Span<byte> blockNumberSpan = stackalloc byte[8];
+        foreach (var header in headers)
+        {
+            using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
+            headerWriteBatch.Set(header.Number, header.Hash, newRlp.AsSpan());
+
+            header.Number.WriteBigEndian(blockNumberSpan);
+            blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+        }
+    }
+
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);

@@ -273,6 +273,106 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        public void BulkInsertHeader(Span<BlockHeader> headers,
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
+        {
+            if (!CanAcceptNewBlocks)
+            {
+                throw new InvalidOperationException("Cannot accept new blocks at the moment.");
+            }
+
+            foreach (var header in headers)
+            {
+                if (header.Hash is null)
+                {
+                    throw new InvalidOperationException("An attempt to insert a block header without a known hash.");
+                }
+
+                if (header.Bloom is null)
+                {
+                    throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
+                }
+
+                if (header.Number == 0)
+                {
+                    throw new InvalidOperationException("Genesis block should not be inserted.");
+                }
+
+                bool totalDifficultyNeeded = (headerOptions & BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded) == 0;
+
+                if (header.TotalDifficulty is null && totalDifficultyNeeded)
+                {
+                    SetTotalDifficulty(header);
+                }
+
+                _bloomStorage.Store(header.Number, header.Bloom);
+            }
+
+            _headerStore.BulkInsert(headers);
+
+            foreach (var header in headers)
+            {
+                bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
+                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+
+                bool beaconInsert = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
+                if (!beaconInsert)
+                {
+                    if (header.Number > BestKnownNumber)
+                    {
+                        BestKnownNumber = header.Number;
+                    }
+
+                    if (header.Number > (BestSuggestedHeader?.Number ?? 0))
+                    {
+                        BestSuggestedHeader = header;
+                    }
+                }
+
+                if (beaconInsert)
+                {
+                    if (header.Number > BestKnownBeaconNumber)
+                    {
+                        BestKnownBeaconNumber = header.Number;
+                    }
+
+                    if (header.Number > (BestSuggestedBeaconHeader?.Number ?? 0))
+                    {
+                        BestSuggestedBeaconHeader = header;
+                    }
+
+                    if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+                    {
+                        if (_logger.IsTrace)
+                            _logger.Trace(
+                                $"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                        LowestInsertedBeaconHeader = header;
+                    }
+                }
+
+                bool addBeaconHeaderMetadata = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
+                bool addBeaconBodyMetadata = (headerOptions & BlockTreeInsertHeaderOptions.BeaconBodyMetadata) != 0;
+                bool moveToBeaconMainChain = (headerOptions & BlockTreeInsertHeaderOptions.MoveToBeaconMainChain) != 0;
+                if (addBeaconHeaderMetadata)
+                {
+                    blockInfo.Metadata |= BlockMetadata.BeaconHeader;
+                }
+
+                if (addBeaconBodyMetadata)
+                {
+                    blockInfo.Metadata |= BlockMetadata.BeaconBody;
+                }
+
+
+                if (moveToBeaconMainChain)
+                {
+                    blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                }
+
+                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, isOnMainChain);
+            }
+        }
+
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None)
         {

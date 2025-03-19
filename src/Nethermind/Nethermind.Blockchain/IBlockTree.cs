@@ -68,6 +68,14 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
+        /// Inserts a disconnected batched block header (without body)
+        /// </summary>
+        /// <param name="headers">Header batach to add</param>
+        /// <param name="headerOptions"></param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        void BulkInsertHeader(Span<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
+
+        /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
