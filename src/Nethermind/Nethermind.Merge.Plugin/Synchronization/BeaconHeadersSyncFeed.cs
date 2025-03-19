@@ -178,7 +178,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         bool mergeWhenInserted = false;
         int lowestIndex = headersToAdd.Count;
-        for (int i = headersToAdd.Count-1; i >= 0; i--)
+        for (int i = headersToAdd.Count - 1; i >= 0; i--)
         {
             BlockHeader header = headersToAdd[i];
 
