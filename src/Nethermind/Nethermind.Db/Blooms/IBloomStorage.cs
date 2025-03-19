@@ -11,7 +11,8 @@ namespace Nethermind.Db.Blooms
     {
         long MinBlockNumber { get; }
 
-        void Store(params IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms);
+        void Store(IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms);
+        void Store(long blockNumber, Bloom bloom);
 
         void Migrate(IEnumerable<BlockHeader> blockHeaders);
 

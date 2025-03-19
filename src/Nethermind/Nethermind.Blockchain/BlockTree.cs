@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain
                 SetTotalDifficulty(header);
             }
 
-            _bloomStorage.Store((header.Number, header.Bloom));
+            _bloomStorage.Store(header.Number, header.Bloom);
             _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
@@ -1111,7 +1111,7 @@ namespace Nethermind.Blockchain
                 level.SwapToMain(index.Value);
             }
 
-            _bloomStorage.Store((block.Number, block.Bloom));
+            _bloomStorage.Store(block.Number, block.Bloom);
             level.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 

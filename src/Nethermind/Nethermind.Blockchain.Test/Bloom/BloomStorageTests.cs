@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using NUnit.Framework;
@@ -58,7 +59,7 @@ public class BloomStorageTests
 
         for (long i = 1; i < 11; i++)
         {
-            storage.Store((i, Core.Bloom.Empty));
+            storage.Store(i, Core.Bloom.Empty);
         }
 
         return storage.ContainsRange(from, to);
@@ -126,7 +127,7 @@ public class BloomStorageTests
             {
                 // Assert.Fail($"Missing blocks. Trying inserting {blockNumber}, when current max block is {storage.MaxBlockNumber}.");
             }
-            storage.Store((blockNumber, bloom));
+            storage.Store(blockNumber, bloom);
         }
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
@@ -154,7 +155,7 @@ public class BloomStorageTests
 
         for (long i = 0; i < bucketItems; i++)
         {
-            storage.Store((i, Core.Bloom.Empty));
+            storage.Store(i, Core.Bloom.Empty);
         }
 
         return storage;
@@ -169,7 +170,8 @@ public class BloomStorageTests
     public void Can_safely_insert_concurrently(int maxBlock)
     {
         BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
-        string basePath = Path.Combine(Path.GetTempPath(), DbNames.Bloom, maxBlock.ToString());
+        TempPath tempPath = TempPath.GetTempDirectory();
+        string basePath = tempPath.Path;
         try
         {
             FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
@@ -181,7 +183,7 @@ public class BloomStorageTests
                 {
                     Core.Bloom bloom = new();
                     bloom.Set(i % Core.Bloom.BitLength);
-                    storage.Store((i, bloom));
+                    storage.Store(i, bloom);
                 });
 
             IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
@@ -219,7 +221,8 @@ public class BloomStorageTests
     public void Can_safely_insert_in_batch(int maxBlock)
     {
         BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
-        string basePath = Path.Combine(Path.GetTempPath(), DbNames.Bloom, maxBlock.ToString());
+        TempPath tempPath = TempPath.GetTempDirectory();
+        string basePath = tempPath.Path;
         try
         {
             FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);

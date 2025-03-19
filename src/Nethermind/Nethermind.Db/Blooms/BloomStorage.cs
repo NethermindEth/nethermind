@@ -142,7 +142,12 @@ namespace Nethermind.Db.Blooms
 
         public IEnumerable<Average> Averages => _storageLevels.Select(static l => l.Average);
 
-        public void Store(params IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms)
+        public void Store(long blockNumber, Bloom bloom)
+        {
+            Store([(blockNumber, bloom)]);
+        }
+
+        public void Store(IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms)
         {
             bool shouldParallelize = blooms.Count > 1;
 
