@@ -2,18 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
-using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL;
 
@@ -22,6 +16,7 @@ public class Driver : IDisposable
     private readonly ILogger _logger;
     private readonly IDerivationPipeline _derivationPipeline;
     private readonly IL2Api _il2Api;
+    private readonly IExecutionEngineManager _executionEngineManager;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
 
@@ -38,17 +33,17 @@ public class Driver : IDisposable
         _il2Api = il2Api;
         _decodingPipeline = decodingPipeline;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        _executionEngineManager = executionEngineManager;
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
             _systemConfigDeriver,
             new DepositTransactionBuilder(chainId, engineParameters),
             logger);
-        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge, executionEngineManager, _logger);
+        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge, _logger);
     }
 
     public async Task Run(CancellationToken token)
     {
         await Task.WhenAll(
-            _derivationPipeline.Run(token),
             MainLoop(token)
         );
     }
@@ -60,10 +55,18 @@ public class Driver : IDisposable
             BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
 
             ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
-            _logger.Error($"Running derivation. Parent number: {parentNumber}");
             L2Block l2Parent = _il2Api.GetBlockByNumber(parentNumber);
 
-            await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch), token);
+            PayloadAttributesRef[] derivedPayloadAttributes = await _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token);
+            foreach (PayloadAttributesRef payloadAttributes in derivedPayloadAttributes)
+            {
+                bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
+                if (!valid)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
+                }
+            }
+
         }
     }
 
