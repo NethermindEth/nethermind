@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac.Core;
 using Nethermind.Api.Steps;
 
 namespace Nethermind.Api.Extensions;
@@ -26,4 +27,5 @@ public interface INethermindPlugin : IAsyncDisposable
     IEnumerable<StepInfo> GetSteps() => [];
     bool MustInitialize => false;
     bool Enabled { get; }
+    IModule? Module => null;
 }

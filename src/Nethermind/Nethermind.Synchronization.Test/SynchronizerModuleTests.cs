@@ -4,13 +4,13 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -38,6 +38,7 @@ public class SynchronizerModuleTests
     public async Task TestOnTreeSyncFinish_CallVisit()
     {
         IContainer ctx = CreateTestContainer();
+        ISyncFeed<StateSyncBatch> _ = ctx.Resolve<ISyncFeed<StateSyncBatch>>();
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
         IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
 

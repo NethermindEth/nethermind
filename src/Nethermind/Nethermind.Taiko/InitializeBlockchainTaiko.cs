@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -39,20 +40,17 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
 
     protected override IHeaderValidator CreateHeaderValidator()
     {
-        if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
-
         TaikoHeaderValidator taikoHeaderValidator = new(
             _api.BlockTree,
             _api.SealValidator,
             _api.SpecProvider,
             _api.LogManager);
 
-        return new InvalidHeaderInterceptor(taikoHeaderValidator, _api.InvalidChainTracker, _api.LogManager);
+        return new InvalidHeaderInterceptor(taikoHeaderValidator, _api.Context.Resolve<IInvalidChainTracker>(), _api.LogManager);
     }
 
     protected override IBlockValidator CreateBlockValidator()
     {
-        if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
         if (_api.TxValidator is null) throw new StepDependencyException(nameof(_api.TxValidator));
         if (_api.HeaderValidator is null) throw new StepDependencyException(nameof(_api.HeaderValidator));
         if (_api.UnclesValidator is null) throw new StepDependencyException(nameof(_api.UnclesValidator));
@@ -67,7 +65,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             _api.EthereumEcdsa,
             _api.LogManager);
 
-        return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
+        return new InvalidBlockInterceptor(blockValidator, _api.Context.Resolve<IInvalidChainTracker>(), _api.LogManager);
     }
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
