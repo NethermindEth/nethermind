@@ -62,7 +62,7 @@ public class BlobDecoderTests
         var hexEncoded = Bytes.FromHexString(hexEncodedBlob);
         var expected = Bytes.FromHexString(hexExpected);
 
-        var decoded = BlobDecoder.DecodeBlob(hexEncoded);
+        var decoded = DecodeBlob(hexEncoded);
         decoded.Should().BeEquivalentTo(expected);
     }
 
@@ -106,7 +106,17 @@ public class BlobDecoderTests
     [TestCaseSource(nameof(InvalidEncodedBlobs))]
     public void DecodeBlob_InvalidEncodedBlob(byte[] encoded)
     {
-        var tryDecode = () => BlobDecoder.DecodeBlob(encoded);
+        var tryDecode = () => DecodeBlob(encoded);
         tryDecode.Should().Throw<FormatException>();
+    }
+
+    /// <remarks>
+    /// Wrapper intended to be easily used in tests
+    /// </remarks>
+    private static byte[] DecodeBlob(byte[] blob)
+    {
+        byte[] buffer = new byte[BlobDecoder.MaxBlobDataSize];
+        int length = BlobDecoder.DecodeBlob(blob, buffer);
+        return buffer[..length];
     }
 }

@@ -12,15 +12,6 @@ public static class BlobDecoder
     private const int BlobSize = 4096 * 32;
     private const int EncodingVersion = 0;
 
-    public static byte[] DecodeBlob(byte[] blob)
-    {
-        // TODO: This should be safe but we might want to use `Pools` instead
-        Span<byte> buffer = stackalloc byte[MaxBlobDataSize];
-        int length = DecodeBlob(blob, buffer);
-        // TODO: Can we avoid copying at all? Can we reduce the length of an array without copying?
-        return buffer[..length].ToArray();
-    }
-
     public static int DecodeBlob(ReadOnlySpan<byte> blob, Span<byte> output)
     {
         if (output.Length < MaxBlobDataSize)
@@ -85,9 +76,11 @@ public static class BlobDecoder
         return length;
     }
 
-    private static (byte, int, int) DecodeFieldElement(ReadOnlySpan<byte> blob, int outPos, int blobPos, Span<byte> output) {
+    private static (byte, int, int) DecodeFieldElement(ReadOnlySpan<byte> blob, int outPos, int blobPos, Span<byte> output)
+    {
         // two highest order bits of the first byte of each field element should always be 0
-        if ((blob[blobPos] & 0b1100_0000) != 0) {
+        if ((blob[blobPos] & 0b1100_0000) != 0)
+        {
             // TODO: remove exception
             throw new FormatException("Invalid field element");
         }
