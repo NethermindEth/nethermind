@@ -82,7 +82,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[ShardedDirtyNodeCount];
             for (int i = 0; i < ShardedDirtyNodeCount; i++)
             {
-                _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount / ShardedDirtyNodeCount, !_nodeStorage.RequirePath, _logger);
+                _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, _logger);
                 _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
             }
         }
@@ -614,24 +614,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
             }
 
-            Task deleteTask = shouldDeletePersistedNode ? RemovePastKeys() : Task.CompletedTask;
-
-            Task RemovePastKeys()
-            {
-                for (int index = 0; index < _dirtyNodes.Length; index++)
-                {
-                    int i = index;
-                    _dirtyNodesTasks[index] = Task.Run(() =>
-                    {
-                        _dirtyNodes[i].RemovePastKeys(_persistedHashes[i], _nodeStorage);
-                    });
-                }
-
-                return Task.WhenAll(_dirtyNodesTasks);
-            }
-
             AnnounceReorgBoundaries();
-            deleteTask.Wait();
 
             if (candidateSets.Count > 0)
             {
@@ -1176,11 +1159,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             if (nodesCount != 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"{nodesCount} cache entry remains. {DirtyCachedNodesCount} dirty, total persistec count is {totalPersistedCount}.");
-            }
-
-            foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
-            {
-                dirtyNode.ClearLivePruningTracking();
             }
 
             if (_logger.IsInfo) _logger.Info($"Clear cache took {Stopwatch.GetElapsedTime(start)}.");
