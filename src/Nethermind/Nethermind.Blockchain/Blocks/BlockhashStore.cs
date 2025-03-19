@@ -45,7 +45,6 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        if (data.SequenceEqual(EmptyBytes)) return null;
-        return data.Length == 32 ? new Hash256(data) : new Hash256(data.PadLeft(32));
+        return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
     }
 }
