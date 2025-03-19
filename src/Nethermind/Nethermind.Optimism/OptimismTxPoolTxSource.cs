@@ -13,6 +13,8 @@ public class OptimismTxPoolTxSource : ITxSource
 {
     private readonly ITxSource _baseTxSource;
 
+    public bool SupportsBlobs => _baseTxSource.SupportsBlobs;
+
     public OptimismTxPoolTxSource(ITxSource baseTxSource)
     {
         _baseTxSource = baseTxSource;

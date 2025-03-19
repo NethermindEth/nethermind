@@ -23,6 +23,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ILogger _logger;
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
+        public bool SupportsBlobs => _innerSource.SupportsBlobs;
+
         public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
