@@ -277,9 +277,9 @@ public class FastHeadersSyncTests
         // Batch2 would get processed
         feed.HandleResponse(batch2);
 
-        // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
+        // HandleDependantBatch would start from first batch in batches, stopped at second in batch (only process 2 batch)
         using HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
-        blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
+        blockTree.LowestInsertedHeader!.Number.Should().Be(batches[1].StartNumber);
 
         // New batch would be at end of batch 5 (batch 6).
         newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
