@@ -193,7 +193,9 @@ namespace Nethermind.Blockchain
         public (long BlockNumber, Hash256 BlockHash) SyncPivot
         {
             get => _wrapped.SyncPivot;
-            set {}
+            set
+            {
+            }
         }
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
