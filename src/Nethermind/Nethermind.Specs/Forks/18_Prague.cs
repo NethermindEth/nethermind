@@ -11,7 +11,7 @@ public class Prague : Cancun
 {
     private static IReleaseSpec _instance;
 
-    protected Prague()
+    public Prague()
     {
         Name = "Prague";
         IsEip2537Enabled = true;

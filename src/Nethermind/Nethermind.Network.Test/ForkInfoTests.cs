@@ -175,8 +175,8 @@ public class ForkInfoTests
     [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp + 100000, "0x929E24E", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected_on_hoodi(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
-        ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/hoodi.json");
+        ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+        ChainSpec spec = loader.LoadFromFile("../../../../Chains/hoodi.json");
         ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
         Test(head, headTimestamp, KnownHashes.HoodiGenesis, forkHashHex, next, description, provider);
     }
