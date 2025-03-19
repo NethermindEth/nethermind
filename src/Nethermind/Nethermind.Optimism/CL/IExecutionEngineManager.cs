@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Optimism.CL.Derivation;
 
 namespace Nethermind.Optimism.CL;
 

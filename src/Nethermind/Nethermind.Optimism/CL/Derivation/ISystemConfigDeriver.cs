@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL;
@@ -51,16 +52,6 @@ public record SystemConfig
     /// process any EIP_1559_PARAMS system config update events.
     /// </summary>
     public byte[] EIP1559Params { get; init; } = new byte[32];
-
-    /// <summary>
-    /// Indicates whether this struct should be
-    /// marshaled in the pre-Holocene format. The pre-Holocene format does
-    /// not marshal the EIP1559Params field. The presence of this field in
-    /// pre-Holocene codebases causes the rollup config to be rejected.
-    /// </summary>
-    public bool MarshalPreHolocene { get; init; }
-    // BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], l1BlockInfo.BlobBaseFeeScalar);
-    // BinaryPrimitives.WriteUInt32BigEndian(scalar[28..32], l1BlockInfo.BaseFeeScalar);
     public uint BlobBaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar[24..28]);
     public uint BaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar[28..32]);
 
@@ -72,10 +63,14 @@ public record SystemConfig
                && GasLimit == other.GasLimit
                && Overhead.SequenceEqual(other.Overhead)
                && Scalar.SequenceEqual(other.Scalar)
-               && EIP1559Params.SequenceEqual(other.EIP1559Params)
-               && MarshalPreHolocene == other.MarshalPreHolocene;
+               && EIP1559Params.SequenceEqual(other.EIP1559Params);
     }
 
     public override int GetHashCode() =>
-        HashCode.Combine(BatcherAddress, GasLimit, Overhead, Scalar, EIP1559Params, MarshalPreHolocene);
+        HashCode.Combine(BatcherAddress, GasLimit, Overhead, Scalar, EIP1559Params);
+
+    public override string ToString()
+    {
+        return $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}";
+    }
 }

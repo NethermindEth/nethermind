@@ -50,6 +50,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
+        // TODO: We can cash unsafe blocks to save time during verification
         // TODO: lock here
         if (_currentHead >= payloadAttributes.Number)
         {
