@@ -215,7 +215,7 @@ def to_nethermind_runner(chain_name, l1, chain):
             "ChainSpecPath": f"chainspec/{qualified_name}.json.zst",
             "GenesisHash": lookup(chain, ["genesis", "l2", "hash"]),
             "BaseDbPath": f"nethermind_db/{qualified_name}",
-            "LogFileName": f"{qualified_name}.logs.txt",
+            "LogFileName": f"{qualified_name}.log",
         },
         "TxPool": {"BlobsSupport": "Disabled"},
         "Sync": {"FastSync": True, "SnapSync": True, "FastSyncCatchUpHeightDelta": "10000000000"},
