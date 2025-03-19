@@ -7,6 +7,10 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections;
 
+/// <summary>
+/// ChatGPT generated sliced read only list
+/// </summary>
+/// <typeparam name="T"></typeparam>
 public class SlicedReadOnlyList<T> : IReadOnlyList<T>
 {
     private readonly IReadOnlyList<T> _list;
