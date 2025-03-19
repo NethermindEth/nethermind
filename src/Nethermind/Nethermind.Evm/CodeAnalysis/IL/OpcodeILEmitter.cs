@@ -23,6 +23,7 @@ using Sigil.NonGeneric;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Ocsp;
 using static Org.BouncyCastle.Math.EC.ECCurve;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal delegate void OpcodeILEmitterDelegate<T>(
