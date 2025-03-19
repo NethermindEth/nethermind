@@ -71,8 +71,8 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return false;
         }
 
-        return await SendForkChoiceUpdated(_currentHeadHash, executionPayload.BlockHash, executionPayload.BlockHash,
-            _currentHead, payloadAttributes.Number, payloadAttributes.Number);
+        return await SendForkChoiceUpdated(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash,
+            payloadAttributes.Number, payloadAttributes.Number, payloadAttributes.Number);
     }
 
     public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3)

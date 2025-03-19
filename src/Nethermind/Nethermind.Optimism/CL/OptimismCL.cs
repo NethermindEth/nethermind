@@ -99,7 +99,7 @@ public class OptimismCL : IDisposable
 
     private void SetupTest()
     {
-        var block = _l2Api.GetBlockByNumber(11400000);
+        var block = _l2Api.GetBlockByNumber(11473066);
         _l1Bridge.SetCurrentL1Head(block.L1BlockInfo.Number, block.L1BlockInfo.BlockHash);
     }
 }
