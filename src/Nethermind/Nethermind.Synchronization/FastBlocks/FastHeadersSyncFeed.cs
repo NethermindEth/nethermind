@@ -811,7 +811,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
         {
-            if (headersToAdd.Count > 0) return;
+            if (headersToAdd.Count == 0) return;
             if (headersToAdd[0].IsGenesis) headersToAdd = headersToAdd.Slice(1);
 
             _blockTree.BulkInsertHeader(headersToAdd);
