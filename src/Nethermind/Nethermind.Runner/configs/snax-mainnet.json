@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/snax-mainnet.json.zst",
     "GenesisHash": "0x518aadbc56e4ca8b03aa141c13b2fc246a9eae88edea09ee477f3d620b00d5ae",
     "BaseDbPath": "nethermind_db/snax-mainnet",
-    "LogFileName": "snax-mainnet.logs.txt"
+    "LogFileName": "snax-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
