@@ -562,6 +562,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 0;
             }
 
+            using ArrayPoolList<BlockHeader> headersToAdd = new ArrayPoolList<BlockHeader>(batch.Response.Count);
+
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
             BlockHeader? lowestInsertedHeader = null;
@@ -607,25 +609,26 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                 }
 
-                header.TotalDifficulty = _nextHeaderTotalDifficulty;
-                AddBlockResult addBlockResult = InsertHeader(header);
-                if (addBlockResult == AddBlockResult.InvalidBlock)
-                {
-                    if (batch.ResponseSourcePeer is not null)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidHeader, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
-                    }
-
-                    break;
-                }
-                else
-                {
-                    lowestInsertedHeader = header;
-                }
+                headersToAdd.Add(header);
 
                 addedEarliest = Math.Min(addedEarliest, header.Number);
                 addedLast = Math.Max(addedLast, header.Number);
+            }
+
+
+            UInt256? totalDifficulty = _nextHeaderTotalDifficulty;
+            foreach (var blockHeader in headersToAdd)
+            {
+                blockHeader.TotalDifficulty = totalDifficulty;
+                totalDifficulty = DetermineParentTotalDifficulty(blockHeader);
+            }
+
+            // Remember, the above loop is in revers order, so this need to be reversed again.
+            headersToAdd.AsSpan().Reverse();
+            if (headersToAdd.Count > 0)
+            {
+                InsertHeaders(headersToAdd.AsSpan());
+                lowestInsertedHeader = headersToAdd[0];
             }
 
             int added = (int)(addedLast - addedEarliest + 1);
@@ -639,6 +642,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (lowestInsertedHeader is not null && lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
             {
                 LowestInsertedBlockHeader = lowestInsertedHeader;
+                SetExpectedNextHeaderToParent(lowestInsertedHeader);
             }
 
             added = Math.Max(0, added);
@@ -785,31 +789,26 @@ namespace Nethermind.Synchronization.FastBlocks
             Volatile.Write(ref _memoryEstimate, ulong.MaxValue);
         }
 
-        private AddBlockResult InsertHeader(BlockHeader header)
+        protected virtual void InsertHeaders(ReadOnlySpan<BlockHeader> headersToAdd)
         {
-            if (header.IsGenesis)
+            if (headersToAdd.IsEmpty) return;
+            if (headersToAdd[0].IsGenesis) headersToAdd = headersToAdd.Slice(1);
+
+            foreach (var header in headersToAdd)
             {
-                return AddBlockResult.AlreadyKnown;
+                _blockTree.Insert(header);
             }
-
-            return InsertToBlockTree(header);
-        }
-
-        protected virtual AddBlockResult InsertToBlockTree(BlockHeader header)
-        {
-            AddBlockResult insertOutcome = _blockTree.Insert(header);
-            if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
-            {
-                SetExpectedNextHeaderToParent(header);
-            }
-
-            return insertOutcome;
         }
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             _nextHeaderHash = header.ParentHash!;
-            _nextHeaderTotalDifficulty = _totalDifficultyStrategy.ParentTotalDifficulty(header);
+            _nextHeaderTotalDifficulty = DetermineParentTotalDifficulty(header);
+        }
+
+        protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header)
+        {
+            return _totalDifficultyStrategy.ParentTotalDifficulty(header);
         }
 
         private bool _disposed = false;

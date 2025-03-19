@@ -76,7 +76,6 @@ public class FastHeadersSyncTests
 
     [Test]
     public async Task Can_handle_forks_with_persisted_headers()
-
     {
         IBlockTree remoteBlockTree = CachedBlockTreeBuilder.OfLength(1000);
         IBlockTree forkedBlockTree = Build.A.BlockTree().WithStateRoot(Keccak.Compute("1245")).OfChainLength(1000).TestObject;
@@ -763,24 +762,25 @@ public class FastHeadersSyncTests
             InitializeFeed();
         }
 
-        protected override AddBlockResult InsertToBlockTree(BlockHeader header)
+        protected override void InsertHeaders(ReadOnlySpan<BlockHeader> headersToAdd)
         {
-            if (header.Number == _hangOnBlockNumber)
+            foreach (var header in headersToAdd)
             {
-                _hangLatch!.Wait();
+                if (header.Number == _hangOnBlockNumber)
+                {
+                    _hangLatch!.Wait();
+                }
             }
 
-            AddBlockResult insertOutcome = _blockTree.Insert(header);
-            if (header.Number == _hangOnBlockNumberAfterInsert)
-            {
-                _hangLatch!.Wait();
-            }
-            if (insertOutcome is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
-            {
-                SetExpectedNextHeaderToParent(header);
-            }
+            base.InsertHeaders(headersToAdd);
 
-            return insertOutcome;
+            foreach (var header in headersToAdd)
+            {
+                if (header.Number == _hangOnBlockNumberAfterInsert)
+                {
+                    _hangLatch!.Wait();
+                }
+            }
         }
     }
 

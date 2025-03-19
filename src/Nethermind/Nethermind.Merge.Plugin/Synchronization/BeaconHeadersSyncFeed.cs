@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
@@ -161,48 +163,75 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
     }
 
-    protected override AddBlockResult InsertToBlockTree(BlockHeader header)
+    protected override void InsertHeaders(ReadOnlySpan<BlockHeader> headersToAdd)
     {
         if (_chainMerged)
         {
             if (_logger.IsTrace)
                 _logger.Trace(
                     "Chain already merged, skipping header insert");
-            return AddBlockResult.AlreadyKnown;
+            return;
         }
 
-        if (_logger.IsTrace)
-            _logger.Trace(
-                $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        BlockHeader? originalFirstHeader = null;
+        if (headersToAdd.Length > 0) originalFirstHeader = headersToAdd[0];
+
+        bool mergeWhenInserted = false;
+        int lowestIndex = headersToAdd.Length;
+        for (int i = headersToAdd.Length-1; i >= 0; i--)
+        {
+            BlockHeader header = headersToAdd[i];
+
+            // Found existing block in the block tree
+            if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+            {
+                mergeWhenInserted = true;
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+                break;
+            }
+
+            lowestIndex = i;
+        }
+
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
         if (_nextHeaderTotalDifficulty is null)
         {
             headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         }
 
-        // Found existing block in the block tree
-        if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
-        {
-            _chainMerged = true;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-            return AddBlockResult.AlreadyKnown;
-        }
+        headersToAdd = headersToAdd[lowestIndex..];
 
-        AddBlockResult insertOutcome = _blockTree.Insert(header, headerOptions);
+        if (_logger.IsTrace)
+            _logger.Trace(
+                $"Adding {headersToAdd.Length} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
 
-        if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
+        AddBlockResult insertOutcome = AddBlockResult.Added;
+        foreach (var header in headersToAdd)
         {
-            _nextHeaderHash = header.ParentHash!;
-            _nextHeaderTotalDifficulty = header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
-                ? header.TotalDifficulty - header.Difficulty
-                : null;
+            insertOutcome = _blockTree.Insert(header, headerOptions);
         }
 
         if (_logger.IsTrace)
             _logger.Trace(
-                $"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
-        return insertOutcome;
+                $"New header starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
+
+        if (mergeWhenInserted) _chainMerged = true;
+
+        // Beacon header need to set this manually because fast header sync feed skips setting this when LowestInsertedHeader
+        // is already the lowest header which is the case with beacon header because it is set in blocktree.
+        if (originalFirstHeader is not null)
+        {
+            SetExpectedNextHeaderToParent(originalFirstHeader);
+        }
+    }
+
+    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header)
+    {
+        // Beacon header don't seem to care about TD.
+        return header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
+            ? header.TotalDifficulty - header.Difficulty
+            : null;
     }
 }
