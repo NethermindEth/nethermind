@@ -1178,7 +1178,10 @@ public class BlockTreeTests
             Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
         }
 
-        tree.DeleteBlocksBeforeTimestamp(1003, CancellationToken.None);
+        foreach (var deletedBlock in tree.DeleteBlocksBeforeTimestamp(1003, CancellationToken.None))
+        {
+            Assert.That(deletedBlock.Number, Is.InRange(1, 2));
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -1191,7 +1194,6 @@ public class BlockTreeTests
             Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
             Assert.That(tree.Head?.Number, Is.EqualTo(5L), "Head should remain at block 5");
         }
-
     }
 
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
