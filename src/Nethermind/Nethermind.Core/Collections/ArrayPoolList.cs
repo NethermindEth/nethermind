@@ -22,17 +22,18 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
 
     public ArrayPoolList(int capacity, int count) : this(ArrayPool<T>.Shared, capacity, count) { }
+    public ArrayPoolList(int capacity, int count, T fill) : this(ArrayPool<T>.Shared, capacity, count, fill) { }
 
     public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
 
-    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
+    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0, T fill = default!)
     {
         _arrayPool = arrayPool;
 
         if (capacity != 0)
         {
             _array = arrayPool.Rent(capacity);
-            _array.AsSpan(0, startingCount).Clear();
+            _array.AsSpan(0, startingCount).Fill(fill);
         }
         else
         {
