@@ -445,7 +445,6 @@ public class ForkchoiceUpdatedHandler(
         private readonly IWorldState _globalWorldState;
         private readonly IBlockProcessingQueue _queue;
         private Hash256? _stateRoot;
-        private int _update = 0;
 
         public StateRootUpdater(IWorldState globalWorldState, IBlockProcessingQueue queue)
         {
@@ -456,37 +455,31 @@ public class ForkchoiceUpdatedHandler(
 
         public Hash256? StateRoot
         {
-            get => _stateRoot;
             set
             {
-                _stateRoot = value;
-                if (value is not null)
+                if (_stateRoot != value)
                 {
-                    if (!_queue.IsEmpty)
+                    Interlocked.Exchange(ref _stateRoot, value);
+                    if (value is not null && _queue.IsEmpty)
                     {
-                        Interlocked.Exchange(ref _update, 1);
-                    }
-                    else
-                    {
-                        UpdateStateRoot(value);
+                        UpdateStateRoot();
                     }
                 }
             }
         }
 
-        private void UpdateStateRoot(Hash256 value)
+        private void UpdateStateRoot()
         {
-            _globalWorldState.StateRoot = value;
-            _stateRoot = null;
+            Hash256? stateRoot = Interlocked.Exchange(ref _stateRoot, null);
+            if (stateRoot is not null)
+            {
+                _globalWorldState.StateRoot = stateRoot;
+            }
         }
 
         private void OnProcessingQueueEmpty(object? sender, EventArgs e)
         {
-            Hash256? stateRoot = StateRoot;
-            if (stateRoot is not null && Interlocked.Exchange(ref _update, 0) == 1)
-            {
-                UpdateStateRoot(stateRoot);
-            }
+            UpdateStateRoot();
         }
 
         public void Dispose()
