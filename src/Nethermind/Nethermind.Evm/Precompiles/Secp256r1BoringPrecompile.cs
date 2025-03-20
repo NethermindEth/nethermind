@@ -94,17 +94,25 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
             EC_POINT_set_affine_coordinates_GFp(group, pt, bx, by, IntPtr.Zero) != 0 &&
             EC_KEY_set_public_key(key, pt) != 0;
 
-        // if (bx != IntPtr.Zero) EC_POINT_free(bx);
-        // if (by != IntPtr.Zero) EC_POINT_free(by);
-        // EC_POINT_free(pt);
+        if (bx != IntPtr.Zero) BN_free(bx);
+        if (by != IntPtr.Zero) BN_free(by);
+        EC_POINT_free(pt);
 
         if (!ok)
         {
             EC_KEY_free(key);
-            throw new Exception("EC_POINT_set_affine_coordinates_GFp failed");
+            //throw new Exception("EC_POINT_set_affine_coordinates_GFp failed");
+            return IntPtr.Zero;
         }
 
         return key;
+    }
+
+    private static ReadOnlySpan<byte> RemoveLeadingZeroes(ReadOnlySpan<byte> span)
+    {
+        var i = 0;
+        while (span[i] == 0 && i < span.Length - 1) i++;
+        return span[i..];
     }
 
     private static byte[] EncodeSignature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s)
@@ -112,8 +120,8 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
         var writer = new AsnWriter(AsnEncodingRules.DER);
         writer.PushSequence();
 
-        writer.WriteIntegerUnsigned(r);
-        writer.WriteIntegerUnsigned(s);
+        writer.WriteIntegerUnsigned(RemoveLeadingZeroes(r));
+        writer.WriteIntegerUnsigned(RemoveLeadingZeroes(s));
 
         writer.PopSequence();
         return writer.Encode();
@@ -128,6 +136,9 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
         fixed (byte* ptr = input.Span)
         {
             var key = NewECKey(ptr + 96, ptr + 128);
+
+            if (key == IntPtr.Zero)
+                return (null, true);
 
             // var testSignature = new byte[200];
             // fixed (byte* sig = testSignature)
