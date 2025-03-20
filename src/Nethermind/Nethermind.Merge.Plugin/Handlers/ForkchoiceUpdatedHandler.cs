@@ -58,6 +58,7 @@ public class ForkchoiceUpdatedHandler(
     private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly StateRootUpdater _stateRootUpdater = new StateRootUpdater(globalWorldState, processingQueue);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -232,7 +233,7 @@ public class ForkchoiceUpdatedHandler(
         if (shouldUpdateHead)
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
-            processingQueue.RunOnEmpty(() => globalWorldState.StateRoot = newHeadBlock.StateRoot!);
+            _stateRootUpdater.StateRoot = newHeadBlock.StateRoot;
         }
 
         if (IsInconsistent(finalizedBlockHash))
@@ -437,5 +438,60 @@ public class ForkchoiceUpdatedHandler(
         blocksList.Reverse();
 
         return blocksList.ToArray();
+    }
+
+    private class StateRootUpdater : IDisposable
+    {
+        private readonly IWorldState _globalWorldState;
+        private readonly IBlockProcessingQueue _queue;
+        private Hash256? _stateRoot;
+        private int _update = 0;
+
+        public StateRootUpdater(IWorldState globalWorldState, IBlockProcessingQueue queue)
+        {
+            _globalWorldState = globalWorldState;
+            _queue = queue;
+            _queue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+        }
+
+        public Hash256? StateRoot
+        {
+            get => _stateRoot;
+            set
+            {
+                _stateRoot = value;
+                if (value is not null)
+                {
+                    if (!_queue.IsEmpty)
+                    {
+                        Interlocked.Exchange(ref _update, 1);
+                    }
+                    else
+                    {
+                        UpdateStateRoot(value);
+                    }
+                }
+            }
+        }
+
+        private void UpdateStateRoot(Hash256 value)
+        {
+            _globalWorldState.StateRoot = value;
+            _stateRoot = null;
+        }
+        
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
+        {
+            Hash256? stateRoot = StateRoot;
+            if (stateRoot is not null && Interlocked.Exchange(ref _update, 0) == 1)
+            {
+                UpdateStateRoot(stateRoot);
+            }
+        }
+
+        public void Dispose()
+        {
+            _queue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+        }
     }
 }
