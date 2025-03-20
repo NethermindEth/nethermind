@@ -261,6 +261,8 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
+        public bool SupportsBlobs => _transactionPool.SupportsBlobs;
+
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
     }
 }
