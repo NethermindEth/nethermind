@@ -19,23 +19,25 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Nethermind.Evm.Config;
 
 namespace Nethermind.Evm.Test;
 
 public class VirtualMachineTestsBase
 {
-    protected const string SampleHexData1 = "a01234";
-    protected const string SampleHexData2 = "b15678";
-    protected const string HexZero = "00";
-    protected const long DefaultBlockGasLimit = 8000000;
+    public const string SampleHexData1 = "a01234";
+    public const string SampleHexData2 = "b15678";
+    public const string HexZero = "00";
+    public const long DefaultBlockGasLimit = 8000000;
 
-    private IEthereumEcdsa _ethereumEcdsa;
+    protected IEthereumEcdsa _ethereumEcdsa;
+    protected IBlockhashProvider _blockhashProvider;
     protected ITransactionProcessor _processor;
-    private IDb _stateDb;
+    protected IDb _stateDb;
 
-    protected VirtualMachine Machine { get; private set; }
-    protected CodeInfoRepository CodeInfoRepository { get; private set; }
-    protected IWorldState TestState { get; private set; }
+    protected VirtualMachine Machine { get; set; }
+    protected ICodeInfoRepository CodeInfoRepository { get; set; }
+    protected IWorldState TestState { get; set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -66,9 +68,9 @@ public class VirtualMachineTestsBase
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
-        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new CodeInfoRepository();
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
+        _blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        CodeInfoRepository = new TestCodeInfoRepository();
+        Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
@@ -154,7 +156,7 @@ public class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
+    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null, long gasLimit = 100000, byte[][]? blobVersionedHashes = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
