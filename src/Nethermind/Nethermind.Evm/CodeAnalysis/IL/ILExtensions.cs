@@ -447,30 +447,8 @@ public static class WordEmit
         }
         il.Call(setterInfo);
     }
-    public static void EmitIsOneCheck<T>(this Emit<T> il, Local? word = null)
-    {
 
-        if (word is not null)
-        {
-            if(word.LocalType != typeof(Word).MakeByRefType())
-            {
-                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-            }
-            il.LoadLocal(word);
-        }
-
-        if (BitConverter.IsLittleEndian)
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneLittleEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-        else
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneBigEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-    }
-    public static void EmitIsZeroCheck<T>(this Emit<T> il, Local? word = null)
+    public static void EmitCheck<T>(this Emit<T> il, string checkName, Local? word = null)
     {
         if (word is not null)
         {
@@ -481,90 +459,19 @@ public static class WordEmit
             il.LoadLocal(word);
         }
 
-        MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsZero)).GetMethod;
-        il.Call(methodInfo);
-    }
-    public static void EmitIsMinusOneCheck<T>(this Emit<T> il, Local? word = null)
-    {
+        PropertyInfo checkProp = typeof(Word).GetProperty(checkName);
 
-        if (word is not null)
+        if(checkProp is null)
         {
-            if (word.LocalType != typeof(Word).MakeByRefType())
-            {
-                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-            }
-            il.LoadLocal(word);
+            throw new Exception($"Type of Word does not have a property named {checkName}");
         }
 
-        MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsMinusOne)).GetMethod;
-        il.Call(methodInfo);
-    }
-    public static void EmitIsZeroOrOneCheck<T>(this Emit<T> il, Local? word = null)
-    {
-
-        if (word is not null)
+        if (checkProp.PropertyType != typeof(bool))
         {
-            if (word.LocalType != typeof(Word).MakeByRefType())
-            {
-                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-            }
-            il.LoadLocal(word);
+            throw new Exception($"Expected check to return type {typeof(bool)} found type {checkProp.PropertyType}");
         }
 
-        if (BitConverter.IsLittleEndian)
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneOrZeroLittleEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-        else
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneOrZeroBigEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-    }
-    public static void EmitIsP255Check<T>(this Emit<T> il, Local? word = null)
-    {
-        if (word is not null)
-        {
-            if (word.LocalType != typeof(Word).MakeByRefType())
-            {
-                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-            }
-            il.LoadLocal(word);
-        }
-
-        if (BitConverter.IsLittleEndian)
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsP255LittleEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-        else
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsP255BigEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-    }
-    public static void EmitIsUint16<T>(this Emit<T> il, Local? word = null)
-    {
-        if (word is not null)
-        {
-            if (word.LocalType != typeof(Word).MakeByRefType())
-            {
-                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-            }
-            il.LoadLocal(word);
-        }
-
-        if (BitConverter.IsLittleEndian)
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsP255LittleEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
-        else
-        {
-            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsP255BigEndian)).GetMethod;
-            il.Call(methodInfo);
-        }
+        il.Call(checkProp.GetMethod);
     }
 }
 public static class UnsafeEmit

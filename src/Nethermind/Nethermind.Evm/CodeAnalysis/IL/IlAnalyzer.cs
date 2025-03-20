@@ -101,7 +101,9 @@ public static class IlAnalyzer
             if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
             {
                 ushort immediatesCount = opcode - Instruction.PUSH0;
-                data.Add(machineCode.SliceWithZeroPadding((UInt256)i + 1, immediatesCount).ToArray());
+                var immediateData = machineCode.SliceWithZeroPadding((UInt256)i + 1, immediatesCount).ToArray();
+                //Array.Reverse(immediateData);
+                data.Add(immediateData);
                 argsIndex = data.Count - 1;
                 i += immediatesCount;
             }

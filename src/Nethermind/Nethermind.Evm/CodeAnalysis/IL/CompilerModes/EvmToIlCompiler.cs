@@ -273,8 +273,7 @@ internal static class Precompiler
         method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
         method.StoreLocal(locals.jmpDestination);
 
-        method.LoadLocal(locals.wordRef256A);
-        method.Call(Word.GetIsUint16);
+        method.EmitCheck(nameof(Word.IsShort), locals.wordRef256A);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         method.LoadLocal(locals.jmpDestination);
