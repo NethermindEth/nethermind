@@ -190,7 +190,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                     {
                         int blobCount = tx.GetBlobCount();
                         if (blobCount > 0)
-                        { 
+                        {
                             blobs += blobCount;
                             blobTx++;
                         }
