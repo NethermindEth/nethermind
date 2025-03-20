@@ -168,7 +168,7 @@ public partial class BlockProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = CreateCheckpoint(true);
+                    previousBranchStateRoot = CreateCheckpoint(captureCurrentStateRoot: true);
                     Hash256? newStateRoot = suggestedBlock.StateRoot;
                     InitBranch(newStateRoot, false);
                 }
