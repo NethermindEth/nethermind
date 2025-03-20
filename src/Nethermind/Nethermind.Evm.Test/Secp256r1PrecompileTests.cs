@@ -96,6 +96,7 @@ namespace Nethermind.Evm.Test
             var watch = new Stopwatch();
             foreach (var precompile in new IPrecompile[]
                      {
+                         Secp256r1Precompile.Instance,
                          Secp256r1RustPrecompile.Instance, Secp256r1FastCryptoPrecompile.Instance,
                          Secp256r1GoPrecompile.Instance, Secp256r1GoBoringPrecompile.Instance,
                          Secp256r1BoringPrecompile.Instance
