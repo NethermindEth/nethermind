@@ -11,6 +11,7 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public static class FrameDecoder
 {
+    // TODO: Evaluate if a custom `Enumerator` would be worth it
     public static IEnumerable<Frame> DecodeFrames(Memory<byte> source)
     {
         while (source.Length != 0)
@@ -94,7 +95,6 @@ public readonly struct Frame : IEquatable<Frame>
             {
                 ChannelId = channelId,
                 FrameNumber = frameNumber,
-                // TODO: Can we avoid this copying?
                 FrameData = frameData.ToArray(),
                 IsLast = isLast == 1
             };
