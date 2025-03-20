@@ -13,20 +13,10 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct ValueRlpStream
+public ref struct ValueRlpStream(in CappedArray<byte> data)
 {
-    public readonly ReadOnlySpan<byte> Data;
+    public readonly ReadOnlySpan<byte> Data = data.AsSpan();
     private int _position = 0;
-
-    public ValueRlpStream(in CappedArray<byte> data)
-    {
-        Data = data.AsSpan();
-    }
-
-    public ValueRlpStream(ReadOnlySpan<byte> data)
-    {
-        Data = data;
-    }
 
     internal readonly string Description =>
         Data[..Math.Min(Rlp.DebugMessageContentLength, Data.Length)].ToHexString() ?? "0x";
