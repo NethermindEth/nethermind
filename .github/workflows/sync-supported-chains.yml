@@ -191,11 +191,14 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.10.3 \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
+            --el-op-extra-flag Sync.NonValidatorNode=true \
+            --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
@@ -226,6 +229,9 @@ jobs:
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
+            --el-l2-extra-flag Sync.NonValidatorNode=true \
+            --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
