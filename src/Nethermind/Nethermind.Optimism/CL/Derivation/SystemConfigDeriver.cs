@@ -55,7 +55,7 @@ public class SystemConfigDeriver(
 
             foreach (var log in receipt.Logs ?? [])
             {
-                if (log.Address == rollupConfig.L1SystemConfigAddress && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
+                if (log.Address == rollupConfig.SystemConfigProxy && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
                 {
                     config = UpdateSystemConfigFromLogEvent(config, log);
                 }

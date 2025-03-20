@@ -35,9 +35,10 @@ public class EthereumL1Bridge : IL1Bridge
         ICLConfig config,
         CLChainSpecEngineParameters engineParameters,
         IDecodingPipeline decodingPipeline,
-        ILogManager logManager)
+        ILogger logger)
     {
-        _logger = logManager.GetClassLogger();
+        ArgumentNullException.ThrowIfNull(engineParameters.L1BeaconGenesisSlotTime);
+        _logger = logger;
         _engineParameters = engineParameters;
         _decodingPipeline = decodingPipeline;
         _config = config;
@@ -137,10 +138,8 @@ public class EthereumL1Bridge : IL1Bridge
 
     private ulong CalculateSlotNumber(ulong timestamp)
     {
-        // TODO: review
-        const ulong beaconGenesisTimestamp = 1606824023;
         const ulong l1SlotTime = 12;
-        return (timestamp - beaconGenesisTimestamp) / l1SlotTime;
+        return (timestamp - _engineParameters.L1BeaconGenesisSlotTime!.Value) / l1SlotTime;
     }
 
     private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)

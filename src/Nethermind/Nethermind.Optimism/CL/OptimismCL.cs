@@ -49,7 +49,7 @@ public class OptimismCL : IDisposable
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, logger, _cancellationTokenSource.Token);
 
         _decodingPipeline = new DecodingPipeline(logger);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, logManager);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, logger);
 
         ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, logger);
