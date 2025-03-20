@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             int selectedTransactions = 0;
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)spec.MaxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
+            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs);
 
             foreach (Transaction tx in transactions)
             {
@@ -117,13 +117,20 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int maxBlobsPerBlock = (int)spec.MaxBlobCount;
             int countOfRemainingBlobs = 0;
 
             ArrayPoolList<Transaction>? candidates = null;
-            foreach (Transaction blobTx in blobTransactions)
+            foreach (Transaction blobTx in blobTransactions
+                .Select(tx => {
+                    bool gasValid = tx.TryCalculatePremiumPerGas(baseFee, out var premiumPerGas);
+                    return (tx, gasValid, premiumPerGas);
+                })
+                .Where(data => data.gasValid)
+                .OrderByDescending(data => data.premiumPerGas)
+                .Select(data => data.tx))
             {
                 int txBlobCount = blobTx.GetBlobCount();
                 if (txBlobCount > maxBlobsPerBlock)

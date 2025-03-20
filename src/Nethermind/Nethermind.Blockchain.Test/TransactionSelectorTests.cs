@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -183,6 +184,48 @@ namespace Nethermind.Blockchain.Test
                     expectedSelectedTransactions.Where(static (_, index) => index != 1));
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
                     "Enough shard blob transactions and others selected");
+
+                ProperTransactionsSelectedTestCase higherPriorityTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
+                var accounts = higherPriorityTransactionsSelected.AccountStates;
+                accounts[TestItem.AddressA] = (1000, 0);
+                accounts[TestItem.AddressB] = (1000, 0);
+                accounts[TestItem.AddressC] = (1000, 0);
+                accounts[TestItem.AddressD] = (1000, 0);
+                accounts[TestItem.AddressE] = (1000, 0);
+                accounts[TestItem.AddressF] = (1000, 0);
+                higherPriorityTransactionsSelected.ReleaseSpec = Cancun.Instance;
+                higherPriorityTransactionsSelected.BaseFee = 1;
+                higherPriorityTransactionsSelected.Transactions = new List<Transaction>
+                {
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(20).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0],[0],[0],[0],[0]]).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(16).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(18).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressD).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(17).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressE).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(19).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyE).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressF).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(20).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyF).TestObject,
+                };
+
+                higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
+                    higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
+                    .OrderByDescending(t => t.MaxFeePerGas).Take(5));
+
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 1");
+                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 2");
+                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 3");
+                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 4");
+                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 5");
+                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 6");
             }
         }
 
