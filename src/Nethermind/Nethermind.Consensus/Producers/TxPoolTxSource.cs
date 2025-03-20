@@ -123,15 +123,7 @@ namespace Nethermind.Consensus.Producers
             int countOfRemainingBlobs = 0;
 
             ArrayPoolList<Transaction>? candidates = null;
-            foreach (Transaction blobTx in blobTransactions
-                .Select(tx =>
-                {
-                    bool gasValid = tx.TryCalculatePremiumPerGas(baseFee, out var premiumPerGas);
-                    return (tx, gasValid, premiumPerGas);
-                })
-                .Where(data => data.gasValid)
-                .OrderByDescending(data => data.premiumPerGas)
-                .Select(data => data.tx))
+            foreach (Transaction blobTx in blobTransactions)
             {
                 int txBlobCount = blobTx.GetBlobCount();
                 if (txBlobCount > maxBlobsPerBlock)

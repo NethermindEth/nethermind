@@ -214,18 +214,11 @@ namespace Nethermind.Blockchain.Test
                 higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
                     .OrderByDescending(t => t.MaxFeePerGas).Take(5));
-
-                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 1");
-                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
-                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 2");
-                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
-                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 3");
-                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
-                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 4");
-                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
-                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 5");
-                higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
-                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Correct priority blobs 6");
+                for (int i = 0; i < 20; i++)
+                {
+                    yield return new TestCaseData(higherPriorityTransactionsSelected).SetName($"Correct priority blobs {i:00}");
+                    higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                }
             }
         }
 
