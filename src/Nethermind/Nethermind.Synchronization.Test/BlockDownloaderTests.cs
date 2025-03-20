@@ -830,28 +830,9 @@ public partial class BlockDownloaderTests
             .Build();
     }
 
-    private class Context
+    private record Context
     {
-        private readonly IComponentContext _scope;
         private readonly ConcurrentDictionary<Hash256, bool> _wasSuggested = new();
-
-        public Context(IComponentContext scope)
-        {
-            _scope = scope;
-
-            BlockTree.NewBestSuggestedBlock += (sender, args) => _wasSuggested[args.Block.Hash!] = true;
-        }
-
-        public ResponseBuilder ResponseBuilder => _scope.Resolve<ResponseBuilder>();
-        public SyncFeedComponent<BlocksRequest> FastSyncFeedComponent =>
-            _scope.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed));
-
-        public SyncFeedComponent<BlocksRequest> FullSyncFeedComponent =>
-            _scope.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed));
-        public IBlockTree BlockTree => _scope.Resolve<IBlockTree>();
-        public InMemoryReceiptStorage ReceiptStorage => _scope.Resolve<InMemoryReceiptStorage>();
-        public ISyncPeerPool PeerPool => _scope.Resolve<ISyncPeerPool>();
-        public ISynchronizer Synchronizer => _scope.Resolve<ISynchronizer>();
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
         public ResponseBuilder ResponseBuilder { get; init; }
         public SyncFeedComponent<BlocksRequest> FastSyncFeedComponent { get; init; }
@@ -861,13 +842,15 @@ public partial class BlockDownloaderTests
         public InMemoryReceiptStorage ReceiptStorage { get; init; }
         public ISyncPeerPool PeerPool { get; init; }
 
-        public Context(ResponseBuilder ResponseBuilder,
+        public Context(
+            ResponseBuilder ResponseBuilder,
             [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
             [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
             IForwardSyncController ForwardSyncController,
             IBlockTree BlockTree,
             InMemoryReceiptStorage ReceiptStorage,
-            ISyncPeerPool PeerPool)
+            ISyncPeerPool PeerPool
+        )
         {
             this.ResponseBuilder = ResponseBuilder;
             this.FastSyncFeedComponent = FastSyncFeedComponent;

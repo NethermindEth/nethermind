@@ -127,7 +127,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
+        Assert.That(ctx.PoSSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
     [TestCase(32L, 16, false, 16)]
@@ -348,10 +348,26 @@ public partial class BlockDownloaderTests
         }, configs);
     }
 
-    private class PostMergeContext(IBeaconPivot beaconPivot, IPoSSwitcher poSSwitcher, ILifetimeScope scope) : Context(scope)
+    private record PostMergeContext(
+        IBeaconPivot BeaconPivot,
+        IPoSSwitcher PoSSwitcher,
+        ResponseBuilder ResponseBuilder,
+        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+        IForwardSyncController ForwardSyncController,
+        IBlockTree BlockTree,
+        InMemoryReceiptStorage ReceiptStorage,
+        ISyncPeerPool PeerPool
+    ) : Context(
+        ResponseBuilder,
+        FastSyncFeedComponent,
+        FullSyncFeedComponent,
+        ForwardSyncController,
+        BlockTree,
+        ReceiptStorage,
+        PeerPool
+    )
     {
-        public IBeaconPivot BeaconPivot => beaconPivot;
-        public IPoSSwitcher PosSwitcher => poSSwitcher;
         public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, long high, long low)
         {
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
