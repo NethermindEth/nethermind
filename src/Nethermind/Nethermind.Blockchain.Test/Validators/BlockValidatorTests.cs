@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -159,8 +158,6 @@ public class BlockValidatorTests
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
     {
-        KzgPolynomialCommitments.InitializeAsync().Wait();
-
         yield return new TestCaseData(
         Build.A.Block.WithHeader(Build.A.BlockHeader.WithUnclesHash(Keccak.Zero).TestObject).TestObject,
         Substitute.For<ISpecProvider>(),

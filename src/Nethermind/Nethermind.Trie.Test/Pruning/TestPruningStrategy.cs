@@ -15,12 +15,17 @@ namespace Nethermind.Trie.Test.Pruning
     {
         public bool PruningEnabled => pruningEnabled;
         public int MaxDepth { get; set; } = maxDepth ?? (int)Reorganization.MaxDepth;
+        public bool ShouldPruneDirtyNode(in long currentMemory) => pruningEnabled && (ShouldPruneEnabled || WithMemoryLimit is not null && currentMemory > WithMemoryLimit);
+        public bool ShouldPrunePersistedNode(in long persistedNodeMemory) => pruningEnabled && (ShouldPrunePersistedEnabled || WithPersistedMemoryLimit is not null && persistedNodeMemory > WithPersistedMemoryLimit);
+
+        public double PrunePersistedNodePortion { get; set; } = 1.0;
+        public long PrunePersistedNodeMinimumTarget { get; set; } = long.MaxValue;
+
         public bool ShouldPruneEnabled { get; set; } = shouldPrune;
+        public bool ShouldPrunePersistedEnabled { get; set; } = shouldPrune;
 
-        public int? WithMemoryLimit { get; set; }
-
-        public bool ShouldPrune(in long currentMemory) =>
-            pruningEnabled && (ShouldPruneEnabled || WithMemoryLimit is not null && currentMemory > WithMemoryLimit);
+        public long? WithMemoryLimit { get; set; }
+        public long? WithPersistedMemoryLimit { get; set; }
 
         public int TrackedPastKeyCount => trackedPastKeyCount;
     }

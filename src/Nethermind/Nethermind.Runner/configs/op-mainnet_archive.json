@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/op-mainnet.json.zst",
     "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
     "BaseDbPath": "nethermind_db/op-mainnet_archive",
-    "LogFileName": "op-mainnet_archive.logs.txt",
+    "LogFileName": "op-mainnet_archive.log",
     "MemoryHint": 2048000000,
     "DisableGcOnNewPayload": false
   },
