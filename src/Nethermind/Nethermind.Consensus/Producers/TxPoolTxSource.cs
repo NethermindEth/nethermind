@@ -355,12 +355,18 @@ namespace Nethermind.Consensus.Producers
 
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
 
-        private class ArrayPoolBitMap(int size) : IDisposable
+        private class ArrayPoolBitMap : IDisposable
         {
             private const int BitShiftPerInt64 = 6;
             private static int GetLengthOfBitLength(int n) => (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
 
-            private readonly ulong[] _array = ArrayPool<ulong>.Shared.Rent(GetLengthOfBitLength(size));
+            private readonly ulong[] _array;
+
+            public ArrayPoolBitMap(int size)
+            {
+                _array = ArrayPool<ulong>.Shared.Rent(GetLengthOfBitLength(size));
+                _array.AsSpan().Clear();
+            }
 
             public bool this[int i]
             {
