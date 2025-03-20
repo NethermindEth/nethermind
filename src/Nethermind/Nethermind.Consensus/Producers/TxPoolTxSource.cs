@@ -212,8 +212,10 @@ namespace Nethermind.Consensus.Producers
             int leftoverCapacity,
             ArrayPoolList<Transaction> selectedBlobTxs)
         {
-            // dpFees[c] = the maximum total fee achievable with capacity
-            ulong[] dpFees = new ulong[leftoverCapacity + 1];
+           int size = leftoverCapacity + 1;
+            // The maximum total fee achievable with capacity
+            using ArrayPoolList<ulong> dpFeesPooled = new(capacity: size, count: size);
+            Span<ulong> dpFees = dpFeesPooled.AsSpan();
 
             // choices[iTx, c] tracks whether the i-th transaction (1-based index) was picked 
             // when building the solution for capacity c.
