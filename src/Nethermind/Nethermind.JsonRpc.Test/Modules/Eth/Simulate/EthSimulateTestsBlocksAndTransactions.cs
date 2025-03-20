@@ -314,7 +314,6 @@ public class EthSimulateTestsBlocksAndTransactions
         JsonRpcResponse response = await RpcTest.TestRequest(chain.EthRpcModule, "eth_simulateV1", payload!, "latest");
         response.Should().BeOfType<JsonRpcSuccessResponse>();
         JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        // successResponse.Result.Should().BeOfType<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>();
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
         var logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
