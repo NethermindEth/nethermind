@@ -82,7 +82,7 @@ public class VirtualMachine : IVirtualMachine
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmAnalysisThreshold = 2,
             IlEvmAnalysisQueueMaxSize = 2,
-            IsIlEvmAggressiveModeEnabled = false,
+            IsIlEvmAggressiveModeEnabled = true,
         };
 
         switch (_vmConfig.IlEvmEnabledMode)
@@ -688,12 +688,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
-
-            if(vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
-            {
-                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
-            }
-
         }
         if (env.CodeInfo.MachineCode.Length == 0)
         {
