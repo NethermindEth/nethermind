@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -217,10 +217,7 @@ namespace Nethermind.Consensus.Producers
             using ArrayPoolList<ulong> dpFeesPooled = new(capacity: size, count: size);
             Span<ulong> dpFees = dpFeesPooled.AsSpan();
 
-            // choices[iTx, c] tracks whether the i-th transaction (1-based index) was picked 
-            // when building the solution for capacity c.
-            // 0 means "not picked", 1 means "picked".
-            int[,] choices = new int[candidateTxs.Count, leftoverCapacity + 1];
+            using ArrayPoolBitMap isChosen = new(candidateTxs.Count * size);
 
             // Build up the DP table to find the maximum total fee for each capacity.
             // Outer loop: go through each transaction (1-based index).
@@ -241,7 +238,7 @@ namespace Nethermind.Consensus.Producers
                     if (candidateFee > dpFees[capacity])
                     {
                         dpFees[capacity] = candidateFee;
-                        choices[i, capacity] = 1; // we picked item i-1
+                        isChosen[i * size + capacity] = true;
                     }
                 }
             }
@@ -251,7 +248,7 @@ namespace Nethermind.Consensus.Producers
             int remainingCapacity = leftoverCapacity;
             for (int i = candidateTxs.Count - 1; i >= 0; i--)
             {
-                if (choices[i, remainingCapacity] == 1)
+                if (isChosen[i * size + remainingCapacity])
                 {
                     Transaction tx = candidateTxs[i];
                     int blobCount = tx.GetBlobCount();
@@ -357,5 +354,21 @@ namespace Nethermind.Consensus.Producers
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;
 
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
+
+        private class ArrayPoolBitMap(int size) : IDisposable
+        {
+            private const int BitShiftPerInt64 = 6;
+            private static int GetLengthOfBitLength(int n) => (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
+
+            private readonly ulong[] _array = ArrayPool<ulong>.Shared.Rent(GetLengthOfBitLength(size));
+
+            public bool this[int i]
+            {
+                get => (_array[i >> BitShiftPerInt64] & (1UL << i)) != 0;
+                set => _array[(uint)i >> BitShiftPerInt64] |= (1UL << i);
+            }
+
+            public void Dispose() => ArrayPool<ulong>.Shared.Return(_array);
+        }
     }
 }
