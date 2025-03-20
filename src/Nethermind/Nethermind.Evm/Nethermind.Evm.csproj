@@ -51,5 +51,8 @@
     <None Update="Binaries\boringssl\crypto.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Binaries\boringssl\crypto.so">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
