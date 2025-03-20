@@ -124,7 +124,8 @@ namespace Nethermind.Consensus.Producers
 
             ArrayPoolList<Transaction>? candidates = null;
             foreach (Transaction blobTx in blobTransactions
-                .Select(tx => {
+                .Select(tx =>
+                {
                     bool gasValid = tx.TryCalculatePremiumPerGas(baseFee, out var premiumPerGas);
                     return (tx, gasValid, premiumPerGas);
                 })
