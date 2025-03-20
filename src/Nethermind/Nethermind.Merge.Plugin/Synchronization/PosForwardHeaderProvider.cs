@@ -32,10 +32,7 @@ public class PosForwardHeaderProvider(
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ISyncReport _syncReport = syncReport;
 
-    private bool ShouldUsePreMerge()
-    {
-        return beaconPivot.BeaconPivotExists() == false && poSSwitcher.HasEverReachedTerminalBlock() == false;
-    }
+    private bool ShouldUsePreMerge() => !beaconPivot.BeaconPivotExists() && !poSSwitcher.HasEverReachedTerminalBlock();
 
     public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeader, CancellationToken cancellation)
     {
@@ -50,8 +47,7 @@ public class PosForwardHeaderProvider(
         BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(maxHeader, long.MaxValue, skipLastN);
         if (headers is null || headers.Length <= 1)
         {
-            if (_logger.IsTrace)
-                _logger.Trace("Chain level helper got no headers suggestion");
+            if (_logger.IsTrace) _logger.Trace("Chain level helper got no headers suggestion");
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(null);
         }
 
@@ -71,8 +67,8 @@ public class PosForwardHeaderProvider(
     // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
     protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
     {
-        return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) &&
-               poSSwitcher.HasEverReachedTerminalBlock() == false;
+        return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0)
+               && !poSSwitcher.HasEverReachedTerminalBlock();
     }
 
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)

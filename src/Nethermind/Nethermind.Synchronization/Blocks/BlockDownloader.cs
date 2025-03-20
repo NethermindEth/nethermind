@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.Blocks
 
             while (true)
             {
-                IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation);
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation);
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return blocksSynced;
 
