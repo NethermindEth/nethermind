@@ -16,7 +16,7 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
+public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
 {
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
