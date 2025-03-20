@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.HistoryPruning;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -223,5 +224,25 @@ public class HistoryPrunerTests
             Assert.That(testBlockchain.BlockTree.BestKnownNumber, Is.EqualTo(10L), "BestKnownNumber should be maintained");
             Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo(10L), "Head should be maintained");
         }
+    }
+
+    [Test]
+    public void Can_check_config()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryPruneEpochs = 10,
+            DropPreMerge = false
+        };
+
+        HistoryPruner historyPruner = new(
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IReceiptStorage>(),
+            Substitute.For<ISpecProvider>(),
+            historyConfig,
+            SecondsPerSlot,
+            LimboLogs.Instance);
+
+        Assert.Throws<HistoryPruner.HistoryPrunerException>(historyPruner.CheckConfig);
     }
 }

@@ -9,7 +9,7 @@ public interface IHistoryConfig : IConfig
 
     // For EIP-4444 set default to 82125
     [ConfigItem(
-        Description = "The number of epochs to retain historical blocks and receipts. Set to null for unlimited retention.",
+        Description = "The number of epochs to retain historical blocks and receipts. Set to null for unlimited retention. Must be at least 82125.",
         DefaultValue = "null")]
     ulong? HistoryPruneEpochs { get; set; }
 

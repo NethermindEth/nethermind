@@ -9,4 +9,5 @@ namespace Nethermind.Blockchain.HistoryPruning;
 public interface IHistoryPruner
 {
     Task TryPruneHistory(CancellationToken cancellationToken);
+    void CheckConfig();
 }

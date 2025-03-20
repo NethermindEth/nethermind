@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,11 @@ public class HistoryPruner(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly bool _enabled = historyConfig.Enabled;
     private readonly ulong _epochLength = secondsPerSlot * 32;
+    private readonly ulong _minHistoryPruneEpochs = 82125;
+
+    public class HistoryPrunerException(string message) : Exception(message)
+    {
+    }
 
     public async Task TryPruneHistory(CancellationToken cancellationToken)
     {
@@ -44,6 +50,14 @@ public class HistoryPruner(
             _pruneHistoryTask = PruneHistory(cancellationToken);
         }
         await _pruneHistoryTask;
+    }
+
+    public void CheckConfig()
+    {
+        if (historyConfig.HistoryPruneEpochs < _minHistoryPruneEpochs)
+        {
+            throw new HistoryPrunerException($"HistoryPruneEpochs must be at least {_minHistoryPruneEpochs}.");
+        }
     }
 
     private bool ShouldPruneHistory()
