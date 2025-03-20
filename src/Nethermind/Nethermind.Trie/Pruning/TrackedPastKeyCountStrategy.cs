@@ -3,23 +3,17 @@
 
 namespace Nethermind.Trie.Pruning;
 
-public class TrackedPastKeyCountStrategy : IPruningStrategy
+public class TrackedPastKeyCountStrategy(IPruningStrategy baseStrategy, int trackedPastKeyCount) : IPruningStrategy
 {
-    private readonly IPruningStrategy _baseStrategy;
-    private readonly int _trackedPastKeyCount;
-    public bool PruningEnabled => _baseStrategy.PruningEnabled;
-    public int MaxDepth => _baseStrategy.MaxDepth;
+    public bool PruningEnabled => baseStrategy.PruningEnabled;
+    public int MaxDepth => baseStrategy.MaxDepth;
+    public bool ShouldPruneDirtyNode(in long dirtyNodeMemory) => baseStrategy.ShouldPruneDirtyNode(in dirtyNodeMemory);
 
-    public TrackedPastKeyCountStrategy(IPruningStrategy baseStrategy, int trackedPastKeyCount)
-    {
-        _baseStrategy = baseStrategy;
-        _trackedPastKeyCount = trackedPastKeyCount;
-    }
+    public bool ShouldPrunePersistedNode(in long persistedNodeMemory) => baseStrategy.ShouldPrunePersistedNode(in persistedNodeMemory);
 
-    public bool ShouldPrune(in long currentMemory)
-    {
-        return _baseStrategy.ShouldPrune(in currentMemory);
-    }
+    public double PrunePersistedNodePortion => baseStrategy.PrunePersistedNodePortion;
 
-    public int TrackedPastKeyCount => _trackedPastKeyCount;
+    public long PrunePersistedNodeMinimumTarget => baseStrategy.PrunePersistedNodeMinimumTarget;
+
+    public int TrackedPastKeyCount => trackedPastKeyCount;
 }

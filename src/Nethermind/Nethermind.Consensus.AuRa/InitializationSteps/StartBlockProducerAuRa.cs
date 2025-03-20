@@ -158,7 +158,7 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
-            _api.TransactionProcessor,
+            changeableTxProcessingEnv.TransactionProcessor,
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator(_api) as AuRaContractGasLimitOverride,

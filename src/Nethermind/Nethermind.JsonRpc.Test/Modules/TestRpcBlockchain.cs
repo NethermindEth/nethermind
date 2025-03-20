@@ -56,10 +56,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
-        public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
+        public static Builder<TestRpcBlockchain> ForTest(string sealEngineType, long? testTimeout = null) => ForTest<TestRpcBlockchain>(sealEngineType, testTimeout);
 
-        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>
-            new(new T { SealEngineType = sealEngineType });
+        public static Builder<T> ForTest<T>(string sealEngineType, long? testTimout = null) where T : TestRpcBlockchain, new() =>
+            new(new T { SealEngineType = sealEngineType, TestTimout = testTimout ?? DefaultTimeout });
 
         public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
             new(blockchain);

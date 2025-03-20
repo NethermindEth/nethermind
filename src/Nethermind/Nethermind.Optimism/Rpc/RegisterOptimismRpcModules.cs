@@ -62,7 +62,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         _api.DisposeStack.Push(feeHistoryOracle);
 
         ModuleFactoryBase<IOptimismEthRpcModule> optimismEthModuleFactory = new OptimismEthModuleFactory(
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api,
             _api.BlockTree.AsReadOnly(),
             _api.ReceiptStorage,
@@ -76,15 +76,13 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.EthSyncingInfo,
             feeHistoryOracle,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
-
-        sequencerJsonRpcClient,
-            _api.WorldStateManager.GlobalWorldState,
+            sequencerJsonRpcClient,
             _api.EthereumEcdsa,
             sealer,
             _api.SpecHelper);
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
-            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+            JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
     }
 
     protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -101,7 +99,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         OptimismTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree,
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -113,6 +111,6 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             new Create2DeployerContractRewriter(_api.SpecHelper, _api.SpecProvider, _api.BlockTree),
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
 
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 }

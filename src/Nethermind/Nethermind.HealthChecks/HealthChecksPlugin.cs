@@ -53,6 +53,7 @@ namespace Nethermind.HealthChecks
         public string Author => "Nethermind";
 
         public bool MustInitialize => true;
+        public bool Enabled => true; // Always enabled
 
         public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
             () => new FreeDiskSpaceChecker(
@@ -138,7 +139,7 @@ namespace Nethermind.HealthChecks
             }
 
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
-                _api.BlockchainProcessor!, _api.BlockProducerRunner!, _healthChecksConfig, _api.HealthHintService!,
+                _api.MainProcessingContext!.BlockchainProcessor, _api.BlockProducerRunner!, _healthChecksConfig, _api.HealthHintService!,
                 _api.EthSyncingInfo!, _api.RpcCapabilitiesProvider, _api, drives, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)

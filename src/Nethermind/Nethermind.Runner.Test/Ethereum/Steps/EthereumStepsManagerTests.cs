@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -23,55 +27,23 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task When_no_assemblies_defined()
         {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader();
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
+            await using IContainer container = CreateNethermindEnvironment();
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
         }
 
         [Test]
-        public async Task With_steps_from_here()
-        {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
-
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-
-            try
-            {
-                await stepsManager.InitializeAll(source.Token);
-            }
-            catch (Exception e)
-            {
-                if (!(e is OperationCanceledException))
-                {
-                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
-                }
-            }
-        }
-
-        [Test]
         [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
-            AuRaNethermindApi runnerContext = CreateAuraApi();
+            await using IContainer container = CreateAuraApi(
+                typeof(StepCStandard),
+                typeof(StepCAuRa)
+            );
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
@@ -88,16 +60,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_failing_steps()
         {
-            NethermindApi runnerContext = CreateNethermindApi();
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepForever))
+            );
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
-
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             try
             {
                 await stepsManager.InitializeAll(source.Token);
@@ -106,15 +74,67 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             {
                 if (!(e is OperationCanceledException))
                 {
-                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
+                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}. Received {e}");
                 }
             }
         }
 
-        private static NethermindApi CreateNethermindApi() =>
-            new(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec());
-        private static AuRaNethermindApi CreateAuraApi() =>
-            new(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec());
+        [Test]
+        public async Task With_constructor_without_nethermind_api()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepWithLogManagerInConstructor))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            await stepsManager.InitializeAll(source.Token);
+
+            container.Resolve<StepWithLogManagerInConstructor>().WasExecuted.Should().BeTrue();
+        }
+
+        [Test]
+        public async Task With_ambigious_steps()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepWithLogManagerInConstructor)),
+                new StepInfo(typeof(StepWithSameBaseStep))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            var act = async () => await stepsManager.InitializeAll(source.Token);
+            await act.Should().ThrowAsync<StepDependencyException>();
+        }
+
+        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
+            CreateCommonBuilder(stepInfos)
+                .AddSingleton<NethermindApi>(new NethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+                .Bind<INethermindApi, NethermindApi>()
+                .Build();
+
+        private static IContainer CreateAuraApi(params IEnumerable<StepInfo> stepInfos)
+        {
+            return CreateCommonBuilder(stepInfos)
+                .AddSingleton<AuRaNethermindApi>(new AuRaNethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+                .Bind<INethermindApi, AuRaNethermindApi>()
+                .Build();
+        }
+
+        private static ContainerBuilder CreateCommonBuilder(params IEnumerable<StepInfo> stepInfos)
+        {
+            ContainerBuilder builder = new ContainerBuilder()
+                .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
+                .AddSingleton<EthereumStepsManager>()
+                .AddSingleton<ILogManager>(LimboLogs.Instance);
+
+            foreach (var stepInfo in stepInfos)
+            {
+                builder.AddStep(stepInfo);
+            }
+
+            return builder;
+        }
     }
 
     public class StepLong : IStep
@@ -129,11 +149,38 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
+
+    public abstract class BaseStep : IStep
+    {
+        public abstract Task Execute(CancellationToken cancellationToken);
+    }
+
+#pragma warning disable CS9113 // Parameter is unread.
+    public class StepWithLogManagerInConstructor(ILogManager _) : BaseStep
+#pragma warning restore CS9113 // Parameter is unread.
+    {
+        public bool WasExecuted { get; set; }
+
+        public override Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    public class StepWithSameBaseStep() : BaseStep
+    {
+        public override Task Execute(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
     public class StepForever : IStep
     {
         public async Task Execute(CancellationToken cancellationToken)
         {
-            await Task.Delay(100000);
+            await Task.Delay(100000, cancellationToken);
         }
 
         public StepForever(NethermindApi runnerContext)

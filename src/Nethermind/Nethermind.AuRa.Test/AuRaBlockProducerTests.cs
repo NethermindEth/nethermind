@@ -119,13 +119,13 @@ namespace Nethermind.AuRa.Test
             }
         }
 
-        [Test, Retry(6)]
+        [Test]
         public async Task Produces_block()
         {
             (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
 
-        [Test, Retry(15)]
+        [Test]
         public async Task Can_produce_first_block_when_private_chains_allowed()
         {
             Context context = new();
@@ -218,7 +218,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
         }
 
-        private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
+        private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
         {
             AutoResetEvent processedEvent = new(false);
             context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
@@ -229,7 +229,7 @@ namespace Nethermind.AuRa.Test
                 });
 
             context.BlockProducerRunner.Start();
-            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 20, CancellationToken.None);
+            await processedEvent.WaitOneAsync(context.StepDelay * 20, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
             await Task.Delay(context.StepDelay * 2);
             processedEvent.Reset();
@@ -248,7 +248,7 @@ namespace Nethermind.AuRa.Test
                     processedEvent.Reset();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 20, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * 20, CancellationToken.None);
 
             }
             finally

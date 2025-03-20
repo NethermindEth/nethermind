@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/sepolia.json",
     "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
     "BaseDbPath": "nethermind_db/sepolia",
-    "LogFileName": "sepolia.logs.txt",
+    "LogFileName": "sepolia.log",
     "StaticNodesPath": "Data/static-nodes-sepolia.json",
     "MemoryHint": 1024000000
   },
@@ -18,13 +18,13 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 7570000,
-    "PivotHash": "0xc2ca4f23357199012125987be9469b20174c9bb0e9aaa2a9854db8c933049726",
+    "PivotNumber": 7667000,
+    "PivotHash": "0xbb09dbd03b881e292fd97d3d4647ca371cd32feb325a132b5999f5f211e4dd5c",
     "PivotTotalDifficulty": "17000018015853232",
     "FastSyncCatchUpHeightDelta": 10000000000
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 60000000
   },
   "JsonRpc": {
     "Enabled": true,

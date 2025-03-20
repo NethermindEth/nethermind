@@ -158,7 +158,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
@@ -204,7 +204,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit),
                 GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
@@ -223,7 +223,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
@@ -413,7 +413,7 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => _ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot)
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
         {
             _stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
@@ -431,6 +431,12 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        {
+            if (txResult.Success) return tracerError;
+            return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
         }
     }
 }

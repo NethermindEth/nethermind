@@ -11,7 +11,9 @@ namespace Nethermind.Consensus.Transactions
 {
     public class CompositeTxSource : ITxSource
     {
-        private readonly IList<ITxSource> _transactionSources;
+        private readonly List<ITxSource> _transactionSources;
+
+        public bool SupportsBlobs => _transactionSources.Any(s => s.SupportsBlobs);
 
         public CompositeTxSource(params ITxSource[] transactionSources)
         {

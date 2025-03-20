@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -32,9 +33,9 @@ public class OptimismCL : IDisposable
         _p2p = new OptimismCLP2P(specProvider.ChainId, engineParameters.Nodes, config, _chainSpecEngineParameters.SequencerP2PAddress, timestamper, logManager, engineRpcModule);
     }
 
-    public void Start()
+    public async Task Start()
     {
-        _p2p.Start();
+        await _p2p.Start();
     }
 
     public void Dispose()
