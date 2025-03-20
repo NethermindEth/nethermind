@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Sigil;
 using System;
 using System.Collections.Generic;

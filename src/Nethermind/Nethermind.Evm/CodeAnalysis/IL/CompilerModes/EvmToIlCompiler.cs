@@ -28,7 +28,7 @@ internal static class Precompiler
         // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
         var method = Emit<PrecompiledContract>.NewDynamicMethod(contractName, doVerify: false, strictBranchVerification: true);
-
+        
         EmitMoveNext(method, metadata, config);
         PrecompiledContract dynEmitedDelegate = method.CreateDelegate(OptimizationOptions.All & (~OptimizationOptions.EnableBranchPatching));
         return dynEmitedDelegate;
@@ -201,7 +201,7 @@ internal static class Precompiler
 
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
-                if(!op.IsTerminating && op.Operation is not Instruction.JUMP)
+                if(!op.IsTerminating)
                 {
                     if (config.IsIlEvmAggressiveModeEnabled)
                     {
@@ -273,8 +273,7 @@ internal static class Precompiler
         method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
         method.StoreLocal(locals.jmpDestination);
 
-        method.LoadLocal(locals.wordRef256A);
-        method.Call(Word.GetIsUint16);
+        method.EmitCheck(nameof(Word.IsShort), locals.wordRef256A);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         method.LoadLocal(locals.jmpDestination);

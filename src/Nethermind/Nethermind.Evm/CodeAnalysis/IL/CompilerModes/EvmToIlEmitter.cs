@@ -56,7 +56,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         Label noJump = method.DefineLabel();
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                        method.EmitIsZeroCheck();
+                        method.EmitCheck(nameof(Word.IsZero));
                         // if the jump condition is false, we do not jump
                         method.BranchIfTrue(noJump);
 
@@ -199,35 +199,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            Label fallbackToUInt256Call = method.DefineLabel();
-                            Label endofOpcode = method.DefineLabel();
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(locals.wordRef256B);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.Add();
-                            method.StoreLocal(locals.uint64A);
-
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(locals.uint64A);
-                            method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
-                            method.Branch(endofOpcode);
-
-                            method.MarkLabel(fallbackToUInt256Call);
                             EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
-                            method.MarkLabel(endofOpcode);
                         });
                     }
                     break;
@@ -246,39 +218,10 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.StoreLocal(locals.wordRef256B);
 
-                            method.EmitIsZeroCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                             method.BranchIfTrue(pushItemA);
-                            /*
-                            method.EmitIsZeroCheck(locals.wordRef256A);
-                            method.BranchIfTrue(pushNegItemB);
-                            */
 
-                            method.EmitIsZeroCheck(locals.wordRef256A);
-                            method.BranchIfTrue(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
-                            method.BranchIfLess(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.Subtract();
-                            method.StoreLocal(locals.uint64A);
-
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(locals.uint64A);
-                            method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushItemA);
@@ -286,17 +229,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
-                            method.Branch(endofOpcode);
 
-                            /*
-                            method.MarkLabel(pushNegItemB);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.ToNegative);
-                            method.Branch(endofOpcode);
-                            */
-
-                            method.MarkLabel(fallbackToUInt256Call);
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         });
                     }
@@ -308,7 +241,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             Label push0Zero = method.DefineLabel();
                             Label pushItemA = method.DefineLabel();
                             Label pushItemB = method.DefineLabel();
-                            Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
                             // we the two uint256 from the locals.stackHeadRef
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
@@ -323,38 +255,18 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
-                            method.EmitIsZeroCheck(locals.wordRef256A);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
                             method.BranchIfTrue(push0Zero);
 
-                            method.EmitIsZeroCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                             method.BranchIfTrue(endofOpcode);
 
-                            method.EmitIsOneCheck(locals.wordRef256A);
+                            method.EmitCheck(nameof(Word.IsOne), locals.wordRef256A);
                             method.BranchIfTrue(endofOpcode);
 
-                            method.EmitIsOneCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                             method.BranchIfTrue(pushItemA);
 
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.Multiply();
-                            method.StoreLocal(locals.uint64A);
-
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(locals.uint64A);
-                            method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
-                            method.Branch(endofOpcode);
-
-                            method.MarkLabel(fallbackToUInt256Call);
                             EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
@@ -385,35 +297,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(locals.wordRef256B);
-                            method.EmitIsZeroOrOneCheck();
+                            method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
                             method.BranchIfTrue(pushZeroLabel);
 
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallBackToOldBehavior);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.GetIsUint32);
-                            method.BranchIfFalse(fallBackToOldBehavior);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.Remainder();
-                            method.StoreLocal(locals.uint64A);
-
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(locals.uint64A);
-                            method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushZeroLabel);
                             method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.Branch(endofOpcode);
-
-                            method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         });
 
@@ -423,22 +314,21 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            Label fallBackToOldBehavior = method.DefineLabel();
+                            Label bIsOneOrZero = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             // if b is 1 or 0 result is always 0
-                            method.LoadLocal(locals.wordRef256B);
-                            method.EmitIsZeroOrOneCheck();
-                            method.BranchIfFalse(fallBackToOldBehavior);
+                            method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
+                            method.BranchIfTrue(bIsOneOrZero);
 
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
-                            method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            method.MarkLabel(bIsOneOrZero);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.MarkLabel(endofOpcode);
                         });
 
@@ -459,13 +349,13 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StoreLocal(locals.wordRef256B);
 
                             // if a or b are 0 result is directly 0
-                            method.EmitIsZeroCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                             method.BranchIfTrue(pushZeroLabel);
-                            method.EmitIsZeroCheck(locals.wordRef256A);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
                             method.BranchIfTrue(pushZeroLabel);
 
                             // if b is 1 result is by default a
-                            method.EmitIsOneCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                             method.BranchIfTrue(pushALabel);
 
                             EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
@@ -503,20 +393,20 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
 
                             // if b is 0 or a is 0 then the result is 0
-                            method.EmitIsZeroCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                             method.BranchIfTrue(pushZeroLabel);
-                            method.EmitIsZeroCheck(locals.wordRef256A);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
                             method.BranchIfTrue(pushZeroLabel);
 
                             // if b is 1 in all cases the result is a
-                            method.EmitIsOneCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                             method.BranchIfTrue(pushALabel);
 
                             // if b is -1 and a is 2^255 then the result is 2^255
-                            method.EmitIsMinusOneCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsMinusOne), locals.wordRef256B);
                             method.BranchIfFalse(fallBackToOldBehavior);
 
-                            method.EmitIsP255Check(locals.wordRef256A);
+                            method.EmitCheck(nameof(Word.IsP255), locals.wordRef256A);
                             method.BranchIfTrue(pushALabel);
 
                             method.MarkLabel(fallBackToOldBehavior);
@@ -552,8 +442,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StoreLocal(locals.wordRef256C);
 
                             // if c is 1 or 0 result is 0
-                            method.LoadLocal(locals.wordRef256C);
-                            method.EmitIsZeroOrOneCheck();
+                            method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256C);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
                             method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
@@ -584,11 +473,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             // since (a * b) % c 
                             // if a or b are 0 then the result is 0
                             // if c is 0 or 1 then the result is 0
-                            method.EmitIsZeroCheck(locals.wordRef256A);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
                             method.BranchIfTrue(push0Zero);
-                            method.EmitIsZeroCheck(locals.wordRef256B);
+                            method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                             method.BranchIfTrue(push0Zero);
-                            method.EmitIsZeroOrOneCheck(locals.wordRef256C);
+                            method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256C);
                             method.BranchIfTrue(push0Zero);
 
                             // since (a * b) % c == (a % c * b % c) % c
@@ -728,36 +617,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            Label fallbackToUInt256Call = method.DefineLabel();
-                            Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the locals.stackHeadRef
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(locals.wordRef256B);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint64);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.GetIsUint64);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.CompareLessThan();
-                            method.StoreLocal(locals.byte8B);
-
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(locals.byte8B);
-                            method.CallSetter(Word.SetByte0, BitConverter.IsLittleEndian);
-                            method.Branch(endofOpcode);
-
-                            method.MarkLabel(fallbackToUInt256Call);
                             EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
-                            method.MarkLabel(endofOpcode);
                         });
                     }
 
@@ -766,36 +626,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            Label fallbackToUInt256Call = method.DefineLabel();
-                            Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the locals.stackHeadRef
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(locals.wordRef256B);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint64);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.Call(Word.GetIsUint64);
-                            method.BranchIfFalse(fallbackToUInt256Call);
-
-                            method.LoadLocal(locals.wordRef256A);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(locals.wordRef256B);
-                            method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.CompareGreaterThan();
-                            method.StoreLocal(locals.byte8B);
-
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(locals.byte8B);
-                            method.CallSetter(Word.SetByte0, BitConverter.IsLittleEndian);
-                            method.Branch(endofOpcode);
-
-                            method.MarkLabel(fallbackToUInt256Call);
                             EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
-                            method.MarkLabel(endofOpcode);
                         });
                     }
                     break;
@@ -847,7 +678,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Duplicate();
                             method.Duplicate();
-                            method.EmitIsZeroCheck();
+                            method.EmitCheck(nameof(Word.IsZero));
                             method.StoreLocal(locals.lbool);
                             method.Call(Word.SetToZero);
                             method.LoadLocal(locals.lbool);
@@ -1349,10 +1180,10 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(Word.GetReadOnlySpan);
                             method.StoreLocal(locals.localReadonOnlySpan);
 
+
                             Label pushZeroLabel = method.DefineLabel();
                             Label endOfInstructionImpl = method.DefineLabel();
-                            method.LoadLocal(locals.wordRef256A);
-                            method.Call(Word.GetIsUint16);
+                            method.EmitCheck(nameof(Word.IsShort), locals.wordRef256A);
                             method.BranchIfFalse(pushZeroLabel);
                             method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
@@ -2555,6 +2386,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         else
                         {
                             // load empty span
+                            index--;
                             method.Call(typeof(Span<byte>).GetProperty(nameof(Span<byte>.Empty), BindingFlags.Static | BindingFlags.Public).GetGetMethod());
                         }
 

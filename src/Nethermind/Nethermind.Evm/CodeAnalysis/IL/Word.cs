@@ -59,13 +59,12 @@ public struct Word
     public bool CheckIfEqual(ref Word other) => _ulong0 == other._ulong0 && _ulong1 == other._ulong1 && _ulong2 == other._ulong2 && _ulong3 == other._ulong3;
 
     public bool IsZero => (_ulong0 | _ulong1 | _ulong2 | _ulong3) == 0;
-    public bool IsOneLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && _ulong0 == 1;
-    public bool IsOneBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && _ulong3 == 128;
+    public bool IsOne => (_ulong1 | _ulong2 | _ulong3) == 0 && (_ulong0 == 0x0100000000000000);
     public bool IsMinusOne => _ulong1 == ulong.MaxValue && _ulong2 == ulong.MaxValue && _ulong3 == ulong.MaxValue && _ulong0 == ulong.MaxValue;
-    public bool IsP255BigEndian => (_ulong3 | _ulong1 | _ulong2) == 0 && (_ulong0 == 1);
-    public bool IsP255LittleEndian=> (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong3 == 128);
-    public bool IsOneOrZeroLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && (_ulong0 == 1 || _ulong0 == 0);
-    public bool IsOneOrZeroBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && ((_ulong3 == 1ul << 63) || _ulong3 == 0);
+    public bool IsP255 => (_ulong3 | _ulong1 | _ulong2) == 0 && (_ulong0 == 0x0000000000000001);
+    public bool IsOneOrZero => (_ulong1 | _ulong2 | _ulong3) == 0 && ((_ulong0 << 1) == 0);
+    public bool IsShort => (_ulong1 | _ulong2 | _ulong3) == 0 && ((_ulong0 << 16) == 0);
+
     public void ToZero()
     {
         _ulong0 = 0; _ulong1 = 0;
@@ -309,10 +308,6 @@ public struct Word
         }
     }
 
-    public bool IsUint16 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0 && (BitConverter.IsLittleEndian ? (BinaryPrimitives.ReverseEndianness(_ulong0) <= ushort.MaxValue) : (_ulong0 <= ushort.MaxValue));
-    public bool IsUint32 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0 && (BitConverter.IsLittleEndian ? (BinaryPrimitives.ReverseEndianness(_ulong0) <= uint.MaxValue) : (_ulong0 <= uint.MaxValue));
-    public bool IsUint64 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0;
-
     public static readonly MethodInfo LeadingZeroProp = typeof(Word).GetProperty(nameof(LeadingZeros))!.GetMethod;
 
     public static readonly MethodInfo GetByte0 = typeof(Word).GetProperty(nameof(Byte0))!.GetMethod;
@@ -352,10 +347,6 @@ public struct Word
     public static readonly MethodInfo SetZeroPaddedSpan = typeof(Word).GetProperty(nameof(ZeroPaddedSpan))!.SetMethod;
     public static readonly MethodInfo GetReadOnlyMemory = typeof(Word).GetProperty(nameof(ReadOnlyMemory))!.GetMethod;
     public static readonly MethodInfo SetReadOnlyMemory = typeof(Word).GetProperty(nameof(ReadOnlyMemory))!.SetMethod;
-
-    public static readonly MethodInfo GetIsUint16 = typeof(Word).GetProperty(nameof(IsUint16))!.GetMethod;
-    public static readonly MethodInfo GetIsUint32 = typeof(Word).GetProperty(nameof(IsUint32))!.GetMethod;
-    public static readonly MethodInfo GetIsUint64 = typeof(Word).GetProperty(nameof(IsUint64))!.GetMethod;
 
     public static explicit operator Word(Span<byte> span)
     {
