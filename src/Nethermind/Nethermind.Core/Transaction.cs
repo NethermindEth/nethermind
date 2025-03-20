@@ -52,6 +52,8 @@ namespace Nethermind.Core
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
+        [JsonIgnore]
+        public long? SpentGas { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public Memory<byte>? Data { get; set; }

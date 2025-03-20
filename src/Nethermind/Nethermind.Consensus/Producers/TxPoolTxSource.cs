@@ -229,7 +229,7 @@ namespace Nethermind.Consensus.Producers
             {
                 Transaction tx = candidateTxs[i];
                 int blobCount = tx.GetBlobCount();
-                ulong feeValue = (ulong)tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit;
+                ulong feeValue = (ulong)tx.MaxPriorityFeePerGas * (ulong)(tx.SpentGas ?? tx.GasLimit);
 
                 // Iterate backward from maxBlobCapacity down to blobCount 
                 // so we only compute for valid capacities that can fit this transaction.
