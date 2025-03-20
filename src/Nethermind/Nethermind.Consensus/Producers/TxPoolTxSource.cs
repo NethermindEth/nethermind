@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             int selectedTransactions = 0;
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)spec.MaxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs);
+            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
             foreach (Transaction tx in transactions)
             {
@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int maxBlobsPerBlock = (int)spec.MaxBlobCount;
             int countOfRemainingBlobs = 0;
