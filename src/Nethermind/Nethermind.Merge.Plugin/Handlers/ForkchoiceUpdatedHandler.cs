@@ -479,7 +479,7 @@ public class ForkchoiceUpdatedHandler(
             _globalWorldState.StateRoot = value;
             _stateRoot = null;
         }
-        
+
         private void OnProcessingQueueEmpty(object? sender, EventArgs e)
         {
             Hash256? stateRoot = StateRoot;
