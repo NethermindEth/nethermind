@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
                 ECParameters pub = ecdsa.ExportParameters(false);
                 byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
                 (byte[] x, byte[] y) = (pub.Q.X, pub.Q.Y);
-                byte[] input = [..hash, ..sig, ..x, ..y];
+                byte[] input = [.. hash, .. sig, .. x, .. y];
 
                 (ReadOnlyMemory<byte> output, var success) = Precompile().Run(input, Prague.Instance);
 
