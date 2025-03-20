@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -118,30 +119,20 @@ namespace Nethermind.Consensus.Producers
 
         private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
         {
-            int checkedBlobTransactions = 0;
-            int selectedBlobTransactions = 0;
-            UInt256 blobGasCounter = 0;
-            UInt256 feePerBlobGas = UInt256.Zero;
+            int maxBlobsPerBlock = (int)spec.MaxBlobCount;
+            int countOfRemainingBlobs = 0;
 
-            var maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
+            ArrayPoolList<Transaction>? candidates = null;
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (blobGasCounter >= maxBlobGasPerBlock)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
-                    break;
-                }
-
-                checkedBlobTransactions++;
-
-                ulong txBlobGas = blobTx.GetBlobGas();
-                if (txBlobGas > maxBlobGasPerBlock - blobGasCounter)
+                int txBlobCount = blobTx.GetBlobCount();
+                if (txBlobCount > maxBlobsPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
                 }
 
-                if (feePerBlobGas.IsZero && !TryUpdateFeePerBlobGas(blobTx, parent, spec, out feePerBlobGas))
+                if (!TryUpdateFeePerBlobGas(blobTx, parent, spec, out UInt256 feePerBlobGas))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     continue;
@@ -162,14 +153,113 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                blobGasCounter += txBlobGas;
-                if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {fullBlobTx.ToShortString()} to be potentially included in block, total blob gas included: {blobGasCounter}.");
+                if (txBlobCount == 1 && candidates is null)
+                {
+                    selectedBlobTxs.Add(blobTx);
+                    if (selectedBlobTxs.Count == maxBlobsPerBlock)
+                    {
+                        // Early exit, have complete set of 1 blob txs with maximal priority fees
+                        // No need to consider other tx.
+                        return;
+                    }
+                }
+                else
+                {
+                    candidates ??= new(16);
 
-                selectedBlobTransactions++;
-                selectedBlobTxs.Add(fullBlobTx);
+                    candidates.Add(fullBlobTx);
+                    countOfRemainingBlobs += txBlobCount;
+                }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedBlobTransactions} out of {checkedBlobTransactions} pending blob transactions checked.");
+            // No leftover candidates
+            if (candidates is null) return;
+
+            using (candidates)
+            {
+                // We have leftover candidates. Check how many blob slots remain.
+                int leftoverCapacity = maxBlobsPerBlock - selectedBlobTxs.Count;
+                if (countOfRemainingBlobs <= leftoverCapacity)
+                {
+                    // We can take all, no optimal picking needed.
+                    foreach (var tx in candidates.AsSpan())
+                    {
+                        selectedBlobTxs.Add(tx);
+                    }
+                }
+                else
+                {
+                    // Are more blobs than spaces, select optimal set to include
+                    ChooseBestBlobTransactions(candidates, leftoverCapacity, selectedBlobTxs);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Selects a subset of candidate transactions
+        /// that maximizes the total fee without exceeding the available blob capacity.
+        /// Uses a 1D knapsack dynamic programming approach to find the optimal selection.
+        /// The chosen transactions are appended to <paramref name="finalSelectedBlobTxs"/>.
+        /// </summary>
+        /// <param name="candidateTxs">A list of candidate blob transactions.</param>
+        /// <param name="leftoverCapacity">The maximum remaining blob capacity available.</param>
+        /// <param name="selectedBlobTxs">
+        /// A collection to which the chosen transactions will be added.
+        /// Existing entries remain untouched; chosen ones are appended at the end.
+        /// </param>
+        private static void ChooseBestBlobTransactions(
+            ArrayPoolList<Transaction> candidateTxs,
+            int leftoverCapacity,
+            ArrayPoolList<Transaction> selectedBlobTxs)
+        {
+            // dpFees[c] = the maximum total fee achievable with capacity
+            ulong[] dpFees = new ulong[leftoverCapacity + 1];
+
+            // choices[iTx, c] tracks whether the i-th transaction (1-based index) was picked 
+            // when building the solution for capacity c.
+            // 0 means "not picked", 1 means "picked".
+            int[,] choices = new int[candidateTxs.Count, leftoverCapacity + 1];
+
+            // Build up the DP table to find the maximum total fee for each capacity.
+            // Outer loop: go through each transaction (1-based index).
+            // Inner loop: iterate capacity in descending order to avoid overwriting data needed for the calculation.
+            for (int i = 0; i < candidateTxs.Count; i++)
+            {
+                Transaction tx = candidateTxs[i];
+                int blobCount = tx.GetBlobCount();
+                ulong feeValue = (ulong)tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit;
+
+                // Iterate backward from maxBlobCapacity down to blobCount 
+                // so we only compute for valid capacities that can fit this transaction.
+                for (int capacity = leftoverCapacity; capacity >= blobCount; capacity--)
+                {
+                    // If we can fit this item in capacity, see if it improves dpFees[capacity]
+                    ulong candidateFee = dpFees[capacity - blobCount] + feeValue;
+                    if (candidateFee > dpFees[capacity])
+                    {
+                        dpFees[capacity] = candidateFee;
+                        choices[i, capacity] = 1; // we picked item i-1
+                    }
+                }
+            }
+
+            int start = selectedBlobTxs.Count;
+            // Backtrack through 'choices' to find which transactions were actually chosen.
+            int remainingCapacity = leftoverCapacity;
+            for (int i = candidateTxs.Count - 1; i >= 0; i--)
+            {
+                if (choices[i, remainingCapacity] == 1)
+                {
+                    Transaction tx = candidateTxs[i];
+                    int blobCount = tx.GetBlobCount();
+                    selectedBlobTxs.Add(tx);
+                    remainingCapacity -= blobCount;
+                }
+            }
+
+            // The newly added items were added in reverse
+            // restore original picking order.
+            selectedBlobTxs.AsSpan()[start..].Reverse();
         }
 
         private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)

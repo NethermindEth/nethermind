@@ -183,14 +183,20 @@ public class PayloadPreparationService : IPayloadPreparationService
             {
                 bool supportsBlobs = _blockProducer.SupportsBlobs;
                 int blobs = 0;
+                int blobTx = 0;
                 if (supportsBlobs)
                 {
                     foreach (Transaction tx in block.Transactions)
                     {
-                        blobs += tx.BlobVersionedHashes?.Length ?? 0;
+                        int blobCount = tx.GetBlobCount();
+                        if (blobCount > 0)
+                        { 
+                            blobs += blobCount;
+                            blobTx++;
+                        }
                     }
                 }
-                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,9:N2} ms | {(supportsBlobs ? $"blobs {blobs,4:N0}" : "")}");
+                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,9:N2} ms | {(supportsBlobs ? $"blobs {blobs,5:N0} in {blobTx,5:N0} tx" : "")}");
             }
             else
             {
