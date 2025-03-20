@@ -212,66 +212,54 @@ namespace Nethermind.Consensus.Producers
             int leftoverCapacity,
             ArrayPoolList<Transaction> selectedBlobTxs)
         {
-            int size = leftoverCapacity + 1;
-            // The maximum total fee achievable with capacity
-            using ArrayPoolList<ulong> dpFeesPooled = new(capacity: size, count: size);
-            Span<ulong> dpFees = dpFeesPooled.AsSpan();
+            // dpFees[c] = the maximum total fee achievable with capacity
+            ulong[] dpFees = new ulong[leftoverCapacity + 1];
 
-            // Index of the transaction that gave an improved dpFees or -1 if none
-            using ArrayPoolList<int> picksPooled = new(capacity: size, count: size, fill: -1);
-            Span<int> picks = picksPooled.AsSpan();
+            // choices[iTx, c] tracks whether the i-th transaction (1-based index) was picked 
+            // when building the solution for capacity c.
+            // 0 means "not picked", 1 means "picked".
+            int[,] choices = new int[candidateTxs.Count, leftoverCapacity + 1];
 
             // Build up the DP table to find the maximum total fee for each capacity.
-            int txIndex = 0;
-            foreach (Transaction tx in candidateTxs.AsSpan())
+            // Outer loop: go through each transaction (1-based index).
+            // Inner loop: iterate capacity in descending order to avoid overwriting data needed for the calculation.
+            for (int i = 0; i < candidateTxs.Count; i++)
             {
+                Transaction tx = candidateTxs[i];
                 int blobCount = tx.GetBlobCount();
                 ulong feeValue = (ulong)tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit;
 
-                // Early prune: skip if it doesn't fit at all or has no fee benefit.
-                if (blobCount > leftoverCapacity || feeValue == 0)
+                // Iterate backward from maxBlobCapacity down to blobCount 
+                // so we only compute for valid capacities that can fit this transaction.
+                for (int capacity = leftoverCapacity; capacity >= blobCount; capacity--)
                 {
-                    txIndex++;
-                    continue;
-                }
-
-                // Iterate in descending order so we don't overwrite 
-                // dpFees entries we haven't yet used this iteration
-                for (int i = leftoverCapacity; i >= blobCount; i--)
-                {
-                    // If including txIndex yields a better fee total, update dpFees and picks.
-                    ulong candidateFee = dpFees[i - blobCount] + feeValue;
-                    if (candidateFee > dpFees[i])
+                    // If we can fit this item in capacity, see if it improves dpFees[capacity]
+                    ulong candidateFee = dpFees[capacity - blobCount] + feeValue;
+                    if (candidateFee > dpFees[capacity])
                     {
-                        dpFees[i] = candidateFee;
-                        picks[i] = txIndex;
+                        dpFees[capacity] = candidateFee;
+                        choices[i, capacity] = 1; // we picked item i-1
                     }
                 }
-                txIndex++;
             }
 
-            // Backtrack to see which transactions were chosen.
-            int addStart = selectedBlobTxs.Count;
-            // We add them in reverse order
-            // Walk downward in capacity, picking whichever transaction 'picks' says was used.
-            while (leftoverCapacity > 0)
+            int start = selectedBlobTxs.Count;
+            // Backtrack through 'choices' to find which transactions were actually chosen.
+            int remainingCapacity = leftoverCapacity;
+            for (int i = candidateTxs.Count - 1; i >= 0; i--)
             {
-                int i = picks[leftoverCapacity];
-                if (i == -1)
+                if (choices[i, remainingCapacity] == 1)
                 {
-                    // No transaction was used at this capacity => we can't backtrack further.
-                    break;
+                    Transaction tx = candidateTxs[i];
+                    int blobCount = tx.GetBlobCount();
+                    selectedBlobTxs.Add(tx);
+                    remainingCapacity -= blobCount;
                 }
-
-                Transaction chosenTx = candidateTxs[i];
-                selectedBlobTxs.Add(chosenTx);
-
-                leftoverCapacity -= chosenTx.GetBlobCount();
             }
 
             // The newly added items were added in reverse
             // restore original picking order.
-            selectedBlobTxs.AsSpan()[addStart..].Reverse();
+            selectedBlobTxs.AsSpan()[start..].Reverse();
         }
 
         private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
