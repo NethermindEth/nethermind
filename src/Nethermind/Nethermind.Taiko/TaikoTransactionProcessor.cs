@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Linq;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -45,7 +46,7 @@ public class TaikoTransactionProcessor(
 
             if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
             {
-                if (spec.IsOntakeEnabled)
+                if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
                 {
                     byte basefeeSharingPctg = TaikoHeaderHelper.DecodeOntakeExtraData(header) ?? 0;
 

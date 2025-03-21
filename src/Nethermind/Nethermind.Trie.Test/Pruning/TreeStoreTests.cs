@@ -255,7 +255,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 540560L : 610708L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 589124 : 659272L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -691,7 +691,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (fullTrieStore.BeginBlockCommit(1))
             {
-                using (ICommitter committer = fullTrieStore.GetTrieStore(Hash256.Zero).BeginCommit(storage1))
+                using (ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(storage1))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
@@ -895,7 +895,7 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage;
+        private long ExpectedPerNodeKeyMemorySize => (_scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
 
         [Test]
         public void After_commit_should_have_has_root()
@@ -1020,7 +1020,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 736 : 944);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 880 : 1088);
         }
 
         [Test]
@@ -1132,7 +1132,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(0);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 11776 : 15104);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 14080 : 17408);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);

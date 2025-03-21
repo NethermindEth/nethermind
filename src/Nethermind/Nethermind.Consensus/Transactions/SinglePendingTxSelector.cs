@@ -12,6 +12,8 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly ITxSource _innerSource;
 
+        public bool SupportsBlobs => _innerSource.SupportsBlobs;
+
         public SinglePendingTxSelector(ITxSource innerSource)
         {
             _innerSource = innerSource;

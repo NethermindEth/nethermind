@@ -10,4 +10,5 @@ public interface IReadOnlyTxProcessingScope : IDisposable
 {
     ITransactionProcessor TransactionProcessor { get; }
     IWorldState WorldState { get; }
+    void Reset() => Dispose();
 }

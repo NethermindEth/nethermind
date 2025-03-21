@@ -34,13 +34,9 @@ internal class TrieStoreDirtyNodesCache
     public long TotalMemory => _totalMemory;
     public long TotalDirtyMemory => _totalDirtyMemory;
 
-    // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
-    // If null, disable removing key.
-    private readonly ClockCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
-
     public readonly long KeyMemoryUsage;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, int trackedPastKeyCount, bool storeByHash, ILogger logger)
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
@@ -60,10 +56,9 @@ internal class TrieStoreDirtyNodesCache
         }
         KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
-        if (trackedPastKeyCount > 0 && !storeByHash)
-        {
-            _pastPathHash = new(trackedPastKeyCount, concurrencyLevel);
-        }
+        // Overhead for each key in concurrent dictionary. The key is stored in a "node" for the hashtable.
+        // <object header> + <value ref> + <hashcode> + <next node ref>
+        KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
     public void SaveInCache(in Key key, TrieNode node)
@@ -111,7 +106,7 @@ internal class TrieStoreDirtyNodesCache
 
             // we returning a copy to avoid multithreaded access
             trieNode = new TrieNode(NodeType.Unknown, key.Keccak, trieNode.FullRlp);
-            trieNode.ResolveNode(_trieStore.GetTrieStore(key.AddressAsHash256), key.Path);
+            trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
             trieNode.Keccak = key.Keccak;
 
             Metrics.LoadedFromCacheNodesCount++;
@@ -230,7 +225,6 @@ internal class TrieStoreDirtyNodesCache
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
         INodeStorage? nodeStorage = null)
     {
-        bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
         long totalMemory = 0;
         long dirtyMemory = 0;
         long totalNode = 0;
@@ -253,7 +247,7 @@ internal class TrieStoreDirtyNodesCache
                         {
                             if (CanDelete(key.Address, key.Path, key.Keccak, lastPersistedHash))
                             {
-                                Delete(key, tinyKey, writeBatcher);
+                                Delete(key, writeBatcher);
                                 continue;
                             }
                         }
@@ -267,16 +261,11 @@ internal class TrieStoreDirtyNodesCache
                         {
                             if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 
-                            if (shouldTrackPersistedNode)
-                            {
-                                TrackPersistedNode(key, node);
-                            }
-
                             Hash256? keccak = node.Keccak;
                             if (keccak is null)
                             {
                                 TreePath path2 = key.Path;
-                                keccak = node.GenerateKey(_trieStore.GetTrieStore(key.AddressAsHash256), ref path2, isRoot: true);
+                                keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
                                 if (keccak != key.Keccak)
                                 {
                                     throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
@@ -296,11 +285,6 @@ internal class TrieStoreDirtyNodesCache
                             if (node.Keccak is null)
                             {
                                 throw new InvalidOperationException($"Removed {node}");
-                            }
-
-                            if (shouldTrackPersistedNode)
-                            {
-                                TrackPersistedNode(key, node);
                             }
 
                             Metrics.PrunedPersistedNodesCount++;
@@ -343,55 +327,16 @@ internal class TrieStoreDirtyNodesCache
         _dirtyCount = dirtyNode;
         _totalMemory = totalMemory;
         _totalDirtyMemory = dirtyMemory;
-
-        void TrackPersistedNode(in Key key, TrieNode node)
-        {
-            if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
-            TinyTreePath treePath = new(key.Path);
-            // This persisted node is being removed from cache. Keep it in mind in case of an update to the same
-            // path.
-            _pastPathHash.Set(new(key.Address, in treePath), key.Keccak);
-        }
     }
 
-    public void RemovePastKeys(ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes, INodeStorage nodeStorage)
-    {
-        using (AcquireMapLock())
-        {
-            using ConcurrentNodeWriteBatcher writeBatcher = new ConcurrentNodeWriteBatcher(nodeStorage, 256);
-            try
-            {
-                foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
-                {
-                    HashAndTinyPath key = keyValuePair.Key;
-                    if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
-                    {
-                        TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
-                        if (CanDelete(key.addr, fullPath, prevHash, keyValuePair.Value))
-                        {
-                            Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
-                            Key fullKey = new Key(address, fullPath, prevHash.ToCommitment());
-                            Delete(fullKey, key, writeBatcher);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Failed to remove past keys. {ex}");
-            }
-        }
-    }
-
-    private void Delete(Key key, HashAndTinyPath tinyKey, INodeStorage.IWriteBatch writeBatch)
+    private void Delete(Key key, INodeStorage.IWriteBatch writeBatch)
     {
         Metrics.RemovedNodeCount++;
         Remove(key);
-        _pastPathHash?.Delete(tinyKey);
-        writeBatch.Set(key.AddressAsHash256, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
+        writeBatch.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
-    bool CanDelete(in ValueHash256 address, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+    bool CanDelete(in Hash256? address, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
     {
         // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
         if (currentlyPersistingKeccak is null) return false;
@@ -431,7 +376,7 @@ internal class TrieStoreDirtyNodesCache
                 if (cancellationToken.IsCancellationRequested) return persistedCount;
                 Key key = kv.Key;
                 TreePath path = key.Path;
-                Hash256? address = key.AddressAsHash256;
+                Hash256? address = key.Address;
                 kv.Value.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
             }
         }
@@ -451,11 +396,6 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
-    public void ClearLivePruningTracking()
-    {
-        _pastPathHash?.Clear();
-    }
-
     public void Clear()
     {
         _byHashObjectCache.NoResizeClear();
@@ -467,20 +407,13 @@ internal class TrieStoreDirtyNodesCache
     internal readonly struct Key : IEquatable<Key>
     {
         internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
-        public readonly ValueHash256 Address;
-        public Hash256? AddressAsHash256 => Address == default ? null : Address.ToCommitment();
+        public readonly Hash256? Address;
         // Direct member rather than property for large struct, so members are called directly,
         // rather than struct copy through the property. Could also return a ref through property.
         public readonly TreePath Path;
         public Hash256 Keccak { get; }
 
         public Key(Hash256? address, in TreePath path, Hash256 keccak)
-        {
-            Address = address ?? default;
-            Path = path;
-            Keccak = keccak;
-        }
-        public Key(in ValueHash256 address, in TreePath path, Hash256 keccak)
         {
             Address = address;
             Path = path;
@@ -502,6 +435,11 @@ internal class TrieStoreDirtyNodesCache
         public override bool Equals(object? obj)
         {
             return obj is Key other && Equals(other);
+        }
+
+        public override string ToString()
+        {
+            return $"A:{Address} P:{Path} K:{Keccak}";
         }
     }
 

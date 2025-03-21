@@ -27,8 +27,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        TimeSpan? improvementDelay = null)
         : base(
             blockProducer,
             blockImprovementContextFactory,
@@ -36,15 +35,14 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             logManager,
             timePerSlot,
             slotsPerOldPayloadCleanup,
-            improvementDelay,
-            minTimeForProduction)
+            improvementDelay)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
         {
@@ -81,7 +79,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         }
         else
         {
-            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees);
         }
     }
 }

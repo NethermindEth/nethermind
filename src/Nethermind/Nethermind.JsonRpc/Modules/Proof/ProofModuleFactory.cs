@@ -16,30 +16,21 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
-    public class ProofModuleFactory : ModuleFactoryBase<IProofRpcModule>
+    public class ProofModuleFactory(
+        IWorldStateManager worldStateManager,
+        IBlockTree blockTree,
+        IBlockPreprocessorStep recoveryStep,
+        IReceiptFinder receiptFinder,
+        ISpecProvider specProvider,
+        ILogManager logManager)
+        : ModuleFactoryBase<IProofRpcModule>
     {
-        private readonly IBlockPreprocessorStep _recoveryStep;
-        private readonly IReceiptFinder _receiptFinder;
-        protected readonly ISpecProvider SpecProvider;
-        protected readonly ILogManager LogManager;
-        protected readonly IReadOnlyBlockTree BlockTree;
-        protected readonly IWorldStateManager WorldStateManager;
-
-        public ProofModuleFactory(
-            IWorldStateManager worldStateManager,
-            IBlockTree blockTree,
-            IBlockPreprocessorStep recoveryStep,
-            IReceiptFinder receiptFinder,
-            ISpecProvider specProvider,
-            ILogManager logManager)
-        {
-            WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
-            LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            BlockTree = blockTree.AsReadOnly();
-        }
+        private readonly IBlockPreprocessorStep _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
+        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+        protected readonly ISpecProvider SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        protected readonly ILogManager LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly IReadOnlyBlockTree BlockTree = blockTree.AsReadOnly();
+        protected readonly IWorldStateManager WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
 
         protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv()
         {
@@ -72,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 traceExecutor);
 
             Tracer tracer = new(
-                scope.WorldState,
+                scope,
                 chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 
