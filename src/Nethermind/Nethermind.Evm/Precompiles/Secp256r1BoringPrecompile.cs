@@ -67,10 +67,6 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe partial int ECDSA_verify(int type, byte* digest, nuint digest_len, byte* sig, nuint sig_len, IntPtr key);
 
-    [LibraryImport(LibraryName, EntryPoint = "ECDSA_sign")]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static unsafe partial int ECDSA_sign(int type, byte* digest, nuint digestLen, byte* signature, ref int sigLen, IntPtr ecKey);
-
     private const int NID_X9_62_prime256v1 = 415;
 
     public static unsafe IntPtr NewECKey(byte* x, byte* y)
@@ -141,17 +137,6 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
 
             if (key == IntPtr.Zero)
                 return (null, true);
-
-            // var testSignature = new byte[200];
-            // fixed (byte* sig = testSignature)
-            // {
-            //     var sigLen = testSignature.Length;
-            //     if (ECDSA_sign(0, ptr, 32, sig, ref sigLen, key) == 0)
-            //     {
-            //         throw new Exception("ECDSA_sign failed");
-            //     }
-            //     var sigStr = Convert.ToHexString(testSignature[..sigLen]);
-            // }
 
             var signature = EncodeSignature(input.Span[32..64], input.Span[64..96]);
             fixed (byte* sig = signature)
