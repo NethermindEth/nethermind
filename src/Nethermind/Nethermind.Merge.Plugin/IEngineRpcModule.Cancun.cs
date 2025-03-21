@@ -37,4 +37,10 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes);
+
+    [JsonRpcMethod(
+        Description = "Returns requested blobs and proofs.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> engine_getBlobsV2(byte[][] blobVersionedHashes);
 }

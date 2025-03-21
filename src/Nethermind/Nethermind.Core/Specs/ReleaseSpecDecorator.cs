@@ -136,4 +136,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
+
+    public bool IsEip7594Enabled => spec.IsEip7594Enabled;
 }

@@ -16,6 +16,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3;
     private readonly IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> _getBlobsHandler;
+    private readonly IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2?>> _getBlobsHandlerV2;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Cancun);
@@ -28,4 +29,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public async Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
         await _getBlobsHandler.HandleAsync(blobVersionedHashes);
+
+    public async Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> engine_getBlobsV2(byte[][] blobVersionedHashes) =>
+        await _getBlobsHandlerV2.HandleAsync(blobVersionedHashes);
 }

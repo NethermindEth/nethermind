@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,10 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
+                            if (wrapper is not { Version: ShardBlobNetworkWrapper.ProofVersion.V1 })
+                            {
+                                break;
+                            }
                             blob = wrapper.Blobs[indexOfBlob];
                             proof = wrapper.Proofs[indexOfBlob];
                             return true;
@@ -50,6 +55,42 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
         blob = default;
         proof = default;
+        return false;
+    }
+
+    public bool TryGetBlobAndProofV2(byte[] requestedBlobVersionedHash,
+        [NotNullWhen(true)] out byte[]? blob,
+        [NotNullWhen(true)] out byte[][]? cellProofs)
+    {
+        using var lockRelease = Lock.Acquire();
+
+        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
+        {
+            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
+            {
+                if (TryGetValueNonLocked(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
+                {
+                    for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+                    {
+                        if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
+                            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                        {
+                            if (wrapper is not { Version: ShardBlobNetworkWrapper.ProofVersion.V2 })
+                            {
+                                break;
+                            }
+
+                            blob = wrapper.Blobs[indexOfBlob];
+                            cellProofs = wrapper.Proofs.Slice(Ckzg.Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.Ckzg.CellsPerExtBlob);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        blob = default;
+        cellProofs = default;
         return false;
     }
 

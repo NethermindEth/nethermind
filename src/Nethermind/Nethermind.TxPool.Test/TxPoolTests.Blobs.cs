@@ -684,7 +684,8 @@ namespace Nethermind.TxPool.Test
                         wrapper.Blobs[0],
                         wrapper.Commitments[0],
                         wrapper.Proofs[0],
-                        blobTxs[i].BlobVersionedHashes[0].AsSpan());
+                        blobTxs[i].BlobVersionedHashes[0].AsSpan(),
+                        1);
                 }
 
                 blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();
@@ -809,7 +810,7 @@ namespace Nethermind.TxPool.Test
             }
 
             ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(Ckzg.Ckzg.CellsPerExtBlob);
-            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).BlobProofs.Length.Should().Be(1);
+            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(1);
         }
 
         private Transaction GetTx(PrivateKey sender)

@@ -184,7 +184,8 @@ namespace Nethermind.Core.Test.Builders
                 ShardBlobNetworkWrapper wrapper = new(
                     blobs: new byte[blobCount][],
                     commitments: new byte[blobCount][],
-                    proofs: new byte[blobCount][]
+                    proofs: new byte[blobCount][],
+                    ShardBlobNetworkWrapper.ProofVersion.V1
                     );
 
                 if (!KzgPolynomialCommitments.IsInitialized)

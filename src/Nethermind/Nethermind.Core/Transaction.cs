@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using static Nethermind.Core.ShardBlobNetworkWrapper;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 namespace Nethermind.Core
@@ -342,17 +343,19 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions
     /// </summary>
-    public class ShardBlobNetworkWrapper
+    public class ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
     {
-        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
-        {
-            Blobs = blobs;
-            Commitments = commitments;
-            Proofs = proofs;
-        }
+        public ProofVersion Version { get; set; } = version;
+        public byte[][] Commitments { get; set; } = commitments;
+        public byte[][] Blobs { get; set; } = blobs;
+        public byte[][] Proofs { get; set; } = proofs;
+        //public byte[][] CellProofs { get; set; } = proofs;
 
-        public byte[][] Commitments { get; set; }
-        public byte[][] Blobs { get; set; }
-        public byte[][] Proofs { get; set; }
+
+        public enum ProofVersion : byte
+        {
+            V1 = 0x01,
+            V2 = 0x02,
+        }
     }
 }

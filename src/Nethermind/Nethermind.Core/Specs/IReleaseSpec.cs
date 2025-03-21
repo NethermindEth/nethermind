@@ -432,6 +432,7 @@ namespace Nethermind.Core.Specs
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+        public bool IsEip7594Enabled { get; }
     }
 }
 
@@ -439,5 +440,5 @@ namespace Nethermind.Core.Specs
 
 public static class C
 {
-    public static int GetBlobProofVersion(this IReleaseSpec spec) => spec.IsEip4844Enabled ? 2 : 1;
+    public static int GetBlobProofVersion(this IReleaseSpec spec) => spec.IsEip7594Enabled ? 2 : 1;
 }

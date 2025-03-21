@@ -271,7 +271,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             }
 
             // TODO: remove after Fusaka
-            SetBlobProofsAndCellProofs(transaction);
+            SetBlobProofsAndCellProofs(transaction, releaseSpec);
 
             return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                    || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
@@ -281,19 +281,12 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     }
 
     // TODO: remove after Fusaka
-    private void SetBlobProofsAndCellProofs(Transaction blobTx)
+    private void SetBlobProofsAndCellProofs(Transaction blobTx, IReleaseSpec releaseSpec)
     {
         ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
-        // checking if incoming tx has old-style blob proofs
-        if (networkWrapper.Proofs.Length == networkWrapper.Blobs.Length)
+        if (networkWrapper.Version == ShardBlobNetworkWrapper.ProofVersion.V1 && releaseSpec.IsEip7594Enabled)
         {
-            // setting old-style blob proofs as BlobProofs and setting cell proofs as Proofs
-            networkWrapper.Proofs = networkWrapper.Proofs;
-        }
-        else
-        {
-            // it means that incoming tx already has cell proofs. Calculating and setting old-style blob proofs
             networkWrapper.Proofs = GetBlobProofs(networkWrapper.Blobs).ToArray();
         }
     }
