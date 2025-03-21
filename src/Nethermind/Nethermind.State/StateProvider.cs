@@ -31,7 +31,7 @@ namespace Nethermind.State
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
         private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
-        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
+        private readonly ISingleBlockProcessingCache<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -47,7 +47,7 @@ namespace Nethermind.State
             IKeyValueStore codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
+            ISingleBlockProcessingCache<AddressAsKey, Account>? preBlockCache = null,
             bool populatePreBlockCache = true)
         {
             _preBlockCache = preBlockCache;

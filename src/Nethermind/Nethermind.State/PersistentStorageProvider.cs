@@ -44,7 +44,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
     private readonly Dictionary<AddressAsKey, DefaultableDictionary<byte[]>> _blockCache = new(4_096);
-    private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
+    private readonly ISingleBlockProcessingCache<StorageCell, byte[]>? _preBlockCache;
     private readonly Func<StorageCell, byte[]> _loadFromTree;
 
     /// <summary>
@@ -55,7 +55,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         StateProvider stateProvider,
         ILogManager logManager,
         IStorageTreeFactory? storageTreeFactory,
-        ConcurrentDictionary<StorageCell, byte[]>? preBlockCache,
+        ISingleBlockProcessingCache<StorageCell, byte[]>? preBlockCache,
         bool populatePreBlockCache) : base(logManager)
     {
         _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
