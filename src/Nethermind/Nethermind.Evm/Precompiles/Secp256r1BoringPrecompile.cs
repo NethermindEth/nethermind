@@ -142,6 +142,7 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
             fixed (byte* sig = signature)
             {
                 var res = ECDSA_verify(0, ptr, 32, sig, (UIntPtr)signature.Length, key);
+                EC_KEY_free(key);
                 isValid = res != 0;
             }
         }
