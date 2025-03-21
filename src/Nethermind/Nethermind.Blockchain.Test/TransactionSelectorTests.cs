@@ -25,6 +25,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -197,27 +198,32 @@ namespace Nethermind.Blockchain.Test
                 higherPriorityTransactionsSelected.BaseFee = 1;
                 higherPriorityTransactionsSelected.Transactions = new List<Transaction>
                 {
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(20).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0],[0],[0],[0],[0]]).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(16).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(18).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressD).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(17).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressE).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(19).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyE).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressF).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(20).WithMaxFeePerBlobGas(1).WithGasLimit(20).WithBlobVersionedHashes([[0]]).SignedAndResolved(TestItem.PrivateKeyF).TestObject,
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 20, blobCount: 5),
+                    CreateBlobTransaction(TestItem.AddressB, TestItem.PrivateKeyB, maxFee: 16, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressC, TestItem.PrivateKeyC, maxFee: 18, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressD, TestItem.PrivateKeyD, maxFee: 17, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressE, TestItem.PrivateKeyE, maxFee: 19, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressF, TestItem.PrivateKeyF, maxFee: 20, blobCount: 1),
                 };
 
                 higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
                     .OrderByDescending(t => t.MaxFeePerGas).Take(5));
+
+                var rnd = new Random(12345);
                 for (int i = 0; i < 20; i++)
                 {
-                    yield return new TestCaseData(higherPriorityTransactionsSelected).SetName($"Correct priority blobs {i:00}");
-                    higherPriorityTransactionsSelected.Transactions.Shuffle(Random.Shared);
+                    yield return new TestCaseData(higherPriorityTransactionsSelected)
+                        .SetName($"Correct priority blobs - Order {i:00}");
+                    higherPriorityTransactionsSelected.Transactions.Shuffle(rnd);
+                }
+
+                static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
+                {
+                    return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(1)
+                        .WithMaxFeePerGas(maxFee).WithMaxFeePerBlobGas(1).WithGasLimit(20)
+                        .WithBlobVersionedHashes([.. Enumerable.Range(0, blobCount).Select(i => new byte[1] { 0 })])
+                        .SignedAndResolved(key).TestObject;
                 }
             }
         }
