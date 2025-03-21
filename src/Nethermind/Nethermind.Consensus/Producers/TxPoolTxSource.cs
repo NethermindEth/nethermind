@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             int selectedTransactions = 0;
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)spec.MaxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
+            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs);
 
             foreach (Transaction tx in transactions)
             {
@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int maxBlobsPerBlock = (int)spec.MaxBlobCount;
             int countOfRemainingBlobs = 0;
@@ -190,7 +190,7 @@ namespace Nethermind.Consensus.Producers
                 else
                 {
                     // Are more blobs than spaces, select optimal set to include
-                    ChooseBestBlobTransactions(candidates, leftoverCapacity, selectedBlobTxs);
+                    ChooseBestBlobTransactions(candidates, leftoverCapacity, baseFee, selectedBlobTxs);
                 }
             }
         }
@@ -210,6 +210,7 @@ namespace Nethermind.Consensus.Producers
         private static void ChooseBestBlobTransactions(
             ArrayPoolList<Transaction> candidateTxs,
             int leftoverCapacity,
+            UInt256 baseFee,
             ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int size = leftoverCapacity + 1;
@@ -225,9 +226,13 @@ namespace Nethermind.Consensus.Producers
             for (int i = 0; i < candidateTxs.Count; i++)
             {
                 Transaction tx = candidateTxs[i];
+                if (!tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
+                {
+                    continue;
+                }
                 int blobCount = tx.GetBlobCount();
                 // Use actual gas used when available as the tx may be using over-estimated gaslimit
-                ulong feeValue = (ulong)tx.MaxPriorityFeePerGas * (ulong)(tx.SpentGas ?? tx.GasLimit);
+                ulong feeValue = (ulong)premiumPerGas * (ulong)(tx.SpentGas ?? tx.GasLimit);
 
                 // Iterate backward from maxBlobCapacity down to blobCount 
                 // so we only compute for valid capacities that can fit this transaction.
