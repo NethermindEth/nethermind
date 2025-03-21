@@ -52,7 +52,8 @@ public class FullPruningDiskTest
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
-            bool addBlockOnStart = true
+            bool addBlockOnStart = true,
+            long slotTime = 1
         )
         {
             TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
@@ -60,7 +61,7 @@ public class FullPruningDiskTest
             DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
             _chainEstimations.StateSize.Returns((long?)null);
 
-            NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
             MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
 
             FullPruner = new FullTestPruner(

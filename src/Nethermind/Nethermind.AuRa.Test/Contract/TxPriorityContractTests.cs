@@ -354,7 +354,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() =>
                 LocalDataSource.GetMinGasPricesLocalDataSource();
 
-            protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+            protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
             {
                 TempFile = TempPath.GetTempFile();
                 LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
@@ -363,7 +363,7 @@ namespace Nethermind.AuRa.Test.Contract
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
 
-                return base.Build(specProvider, initialValues);
+                return base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
             }
 
             public override void Dispose()

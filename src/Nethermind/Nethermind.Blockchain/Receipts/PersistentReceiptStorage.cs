@@ -16,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-#pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -80,7 +79,6 @@ namespace Nethermind.Blockchain.Receipts
             // Dont block main loop
             Task.Run(() =>
             {
-
                 Block newMain = e.Block;
 
                 // Delete old tx index
@@ -89,7 +87,7 @@ namespace Nethermind.Blockchain.Receipts
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
-                        RemoveBlockTx(newOldTx);
+                        RemoveReceipts(newOldTx);
                     }
                 }
             });
@@ -184,9 +182,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
-#pragma warning disable CS9080
                 receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
-#pragma warning restore CS9080
 
                 return receiptsData;
             }
@@ -200,9 +196,7 @@ namespace Nethermind.Blockchain.Receipts
                     receiptsData = _blocksDb.GetSpan(blockHash);
                 }
 
-#pragma warning disable CS9080
                 return receiptsData;
-#pragma warning restore CS9080
             }
         }
 
@@ -335,6 +329,15 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(block, null);
         }
 
+        public void RemoveReceipts(Block block)
+        {
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            foreach (Transaction tx in block.Transactions)
+            {
+                writeBatch[tx.Hash.Bytes] = null;
+            }
+        }
+
         private void EnsureCanonical(Block block, long? lastBlockNumber)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
@@ -348,7 +351,8 @@ namespace Nethermind.Blockchain.Receipts
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
                 foreach (Transaction tx in block.Transactions)
                 {
-                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    tx.Hash ??= tx.CalculateHash();
+                    Hash256 hash = tx.Hash;
                     writeBatch[hash.Bytes] = blockNumber;
                 }
             }
@@ -357,18 +361,10 @@ namespace Nethermind.Blockchain.Receipts
                 byte[] blockHash = block.Hash.BytesToArray();
                 foreach (Transaction tx in block.Transactions)
                 {
-                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    tx.Hash ??= tx.CalculateHash();
+                    Hash256 hash = tx.Hash;
                     writeBatch[hash.Bytes] = blockHash;
                 }
-            }
-        }
-
-        private void RemoveBlockTx(Block block)
-        {
-            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-            foreach (Transaction tx in block.Transactions)
-            {
-                writeBatch[tx.Hash.Bytes] = null;
             }
         }
     }

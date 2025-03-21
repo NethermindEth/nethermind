@@ -11,10 +11,10 @@ namespace Nethermind.Core.Test.Blockchain;
 /// </summary>
 public class BasicTestBlockchain : TestBlockchain
 {
-    public static async Task<BasicTestBlockchain> Create()
+    public static async Task<BasicTestBlockchain> Create(long slotTime = 1)
     {
-        BasicTestBlockchain chain = new BasicTestBlockchain();
-        await chain.Build();
+        BasicTestBlockchain chain = new();
+        await chain.Build(slotTime: slotTime);
         return chain;
     }
 
@@ -24,7 +24,7 @@ public class BasicTestBlockchain : TestBlockchain
     {
         for (int i = 0; i < numOfBlocks; i++)
         {
-            await AddBlock(Core.Test.Builders.Build.A.Transaction.WithTo(TestItem.AddressD)
+            await AddBlock(Builders.Build.A.Transaction.WithTo(TestItem.AddressD)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
         }
     }

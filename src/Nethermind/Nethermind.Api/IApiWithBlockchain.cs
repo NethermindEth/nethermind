@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -88,6 +89,7 @@ namespace Nethermind.Api
 
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
+        IHistoryPruner? HistoryPruner { get; set; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }

@@ -57,6 +57,7 @@ using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Era1;
 using Nethermind.Facade.Find;
+using Nethermind.Blockchain.HistoryPruning;
 
 namespace Nethermind.Api
 {
@@ -137,6 +138,7 @@ namespace Nethermind.Api
         public IUnclesValidator? UnclesValidator { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
+        public IHistoryPruner? HistoryPruner { get; set; }
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();

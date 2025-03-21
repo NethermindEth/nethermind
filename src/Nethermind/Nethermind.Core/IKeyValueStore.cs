@@ -19,14 +19,14 @@ namespace Nethermind.Core
     {
         byte[]? this[ReadOnlySpan<byte> key] => Get(key);
 
-        byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
+        byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
         /// Return span. Must call `DangerousReleaseMemory` or there can be some leak.
         /// </summary>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
+        Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         bool KeyExists(ReadOnlySpan<byte> key)
         {

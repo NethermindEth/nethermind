@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -27,7 +26,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
@@ -181,10 +179,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
-            bool addBlockOnStart = true)
+            bool addBlockOnStart = true,
+            long slotTime = 1)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues, addBlockOnStart);
+            await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
