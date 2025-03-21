@@ -64,39 +64,48 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
 
     private const int NID_X9_62_prime256v1 = 415;
 
-    public static unsafe nint NewECKey(byte* x, byte* y)
+    /// <returns>
+    /// New key pointer if successfully created,
+    /// <c>0</c> if (x,y) coordinates are not on the curve,
+    /// and negative value in case of other errors.
+    /// </returns>
+    private static unsafe nint TryCreateECKey(byte* x, byte* y)
     {
-        var key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-        if (key == 0)
-            throw new Exception("EC_KEY_new_by_curve_name failed");
+        nint key = 0, bx = 0, by = 0, pt = 0;
+        var success = false;
 
-        var group = EC_KEY_get0_group(key);
-        var pt = EC_POINT_new(group);
-        if (pt == 0)
+        try
         {
-            EC_KEY_free(key);
-            throw new Exception("EC_POINT_new failed");
+            key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+            if (key == 0)
+                return -1;
+
+            var group = EC_KEY_get0_group(key);
+
+            pt = EC_POINT_new(group);
+            if (pt == 0)
+                return -2;
+
+            bx = BN_bin2bn(x, 32, 0);
+            by = BN_bin2bn(y, 32, 0);
+            if (bx == 0 || by == 0) return -3;
+
+            if (EC_POINT_set_affine_coordinates_GFp(group, pt, bx, by, 0) == 0)
+                return 0;
+
+            if (EC_KEY_set_public_key(key, pt) == 0)
+                return -4;
+
+            success = true;
+            return key;
         }
-
-        var bx = BN_bin2bn(x, 32, 0);
-        var by = BN_bin2bn(y, 32, 0);
-
-        var ok = bx != 0 && by != 0 &&
-            EC_POINT_set_affine_coordinates_GFp(group, pt, bx, by, 0) != 0 &&
-            EC_KEY_set_public_key(key, pt) != 0;
-
-        if (bx != 0) BN_free(bx);
-        if (by != 0) BN_free(by);
-        EC_POINT_free(pt);
-
-        if (!ok)
+        finally
         {
-            EC_KEY_free(key);
-            //throw new Exception("EC_POINT_set_affine_coordinates_GFp failed");
-            return 0;
+            if (!success && key != 0) EC_KEY_free(key);
+            if (bx != 0) BN_free(bx);
+            if (by != 0) BN_free(by);
+            if (pt != 0) EC_POINT_free(pt);
         }
-
-        return key;
     }
 
     // Encodes signature (r,s) in DER format
@@ -154,15 +163,15 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
             fixed (byte* ptr = input.Span)
             fixed (byte* sig = signature)
             {
-                key = NewECKey(ptr + 96, ptr + 128);
-                if (key == 0) return (null, true);
+                key = TryCreateECKey(ptr + 96, ptr + 128);
+                if (key <= 0) return (null, true);
 
                 isValid = ECDSA_verify(0, ptr, 32, sig, signature.Length, key) != 0;
             }
         }
         finally
         {
-            if (key != 0) EC_KEY_free(key);
+            if (key > 0) EC_KEY_free(key);
         }
 
         Metrics.Secp256r1Precompile++;
