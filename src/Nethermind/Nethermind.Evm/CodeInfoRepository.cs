@@ -57,9 +57,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
-        _localPrecompiles = precompileCache is null
-            ? _precompiles
-            : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+        _localPrecompiles = _precompiles;
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
