@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Optimism.CL.Derivation;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 
@@ -16,5 +17,5 @@ public interface IL1Bridge
     Task<L1Block> GetBlockByHash(Hash256 blockHash);
     Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash);
     // For testing purposes. Will trigger L1 traversal
-    void SetCurrentL1Head(ulong blockNumber, Hash256 blockHash);
+    void Reset(L1BlockInfo highestFinalizedOrigin);
 }

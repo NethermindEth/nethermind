@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
+using Nethermind.Optimism.CL.Derivation;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 
@@ -58,7 +59,7 @@ public class EthereumL1Bridge : IL1Bridge
             int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHeadNumber - 1;
             if (numberOfMissingBlocks > 64)
             {
-                _logger.Error(
+                if (_logger.IsInfo) _logger.Info(
                     $"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHeadNumber}, new head number: {newHeadNumber}");
                 // Try to build up instead of rolling back
                 // At this point we already got blocks up until _currentHead.
@@ -102,7 +103,7 @@ public class EthereumL1Bridge : IL1Bridge
         {
             ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
 
-            if (_logger.IsInfo) _logger.Info($"New L1 Block. Number {block.Number}");
+            if (_logger.IsTrace) _logger.Trace($"New L1 Block. Number {block.Number}");
             int startingBlobIndex = 0;
             // Filter batch submitter transaction
             foreach (L1Transaction transaction in block.Transactions!)
@@ -323,12 +324,12 @@ public class EthereumL1Bridge : IL1Bridge
         return result.Value;
     }
 
-    public void SetCurrentL1Head(ulong blockNumber, Hash256 blockHash)
+    public void Reset(L1BlockInfo highestFinalizedOrigin)
     {
-        _logger.Error($"Setting current L1 head. {blockNumber}({blockHash})");
-        _currentFinalizedNumber = blockNumber;
-        _currentHeadNumber = blockNumber;
-        _currentHeadHash = blockHash;
-        _currentFinalizedHash = blockHash;
+        if (_logger.IsInfo) _logger.Info($"Resetting L1 bridge. New head number: {highestFinalizedOrigin.Number}, new head hash {highestFinalizedOrigin.BlockHash}");
+        _currentFinalizedNumber = highestFinalizedOrigin.Number;
+        _currentHeadNumber = highestFinalizedOrigin.Number;
+        _currentHeadHash = highestFinalizedOrigin.BlockHash;
+        _currentFinalizedHash = highestFinalizedOrigin.BlockHash;
     }
 }
