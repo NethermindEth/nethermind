@@ -446,14 +446,13 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _peerRefresher = peerRefresher;
             _api.DisposeStack.Push(peerRefresher);
             _ = new
-            PivotUpdator(
+            StartingSyncPivotUpdater(
                 _api.BlockTree,
                 _api.SyncModeSelector,
                 _api.SyncPeerPool!,
                 _syncConfig,
                 _blockCacheService,
                 _beaconSync,
-                _api.DbProvider.MetadataDb,
                 _api.LogManager);
         }
 
