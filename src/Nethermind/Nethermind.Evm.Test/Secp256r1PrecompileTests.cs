@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
@@ -21,6 +20,13 @@ namespace Nethermind.Evm.Test
         }
 
         public static IPrecompile Precompile() => Secp256r1BoringPrecompile.Instance;
+
+        public Secp256r1PrecompileTests()
+        {
+            Precompile().Run(Convert.FromHexString(
+                "4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e"
+            ), Prague.Instance);
+        }
 
         [Test]
         [TestCase(
@@ -86,25 +92,23 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        [TestCaseSource(nameof(TestSource))]
-        public void TestSpeed(TestCase testCase)
+        [Test]
+        public void ProfileTest()
         {
-            Console.SetError(TestContext.Out);
-            Console.SetOut(TestContext.Out);
-            Console.WriteLine(testCase.Name);
+            var rng = RandomNumberGenerator.Create();
+            var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
-            var watch = new Stopwatch();
-            foreach (var precompile in new IPrecompile[]
-                     {
-                         Secp256r1Precompile.Instance,
-                         Secp256r1RustPrecompile.Instance, Secp256r1FastCryptoPrecompile.Instance,
-                         Secp256r1GoPrecompile.Instance, Secp256r1GoBoringPrecompile.Instance,
-                         Secp256r1BoringPrecompile.Instance
-                     })
+            for (var i = 0; i < 1000; i++)
             {
-                watch.Restart();
-                precompile.Run(testCase.Input, Prague.Instance);
-                Console.WriteLine($"{precompile}: {watch.Elapsed.TotalMicroseconds}ms");
+                var hash = new byte[32];
+                rng.GetBytes(hash);
+
+                ECParameters pub = ecdsa.ExportParameters(false);
+                byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                (byte[] x, byte[] y) = (pub.Q.X, pub.Q.Y);
+                byte[] input = [.. hash, .. sig, .. x, .. y];
+
+                Precompile().Run(input, Prague.Instance);
             }
         }
     }
