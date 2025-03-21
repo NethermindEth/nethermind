@@ -104,23 +104,41 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
         return key;
     }
 
-    private static ReadOnlySpan<byte> RemoveLeadingZeroes(ReadOnlySpan<byte> span)
+    // Encodes signature (r,s) in DER format
+    // AsnWriter allocates too much
+    private static ReadOnlySpan<byte> EncodeSignature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s, Span<byte> buffer)
     {
-        var i = 0;
-        while (span[i] == 0 && i < span.Length - 1) i++;
-        return span[i..];
+        buffer[0] = 0x30; // SEQUENCE OF
+
+        var index = 2;
+        index += EncodeUnsignedInteger(r, buffer[index..]);
+        index += EncodeUnsignedInteger(s, buffer[index..]);
+
+        buffer[1] = (byte)(index - 2);  // SEQUENCE OF length
+
+        return buffer[..index];
     }
 
-    private static byte[] EncodeSignature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s)
+    private static int EncodeUnsignedInteger(ReadOnlySpan<byte> value, Span<byte> buffer)
     {
-        var writer = new AsnWriter(AsnEncodingRules.DER);
-        writer.PushSequence();
+        // Skip zeroes
+        var valIndex = 0;
+        while (value[valIndex] == 0 && valIndex < value.Length - 1) valIndex++;
+        value = value[valIndex..];
 
-        writer.WriteIntegerUnsigned(RemoveLeadingZeroes(r));
-        writer.WriteIntegerUnsigned(RemoveLeadingZeroes(s));
+        buffer[0] = 0x02; // INTEGER;
+        buffer[1] = (byte)value.Length; // INTEGER length
+        var buffIndex = 2;
 
-        writer.PopSequence();
-        return writer.Encode();
+        // Add leading zero if number is negative
+        if ((value[0] & 0x80) != 0)
+        {
+            buffer[1]++;
+            buffer[buffIndex++] = 0;
+        }
+
+        value.CopyTo(buffer[buffIndex..]);
+        return buffIndex + value.Length;
     }
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
@@ -131,25 +149,29 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
             return (null, true);
 
         bool isValid;
-        fixed (byte* ptr = input.Span)
+        var key = IntPtr.Zero;
+
+        try
         {
-            var key = NewECKey(ptr + 96, ptr + 128);
+            Span<byte> buffer = stackalloc byte[2 + 2 * (2 + 32 + 1)]; // Max possible size when DER-encoded
+            var signature = EncodeSignature(input.Span[32..64], input.Span[64..96], buffer);
 
-            if (key == IntPtr.Zero)
-                return (null, true);
-
-            var signature = EncodeSignature(input.Span[32..64], input.Span[64..96]);
+            fixed (byte* ptr = input.Span)
             fixed (byte* sig = signature)
             {
-                var res = ECDSA_verify(0, ptr, 32, sig, (UIntPtr)signature.Length, key);
-                EC_KEY_free(key);
-                isValid = res != 0;
+                key = NewECKey(ptr + 96, ptr + 128);
+                if (key == IntPtr.Zero) return (null, true);
+
+                isValid = ECDSA_verify(0, ptr, 32, sig, (UIntPtr)signature.Length, key) != 0;
             }
+        }
+        finally
+        {
+            if (key != IntPtr.Zero) EC_KEY_free(key);
         }
 
         Metrics.Secp256r1Precompile++;
 
-        //Console.WriteLine($"{GetType().Name}.{nameof(Run)}({Convert.ToHexString(input.Span)}) -> {isValid}");
         return (isValid ? ValidResult : null, true);
     }
 }
