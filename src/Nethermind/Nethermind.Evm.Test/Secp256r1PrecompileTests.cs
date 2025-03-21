@@ -99,12 +99,33 @@ namespace Nethermind.Evm.Test
                          Secp256r1Precompile.Instance,
                          Secp256r1RustPrecompile.Instance, Secp256r1FastCryptoPrecompile.Instance,
                          Secp256r1GoPrecompile.Instance, Secp256r1GoBoringPrecompile.Instance,
-                         Secp256r1BoringPrecompile.Instance
+                         Secp256r1BoringPrecompile.Instance, Secp256r1BoringOptimizedPrecompile.Instance
                      })
             {
                 watch.Restart();
                 precompile.Run(testCase.Input, Prague.Instance);
                 Console.WriteLine($"{precompile}: {watch.Elapsed.TotalMicroseconds}ms");
+            }
+        }
+
+        [Test]
+        public void ProfileTest()
+        {
+            var rng = RandomNumberGenerator.Create();
+            var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+            for (var i = 0; i < 1000; i++)
+            {
+                var hash = new byte[32];
+                rng.GetBytes(hash);
+
+                ECParameters pub = ecdsa.ExportParameters(false);
+                byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                (byte[] x, byte[] y) = (pub.Q.X, pub.Q.Y);
+                byte[] input = [.. hash, .. sig, .. x, .. y];
+
+                Secp256r1BoringPrecompile.Instance.Run(input, Prague.Instance);
+                Secp256r1BoringOptimizedPrecompile.Instance.Run(input, Prague.Instance);
             }
         }
     }
