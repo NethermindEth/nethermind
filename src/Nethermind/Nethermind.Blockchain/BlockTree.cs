@@ -933,7 +933,7 @@ namespace Nethermind.Blockchain
 
             if (newPivotHeader is null)
             {
-                if (_logger.IsWarn) _logger.Warn("Did not update sync pivot because unable to find finalized header");
+                if (_logger.IsTrace) _logger.Trace("Did not update sync pivot because unable to find finalized header");
                 return;
             }
 
@@ -946,7 +946,7 @@ namespace Nethermind.Blockchain
 
             if (bestPersisted < newPivotHeader.Number)
             {
-                if (_logger.IsWarn) _logger.Warn("Best persisted is lower than sync pivot. Using best persisted stata as pivot.");
+                if (_logger.IsTrace) _logger.Trace("Best persisted is lower than sync pivot. Using best persisted stata as pivot.");
                 newPivotHeader = FindHeader(bestPersisted.Value, BlockTreeLookupOptions.RequireCanonical);
             }
             if (newPivotHeader is null) return;
@@ -954,7 +954,6 @@ namespace Nethermind.Blockchain
             if (SyncPivot.BlockNumber >= newPivotHeader.Number) return;
 
             (long BlockNumber, Hash256 BlockHash) newSyncPivot = (newPivotHeader.Number, newPivotHeader.Hash);
-            if (_logger.IsWarn) _logger.Warn($"Sync pivot updated from {SyncPivot} to {newSyncPivot}");
             SyncPivot = newSyncPivot;
         }
 
@@ -1008,7 +1007,7 @@ namespace Nethermind.Blockchain
             get => _syncPivot;
             set
             {
-                _logger.Warn($"Sync pivot updated to {value}");
+                if (_logger.IsTrace) _logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
                 RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
                 pivotData.Encode(value.BlockNumber);
