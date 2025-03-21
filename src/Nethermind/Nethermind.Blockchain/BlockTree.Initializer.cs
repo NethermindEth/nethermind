@@ -370,13 +370,13 @@ public partial class BlockTree
 
     private void LoadSyncPivot()
     {
-        if (!_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotData))
+        byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
+        if (pivotFromDb is null)
         {
             _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
-        byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
         RlpStream pivotStream = new(pivotFromDb!);
         long updatedPivotBlockNumber = pivotStream.DecodeLong();
         Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
