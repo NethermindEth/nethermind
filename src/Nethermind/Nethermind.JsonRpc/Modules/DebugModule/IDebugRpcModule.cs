@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
@@ -115,4 +116,8 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
+
+    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
+    ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 }

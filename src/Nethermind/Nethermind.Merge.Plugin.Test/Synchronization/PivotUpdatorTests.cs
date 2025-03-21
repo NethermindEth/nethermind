@@ -59,12 +59,17 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
 
-            _blockTree = Substitute.For<IBlockTree>();
+            _metadataDb = new MemDb();
+            _blockTree = Build.A.BlockTree()
+                .WithMetadataDb(_metadataDb)
+                .TestObject;
             _syncModeSelector = Substitute.For<ISyncModeSelector>();
-            _syncConfig = Substitute.For<ISyncConfig>();
+            _syncConfig = new SyncConfig()
+            {
+                MaxAttemptsToUpdatePivot = 1
+            };
             _blockCacheService = new BlockCacheService();
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-            _metadataDb = new MemDb();
         }
 
         [Test]

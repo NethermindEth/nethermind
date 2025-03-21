@@ -175,6 +175,7 @@ public class PayloadPreparationService : IPayloadPreparationService
     private void LogProductionResult(Task<Block?> t, Block currentBestBlock, UInt256 blockFees, TimeSpan time)
     {
         const long weiToEth = 1_000_000_000_000_000_000;
+        const long weiToGwei = 1_000_000_000;
 
         if (t.IsCompletedSuccessfully)
         {
@@ -183,14 +184,23 @@ public class PayloadPreparationService : IPayloadPreparationService
             {
                 bool supportsBlobs = _blockProducer.SupportsBlobs;
                 int blobs = 0;
+                int blobTx = 0;
+                UInt256 gas = 0;
                 if (supportsBlobs)
                 {
                     foreach (Transaction tx in block.Transactions)
                     {
-                        blobs += tx.BlobVersionedHashes?.Length ?? 0;
+                        int blobCount = tx.GetBlobCount();
+                        if (blobCount > 0)
+                        {
+                            blobs += blobCount;
+                            blobTx++;
+                            tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
+                            gas += (ulong)tx.SpentGas * premiumPerGas;
+                        }
                     }
                 }
-                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,9:N2} ms | {(supportsBlobs ? $"blobs {blobs,4:N0}" : "")}");
+                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {(supportsBlobs ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
             }
             else
             {
