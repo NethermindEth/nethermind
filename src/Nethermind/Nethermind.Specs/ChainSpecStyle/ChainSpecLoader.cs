@@ -178,8 +178,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
-
-            OntakeTransition = chainSpecJson.Params.OntakeTransition,
             BlobSchedule = new Dictionary<string, ChainSpecBlobCountJson>(chainSpecJson.Params.BlobSchedule, StringComparer.OrdinalIgnoreCase),
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,

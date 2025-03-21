@@ -37,6 +37,7 @@ using Autofac;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -327,7 +328,13 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ILogManager logManager,
         ChainSpec chainSpec)
     {
-        return new TaikoNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+        TaikoNethermindApi nethermindApi = new(configProvider, jsonSerializer, logManager, chainSpec);
+
+        TaikoChainSpecEngineParameters chainSpecParameters = chainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<TaikoChainSpecEngineParameters>();
+
+        nethermindApi.SpecProvider ??= new TaikoChainSpecBasedSpecProvider(chainSpec, chainSpecParameters, logManager);
+        return nethermindApi;
     }
 
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)

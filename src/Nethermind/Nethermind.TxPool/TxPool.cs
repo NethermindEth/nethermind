@@ -109,9 +109,9 @@ namespace Nethermind.TxPool
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
-            AddNodeInfoEntryForTxPool();
 
             // Capture closures once rather than per invocation
             _updateBucket = UpdateBucket;
@@ -341,10 +341,15 @@ namespace Nethermind.TxPool
                     eip1559Txs++;
                 }
 
+                if (blockTx.SupportsAuthorizationList)
+                {
+                    eip7702Txs++;
+                }
+
                 if (blockTx.SupportsBlobs)
                 {
                     blobTxs++;
-                    blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
+                    blobs += blockTx.GetBlobCount();
 
                     if (_blobReorgsSupportEnabled)
                     {
@@ -423,6 +428,7 @@ namespace Nethermind.TxPool
         }
 
         public bool AcceptTxWhenNotSynced { get; set; }
+        public bool SupportsBlobs { get; }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
@@ -463,7 +469,6 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
-                    AddPendingDelegations(tx);
                     // Clear proper snapshot
                     if (tx.SupportsBlobs)
                         _blobTransactionSnapshot = null;
@@ -564,6 +569,8 @@ namespace Nethermind.TxPool
                 _hashCache.DeleteFromLongTerm(removed.Hash!);
                 Metrics.PendingTransactionsEvicted++;
             }
+
+            AddPendingDelegations(tx);
 
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
@@ -825,16 +832,6 @@ namespace Nethermind.TxPool
             _transactions.Removed -= OnRemovedTx;
         }
 
-        /// <summary>
-        /// This method is used just for nice logging features in the console.
-        /// </summary>
-        private static void AddNodeInfoEntryForTxPool()
-        {
-            ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256AsKey, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
-                    .PadLeft(8));
-        }
-
         private void TimerOnElapsed(object? sender, EventArgs e)
         {
             WriteTxPoolReport(_logger);
@@ -972,12 +969,12 @@ Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
 Ratios in last block:
 * Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
-* Eip7702 Transactions: {Metrics.Eip7702TransactionsInBlock,24:P5}
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 Amounts:
 * Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
+* Eip7702 txs:          {Metrics.Eip7702TransactionsInBlock,24:N0}
 ------------------------------------------------
 Db usage:
 * BlobDb writes:        {Db.Metrics.DbWrites.GetValueOrDefault("BlobTransactions"),24:N0}

@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/op-mainnet.json.zst",
     "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
     "BaseDbPath": "nethermind_db/op-mainnet",
-    "LogFileName": "op-mainnet.logs.txt"
+    "LogFileName": "op-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -15,8 +15,8 @@
     "FastSyncCatchUpHeightDelta": "10000000000",
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063,
-    "PivotNumber": 132930000,
-    "PivotHash": "0x4756dc4ce918bbfac7e1c0c6e0e9212084c7e1925dfe7671e83c75db3b60d37e"
+    "PivotNumber": 133230000,
+    "PivotHash": "0x931c8bc1e7bff14559216c39f273016101f6e5372632370f4fcab4e8b2537043"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"

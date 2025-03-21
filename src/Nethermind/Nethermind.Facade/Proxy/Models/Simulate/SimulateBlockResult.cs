@@ -8,8 +8,11 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
-public class SimulateBlockResult(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
+public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
-    public List<SimulateCallResult> Calls { get; set; } = new();
+    public IReadOnlyCollection<TTrace> Calls { get; set; } = [];
+    public bool ShouldSerializeCalls() => typeof(TTrace) == typeof(SimulateCallResult);
+    public IReadOnlyCollection<TTrace> Traces => Calls;
+    public bool ShouldSerializeTraces() => !ShouldSerializeCalls();
 }

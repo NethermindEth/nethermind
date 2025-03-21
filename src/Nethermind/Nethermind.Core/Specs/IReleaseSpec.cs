@@ -330,9 +330,6 @@ namespace Nethermind.Core.Specs
         /// OP Holocene
         bool IsOpHoloceneEnabled { get; }
 
-        /// Taiko Ontake
-        bool IsOntakeEnabled { get; }
-
         /// <summary>
         ///  Increase call data cost
         /// </summary>

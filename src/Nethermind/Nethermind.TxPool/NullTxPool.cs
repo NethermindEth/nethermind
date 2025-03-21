@@ -12,6 +12,7 @@ namespace Nethermind.TxPool
 {
     public class NullTxPool : ITxPool
     {
+        public bool SupportsBlobs => false;
         private NullTxPool() { }
 
         public static NullTxPool Instance { get; } = new();
