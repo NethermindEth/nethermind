@@ -148,7 +148,7 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> input, IReleaseSpec releaseSpec)
     {
-        Console.WriteLine($"{GetType().Name}.{nameof(Run)}({Convert.ToHexString(input.Span)})");
+        //Console.WriteLine($"{GetType().Name}.{nameof(Run)}({Convert.ToHexString(input.Span)})");
 
         if (input.Length != 160)
             return (null, true);
@@ -177,7 +177,7 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
 
         Metrics.Secp256r1Precompile++;
 
-        Console.WriteLine($"{GetType().Name}.{nameof(Run)}({Convert.ToHexString(input.Span)}) -> {isValid}");
+        //Console.WriteLine($"{GetType().Name}.{nameof(Run)}({Convert.ToHexString(input.Span)}) -> {isValid}");
         return (isValid ? ValidResult : null, true);
     }
 }
