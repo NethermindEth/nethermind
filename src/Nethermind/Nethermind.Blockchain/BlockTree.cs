@@ -921,8 +921,6 @@ namespace Nethermind.Blockchain
 
         private void TryUpdateSyncPivot()
         {
-            if (Head is null) return;
-
             BlockHeader? newPivotHeader = null;
             if (FinalizedHash is not null)
             {
@@ -930,7 +928,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                newPivotHeader = FindHeader(Math.Max(0, Head.Number - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
+                newPivotHeader = FindHeader(Math.Max(0, (Head?.Number ?? 0) - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
             }
 
             if (newPivotHeader is null)
@@ -1603,6 +1601,7 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+            TryUpdateSyncPivot();
         }
     }
 }
