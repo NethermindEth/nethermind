@@ -196,7 +196,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                             blobs += blobCount;
                             blobTx++;
                             tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                            gas += (ulong)(tx.SpentGas ?? 0) * premiumPerGas;
+                            gas += (ulong)tx.SpentGas * premiumPerGas;
                         }
                     }
                 }

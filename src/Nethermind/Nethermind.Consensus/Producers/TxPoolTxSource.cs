@@ -232,7 +232,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 int blobCount = tx.GetBlobCount();
                 // Use actual gas used when available as the tx may be using over-estimated gaslimit
-                ulong feeValue = (ulong)premiumPerGas * (ulong)(tx.SpentGas ?? tx.GasLimit);
+                ulong feeValue = (ulong)premiumPerGas * (ulong)(tx.SpentGas);
 
                 // Iterate backward from maxBlobCapacity down to blobCount 
                 // so we only compute for valid capacities that can fit this transaction.
