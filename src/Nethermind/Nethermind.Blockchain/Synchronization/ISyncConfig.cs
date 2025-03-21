@@ -62,7 +62,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
     Hash256? PivotHashParsed => PivotHash is null ? null : new Hash256(Bytes.FromHexString(PivotHash));
 
-    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
+    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "-1")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
     [ConfigItem(Description = $$"""
