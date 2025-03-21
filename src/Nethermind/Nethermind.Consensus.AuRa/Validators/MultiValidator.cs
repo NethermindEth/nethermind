@@ -26,6 +26,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         private AuRaParameters.Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;
 
+        public bool SupportsBlobs => false;
+
         public MultiValidator(
             AuRaParameters.Validator validator,
             IAuRaValidatorFactory validatorFactory,

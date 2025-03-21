@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
-        private readonly ITxSource _txSource;
+        protected readonly ITxSource _txSource;
         protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
