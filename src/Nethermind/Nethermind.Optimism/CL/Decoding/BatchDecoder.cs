@@ -139,28 +139,29 @@ public class BatchDecoder
         byte firstByte = data[0];
         int n = 0;
         byte type;
-        RlpStream rlpStream;
+
+        Rlp.ValueDecoderContext decoder;
         if (firstByte <= 0x7F)
         {
             // Tx with type
             n++;
             type = firstByte;
-            rlpStream = new(data[1..].ToArray());
+            decoder = new(data[1..]);
         }
         else
         {
             // Legacy tx
             type = 0;
-            rlpStream = new(data.ToArray());
+            decoder = new(data);
         }
 
-        if (!rlpStream.IsSequenceNext())
+        if (!decoder.IsSequenceNext())
         {
             throw new FormatException("Invalid tx data.");
         }
         else
         {
-            n += rlpStream.PeekNextRlpLength();
+            n += decoder.PeekNextRlpLength();
             return (data.TakeAndMove(n).ToArray(), (TxType)type);
         }
     }

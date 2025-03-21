@@ -12,28 +12,25 @@ public class ChannelStorage : IChannelStorage
     private readonly ConcurrentDictionary<UInt128, IFrameQueue> _frameQueues = new();
     private readonly ConcurrentQueue<BatchV1[]> _batches = new();
 
-    public void ConsumeFrames(Frame[] frames)
+    public void ConsumeFrame(Frame frame)
     {
-        foreach (Frame frame in frames)
+        if (!_frameQueues.ContainsKey(frame.ChannelId))
         {
-            if (!_frameQueues.ContainsKey(frame.ChannelId))
-            {
-                _frameQueues.TryAdd(frame.ChannelId, new FrameQueue());
-            }
+            _frameQueues.TryAdd(frame.ChannelId, new FrameQueue());
+        }
 
-            IFrameQueue queue = _frameQueues[frame.ChannelId];
-            queue.ConsumeFrame(frame);
-            if (queue.IsReady())
-            {
-                byte[] decompressed = ChannelDecoder.DecodeChannel(queue.BuildChannel());
-                // TODO: avoid rlpStream here
-                RlpStream rlpStream = new(decompressed);
-                ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
-                BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
-                _batches.Enqueue(batches);
-                // TODO: we need to remove frames and do not allow to reuse channelId at the same time. Check the specs!
-                //_frameQueues.Remove(frames[0].ChannelId);
-            }
+        IFrameQueue queue = _frameQueues[frame.ChannelId];
+        queue.ConsumeFrame(frame);
+        if (queue.IsReady())
+        {
+            byte[] decompressed = ChannelDecoder.DecodeChannel(queue.BuildChannel());
+            // TODO: avoid rlpStream here
+            RlpStream rlpStream = new(decompressed);
+            ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
+            BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
+            _batches.Enqueue(batches);
+            // TODO: we need to remove frames and do not allow to reuse channelId at the same time. Check the specs!
+            //_frameQueues.Remove(frames[0].ChannelId);
         }
     }
 
