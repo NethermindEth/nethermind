@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Formats.Asn1;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -25,80 +24,76 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
 
     [LibraryImport(LibraryName, EntryPoint = "EC_KEY_new_by_curve_name")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial IntPtr EC_KEY_new_by_curve_name(int nid);
+    public static partial nint EC_KEY_new_by_curve_name(int nid);
 
     [LibraryImport(LibraryName, EntryPoint = "EC_KEY_free")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial void EC_KEY_free(IntPtr key);
+    public static partial void EC_KEY_free(nint key);
 
     [LibraryImport(LibraryName, EntryPoint = "EC_KEY_get0_group")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial IntPtr EC_KEY_get0_group(IntPtr key);
+    public static partial nint EC_KEY_get0_group(nint key);
 
     [LibraryImport(LibraryName, EntryPoint = "EC_POINT_new")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial IntPtr EC_POINT_new(IntPtr group);
+    public static partial nint EC_POINT_new(nint group);
 
     [LibraryImport(LibraryName, EntryPoint = "EC_POINT_free")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial void EC_POINT_free(IntPtr point);
-
-    [LibraryImport(LibraryName, EntryPoint = "BN_new")]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial IntPtr BN_new();
+    public static partial void EC_POINT_free(nint point);
 
     [LibraryImport(LibraryName, EntryPoint = "BN_free")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial void BN_free(IntPtr bn);
+    public static partial void BN_free(nint bn);
 
     [LibraryImport(LibraryName, EntryPoint = "BN_bin2bn")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static unsafe partial IntPtr BN_bin2bn(byte* bin, int len, IntPtr ret);
+    public static unsafe partial nint BN_bin2bn(byte* bin, int len, nint ret);
 
     [LibraryImport(LibraryName, EntryPoint = "EC_POINT_set_affine_coordinates_GFp")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int EC_POINT_set_affine_coordinates_GFp(IntPtr group, IntPtr point, IntPtr x, IntPtr y, IntPtr ctx);
+    public static partial int EC_POINT_set_affine_coordinates_GFp(nint group, nint point, nint x, nint y, nint ctx);
 
     [LibraryImport(LibraryName, EntryPoint = "EC_KEY_set_public_key")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int EC_KEY_set_public_key(IntPtr key, IntPtr point);
+    public static partial int EC_KEY_set_public_key(nint key, nint point);
 
     [LibraryImport(LibraryName, EntryPoint = "ECDSA_verify")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe partial int ECDSA_verify(int type, byte* digest, nuint digest_len, byte* sig, nuint sig_len, IntPtr key);
+    private static unsafe partial int ECDSA_verify(int type, byte* digest, nint digest_len, byte* sig, nint sig_len, nint key);
 
     private const int NID_X9_62_prime256v1 = 415;
 
-    public static unsafe IntPtr NewECKey(byte* x, byte* y)
+    public static unsafe nint NewECKey(byte* x, byte* y)
     {
-        IntPtr key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-        if (key == IntPtr.Zero)
+        var key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+        if (key == 0)
             throw new Exception("EC_KEY_new_by_curve_name failed");
 
-        IntPtr group = EC_KEY_get0_group(key);
-        IntPtr pt = EC_POINT_new(group);
-        if (pt == IntPtr.Zero)
+        var group = EC_KEY_get0_group(key);
+        var pt = EC_POINT_new(group);
+        if (pt == 0)
         {
             EC_KEY_free(key);
             throw new Exception("EC_POINT_new failed");
         }
 
-        IntPtr bx = BN_bin2bn(x, 32, IntPtr.Zero);
-        IntPtr by = BN_bin2bn(y, 32, IntPtr.Zero);
+        var bx = BN_bin2bn(x, 32, 0);
+        var by = BN_bin2bn(y, 32, 0);
 
-        var ok = bx != IntPtr.Zero && by != IntPtr.Zero &&
-            EC_POINT_set_affine_coordinates_GFp(group, pt, bx, by, IntPtr.Zero) != 0 &&
+        var ok = bx != 0 && by != 0 &&
+            EC_POINT_set_affine_coordinates_GFp(group, pt, bx, by, 0) != 0 &&
             EC_KEY_set_public_key(key, pt) != 0;
 
-        if (bx != IntPtr.Zero) BN_free(bx);
-        if (by != IntPtr.Zero) BN_free(by);
+        if (bx != 0) BN_free(bx);
+        if (by != 0) BN_free(by);
         EC_POINT_free(pt);
 
         if (!ok)
         {
             EC_KEY_free(key);
             //throw new Exception("EC_POINT_set_affine_coordinates_GFp failed");
-            return IntPtr.Zero;
+            return 0;
         }
 
         return key;
@@ -149,7 +144,7 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
             return (null, true);
 
         bool isValid;
-        var key = IntPtr.Zero;
+        nint key = 0;
 
         try
         {
@@ -160,14 +155,14 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
             fixed (byte* sig = signature)
             {
                 key = NewECKey(ptr + 96, ptr + 128);
-                if (key == IntPtr.Zero) return (null, true);
+                if (key == 0) return (null, true);
 
-                isValid = ECDSA_verify(0, ptr, 32, sig, (UIntPtr)signature.Length, key) != 0;
+                isValid = ECDSA_verify(0, ptr, 32, sig, signature.Length, key) != 0;
             }
         }
         finally
         {
-            if (key != IntPtr.Zero) EC_KEY_free(key);
+            if (key != 0) EC_KEY_free(key);
         }
 
         Metrics.Secp256r1Precompile++;
