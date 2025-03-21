@@ -160,6 +160,18 @@ namespace Nethermind.Core.Crypto
             _hash256 = new ValueHash256(bytes);
         }
 
+        public static Hash256 FromBytesWithPadding(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != 32)
+            {
+                Span<byte> bytes32 = stackalloc byte[32];
+                bytes.CopyTo(bytes32.Slice(32 - bytes.Length));
+                return new Hash256(bytes32);
+            }
+
+            return new Hash256(bytes);
+        }
+
         public override string ToString() => ToString(true);
 
         public string ToShortString(bool withZeroX = true)

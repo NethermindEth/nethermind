@@ -13,7 +13,7 @@ public static class BlobGasCalculator
         (ulong)blobCount * Eip4844Constants.GasPerBlob;
 
     public static ulong CalculateBlobGas(Transaction transaction) =>
-        CalculateBlobGas(transaction.BlobVersionedHashes?.Length ?? 0);
+        CalculateBlobGas(transaction.GetBlobCount());
 
     public static ulong CalculateBlobGas(Transaction[] transactions)
     {
