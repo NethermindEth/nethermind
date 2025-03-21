@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _pivotNumber = config.PivotNumberParsed;
+            _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
