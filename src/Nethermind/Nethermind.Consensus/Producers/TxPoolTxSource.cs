@@ -376,7 +376,19 @@ namespace Nethermind.Consensus.Producers
             public bool this[int i]
             {
                 get => (_array[i >> BitShiftPerInt64] & (1UL << i)) != 0;
-                set => _array[(uint)i >> BitShiftPerInt64] |= (1UL << i);
+                set
+                {
+                    ref ulong element = ref _array[(uint)i >> BitShiftPerInt64];
+                    ulong selector = (1UL << i);
+                    if (value)
+                    {
+                        element |= selector;
+                    }
+                    else
+                    {
+                        element &= ~selector;
+                    }
+                }
             }
 
             public void Dispose() => ArrayPool<ulong>.Shared.Return(_array);
