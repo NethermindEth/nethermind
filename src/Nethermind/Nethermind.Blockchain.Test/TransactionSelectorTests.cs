@@ -196,15 +196,17 @@ namespace Nethermind.Blockchain.Test
                 accounts[TestItem.AddressF] = (1000, 0);
                 higherPriorityTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 higherPriorityTransactionsSelected.BaseFee = 1;
-                higherPriorityTransactionsSelected.Transactions = new List<Transaction>
-                {
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 20, blobCount: 5),
+                higherPriorityTransactionsSelected.Transactions =
+                [
+                    // This tx should be rejected in preference for the other 5 even though its fee is much higher
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 89, blobCount: 5),
+                    // As total of other 5 below is higher
                     CreateBlobTransaction(TestItem.AddressB, TestItem.PrivateKeyB, maxFee: 16, blobCount: 1),
                     CreateBlobTransaction(TestItem.AddressC, TestItem.PrivateKeyC, maxFee: 18, blobCount: 1),
                     CreateBlobTransaction(TestItem.AddressD, TestItem.PrivateKeyD, maxFee: 17, blobCount: 1),
                     CreateBlobTransaction(TestItem.AddressE, TestItem.PrivateKeyE, maxFee: 19, blobCount: 1),
                     CreateBlobTransaction(TestItem.AddressF, TestItem.PrivateKeyF, maxFee: 20, blobCount: 1),
-                };
+                ];
 
                 higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
@@ -215,6 +217,8 @@ namespace Nethermind.Blockchain.Test
                 {
                     yield return new TestCaseData(higherPriorityTransactionsSelected)
                         .SetName($"Correct priority blobs - Order {i:00}");
+                    // The selection should be the same regardless of the order of the txs
+                    // as the packing rules should win
                     higherPriorityTransactionsSelected.Transactions.Shuffle(rnd);
                 }
 
