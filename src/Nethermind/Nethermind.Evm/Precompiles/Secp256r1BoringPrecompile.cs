@@ -88,7 +88,8 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
 
             bx = BN_bin2bn(x, 32, 0);
             by = BN_bin2bn(y, 32, 0);
-            if (bx == 0 || by == 0) return -3;
+            if (bx == 0 || by == 0)
+                return -3;
 
             if (EC_POINT_set_affine_coordinates_GFp(group, pt, bx, by, 0) == 0)
                 return 0;
