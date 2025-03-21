@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int maxBlobsPerBlock = (int)spec.MaxBlobCount;
             int countOfRemainingBlobs = 0;
@@ -210,7 +210,7 @@ namespace Nethermind.Consensus.Producers
         private static void ChooseBestBlobTransactions(
             ArrayPoolList<Transaction> candidateTxs,
             int leftoverCapacity,
-            UInt256 baseFee,
+            in UInt256 baseFee,
             ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int size = leftoverCapacity + 1;
