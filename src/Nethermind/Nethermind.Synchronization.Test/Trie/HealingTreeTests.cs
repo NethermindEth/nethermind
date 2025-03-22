@@ -88,7 +88,7 @@ public class HealingTreeTests
         Func<ITrieStore, IPathRecovery, T> createTrie)
         where T : PatriciaTree
     {
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IFullTrieStore trieStore = Substitute.For<IFullTrieStore>();
         trieStore.FindCachedOrUnknown(address, TreePath.Empty, _key).Returns(
             k => throw new MissingTrieNodeException("", null, path, _key),
             k => new TrieNode(NodeType.Leaf) { Key = Nibbles.BytesToNibbleBytes(fullPath.Bytes)[path.Length..] });

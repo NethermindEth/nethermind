@@ -8,17 +8,20 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
+    public interface IFullTrieStore : ITrieStore
+    {
+        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+        // Used for serving via hash
+        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+    }
+
     /// <summary>
     /// Full traditional trie store.
     /// </summary>
     public interface ITrieStore : IDisposable, ITrieStoreInternal
     {
         IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-        // Used for serving via hash
-        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
         bool HasRoot(Hash256 stateRoot);
 

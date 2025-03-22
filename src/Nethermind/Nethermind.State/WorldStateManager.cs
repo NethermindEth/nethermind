@@ -16,7 +16,7 @@ namespace Nethermind.State;
 public class WorldStateManager : IWorldStateManager
 {
     private readonly IWorldState _worldState;
-    private readonly ITrieStore _trieStore;
+    private readonly IFullTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
@@ -26,7 +26,7 @@ public class WorldStateManager : IWorldStateManager
 
     public WorldStateManager(
         IWorldState worldState,
-        ITrieStore trieStore,
+        IFullTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
         ILastNStateRootTracker lastNStateRootTracker = null
@@ -47,7 +47,7 @@ public class WorldStateManager : IWorldStateManager
 
     public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
     {
-        ITrieStore trieStore = new TrieStore(dbProvider.StateDb, logManager);
+        TrieStore trieStore = new TrieStore(dbProvider.StateDb, logManager);
         IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);

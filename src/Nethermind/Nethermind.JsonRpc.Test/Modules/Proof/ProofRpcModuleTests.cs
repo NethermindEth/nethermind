@@ -57,7 +57,7 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
+        TrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
         WorldState worldState = new WorldState(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
         worldState.CreateAccount(TestItem.AddressA, 100000);
         worldState.Commit(London.Instance);
