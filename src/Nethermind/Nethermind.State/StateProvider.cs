@@ -821,7 +821,7 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resizeCollections = true)
+        public void Reset(bool resetBlockCache = true)
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _blockCache.Clear();
@@ -840,11 +840,6 @@ namespace Nethermind.State
             }
 
             _tree.Commit();
-        }
-
-        public static void CommitBranch()
-        {
-            // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
         // used in EthereumTests

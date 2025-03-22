@@ -104,11 +104,11 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections = false)
+        public void Reset(bool resetBlockCache = true)
         {
-            _stateProvider.Reset(resizeCollections);
-            _persistentStorageProvider.Reset(resizeCollections);
-            _transientStorageProvider.Reset(resizeCollections);
+            _stateProvider.Reset(resetBlockCache);
+            _persistentStorageProvider.Reset(resetBlockCache);
+            _transientStorageProvider.Reset(resetBlockCache);
         }
         public void WarmUp(AccessList? accessList)
         {
