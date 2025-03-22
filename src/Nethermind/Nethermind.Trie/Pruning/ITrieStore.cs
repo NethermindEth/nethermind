@@ -8,27 +8,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface IFullTrieStore : ITrieStore
-    {
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-        // Used for serving via hash
-        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
-
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
-        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
-
-        TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
-        byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
-    }
-
     /// <summary>
-    /// Full traditional trie store.
+    /// Full traditional trie store that is used by WorldState.
     /// </summary>
-    public interface ITrieStore : IDisposable, ITrieStoreInternal
+    public interface ITrieStore : IDisposable
     {
         bool HasRoot(Hash256 stateRoot);
 
@@ -45,12 +28,17 @@ namespace Nethermind.Trie.Pruning
     }
 
     /// <summary>
-    /// These methods are to be used by ScopedTrieStore.
-    /// It should be considered internal to TrieStore.
-    /// It should not be used directly, nor intercepted.
+    /// This is the main trie store. There should be only one instance per nethermind. Used by WorldStateManager.
+    /// Probably should be separate from ITrieStore.
     /// </summary>
-    public interface ITrieStoreInternal
+    public interface IFullTrieStore : ITrieStore
     {
+        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+        // Used for serving via hash
+        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
     }
 
     public interface IPruningTrieStore
