@@ -30,7 +30,7 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
-        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, Account> _blockChanges = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
@@ -647,7 +647,7 @@ namespace Nethermind.State
         private Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
+            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
                 account = !_populatePreBlockCache ?
@@ -690,7 +690,7 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
-            _blockCache[address] = account;
+            _blockChanges[address] = account;
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
@@ -805,7 +805,7 @@ namespace Nethermind.State
 
         public ArrayPoolList<AddressAsKey>? ChangedAddresses()
         {
-            int count = _blockCache.Count;
+            int count = _blockChanges.Count;
             if (count == 0)
             {
                 return null;
@@ -813,7 +813,7 @@ namespace Nethermind.State
             else
             {
                 ArrayPoolList<AddressAsKey> addresses = new(count);
-                foreach (AddressAsKey address in _blockCache.Keys)
+                foreach (AddressAsKey address in _blockChanges.Keys)
                 {
                     addresses.Add(address);
                 }
@@ -821,10 +821,10 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resizeCollections = true)
+        public void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-            _blockCache.Clear();
+            _blockChanges.Clear();
             _intraTxCache.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
@@ -840,11 +840,6 @@ namespace Nethermind.State
             }
 
             _tree.Commit();
-        }
-
-        public static void CommitBranch()
-        {
-            // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
         // used in EthereumTests

@@ -425,8 +425,8 @@ public class StorageProviderTests
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
-        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
-        provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
     }
 
     private class Context
