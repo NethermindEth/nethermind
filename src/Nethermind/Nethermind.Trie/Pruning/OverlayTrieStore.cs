@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -13,11 +11,6 @@ public class OverlayTrieStore(ITrieStore baseTrieStore, IReadOnlyTrieStore store
     public void Dispose()
     {
         baseTrieStore.Dispose();
-    }
-
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
-    {
-        return baseTrieStore.BeginCommit(address, root, writeFlags);
     }
 
     public bool HasRoot(Hash256 stateRoot)

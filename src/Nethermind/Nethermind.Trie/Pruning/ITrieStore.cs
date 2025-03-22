@@ -22,6 +22,7 @@ namespace Nethermind.Trie.Pruning
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
     }
 
     /// <summary>
@@ -50,7 +51,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStoreInternal
     {
-        ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
     }
 
     public interface IPruningTrieStore

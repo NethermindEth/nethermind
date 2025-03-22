@@ -27,11 +27,6 @@ public class PreCachedTrieStore : ITrieStore
         _inner.Dispose();
     }
 
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
-    {
-        return _inner.BeginCommit(address, root, writeFlags);
-    }
-
     public IBlockCommitter BeginBlockCommit(long blockNumber)
     {
         return _inner.BeginBlockCommit(blockNumber);
@@ -45,7 +40,6 @@ public class PreCachedTrieStore : ITrieStore
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }
 
-// TODO: Clean this up
 public class PreCachedScopedTrieStore : IScopedTrieStore
 {
     private readonly IScopedTrieStore _baseStore;
