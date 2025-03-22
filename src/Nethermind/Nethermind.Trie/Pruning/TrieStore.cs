@@ -43,15 +43,18 @@ public class TrieStore : IFullTrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+    private bool _shouldVerifyNewCommitSet = true;
 
     public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
         : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
     {
+        _shouldVerifyNewCommitSet = false;
     }
 
     public TrieStore(INodeStorage nodeStorage, ILogManager? logManager)
         : this(nodeStorage, No.Pruning, Pruning.Persist.EveryBlock, logManager)
     {
+        _shouldVerifyNewCommitSet = false;
     }
 
     public TrieStore(
@@ -808,9 +811,9 @@ public class TrieStore : IFullTrieStore, IPruningTrieStore
         return prior ?? instance;
     }
 
-    protected virtual void VerifyNewCommitSet(long blockNumber)
+    protected void VerifyNewCommitSet(long blockNumber)
     {
-        if (_lastCommitSet is not null)
+        if (_shouldVerifyNewCommitSet && _lastCommitSet is not null)
         {
             Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
 

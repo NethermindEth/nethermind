@@ -8,28 +8,46 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
 
-public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(keyValueStore, logManager)
+public class OverlayTrieStore(ITrieStore baseTrieStore, IReadOnlyTrieStore store) : ITrieStore
 {
-    internal override TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
-        ArgumentNullException.ThrowIfNull(hash);
-
-        TrieNode node = base.FindCachedOrUnknown(address, in path, hash, isReadOnly);
+        TrieNode node = baseTrieStore.FindCachedOrUnknown(address, in path, hash);
         return node.NodeType == NodeType.Unknown
             ? store.FindCachedOrUnknown(address, in path, hash) // no need to pass isReadOnly - IReadOnlyTrieStore overrides it as true
             : node;
     }
 
-    public override byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        base.TryLoadRlp(address, in path, hash, flags) ?? store.LoadRlp(address, in path, hash, flags);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        baseTrieStore.TryLoadRlp(address, in path, hash, flags) ?? store.LoadRlp(address, in path, hash, flags);
 
-    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        base.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        baseTrieStore.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
 
-    protected override void VerifyNewCommitSet(long blockNumber)
+    public void Dispose()
     {
-        // Skip checks, as override can be applied using the same block number or without a state root
+        baseTrieStore.Dispose();
     }
 
-    public void ResetOverrides() => ClearCache();
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+    {
+        return baseTrieStore.BeginCommit(address, root, writeFlags);
+    }
+
+    public bool HasRoot(Hash256 stateRoot)
+    {
+        return baseTrieStore.HasRoot(stateRoot);
+    }
+
+    public IScopedTrieStore GetTrieStore(Hash256? address)
+    {
+        return baseTrieStore.GetTrieStore(address);
+    }
+
+    public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
+
+    public IBlockCommitter BeginBlockCommit(long blockNumber)
+    {
+        return baseTrieStore.BeginBlockCommit(blockNumber);
+    }
 }

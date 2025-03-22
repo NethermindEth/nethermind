@@ -102,7 +102,8 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode)
     {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
+        ITrieStore mainTrieStore = new TrieStore(overlayState, _logManager); // Note: Not a pruning trie store, so no cache at all.
+        OverlayTrieStore overlayTrieStore = new(mainTrieStore, _readOnlyTrieStore);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);
     }
 
