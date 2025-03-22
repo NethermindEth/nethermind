@@ -14,6 +14,8 @@ namespace Nethermind.Trie.Pruning
 
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
     }
 
     /// <summary>
@@ -21,8 +23,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStore : IDisposable, ITrieStoreInternal
     {
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
         bool HasRoot(Hash256 stateRoot);
 
         IScopedTrieStore GetTrieStore(Hash256? address);
@@ -44,8 +44,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStoreInternal
     {
-        // Used by healing
-        void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);

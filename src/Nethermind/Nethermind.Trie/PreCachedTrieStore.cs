@@ -51,14 +51,6 @@ public class PreCachedTrieStore : ITrieStore
         return rlp is not null;
     }
 
-    public IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null) => _inner.AsReadOnly(keyValueStore);
-
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
-    {
-        _preBlockCache[new(address, in path, in keccak)] = rlp;
-        _inner.Set(address, in path, in keccak, rlp);
-    }
-
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);

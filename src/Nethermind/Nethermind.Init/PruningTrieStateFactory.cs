@@ -155,6 +155,7 @@ public class PruningTrieStateFactory(
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 mainWorldTrieStore,
+                mainNodeStorage,
                 codeDb,
                 logManager,
                 preBlockCaches,

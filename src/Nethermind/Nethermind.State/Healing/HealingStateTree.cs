@@ -17,11 +17,13 @@ namespace Nethermind.State.Healing;
 public class HealingStateTree : StateTree
 {
     private IPathRecovery? _recovery;
+    private readonly INodeStorage _nodeStorage;
 
     [DebuggerStepThrough]
-    public HealingStateTree(ITrieStore? store, ILogManager? logManager)
+    public HealingStateTree(ITrieStore store, INodeStorage nodeStorage, ILogManager logManager)
         : base(store.GetTrieStore(null), logManager)
     {
+        _nodeStorage = nodeStorage;
     }
 
     public void InitializeNetwork(IPathRecovery recovery)
@@ -77,7 +79,7 @@ public class HealingStateTree : StateTree
                 foreach ((TreePath, byte[]) kv in rlps)
                 {
                     ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
-                    TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
+                    _nodeStorage.Set(null, kv.Item1, nodeHash, kv.Item2);
                 }
                 return true;
             }

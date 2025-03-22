@@ -40,23 +40,23 @@ public class HealingTreeTests
     [Test]
     public void get_state_tree_works()
     {
-        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), LimboLogs.Instance);
+        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), new NodeStorage(new MemDb()), LimboLogs.Instance);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
     [Test]
     public void get_storage_tree_works()
     {
-        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
+        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), new NodeStorage(new MemDb()), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
     [Test]
     public void recovery_works_state_trie([Values(true, false)] bool successfullyRecovered)
     {
-        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, IPathRecovery recovery)
+        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery)
         {
-            HealingStateTree stateTree = new(trieStore, LimboLogs.Instance);
+            HealingStateTree stateTree = new(trieStore, nodeStorage, LimboLogs.Instance);
             stateTree.InitializeNetwork(recovery);
             return stateTree;
         }
@@ -70,8 +70,8 @@ public class HealingTreeTests
     public void recovery_works_storage_trie([Values(true, false)] bool successfullyRecovered)
     {
         Hash256 addressPath = Keccak.Compute(TestItem.AddressA.Bytes);
-        HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, IPathRecovery recovery) =>
-            new(trieStore.GetTrieStore(addressPath), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
+        HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery) =>
+            new(trieStore.GetTrieStore(addressPath), nodeStorage, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
                 _key, recovery);
 
         TreePath path = TreePath.FromNibble([1, 2]);
@@ -85,7 +85,7 @@ public class HealingTreeTests
         Hash256? address,
         TreePath path,
         Hash256 fullPath,
-        Func<ITrieStore, IPathRecovery, T> createTrie)
+        Func<ITrieStore, INodeStorage, IPathRecovery, T> createTrie)
         where T : PatriciaTree
     {
         IFullTrieStore trieStore = Substitute.For<IFullTrieStore>();
@@ -94,8 +94,9 @@ public class HealingTreeTests
             k => new TrieNode(NodeType.Leaf) { Key = Nibbles.BytesToNibbleBytes(fullPath.Bytes)[path.Length..] });
         trieStore.GetTrieStore(Arg.Is<Hash256?>(address))
             .Returns((callInfo) => new ScopedTrieStore(trieStore, (Hash256?)callInfo[0]));
-        TestMemDb db = new();
-        trieStore.TrieNodeRlpStore.Returns(db);
+
+        TestMemDb db = new TestMemDb();
+        INodeStorage nodeStorage = new NodeStorage(db);
 
         IPathRecovery recovery = Substitute.For<IPathRecovery>();
         recovery.Recover(Arg.Any<Hash256>(), Arg.Is<Hash256?>(address), Arg.Is<TreePath>(path), _key, fullPath)
@@ -106,14 +107,13 @@ public class HealingTreeTests
                 }
             ) : Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>?>(null));
 
-        T trie = createTrie(trieStore, recovery);
+        T trie = createTrie(trieStore, nodeStorage, recovery);
 
         Action action = () => trie.Get(fullPath.Bytes, _key);
         if (successfullyRecovered)
         {
             action.Should().NotThrow();
-            trieStore.Received()
-                .Set(address, path, ValueKeccak.Compute(_rlp), _rlp);
+            db.KeyWasWritten(NodeStorage.GetHalfPathNodeStoragePath(address, path, ValueKeccak.Compute(_rlp)));
         }
         else
         {
