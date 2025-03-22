@@ -15,7 +15,8 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     public OverridableWorldStateManager(IDbProvider dbProvider, IReadOnlyTrieStore trieStore, ILogManager? logManager)
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore, logManager);
+        ITrieStore writableTrieStore = new TrieStore(readOnlyDbProvider.StateDb, logManager);
+        OverlayTrieStore overlayTrieStore = new(writableTrieStore, trieStore);
 
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
 
