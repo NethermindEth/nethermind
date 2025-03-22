@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -88,12 +87,14 @@ public class HealingTreeTests
         Func<ITrieStore, INodeStorage, IPathRecovery, T> createTrie)
         where T : PatriciaTree
     {
-        IFullTrieStore trieStore = Substitute.For<IFullTrieStore>();
-        trieStore.FindCachedOrUnknown(address, TreePath.Empty, _key).Returns(
+        IScopedTrieStore scopedTrieStore = Substitute.For<IScopedTrieStore>();
+        scopedTrieStore.FindCachedOrUnknown(TreePath.Empty, _key).Returns(
             k => throw new MissingTrieNodeException("", null, path, _key),
             k => new TrieNode(NodeType.Leaf) { Key = Nibbles.BytesToNibbleBytes(fullPath.Bytes)[path.Length..] });
+
+        IFullTrieStore trieStore = Substitute.For<IFullTrieStore>();
         trieStore.GetTrieStore(Arg.Is<Hash256?>(address))
-            .Returns((callInfo) => new ScopedTrieStore(trieStore, (Hash256?)callInfo[0]));
+            .Returns(scopedTrieStore);
 
         TestMemDb db = new TestMemDb();
         INodeStorage nodeStorage = new NodeStorage(db);
