@@ -43,17 +43,10 @@ public class PreCachedTrieStore : ITrieStore
         return _inner.BeginBlockCommit(blockNumber);
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak),
-            key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash));
-
-        return rlp is not null;
-    }
-
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
+    public IScopedTrieStore GetTrieStore(Hash256? address) =>
+        new PreCachedScopedTrieStore(_inner.GetTrieStore(address), this, _preBlockCache, _loadRlp, _tryLoadRlp, address);
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
 
@@ -68,6 +61,45 @@ public class PreCachedTrieStore : ITrieStore
             key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
+}
+
+// TODO: Clean this up
+public class PreCachedScopedTrieStore(
+    IScopedTrieStore baseStore,
+    PreCachedTrieStore preCachedStore,
+    ConcurrentDictionary<NodeKey, byte[]?> preBlockCache,
+    Func<NodeKey, byte[]> loadRlp,
+    Func<NodeKey, byte[]> tryLoadRlp,
+    Hash256? address) : IScopedTrieStore
+{
+    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    {
+        return baseStore.FindCachedOrUnknown(in path, hash);
+    }
+
+    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        preBlockCache.GetOrAdd(new(address, in path, hash),
+            flags == ReadFlags.None ? loadRlp :
+                key => baseStore.LoadRlp(in key.Path, key.Hash, flags));
+
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        preBlockCache.GetOrAdd(new(address, in path, hash),
+            flags == ReadFlags.None ? tryLoadRlp :
+                key => baseStore.TryLoadRlp(in key.Path, key.Hash, flags));
+
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => preCachedStore.GetTrieStore(address);
+
+    public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
+
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+    {
+        return baseStore.BeginCommit(root, writeFlags);
+    }
+
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
+    {
+        return baseStore.IsPersisted(in path, in keccak);
+    }
 }
 
 public readonly struct NodeKey : IEquatable<NodeKey>

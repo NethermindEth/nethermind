@@ -10,9 +10,6 @@ namespace Nethermind.Trie.Pruning;
 
 public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(keyValueStore, logManager)
 {
-    public override bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
-        base.IsPersisted(address, in path, in keccak) || store.IsPersisted(address, in path, in keccak);
-
     internal override TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
     {
         ArgumentNullException.ThrowIfNull(hash);
