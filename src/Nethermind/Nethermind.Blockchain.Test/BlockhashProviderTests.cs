@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -270,7 +271,7 @@ public class BlockhashProviderTests
         current = Build.A.Block.WithParent(head!).TestObject;
         tree.SuggestHeader(current.Header);
 
-        store.ApplyBlockhashStateChanges(current.Header);
+        store.ApplyBlockhashStateChanges(current.Header, NullTxTracer.Instance);
         result = provider.GetBlockhash(current.Header, chainLength);
         Assert.That(result, Is.EqualTo(head?.Hash));
 
