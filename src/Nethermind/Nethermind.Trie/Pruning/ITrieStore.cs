@@ -18,6 +18,10 @@ namespace Nethermind.Trie.Pruning
         IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
 
         bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
+
+        TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
+        byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
     }
 
     /// <summary>
@@ -47,9 +51,6 @@ namespace Nethermind.Trie.Pruning
     public interface ITrieStoreInternal
     {
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
-        TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
-        byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
     }
 
     public interface IPruningTrieStore

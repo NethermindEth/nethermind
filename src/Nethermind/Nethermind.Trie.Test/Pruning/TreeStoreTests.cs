@@ -881,7 +881,7 @@ namespace Nethermind.Trie.Test.Pruning
             var originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
 
             IReadOnlyTrieStore readOnlyTrieStore = fullTrieStore.AsReadOnly();
-            var readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
+            var readOnlyNode = readOnlyTrieStore.GetTrieStore(null).FindCachedOrUnknown(TreePath.Empty, node.Keccak);
 
             readOnlyNode.Should().NotBe(originalNode);
             readOnlyNode.Should().BeEquivalentTo(originalNode,

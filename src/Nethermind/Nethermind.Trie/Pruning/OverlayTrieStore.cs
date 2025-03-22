@@ -10,20 +10,6 @@ namespace Nethermind.Trie.Pruning;
 
 public class OverlayTrieStore(ITrieStore baseTrieStore, IReadOnlyTrieStore store) : ITrieStore
 {
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
-    {
-        TrieNode node = baseTrieStore.FindCachedOrUnknown(address, in path, hash);
-        return node.NodeType == NodeType.Unknown
-            ? store.FindCachedOrUnknown(address, in path, hash) // no need to pass isReadOnly - IReadOnlyTrieStore overrides it as true
-            : node;
-    }
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        baseTrieStore.TryLoadRlp(address, in path, hash, flags) ?? store.LoadRlp(address, in path, hash, flags);
-
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        baseTrieStore.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
-
     public void Dispose()
     {
         baseTrieStore.Dispose();

@@ -14,18 +14,12 @@ public class PreCachedTrieStore : ITrieStore
 {
     private readonly ITrieStore _inner;
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _preBlockCache;
-    private readonly Func<NodeKey, byte[]> _loadRlp;
-    private readonly Func<NodeKey, byte[]> _tryLoadRlp;
 
     public PreCachedTrieStore(ITrieStore inner,
         ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
     {
         _inner = inner;
         _preBlockCache = preBlockCache;
-
-        // Capture the delegate once for default path to avoid the allocation of the lambda per call
-        _loadRlp = (NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
-        _tryLoadRlp = (NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
     }
 
     public void Dispose()
@@ -46,59 +40,64 @@ public class PreCachedTrieStore : ITrieStore
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) =>
-        new PreCachedScopedTrieStore(_inner.GetTrieStore(address), this, _preBlockCache, _loadRlp, _tryLoadRlp, address);
-
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
-            flags == ReadFlags.None ? _loadRlp :
-            key => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
-
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
-            flags == ReadFlags.None ? _tryLoadRlp :
-            key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
+        new PreCachedScopedTrieStore(_inner.GetTrieStore(address), this, _preBlockCache, address);
 
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }
 
 // TODO: Clean this up
-public class PreCachedScopedTrieStore(
-    IScopedTrieStore baseStore,
-    PreCachedTrieStore preCachedStore,
-    ConcurrentDictionary<NodeKey, byte[]?> preBlockCache,
-    Func<NodeKey, byte[]> loadRlp,
-    Func<NodeKey, byte[]> tryLoadRlp,
-    Hash256? address) : IScopedTrieStore
+public class PreCachedScopedTrieStore : IScopedTrieStore
 {
+    private readonly IScopedTrieStore _baseStore;
+    private readonly PreCachedTrieStore _preCachedStore;
+    private readonly ConcurrentDictionary<NodeKey, byte[]?> _preBlockCache;
+    private readonly Func<NodeKey, byte[]> _loadRlp;
+    private readonly Func<NodeKey, byte[]> _tryLoadRlp;
+    private readonly Hash256? _address;
+
+    public PreCachedScopedTrieStore(
+        IScopedTrieStore baseStore,
+        PreCachedTrieStore preCachedStore,
+        ConcurrentDictionary<NodeKey, byte[]?> preBlockCache,
+        Hash256? address)
+    {
+        _baseStore = baseStore;
+        _preCachedStore = preCachedStore;
+        _preBlockCache = preBlockCache;
+        _address = address;
+
+        // Capture the delegate once for default path to avoid the allocation of the lambda per call
+        _loadRlp = (NodeKey key) => baseStore.LoadRlp(in key.Path, key.Hash, flags: ReadFlags.None);
+        _tryLoadRlp = (NodeKey key) => baseStore.TryLoadRlp(in key.Path, key.Hash, flags: ReadFlags.None);
+    }
+
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        return baseStore.FindCachedOrUnknown(in path, hash);
+        return _baseStore.FindCachedOrUnknown(in path, hash);
     }
 
     public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        preBlockCache.GetOrAdd(new(address, in path, hash),
-            flags == ReadFlags.None ? loadRlp :
-                key => baseStore.LoadRlp(in key.Path, key.Hash, flags));
+        _preBlockCache.GetOrAdd(new(_address, in path, hash),
+            flags == ReadFlags.None ? _loadRlp :
+                key => _baseStore.LoadRlp(in key.Path, key.Hash, flags));
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        preBlockCache.GetOrAdd(new(address, in path, hash),
-            flags == ReadFlags.None ? tryLoadRlp :
-                key => baseStore.TryLoadRlp(in key.Path, key.Hash, flags));
+        _preBlockCache.GetOrAdd(new(_address, in path, hash),
+            flags == ReadFlags.None ? _tryLoadRlp :
+                key => _baseStore.TryLoadRlp(in key.Path, key.Hash, flags));
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => preCachedStore.GetTrieStore(address);
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => _preCachedStore.GetTrieStore(address);
 
-    public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
+    public INodeStorage.KeyScheme Scheme => _baseStore.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
-        return baseStore.BeginCommit(root, writeFlags);
+        return _baseStore.BeginCommit(root, writeFlags);
     }
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        return baseStore.IsPersisted(in path, in keccak);
+        return _baseStore.IsPersisted(in path, in keccak);
     }
 }
 
