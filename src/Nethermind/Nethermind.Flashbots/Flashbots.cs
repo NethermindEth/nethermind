@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Consensus.Processing;
+using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
@@ -45,6 +46,9 @@ public class Flashbots(IFlashbotsConfig flashbotsConfig) : INethermindPlugin
 
         _api.RpcModuleProvider.RegisterBounded(flashbotsRpcModule,
             flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+
+        RbuilderRpcModule rbuilderRpcModule = new(_api.BlockTree, _api.SpecProvider, _api.WorldStateManager);
+        _api.RpcModuleProvider.RegisterSingle<IRbuilderRpcModule>(rbuilderRpcModule);
 
         return Task.CompletedTask;
     }
