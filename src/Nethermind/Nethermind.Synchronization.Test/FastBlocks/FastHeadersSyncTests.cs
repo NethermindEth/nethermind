@@ -80,7 +80,6 @@ public class FastHeadersSyncTests
 
     [Test]
     public async Task Can_handle_forks_with_persisted_headers()
-
     {
         IBlockTree remoteBlockTree = CachedBlockTreeBuilder.OfLength(1000);
         IBlockTree forkedBlockTree = Build.A.BlockTree().WithStateRoot(Keccak.Compute("1245")).OfChainLength(1000).TestObject;
@@ -288,9 +287,9 @@ public class FastHeadersSyncTests
         // Batch2 would get processed
         feed.HandleResponse(batch2);
 
-        // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
+        // HandleDependantBatch would start from first batch in batches, stopped at second in batch (only process 2 batch)
         using HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
-        blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
+        blockTree.LowestInsertedHeader!.Number.Should().Be(batches[1].StartNumber);
 
         // New batch would be at end of batch 5 (batch 6).
         newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
@@ -839,24 +838,25 @@ public class FastHeadersSyncTests
             InitializeFeed();
         }
 
-        protected override AddBlockResult InsertToBlockTree(BlockHeader header)
+        protected override void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
         {
-            if (header.Number == _hangOnBlockNumber)
+            foreach (var header in headersToAdd)
             {
-                _hangLatch!.Wait();
+                if (header.Number == _hangOnBlockNumber)
+                {
+                    _hangLatch!.Wait();
+                }
             }
 
-            AddBlockResult insertOutcome = _blockTree.Insert(header);
-            if (header.Number == _hangOnBlockNumberAfterInsert)
-            {
-                _hangLatch!.Wait();
-            }
-            if (insertOutcome is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
-            {
-                SetExpectedNextHeaderToParent(header);
-            }
+            base.InsertHeaders(headersToAdd);
 
-            return insertOutcome;
+            foreach (var header in headersToAdd)
+            {
+                if (header.Number == _hangOnBlockNumberAfterInsert)
+                {
+                    _hangLatch!.Wait();
+                }
+            }
         }
     }
 

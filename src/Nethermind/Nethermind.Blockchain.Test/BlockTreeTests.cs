@@ -1959,6 +1959,33 @@ public class BlockTreeTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_insert_headers_in_batch()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        BlockHeader currentHeader = Build.A.BlockHeader.WithTotalDifficulty(1).WithDifficulty(1).WithNumber(1).TestObject;
+        using ArrayPoolList<BlockHeader> batch = new ArrayPoolList<BlockHeader>(1);
+        batch.Add(currentHeader);
+
+        for (int i = 0; i < 100; i++)
+        {
+            currentHeader = Build.A.BlockHeader
+                .WithDifficulty(1)
+                .WithTotalDifficulty((long)(currentHeader.TotalDifficulty + 1)!)
+                .WithParent(currentHeader)
+                .TestObject;
+            batch.Add(currentHeader);
+        }
+
+        blockTree.BulkInsertHeader(batch);
+
+        for (int i = 1; i < 101; i++)
+        {
+            blockTree.FindHeader(i, BlockTreeLookupOptions.None).Should().NotBeNull();
+        }
+    }
+
     private class TestBlockTreeVisitor : IBlockTreeVisitor
     {
         private readonly ManualResetEvent _manualResetEvent;

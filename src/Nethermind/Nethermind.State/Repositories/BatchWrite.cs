@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.State.Repositories
 {
@@ -11,16 +12,20 @@ namespace Nethermind.State.Repositories
         private readonly object _lockObject;
         private bool _lockTaken;
 
-        public BatchWrite(object lockObject)
+        public BatchWrite(object lockObject, IWriteBatch writeBatch)
         {
             _lockObject = lockObject;
             Monitor.Enter(_lockObject, ref _lockTaken);
+
+            WriteBatch = writeBatch;
         }
 
         public void Dispose()
         {
             if (!Disposed)
             {
+                WriteBatch.Dispose();
+
                 if (_lockTaken)
                 {
                     _lockTaken = false;
@@ -30,6 +35,8 @@ namespace Nethermind.State.Repositories
                 Disposed = true;
             }
         }
+
+        public IWriteBatch WriteBatch { get; }
 
         public bool Disposed { get; private set; }
     }
