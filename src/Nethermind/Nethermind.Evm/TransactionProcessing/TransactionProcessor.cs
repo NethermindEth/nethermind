@@ -283,12 +283,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
-                if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
