@@ -16,4 +16,6 @@ public class TrackedPastKeyCountStrategy(IPruningStrategy baseStrategy, int trac
     public long PrunePersistedNodeMinimumTarget => baseStrategy.PrunePersistedNodeMinimumTarget;
 
     public int TrackedPastKeyCount => trackedPastKeyCount;
+
+    public int ShardBit => baseStrategy.ShardBit;
 }

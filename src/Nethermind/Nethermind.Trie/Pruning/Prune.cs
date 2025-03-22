@@ -18,5 +18,8 @@ namespace Nethermind.Trie.Pruning
 
         public static IPruningStrategy KeepingLastNState(this IPruningStrategy baseStrategy, int n)
             => new KeepLastNPruningStrategy(baseStrategy, n);
+
+        public static IPruningStrategy WithDirtyNodeShardCount(this IPruningStrategy baseStrategy, int shardCount)
+            => new ShardBitPruningStrategy(baseStrategy, shardCount);
     }
 }
