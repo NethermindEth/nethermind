@@ -30,11 +30,11 @@ public class OverridableTxProcessingScope : IOverridableTxProcessingScope
 
     public IWorldState WorldState => _worldState;
 
-    public void Dispose() => Reset();
+    public void Dispose() => Reset(resetBlockCache: true);
 
-    public void Reset()
+    private void Reset(bool resetBlockCache = false)
     {
-        _worldState.Reset();
+        _worldState.Reset(resetBlockCache);
         _worldState.ResetOverrides();
         CodeInfoRepository.ResetOverrides();
     }
