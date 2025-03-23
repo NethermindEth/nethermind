@@ -903,34 +903,7 @@ namespace Nethermind.Trie
         private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             TreePath remaining = traverseContext.GetRemainingUpdatePath();
-            TreePath shorterPath;
-            TreePath longerPath;
-            if (traverseContext.RemainingUpdatePathLength - node.Key.Length < 0)
-            {
-                shorterPath = remaining;
-                longerPath = node.Key;
-            }
-            else
-            {
-                shorterPath = node.Key;
-                longerPath = remaining;
-            }
-
-            ref readonly CappedArray<byte> shorterPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
-            ref readonly CappedArray<byte> longerPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
-            if (shorterPath == node.Key)
-            {
-                shorterPathValue = ref node.ValueRef;
-                longerPathValue = ref traverseContext.UpdateValue;
-            }
-            else
-            {
-                shorterPathValue = ref traverseContext.UpdateValue;
-                longerPathValue = ref node.ValueRef;
-            }
-
-            int extensionLength = shorterPath.CommonPrefixLength(longerPath);
-            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
+            if (remaining == node.Key)
             {
                 if (traverseContext.IsNodeRead)
                 {
@@ -971,6 +944,34 @@ namespace Nethermind.Trie
 
                 ThrowMissingLeafException(in traverseContext);
             }
+
+            TreePath shorterPath;
+            TreePath longerPath;
+            if (traverseContext.RemainingUpdatePathLength - node.Key.Length < 0)
+            {
+                shorterPath = remaining;
+                longerPath = node.Key;
+            }
+            else
+            {
+                shorterPath = node.Key;
+                longerPath = remaining;
+            }
+
+            ref readonly CappedArray<byte> shorterPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
+            ref readonly CappedArray<byte> longerPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
+            if (shorterPath == node.Key)
+            {
+                shorterPathValue = ref node.ValueRef;
+                longerPathValue = ref traverseContext.UpdateValue;
+            }
+            else
+            {
+                shorterPathValue = ref traverseContext.UpdateValue;
+                longerPathValue = ref node.ValueRef;
+            }
+
+            int extensionLength = shorterPath.CommonPrefixLength(longerPath);
 
             if (extensionLength != 0)
             {
