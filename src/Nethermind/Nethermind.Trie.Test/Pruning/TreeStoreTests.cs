@@ -622,7 +622,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
+            a.Key = TreePath.FromNibble(Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray()));
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             MemDb memDb = new();
@@ -672,7 +672,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = Bytes.FromHexString("abc");
+            a.Key = TreePath.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode b = new(NodeType.Leaf, new byte[1]);
@@ -734,7 +734,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = storage1Nib[1..];
+            a.Key = TreePath.FromNibble(storage1Nib[1..]);
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode storage2 = new(NodeType.Leaf, new byte[32]);
@@ -743,7 +743,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
-            b.Key = storage2Nib[1..];
+            b.Key = TreePath.FromNibble(storage2Nib[1..]);
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode branch = new(NodeType.Branch);
@@ -866,7 +866,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
+            node.Key = TreePath.FromNibble(Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray()));
             TreePath emptyPath = TreePath.Empty;
             node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
@@ -892,7 +892,7 @@ namespace Nethermind.Trie.Test.Pruning
             var readOnlyRlp = readOnlyNode.FullRlp;
             readOnlyRlp.Should().BeEquivalentTo(origRlp);
 
-            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
+            readOnlyNode.Key.ToString().Should().Be(originalNode.Key.ToString());
         }
 
         private long ExpectedPerNodeKeyMemorySize => (_scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -25,6 +26,7 @@ namespace Nethermind.Trie;
 public struct TreePath : IEquatable<TreePath>
 {
     public const int MemorySize = 36;
+    public const int MaxLength = 64;
     public ValueHash256 Path;
 
     public static TreePath Empty => new();
@@ -39,6 +41,7 @@ public struct TreePath : IEquatable<TreePath>
     }
 
     public int Length { get; private set; }
+    private bool IsOdd => Length % 2 == 1;
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
@@ -70,6 +73,28 @@ public struct TreePath : IEquatable<TreePath>
         ToBytesExtra(pathNibbles, hash.BytesAsSpan);
 
         return new TreePath(hash, pathNibbles.Length);
+    }
+
+    public static (TreePath key, bool isLeaf) FromHexPrefix(ReadOnlySpan<byte> bytes)
+    {
+        // TODO: Bound check
+        bool isEven = (bytes[0] & 16) == 0;
+        int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
+        bool isLeaf = bytes[0] >= 32;
+
+        TreePath treePath = new TreePath();
+        if (isEven)
+        {
+            bytes[1..].CopyTo(treePath.Span);
+        }
+        else
+        {
+            bytes.CopyTo(treePath.Span);
+            treePath.ShiftRight4Mut();
+        }
+        treePath.Length = nibblesCount;
+
+        return (treePath, isLeaf);
     }
 
     private static void ToBytesExtra(ReadOnlySpan<byte> nibbles, Span<byte> bytes)
@@ -139,6 +164,29 @@ public struct TreePath : IEquatable<TreePath>
         {
             this[Length] = nibbles[^1];
             Length++;
+        }
+    }
+
+    internal void AppendMut(TreePath otherPath)
+    {
+        if (otherPath.Length == 0) return;
+        if (otherPath.Length + Length > MaxLength) throw new InvalidOperationException($"TreePath only have a maximimum length of 64 nibble. Trying to append {Length} with another tree path of length {otherPath.Length}.");
+
+        if (IsOdd)
+        {
+            AppendMut(otherPath[0]);
+            otherPath.ShiftRight4Mut();
+            otherPath.Length--;
+        }
+
+        int byteToCopy = otherPath.Length / 2;
+
+        otherPath.Span[..byteToCopy].CopyTo(Span[(Length/2)..]);
+        Length += byteToCopy * 2;
+
+        if (otherPath.IsOdd)
+        {
+            AppendMut(otherPath[^1]);
         }
     }
 
@@ -249,6 +297,15 @@ public struct TreePath : IEquatable<TreePath>
     public readonly override string ToString()
     {
         return ToHexString();
+    }
+
+    public TreePath this[Range range]
+    {
+        get
+        {
+            (int offset, int length) = range.GetOffsetAndLength(Length);
+            return Slice(offset, length);
+        }
     }
 
     public static bool operator ==(in TreePath left, in TreePath right)
@@ -411,6 +468,123 @@ public struct TreePath : IEquatable<TreePath>
     {
         return Truncate(otherPath.Length) == otherPath;
     }
+
+    public TreePath Prepend(int nib)
+    {
+        TreePath path = new TreePath();
+        path.AppendMut(nib);
+        path.AppendMut(this);
+        return path;
+    }
+
+    public TreePath Append(TreePath otherPath)
+    {
+        TreePath path = this;
+        path.AppendMut(otherPath);
+        return path;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
+    public readonly TreePath Slice(int from, int count)
+    {
+        // TODO: Check bound
+
+        TreePath path = this;
+        if (from % 2 == 1)
+        {
+            path.ShiftRight4Mut();
+            from--;
+        }
+
+        if (from == 0)
+        {
+            path.TruncateMut(count);
+            return path;
+        }
+
+        TreePath path2 = Empty;
+        int spanCount = count / 2;
+        int spanOff = from / 2;
+        path.Span[spanOff..(spanOff + spanCount)].CopyTo(path2.Span);
+
+        // Last nib
+        if (count % 2 == 1)
+        {
+            path2[count - 1] = path[from + count - 1];
+        }
+
+        path2.Length = count;
+        return path2;
+    }
+
+    private void ShiftRight4Mut()
+    {
+        Span<byte> byteSpan = Span;
+        for (int i = 0; i < 4; i++)
+        {
+            ulong asLong = BinaryPrimitives.ReadUInt64BigEndian(byteSpan[(i*8)..]);
+            asLong <<= 4;
+            if (i < 3)
+            {
+#pragma warning disable CS0675 // Bitwise-or operator used on a sign-extended operand
+                asLong |= (ulong)this[i*16 + 16];
+#pragma warning restore CS0675 // Bitwise-or operator used on a sign-extended operand
+            }
+            BinaryPrimitives.WriteUInt64BigEndian(byteSpan[(i*8)..], asLong);
+        }
+    }
+
+    public int CommonPrefixLength(TreePath otherPath)
+    {
+        Span<byte> span1 = Span;
+        Span<byte> span2 = otherPath.Span;
+        int commonLength = span1.CommonPrefixLength(span2);
+        int result = 0;
+        if (commonLength == 32)
+        {
+            result = 64; // All same
+        }
+        else
+        {
+            result = commonLength * 2;
+            if (this[result] == otherPath[result])
+            {
+                result++;
+            }
+        }
+
+        return Math.Min(result, Math.Min(otherPath.Length, Length));
+    }
+
+    public void ToHexPrefixSpan(bool isLeaf, Span<byte> output)
+    {
+        if (output.Length != HexPrefix.ByteLength(Length)) throw new ArgumentOutOfRangeException(nameof(output));
+
+        output[0] = (byte)(isLeaf ? 0x20 : 0x00);
+        if (Length % 2 != 0)
+        {
+            output[0] += (byte)(0x10 + this[0]);
+            TreePath copy = this;
+            copy.ShiftRight4Mut();
+            int toCopyByte = Length / 2;
+            copy.Span[..toCopyByte].CopyTo(output[1..]);
+        }
+        else
+        {
+            int toCopyByte = Length / 2;
+            Span[..toCopyByte].CopyTo(output[1..]);
+        }
+
+        /*
+        for (int i = 0; i < path.Length - 1; i += 2)
+        {
+            output[i / 2 + 1] =
+                path.Length % 2 == 0
+                    ? (byte)(16 * path[i] + path[i + 1])
+                    : (byte)(16 * path[i + 1] + path[i + 2]);
+        }
+        */
+    }
 }
 
 public static class TreePathExtensions
@@ -419,6 +593,13 @@ public static class TreePathExtensions
     {
         int previousLength = path.Length;
         path.AppendMut(nibbles);
+        return new TreePath.AppendScope(previousLength, ref path);
+    }
+
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, TreePath otherPath)
+    {
+        int previousLength = path.Length;
+        path.AppendMut(otherPath);
         return new TreePath.AppendScope(previousLength, ref path);
     }
 }

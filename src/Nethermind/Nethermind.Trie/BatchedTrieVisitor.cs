@@ -418,7 +418,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     _visitor.VisitExtension(nodeContext, node);
                     TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
                     child.ResolveKey(nodeResolver, ref emptyPath, false);
-                    TNodeContext childContext = nodeContext.Add(node.Key!);
+                    TNodeContext childContext = nodeContext.Add(node.Key.ToNibble());
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
                         trieVisitContext.Level++;
@@ -436,7 +436,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                     {
-                        TNodeContext childContext = nodeContext.Add(node.Key!);
+                        TNodeContext childContext = nodeContext.Add(node.Key!.ToNibble());
 
                         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))

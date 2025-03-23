@@ -334,6 +334,25 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
+        public void LargeInsertAndCommit()
+        {
+            StateTree tempTree = new StateTree(new TrieStore(new MemDb(), NullLogManager.Instance), NullLogManager.Instance);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+            tempTree.Commit();
+        }
+
+        [Benchmark]
         public void InsertAndCommitRepeatedlyTimes()
         {
             TrieStore trieStore = new TrieStore(new MemDb(),

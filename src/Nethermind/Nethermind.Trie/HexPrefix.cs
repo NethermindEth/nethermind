@@ -10,6 +10,7 @@ namespace Nethermind.Trie
 {
     public static class HexPrefix
     {
+        public static int ByteLength(int nibbleLength) => nibbleLength / 2 + 1;
         public static int ByteLength(byte[] path) => path.Length / 2 + 1;
 
         public static void CopyToSpan(byte[] path, bool isLeaf, Span<byte> output)

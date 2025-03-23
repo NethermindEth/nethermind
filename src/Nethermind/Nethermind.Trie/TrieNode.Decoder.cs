@@ -33,11 +33,8 @@ namespace Nethermind.Trie
 
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
-                Debug.Assert(item.Key is not null,
-                    "Extension key is null when encoding");
 
-                byte[] hexPrefix = item.Key;
-                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                int hexLength = HexPrefix.ByteLength(item.Key.Length);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
                     : null;
@@ -46,7 +43,7 @@ namespace Nethermind.Trie
                     ? stackalloc byte[StackallocByteThreshold]
                     : rentedBuffer)[..hexLength];
 
-                HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
+                item.Key.ToHexPrefixSpan(isLeaf: false, keyBytes);
 
                 int previousLength = item.AppendChildPath(ref path, 0);
                 TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
@@ -90,13 +87,7 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
-                if (node.Key is null)
-                {
-                    ThrowNullKey(node);
-                }
-
-                byte[] hexPrefix = node.Key;
-                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                int hexLength = HexPrefix.ByteLength(node.Key.Length);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
                     : null;
@@ -105,7 +96,10 @@ namespace Nethermind.Trie
                     ? stackalloc byte[StackallocByteThreshold]
                     : rentedBuffer)[..hexLength];
 
-                HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
+                node.Key.ToHexPrefixSpan(isLeaf: true, keyBytes);
+                // byte[] hexPrefix = node.Key.ToNibble();
+                // HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
+
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value.AsSpan());
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 

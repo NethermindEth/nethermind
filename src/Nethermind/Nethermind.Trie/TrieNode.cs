@@ -162,9 +162,9 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[]? Key
+        public TreePath Key
         {
-            get => _nodeData is INodeWithKey node ? node?.Key : null;
+            get => _nodeData is INodeWithKey node ? node?.Key ?? TreePath.Empty : TreePath.Empty;
             internal set
             {
                 if (_nodeData is not INodeWithKey node)
@@ -174,7 +174,7 @@ namespace Nethermind.Trie
 
                 if (IsSealed)
                 {
-                    if (node.Key.AsSpan().SequenceEqual(value))
+                    if (node.Key == value)
                     {
                         // No change, parallel read
                         return;
@@ -493,7 +493,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                (TreePath key, bool isLeaf) = TreePath.FromHexPrefix(rlpStream.DecodeByteArraySpan());
                 if (isLeaf)
                 {
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
@@ -822,7 +822,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(byte[] key)
+        public TrieNode CloneWithChangedKey(TreePath key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -856,7 +856,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(TreePath key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -936,7 +936,7 @@ namespace Nethermind.Trie
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {leafData.StorageRoot} of {this}");
                     Hash256 storagePathAddr;
-                    using (currentPath.ScopedAppend(Key))
+                    using (currentPath.ScopedAppend(leafData.Key))
                     {
                         if (currentPath.Length != 64) throw new Exception($"unexpected storage path length. Total nibble count should add up to 64. Got {currentPath.Length}.");
                         storagePathAddr = currentPath.Path.ToCommitment();

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -75,6 +76,28 @@ public class TreePathTests
         path = path.Append(nibbles[..partition]);
         path.Length.Should().Be(partition);
         path = path.Append(nibbles[partition..]);
+        path.Length.Should().Be(64);
+
+        string asHex = path.Span.ToHexString();
+        asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    }
+
+    [TestCase(1)]
+    [TestCase(11)]
+    [TestCase(20)]
+    [TestCase(40)]
+    [TestCase(41)]
+    public void TestAppendTreePathDivided(int partition)
+    {
+        byte[] nibbles = new byte[64];
+        for (int i = 0; i < 64; i++)
+        {
+            nibbles[i] = (byte)(i % 16);
+        }
+        TreePath path = new TreePath();
+        path = path.Append(TreePath.FromNibble(nibbles[..partition]));
+        path.Length.Should().Be(partition);
+        path = path.Append(TreePath.FromNibble(nibbles[partition..]));
         path.Length.Should().Be(64);
 
         string asHex = path.Span.ToHexString();
@@ -196,6 +219,29 @@ public class TreePathTests
             path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
         }
         path.Length.Should().Be(0);
+    }
+
+    [TestCase]
+    public void TestSlice()
+    {
+        TreePath path = TreePath.Empty;
+        for (int i = 0; i < 64; i++)
+        {
+            path.AppendMut(i%16);
+        }
+
+        for (int i = 1; i < 64; i++)
+        {
+            for (int j = i; j < 64; j++)
+            {
+                TreePath sliced = path[i..j];
+
+                byte[] nib = path.ToNibble();
+                TreePath another = TreePath.FromNibble(nib[i..j]);
+
+                sliced.Should().BeEquivalentTo(another);
+            }
+        }
     }
 
     private static TreePath CreateFullTreePath()

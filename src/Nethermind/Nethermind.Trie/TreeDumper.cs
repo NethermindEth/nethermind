@@ -55,7 +55,7 @@ namespace Nethermind.Trie
 
         public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node)
         {
-            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {node.Key} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
@@ -65,7 +65,7 @@ namespace Nethermind.Trie
         public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {node.Key} -> {KeccakOrRlpStringOfNode(node)}");
             Rlp.ValueDecoderContext valueDecoderContext = new(node.Value);
             if (!context.IsStorage)
             {
