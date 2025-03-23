@@ -565,7 +565,7 @@ public struct TreePath : IEquatable<TreePath>
         {
             output[0] += (byte)(0x10 + this[0]);
             TreePath copy = this;
-            ShiftLeft4BitMut(Span);
+            ShiftLeft4BitMut(copy.Span);
             int toCopyByte = Length / 2;
             copy.Span[..toCopyByte].CopyTo(output[1..]);
         }
