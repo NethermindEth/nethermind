@@ -31,6 +31,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 using Int256;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Config;
 using Sigil;
 using System.Diagnostics;
@@ -691,7 +692,13 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                try
+                {
+                    IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                }
+                catch(Exception e) {
+                    Console.WriteLine(e.Message);
+                }
             }
         }
         if (env.CodeInfo.MachineCode.Length == 0)
@@ -860,6 +867,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
+
+            // Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
 
             if (isCancelable && _txTracer.IsCancelled)
             {

@@ -45,6 +45,6 @@ public class SubSegmentMetadata
     }
 
     public HashSet<Instruction> Instructions { get; set; }
-    public bool RequiresStaticEnv { get; set; }
+    public bool RequiresStaticEnvCheck { get; set; }
     public bool RequiresOpcodeCheck { get; set; }
 }

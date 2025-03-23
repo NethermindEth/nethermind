@@ -30,7 +30,7 @@ internal static class Precompiler
     {
         // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
-        var method = Emit<PrecompiledContract>.NewDynamicMethod(contractName, doVerify: true, strictBranchVerification: true);
+        var method = Emit<PrecompiledContract>.NewDynamicMethod(contractName, doVerify: false, strictBranchVerification: true);
         
         EmitMoveNext(method, metadata, config);
         PrecompiledContract dynEmitedDelegate = method.CreateDelegate(OptimizationOptions.All & (~OptimizationOptions.EnableBranchPatching));
@@ -129,7 +129,7 @@ internal static class Precompiler
                             continue;
                         }
 
-                        if(!currentSegment.RequiresStaticEnv)
+                        if(currentSegment.RequiresStaticEnvCheck)
                         {
                             method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
@@ -201,6 +201,7 @@ internal static class Precompiler
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
+
                 /*
                 using Local depth = method.DeclareLocal<int>();
 
@@ -222,7 +223,6 @@ internal static class Precompiler
 
                 method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
                 */
-
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, opcodeInfo.Instruction, opcodeInfo.Metadata, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
                 if(!opcodeInfo.Instruction.IsTerminating())

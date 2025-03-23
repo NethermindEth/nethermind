@@ -191,13 +191,17 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                                 method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             else
                             {
-                                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                                method.Call(GetAsMethodInfo<Word, byte>());
                                 if(length != 32)
                                 {
+                                    method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                                    method.Call(GetAsMethodInfo<Word, byte>());
                                     method.LoadConstant(32 - length);
                                     method.Convert<nint>();
                                     method.Call(GetAddBytesOffsetRef<byte>());
+                                } else
+                                {
+                                    method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                                    method.Call(GetAsMethodInfo<Word, byte>());
                                 }
                                 envLoader.LoadMachineCode(method, locals, true);
                                 method.LoadItemFromSpan<TDelegateType, byte>(pc + 1, true);

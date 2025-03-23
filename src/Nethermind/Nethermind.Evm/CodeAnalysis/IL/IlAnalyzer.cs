@@ -239,7 +239,7 @@ public static class IlAnalyzer
                     subSegment.IsReachable = hasJumpdest;
                     subSegment.Instructions = instructionsIncluded;
                     subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
-                    subSegment.RequiresStaticEnv = requiresStaticEnvCheck;
+                    subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
                     gasOffsets[costStart] = coststack;
                     metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
@@ -289,7 +289,7 @@ public static class IlAnalyzer
                             subSegment.IsReachable = hasJumpdest;
                             subSegment.Instructions = instructionsIncluded;
                             subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
-                            subSegment.RequiresStaticEnv = requiresStaticEnvCheck;
+                            subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
                             gasOffsets[costStart] = coststack;
                             metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
@@ -330,7 +330,7 @@ public static class IlAnalyzer
             subSegment.End = segmentRange.End.Value-1;
             subSegment.Instructions = instructionsIncluded;
             subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
-            subSegment.RequiresStaticEnv = requiresStaticEnvCheck;
+            subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
             gasOffsets[costStart] = coststack;
             metadata.SubSegments[subSegment.Start] = subSegment;
