@@ -24,15 +24,15 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
+            if (MachineCode.Length <= 4) return;
+
             if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
 
             if(Interlocked.Increment(ref _callCount) < vmConfig.IlEvmAnalysisThreshold)
                 return;
 
-
             IlAnalyzer.Enqueue(this, vmConfig, logger);
-
         }
 
         private readonly JumpDestinationAnalyzer _analyzer;

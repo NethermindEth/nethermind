@@ -209,7 +209,7 @@ namespace Nethermind.Evm
         /// </summary>
         public bool IsNotStaticOpcode { get; } = requiresStaticEnvToBeFalse;
 
-        public static readonly IReadOnlyDictionary<Instruction, OpcodeMetadata> Operations =
+        public static readonly FrozenDictionary<Instruction, OpcodeMetadata> Operations =
             new Dictionary<Instruction, OpcodeMetadata>()
             {
                 [Instruction.POP] = new(GasCostOf.Base, 0, 1, 0),
@@ -378,6 +378,8 @@ namespace Nethermind.Evm
                 [Instruction.RETURN] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
                 [Instruction.REVERT] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
             }.ToFrozenDictionary();
+        public static OpcodeMetadata GetMetadata(Instruction instruction) => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
+
     }
     public record struct OpcodeInfo(int pc, Instruction instruction, int? argumentIndex)
     {

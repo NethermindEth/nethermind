@@ -22,8 +22,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 {
 
-    public const int OBJ_CONTRACTMETADATA_INDEX = 0;
-    public const int OBJ_SPECPROVIDER_INDEX = OBJ_CONTRACTMETADATA_INDEX + 1;
+    public const int REF_MACHINECODE_INDEX = 0;
+    public const int OBJ_SPECPROVIDER_INDEX = REF_MACHINECODE_INDEX + 1;
     public const int OBJ_BLOCKHASHPROVIDER_INDEX = OBJ_SPECPROVIDER_INDEX + 1;
     public const int OBJ_CODEINFOPROVIDER_INDEX = OBJ_BLOCKHASHPROVIDER_INDEX + 1;
     public const int REF_EVMSTATE_INDEX = OBJ_CODEINFOPROVIDER_INDEX + 1;
@@ -162,18 +162,6 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
             il.LoadObject<long>();
     }
 
-    public override void LoadImmediatesData(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
-    {
-        il.LoadArgument(OBJ_CONTRACTMETADATA_INDEX);
-        il.Call(typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.EmbeddedData), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
-        if(loadAddress)
-        {
-            using Local local = il.DeclareLocal<byte[][]>();
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
-        }
-    }
-
     public override void LoadLogger(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         if (loadAddress)
@@ -184,15 +172,13 @@ internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 
     public override void LoadMachineCode(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        il.LoadArgument(OBJ_CONTRACTMETADATA_INDEX);
-        il.Call(typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.TargetCodeInfo), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
-        il.Call(typeof(CodeInfo).GetProperty(nameof(CodeInfo.MachineCode), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
-
-        if (loadAddress)
+        if(loadAddress)
         {
-            using Local local = il.DeclareLocal<ReadOnlyMemory<byte>>();
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadArgument(REF_MACHINECODE_INDEX);
+        } else
+        {
+            il.LoadArgument(REF_MACHINECODE_INDEX);
+            il.LoadObject(typeof(ReadOnlySpan<byte>));
         }
     }
 

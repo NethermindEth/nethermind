@@ -51,7 +51,6 @@ internal class IlInfo
     // assumes small number of ILed
     public InstructionChunk[] IlevmChunks { get; set; }
 
-    public ContractMetadata? ContractMetadata { get; set; }
     public PrecompiledContract? PrecompiledContract { get; set; }
 
     public void AddMapping(int index, InstructionChunk handler)
