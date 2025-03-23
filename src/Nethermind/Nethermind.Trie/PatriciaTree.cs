@@ -903,7 +903,8 @@ namespace Nethermind.Trie
         private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             TreePath remaining = traverseContext.GetRemainingUpdatePath();
-            if (remaining == node.Key)
+            LeafData data = node.NodeData as LeafData;
+            if (remaining == data!.Key)
             {
                 if (traverseContext.IsNodeRead)
                 {
@@ -947,14 +948,14 @@ namespace Nethermind.Trie
 
             TreePath shorterPath;
             TreePath longerPath;
-            if (traverseContext.RemainingUpdatePathLength - node.Key.Length < 0)
+            if (traverseContext.RemainingUpdatePathLength - data.Key.Length < 0)
             {
                 shorterPath = remaining;
-                longerPath = node.Key;
+                longerPath = data.Key;
             }
             else
             {
-                shorterPath = node.Key;
+                shorterPath = data.Key;
                 longerPath = remaining;
             }
 

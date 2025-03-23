@@ -90,7 +90,7 @@ public struct TreePath : IEquatable<TreePath>
         else
         {
             bytes.CopyTo(treePath.Span);
-            treePath.ShiftRight4Mut();
+            ShiftLeft4BitMut(treePath.Span);
         }
         treePath.Length = nibblesCount;
 
@@ -175,7 +175,7 @@ public struct TreePath : IEquatable<TreePath>
         if (IsOdd)
         {
             AppendMut(otherPath[0]);
-            otherPath.ShiftRight4Mut();
+            ShiftLeft4BitMut(otherPath.Span);
             otherPath.Length--;
         }
 
@@ -492,7 +492,7 @@ public struct TreePath : IEquatable<TreePath>
         TreePath path = this;
         if (from % 2 == 1)
         {
-            path.ShiftRight4Mut();
+            ShiftLeft4BitMut(path.Span);
             from--;
         }
 
@@ -517,9 +517,8 @@ public struct TreePath : IEquatable<TreePath>
         return path2;
     }
 
-    private void ShiftRight4Mut()
+    public static void ShiftLeft4BitMut(Span<byte> byteSpan)
     {
-        Span<byte> byteSpan = Span;
         for (int i = 0; i < 4; i++)
         {
             ulong asLong = BinaryPrimitives.ReadUInt64BigEndian(byteSpan[(i*8)..]);
@@ -527,7 +526,8 @@ public struct TreePath : IEquatable<TreePath>
             if (i < 3)
             {
 #pragma warning disable CS0675 // Bitwise-or operator used on a sign-extended operand
-                asLong |= (ulong)this[i*16 + 16];
+                byte asByte = byteSpan[(i*8) + 8];
+                asLong |= (ulong)(asByte >> 4);
 #pragma warning restore CS0675 // Bitwise-or operator used on a sign-extended operand
             }
             BinaryPrimitives.WriteUInt64BigEndian(byteSpan[(i*8)..], asLong);
@@ -565,7 +565,7 @@ public struct TreePath : IEquatable<TreePath>
         {
             output[0] += (byte)(0x10 + this[0]);
             TreePath copy = this;
-            copy.ShiftRight4Mut();
+            ShiftLeft4BitMut(Span);
             int toCopyByte = Length / 2;
             copy.Span[..toCopyByte].CopyTo(output[1..]);
         }
@@ -574,16 +574,6 @@ public struct TreePath : IEquatable<TreePath>
             int toCopyByte = Length / 2;
             Span[..toCopyByte].CopyTo(output[1..]);
         }
-
-        /*
-        for (int i = 0; i < path.Length - 1; i += 2)
-        {
-            output[i / 2 + 1] =
-                path.Length % 2 == 0
-                    ? (byte)(16 * path[i] + path[i + 1])
-                    : (byte)(16 * path[i + 1] + path[i + 2]);
-        }
-        */
     }
 }
 

@@ -244,6 +244,36 @@ public class TreePathTests
         }
     }
 
+    [TestCase]
+    public void TestShiftLeft()
+    {
+        byte[] originalData = Bytes.FromHexString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+
+        byte[] manualShift = new byte[32];
+        originalData.CopyTo(manualShift, 0);
+        byte[] fasterShift = new byte[32];
+        originalData.CopyTo(fasterShift, 0);
+
+        for (int i = 0; i < 64; i++)
+        {
+            ShiftLeftManual(manualShift);
+            TreePath.ShiftLeft4BitMut(fasterShift);
+            fasterShift.Should().BeEquivalentTo(manualShift);
+        }
+    }
+
+    private void ShiftLeftManual(Span<byte> span)
+    {
+        byte carry = 0;
+
+        for (int i = span.Length - 1; i >= 0; i--)
+        {
+            byte current = span[i];
+            span[i] = (byte)((current << 4) | carry);
+            carry = (byte)(current >> 4);
+        }
+    }
+
     private static TreePath CreateFullTreePath()
     {
         TreePath path = new TreePath();
