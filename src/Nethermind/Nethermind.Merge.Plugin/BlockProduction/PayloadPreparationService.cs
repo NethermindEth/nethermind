@@ -111,8 +111,9 @@ public class PayloadPreparationService : IPayloadPreparationService
 
         long startTimestamp = Stopwatch.GetTimestamp();
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
-        blockImprovementContext.ImprovementTask.ContinueWith((b) =>
-            LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp)));
+        blockImprovementContext.ImprovementTask.ContinueWith(
+            (b) => LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp)),
+            TaskContinuationOptions.RunContinuationsAsynchronously);
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             // if after delay we still have time to try producing the block in this slot
@@ -171,17 +172,35 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     }
 
-    private Block? LogProductionResult(Task<Block?> t, Block currentBestBlock, UInt256 blockFees, TimeSpan time)
+    private void LogProductionResult(Task<Block?> t, Block currentBestBlock, UInt256 blockFees, TimeSpan time)
     {
         const long weiToEth = 1_000_000_000_000_000_000;
+        const long weiToGwei = 1_000_000_000;
 
         if (t.IsCompletedSuccessfully)
         {
             Block? block = t.Result;
             if (block is not null && !ReferenceEquals(block, currentBestBlock))
             {
-                BlockImproved?.Invoke(this, new BlockEventArgs(block));
-                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,7:N2} ms");
+                bool supportsBlobs = _blockProducer.SupportsBlobs;
+                int blobs = 0;
+                int blobTx = 0;
+                UInt256 gas = 0;
+                if (supportsBlobs)
+                {
+                    foreach (Transaction tx in block.Transactions)
+                    {
+                        int blobCount = tx.GetBlobCount();
+                        if (blobCount > 0)
+                        {
+                            blobs += blobCount;
+                            blobTx++;
+                            tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
+                            gas += (ulong)tx.SpentGas * premiumPerGas;
+                        }
+                    }
+                }
+                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {(supportsBlobs ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
             }
             else
             {
@@ -196,8 +215,6 @@ public class PayloadPreparationService : IPayloadPreparationService
         {
             if (_logger.IsDebug) _logger.Debug("Block improvement was canceled");
         }
-
-        return t.Result;
     }
 
     public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
@@ -218,6 +235,4 @@ public class PayloadPreparationService : IPayloadPreparationService
 
         return null;
     }
-
-    public event EventHandler<BlockEventArgs>? BlockImproved;
 }

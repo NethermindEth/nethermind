@@ -72,7 +72,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
-    private const int MaxBlocksDuringFastSyncTransition = 8192;
+    private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
 
@@ -576,13 +576,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
 
         bool branchingCondition;
-        bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
         Block toBeProcessed = suggestedBlock;
         long iterations = 0;
         do
         {
             iterations++;
+            if (iterations > MaxBranchSize)
+            {
+                throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+            }
+
             if (!options.ContainsFlag(ProcessingOptions.Trace))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
@@ -609,37 +613,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-            bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
-            if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+            if (_logger.IsTrace)
+                _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
             toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
             if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
-            bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
             if (toBeProcessed is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                 break;
-            }
-
-            if (isFastSyncTransition)
-            {
-                // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
-                // MultiSyncModeSelector switched to full sync when it shouldn't
-                // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
-                if (iterations > MaxBlocksDuringFastSyncTransition)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
-                    break;
-                }
-
-                // if we have parent state it means that we don't need to go deeper
-                if (toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header))
-                {
-                    if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
-                    break;
-                }
-
-                if (_logger.IsDebug) _logger.Debug($"A new block {toBeProcessed} in fast sync transition branch - state not found");
             }
 
             // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
@@ -648,10 +629,21 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // otherwise some nodes would be missing
             // we also need to go deeper if we already pruned state for that block
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
-            branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInForceProcessing;
-            if (_logger.IsTrace) _logger.Trace($" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+            branchingCondition =
+                (notFoundTheBranchingPointYet || !hasState)
+                && notInForceProcessing;
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $" Current branching point: " +
+                    $"{branchingPoint.Number}," +
+                    $" {branchingPoint.Hash} " +
+                    $"TD: {branchingPoint.TotalDifficulty} " +
+                    $"Processing conditions " +
+                    $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
+                    $"hasState: {hasState}, " +
+                    $"notInForceProcessing: {notInForceProcessing}, ");
 
         } while (branchingCondition);
 

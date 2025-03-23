@@ -93,10 +93,15 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         TaikoTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree.AsReadOnly(),
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            secondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -126,6 +131,8 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.DbProvider,
             _api.BlockTree,
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            _api.Config<IBlocksConfig>().SecondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,

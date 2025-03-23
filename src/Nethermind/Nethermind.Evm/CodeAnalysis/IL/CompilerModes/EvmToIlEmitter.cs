@@ -1921,7 +1921,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             envLoader.LoadSpec(method, locals, false);
-                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfoDoesntFollowsDelegation), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
                             method.StoreLocal(locals.localReadOnlyMemory);
                             method.LoadLocalAddress(locals.localReadOnlyMemory);
@@ -1993,7 +1993,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             envLoader.LoadSpec(method, locals, false);
-                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfoDoesntFollowsDelegation), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 
                             method.LoadLocalAddress(locals.uint256B);

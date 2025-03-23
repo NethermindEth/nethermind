@@ -28,6 +28,8 @@ public class ShutterTxSource(
     private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
     private readonly Lock _syncObject = new();
 
+    public bool SupportsBlobs => false;
+
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
     {
         if (!shutterConfig.Validator)

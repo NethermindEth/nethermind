@@ -171,6 +171,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -231,9 +232,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out _))
+                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid");
+                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
                     }
                     else
                     {
@@ -260,19 +261,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 StackAccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
-                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
-                if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN
-                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || (authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1))
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                if ((authorizationTuple.ChainId != 0
-                    && SpecProvider.ChainId != authorizationTuple.ChainId)
-                    )
+                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
                     return false;
@@ -284,17 +273,22 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
+                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                if (authorizationTuple.Authority is null
+                    || s > Secp256K1Curve.HalfN
+                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
+                {
+                    error = "Bad signature.";
+                    return false;
+                }
+
                 if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
                 {
                     error = "Bad signature.";
                     return false;
                 }
 
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
@@ -302,6 +296,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                     return false;
                 }
+
                 UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
                 if (authNonce != authorizationTuple.Nonce)
                 {
@@ -707,25 +702,31 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
         {
+            UInt256 fees = (UInt256)spentGas * premiumPerGas;
+
+            // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
-                UInt256 fees = (UInt256)spentGas * premiumPerGas;
-                UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
-                UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
-
-                if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
-                {
-                    collectedFees += blobBaseFee;
-                }
-
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+            }
 
-                if (spec.FeeCollector is not null && !collectedFees.IsZero)
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+            UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+            UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
-                if (tracer.IsTracingFees)
-                    tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
+            if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
+            {
+                collectedFees += blobBaseFee;
+            }
+
+            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+            {
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+            }
+
+            if (tracer.IsTracingFees)
+            {
+                tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
             }
         }
 

@@ -178,5 +178,14 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+
+        /// <summary>
+        /// Sync pivot is mainly concerned with old blocks and receipts.
+        /// After sync pivot, blocks and headers should be continuous.
+        /// Sync pivot should be guaranteed to be a finalized block, code should not need to be concerned of consensus
+        /// for blocks before sync pivot.
+        /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
+        /// </summary>
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
     }
 }

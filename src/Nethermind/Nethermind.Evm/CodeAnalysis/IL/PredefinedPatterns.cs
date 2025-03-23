@@ -68,7 +68,7 @@ internal class IsContractCheck : IPatternChunk
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, worldState, spec, NullTxTracer.Instance, true))
             result.ThrowException(EvmExceptionType.OutOfGas);
 
-        int contractCodeSize = codeInfoRepository.GetCachedCodeInfoDoesntFollowsDelegation(worldState, address, spec).MachineCode.Length;
+        int contractCodeSize = codeInfoRepository.GetCachedCodeInfo(worldState, address, spec).MachineCode.Length;
         stack.PushUInt32(contractCodeSize);
         if (contractCodeSize == 0)
         {

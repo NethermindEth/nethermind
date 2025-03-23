@@ -170,7 +170,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
         public void ForceRunAnalysis(Address address, int mode)
         {
-            var codeinfo = CodeInfoRepository.GetCachedCodeInfoFollowsDelegation(TestState, address, Prague.Instance);
+            var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
             if (mode.HasFlag(ILMode.PATTERN_BASED_MODE))
             {

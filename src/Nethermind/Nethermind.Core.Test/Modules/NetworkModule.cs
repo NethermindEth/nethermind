@@ -45,6 +45,7 @@ public class NetworkModule(IInitConfig initConfig) : Module
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()

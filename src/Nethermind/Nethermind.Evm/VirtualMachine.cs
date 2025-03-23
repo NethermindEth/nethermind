@@ -2351,7 +2351,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfoFollowsDelegation(state, codeSource, spec);
+        CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec, out _);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)
