@@ -19,6 +19,16 @@ namespace Nethermind.Core.Extensions
         // the performance of the network as a whole.
         private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 
+        public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
+        {
+            return ToHexString(memory.Span, withZeroX, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlyMemory<byte> memory, bool withZeroX = false)
+        {
+            return ToHexString(memory.Span, withZeroX, false, false);
+        }
+
         public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
