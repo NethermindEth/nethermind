@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -19,6 +20,8 @@ public sealed class ScopedTrieStore(ITrieStore fullTrieStore, Hash256? address) 
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
         address1 == address ? this : new ScopedTrieStore(fullTrieStore, address1);
+
+    public ConcurrencyController ConcurrencyController => fullTrieStore.ConcurrencyController;
 
     public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
 

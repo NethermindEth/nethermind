@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -40,6 +41,8 @@ namespace Nethermind.Trie.Pruning
         /// <returns></returns>
         [Todo("Find a way to not have this. PatriciaTrie on its own does not need the concept of storage.")]
         ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address);
+
+        ConcurrencyController ConcurrencyController { get; }
 
         INodeStorage.KeyScheme Scheme { get; }
     }

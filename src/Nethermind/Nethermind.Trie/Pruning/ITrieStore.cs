@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -48,6 +49,7 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
+        ConcurrencyController ConcurrencyController { get; }
     }
 
     public interface IPruningTrieStore

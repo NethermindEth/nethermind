@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -47,6 +48,8 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
     {
         return new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
     }
+
+    public ConcurrencyController ConcurrencyController => _baseResolver.ConcurrencyController;
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
 }

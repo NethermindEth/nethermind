@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -16,12 +17,15 @@ public class PreCachedTrieStore : ITrieStore
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _preBlockCache;
     private readonly Func<NodeKey, byte[]> _loadRlp;
     private readonly Func<NodeKey, byte[]> _tryLoadRlp;
+    private readonly ConcurrencyController? _concurrencyController;
 
     public PreCachedTrieStore(ITrieStore inner,
-        ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
+        ConcurrentDictionary<NodeKey, byte[]?> preBlockCache,
+        ConcurrencyController? concurrencyController = null)
     {
         _inner = inner;
         _preBlockCache = preBlockCache;
+        _concurrencyController = concurrencyController;
 
         // Capture the delegate once for default path to avoid the allocation of the lambda per call
         _loadRlp = (NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
@@ -50,6 +54,8 @@ public class PreCachedTrieStore : ITrieStore
 
         return rlp is not null;
     }
+
+    public ConcurrencyController ConcurrencyController => _concurrencyController ?? _inner.ConcurrencyController;
 
     public IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null) => _inner.AsReadOnly(keyValueStore);
 

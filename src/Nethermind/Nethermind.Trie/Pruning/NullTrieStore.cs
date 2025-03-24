@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -25,6 +26,7 @@ namespace Nethermind.Trie.Pruning
         public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot) => this;
+        public ConcurrencyController ConcurrencyController => ConcurrencyController.SingleThread;
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }

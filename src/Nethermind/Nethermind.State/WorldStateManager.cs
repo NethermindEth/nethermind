@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Healing;
@@ -88,7 +89,7 @@ public class WorldStateManager : IWorldStateManager
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
         return preBlockCaches is not null
             ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
+                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache, ConcurrencyController.SingleThread),
                 _readaOnlyCodeCb,
                 _logManager,
                 preBlockCaches)

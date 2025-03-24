@@ -94,8 +94,9 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         ParallelOptions parallelOptions,
         TLocal value,
         Func<int, TLocal, TLocal> action,
-        Action<TLocal> @finally)
-        => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, value, action, @finally);
+        Action<TLocal> @finally,
+        ConcurrencyController? concurrencyController = null)
+        => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, value, action, @finally, concurrencyController);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data.
@@ -255,7 +256,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Func<TLocal>? init,
             TLocal? initValue,
             Func<int, TLocal, TLocal> action,
-            Action<TLocal>? @finally = null)
+            Action<TLocal>? @finally = null,
+            ConcurrencyController? concurrencyController = null)
         {
             // Determine the number of threads to use
             var threads = parallelOptions.MaxDegreeOfParallelism > 0
@@ -265,10 +267,27 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             // Create shared data with thread-local initializers and finalizers
             var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
+            int queued = 0;
             // Queue work items to the thread pool for all threads except the current one
             for (int i = 0; i < threads - 1; i++)
             {
-                ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
+                if (concurrencyController is not null)
+                {
+                    if (concurrencyController.TryTakeSlot(out var _))
+                    {
+                        queued++;
+                        ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
+                    }
+                    else
+                    {
+                        // Execute work on the current thread
+                        new InitProcessor<TLocal>(data).Execute();
+                    }
+                }
+                else
+                {
+                    ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
+                }
             }
 
             // Execute work on the current thread
@@ -278,6 +297,14 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             if (data.ActiveThreads > 0)
             {
                 data.Event.Wait();
+            }
+
+            if (concurrencyController is not null)
+            {
+                for (int i = 0; i < queued; i++)
+                {
+                    concurrencyController.ReturnSlot();
+                }
             }
 
             parallelOptions.CancellationToken.ThrowIfCancellationRequested();

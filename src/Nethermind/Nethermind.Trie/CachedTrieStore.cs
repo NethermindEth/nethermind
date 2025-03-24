@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -30,6 +31,8 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
         throw new InvalidOperationException("unsupported");
+
+    public ConcurrencyController ConcurrencyController => @base.ConcurrencyController;
 
     public INodeStorage.KeyScheme Scheme => @base.Scheme;
 

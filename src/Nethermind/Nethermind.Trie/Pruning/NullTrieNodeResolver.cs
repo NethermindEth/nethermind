@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -19,6 +20,8 @@ namespace Nethermind.Trie.Pruning
         {
             return this;
         }
+
+        public ConcurrencyController ConcurrencyController => ConcurrencyController.SingleThread;
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }

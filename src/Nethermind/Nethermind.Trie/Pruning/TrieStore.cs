@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
@@ -43,6 +44,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+    private ConcurrencyController _concurrencyController;
 
     public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
         : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -73,6 +75,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
         _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
         _publicStore = new TrieKeyValueStore(this);
+        _concurrencyController = new ConcurrencyController(Environment.ProcessorCount);
         _persistedNodeRecorder = PersistedNodeRecorder;
 
         if (pruningStrategy.PruningEnabled)
@@ -1180,6 +1183,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
     public bool IsCurrentlyFullPruning => _persistenceStrategy.IsFullPruning;
+    public ConcurrencyController ConcurrencyController => _concurrencyController;
 
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {

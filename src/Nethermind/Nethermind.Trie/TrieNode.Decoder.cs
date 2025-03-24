@@ -193,7 +193,7 @@ namespace Nethermind.Trie
                     state =>
                     {
                         Interlocked.Add(ref totalLength, state.local);
-                    });
+                    }, tree.ConcurrencyController);
 
                 return totalLength;
             }
@@ -261,7 +261,7 @@ namespace Nethermind.Trie
                     state =>
                     {
                         Interlocked.Add(ref totalLength, state.local);
-                    });
+                    }, tree.ConcurrencyController);
 
                 return totalLength;
             }

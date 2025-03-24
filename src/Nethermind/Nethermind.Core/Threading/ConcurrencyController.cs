@@ -16,6 +16,7 @@ namespace Nethermind.Core.Threading;
 /// <param name="concurrency">Desired concurrency which include the calling thread. So slot is slot-1.</param>
 public class ConcurrencyController(int concurrency)
 {
+    public static readonly ConcurrencyController SingleThread = new ConcurrencyController(1);
     private int _slots = concurrency;
 
     public bool TryTakeSlot(out Slot returner)
@@ -37,7 +38,7 @@ public class ConcurrencyController(int concurrency)
         return true;
     }
 
-    private void ReturnSlot()
+    public void ReturnSlot()
     {
         Interlocked.Increment(ref _slots);
     }

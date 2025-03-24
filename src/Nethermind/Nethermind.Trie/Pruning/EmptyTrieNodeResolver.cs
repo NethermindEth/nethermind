@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -33,6 +34,8 @@ public class EmptyTrieNodeResolver : ITrieNodeResolver
     {
         throw new InvalidOperationException("Empty node resolver should not be called");
     }
+
+    public ConcurrencyController ConcurrencyController => ConcurrencyController.SingleThread;
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
 }
