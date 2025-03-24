@@ -260,13 +260,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, kvp.Key);
                 int writes = 0;
                 int skipped = 0;
-                foreach (var key in dict.Keys)
+                foreach (var change in dict)
                 {
-                    ref var change = ref dict.GetValueRefOrNullRef(key);
-                    if (!Bytes.AreEqual(change.Before, change.After))
+                    if (!Bytes.AreEqual(change.Value.Before, change.Value.After))
                     {
-                        change.Before = change.After;
-                        storageTree.Set(key, change.After);
+                        dict[change.Key] = new ChangeTrace(change.Value.After, change.Value.After);
+                        storageTree.Set(change.Key, change.Value.After);
                         writes++;
                     }
                     else
@@ -309,13 +308,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(state.changes, kvp.Key);
                 int writes = 0;
                 int skipped = 0;
-                foreach (var key in dict.Keys)
+                foreach (var change in dict)
                 {
-                    ref var change = ref dict.GetValueRefOrNullRef(key);
-                    if (!Bytes.AreEqual(change.Before, change.After))
+                    if (!Bytes.AreEqual(change.Value.Before, change.Value.After))
                     {
-                        change.Before = change.After;
-                        storageTree.Set(key, change.After);
+                        dict[change.Key] = new ChangeTrace(change.Value.After, change.Value.After);
+                        storageTree.Set(change.Key, change.Value.After);
                         writes++;
                     }
                     else
@@ -596,7 +594,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             set => _dictionary[key] = value;
         }
 
-        public Dictionary<UInt256, ChangeTrace>.KeyCollection Keys => _dictionary.Keys;
+        public Dictionary<UInt256, ChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
         private sealed class Comparer : IEqualityComparer<UInt256>
         {
