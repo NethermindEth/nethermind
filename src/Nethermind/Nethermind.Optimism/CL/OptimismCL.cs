@@ -25,6 +25,7 @@ public class OptimismCL : IDisposable
     private readonly Driver _driver;
     private readonly IL2Api _l2Api;
     private readonly OptimismCLP2P _p2p;
+    private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
@@ -43,17 +44,17 @@ public class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
 
-        var logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger();
 
         IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
-        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, logger, _cancellationTokenSource.Token);
+        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger);
 
-        _decodingPipeline = new DecodingPipeline(logger);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, logManager);
+        _decodingPipeline = new DecodingPipeline(_logger);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _logger);
 
         ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters);
-        _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, logger);
-        _executionEngineManager = new ExecutionEngineManager(_l2Api, logger);
+        _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, _logger);
+        _executionEngineManager = new ExecutionEngineManager(_l2Api, _logger);
         _driver = new Driver(
             _l1Bridge,
             _decodingPipeline,
@@ -61,7 +62,7 @@ public class OptimismCL : IDisposable
             _executionEngineManager,
             _l2Api,
             specProvider.ChainId,
-            logger);
+            _logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,
             engineParameters.Nodes,
@@ -74,11 +75,11 @@ public class OptimismCL : IDisposable
 
     public async Task Start()
     {
-        SetupTest();
-
         try
         {
-            _executionEngineManager.Initialize();
+            await _executionEngineManager.Initialize();
+            L2Block finalized = await _l2Api.GetFinalizedBlock();
+            _l1Bridge.Reset(finalized.L1BlockInfo);
             await Task.WhenAll(
                 _decodingPipeline.Run(_cancellationTokenSource.Token),
                 _l1Bridge.Run(_cancellationTokenSource.Token),
@@ -88,6 +89,11 @@ public class OptimismCL : IDisposable
         catch (OperationCanceledException)
         {
         }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Exception in Optimism CL: {e}");
+            throw;
+        }
     }
 
     public void Dispose()
@@ -95,11 +101,5 @@ public class OptimismCL : IDisposable
         _cancellationTokenSource.Cancel();
         _p2p.Dispose();
         _driver.Dispose();
-    }
-
-    private void SetupTest()
-    {
-        var block = _l2Api.GetBlockByNumber(11300000);
-        _l1Bridge.SetCurrentL1Head(block.L1BlockInfo.Number, block.L1BlockInfo.BlockHash);
     }
 }

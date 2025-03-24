@@ -30,17 +30,17 @@ public class ExecutionEngineManager : IExecutionEngineManager
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
     }
 
-    public void Initialize()
+    public async Task Initialize()
     {
-        var headBlock = _l2Api.GetHeadBlock();
+        var headBlock = await _l2Api.GetHeadBlock();
         _currentHead = headBlock.Number;
         _currentHeadHash = headBlock.Hash;
 
-        var finalizedBlock = _l2Api.GetFinalizedBlock();
+        var finalizedBlock = await _l2Api.GetFinalizedBlock();
         _currentFinalizedHash = finalizedBlock.Hash;
         _currentFinalizedHead = finalizedBlock.Number;
 
-        var safeBlock = _l2Api.GetSafeBlock();
+        var safeBlock = await _l2Api.GetSafeBlock();
         _currentSafeHash = safeBlock.Hash;
         _currentSafeHead = safeBlock.Number;
 
@@ -50,10 +50,11 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
+        // TODO: We can cash unsafe blocks to save time during verification
         // TODO: lock here
         if (_currentHead >= payloadAttributes.Number)
         {
-            L2Block actualBlock = _l2Api.GetBlockByNumber(payloadAttributes.Number);
+            L2Block actualBlock = await _l2Api.GetBlockByNumber(payloadAttributes.Number);
             if (_derivedBlocksVerifier.ComparePayloadAttributes(
                     actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
             {
@@ -70,8 +71,8 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return false;
         }
 
-        return await SendForkChoiceUpdated(_currentHeadHash, executionPayload.BlockHash, executionPayload.BlockHash,
-            _currentHead, payloadAttributes.Number, payloadAttributes.Number);
+        return await SendForkChoiceUpdated(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash,
+            payloadAttributes.Number, payloadAttributes.Number, payloadAttributes.Number);
     }
 
     public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3)

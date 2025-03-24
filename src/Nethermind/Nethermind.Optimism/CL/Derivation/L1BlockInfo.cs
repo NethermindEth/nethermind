@@ -25,6 +25,13 @@ public class L1BlockInfo
     public required UInt256 BlobBaseFee;
     public required Hash256 BlockHash;
     public required Address BatcherAddress;
+
+    public override string ToString()
+    {
+        return
+            $"BaseFeeScalar: {BaseFeeScalar}, BlobBaseFeeScalar: {BlobBaseFeeScalar}, SequenceNumber: {SequenceNumber}, Timestamp: {Timestamp}, " +
+            $"Number: {Number}, BaseFee: {BaseFee}, BlobBaseFee: {BlobBaseFee}, BlockHash: {BlockHash}, BatcherAddress: {BatcherAddress}";
+    }
 }
 
 public class L1BlockInfoBuilder

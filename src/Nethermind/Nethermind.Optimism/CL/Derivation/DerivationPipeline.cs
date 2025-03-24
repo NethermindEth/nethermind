@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -19,36 +19,22 @@ public class DerivationPipeline : IDerivationPipeline
 {
     private readonly IPayloadAttributesDeriver _payloadAttributesDeriver;
     private readonly IL1Bridge _l1Bridge;
-    private readonly IExecutionEngineManager _executionEngineManager;
     private readonly ILogger _logger;
 
     public DerivationPipeline(
         IPayloadAttributesDeriver payloadAttributesDeriver,
         IL1Bridge l1Bridge,
-        IExecutionEngineManager executionEngineManager,
         ILogger logger)
     {
         _payloadAttributesDeriver = payloadAttributesDeriver;
         _l1Bridge = l1Bridge;
-        _executionEngineManager = executionEngineManager;
         _logger = logger;
     }
 
-    public async Task Run(CancellationToken token)
+    public async Task<PayloadAttributesRef[]> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch, CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
-        {
-            (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync(token);
-            await ProcessOneBatch(l2Parent, batch);
-        }
-    }
-
-    private readonly Channel<(L2Block L2Parent, BatchV1 Batch)> _inputChannel = Channel.CreateBounded<(L2Block, BatchV1)>(20);
-    public ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing => _inputChannel.Writer;
-
-    private async Task ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
-    {
-        _logger.Error($"Processing batch RelTimestamp: {batch.RelTimestamp}");
+        // TODO: propagate CancellationToken
+        if (_logger.IsInfo) _logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
         ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
         if (expectedParentNumber != l2Parent.Number)
@@ -59,7 +45,8 @@ public class DerivationPipeline : IDerivationPipeline
         (L1Block[]? l1Origins, ReceiptForRpc[][]? l1Receipts) = await GetL1Origins(batch);
         if (l1Origins is null || l1Receipts is null)
         {
-            return;
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 Origins for span batch. RelTimestamp: {batch.RelTimestamp}");
+            throw new Exception("Unable to get L1 Origins");
         }
 
         PayloadAttributesRef l2ParentPayloadAttributes = new()
@@ -69,33 +56,36 @@ public class DerivationPipeline : IDerivationPipeline
             PayloadAttributes = l2Parent.PayloadAttributes,
             SystemConfig = l2Parent.SystemConfig
         };
+        List<PayloadAttributesRef> result = new((int)batch.BlockCount);
         int originIdx = 0;
         try
         {
             foreach (var singularBatch in batch.ToSingularBatches(480, 1719335639, 2))
             {
                 if (singularBatch.IsFirstBlockInEpoch) originIdx++;
-                var payloadAttributes = _payloadAttributesDeriver.DerivePayloadAttributes(
+                var payloadAttributes = _payloadAttributesDeriver.TryDerivePayloadAttributes(
                     singularBatch,
                     l2ParentPayloadAttributes,
                     l1Origins[originIdx],
                     l1Receipts[originIdx]);
-                l2ParentPayloadAttributes = payloadAttributes;
-                bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
-                if (!valid)
+                if (payloadAttributes is null)
                 {
-                    _logger.Warn($"Derived invalid payload attributes. Number: {payloadAttributes.Number}.");
-                    return; // Holocene: Drop everything that comes after invalid batch
+                    if (_logger.IsWarn) _logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
+                    return result.ToArray();
                 }
+                result.Add(payloadAttributes);
+
+                l2ParentPayloadAttributes = payloadAttributes;
             }
         }
         catch (Exception e)
         {
-            _logger.Error($"Exception occured while processing batch. RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
+            if (_logger.IsError) _logger.Error($"Exception occured while processing batch. RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
             throw;
         }
 
-        _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+        if (_logger.IsInfo) _logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+        return result.ToArray();
     }
 
     private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch)

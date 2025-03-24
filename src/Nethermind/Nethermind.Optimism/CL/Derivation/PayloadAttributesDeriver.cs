@@ -29,7 +29,7 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         _logger = logger;
     }
 
-    public PayloadAttributesRef DerivePayloadAttributes(
+    public PayloadAttributesRef? TryDerivePayloadAttributes(
         SingularBatch batch,
         PayloadAttributesRef parentPayloadAttributes,
         L1Block l1Origin,
