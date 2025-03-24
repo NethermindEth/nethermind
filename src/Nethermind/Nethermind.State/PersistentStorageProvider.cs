@@ -257,32 +257,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 }
 
                 StorageTree storageTree = kvp.Value;
-                ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, kvp.Key);
-                int writes = 0;
-                int skipped = 0;
-                foreach (var key in dict.Keys)
-                {
-                    ref var change = ref dict.GetValueRefOrNullRef(key);
-                    if (!Bytes.AreEqual(change.Before, change.After))
-                    {
-                        change.Before = change.After;
-                        storageTree.Set(key, change.After);
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-
-                if (skipped > 0)
-                {
-                    Db.Metrics.IncrementStorageSkippedWrites(skipped);
-                }
+                DefaultableDictionary dict = _blockChanges[kvp.Key];
+                int writes = ProcessStorageChanges(dict, storageTree, canBeParallel: true);
                 if (writes > 0)
                 {
-                    Db.Metrics.IncrementStorageTreeWrites(writes);
-                    storageTree.UpdateRootHash(canBeParallel: true);
                     _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
                 }
             }
@@ -305,34 +283,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     // Wasn't updated don't recalculate
                     return state;
                 }
-                StorageTree storageTree = kvp.Value;
-                ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(state.changes, kvp.Key);
-                int writes = 0;
-                int skipped = 0;
-                foreach (var key in dict.Keys)
-                {
-                    ref var change = ref dict.GetValueRefOrNullRef(key);
-                    if (!Bytes.AreEqual(change.Before, change.After))
-                    {
-                        change.Before = change.After;
-                        storageTree.Set(key, change.After);
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
 
-                if (skipped > 0)
+                StorageTree storageTree = kvp.Value;
+                DefaultableDictionary dict = state.changes[kvp.Key];
+                int writes = ProcessStorageChanges(dict, storageTree, canBeParallel: false);
+                if (writes == 0)
                 {
-                    Db.Metrics.IncrementStorageSkippedWrites(skipped);
-                }
-                if (writes > 0)
-                {
-                    Db.Metrics.IncrementStorageTreeWrites(writes);
-                    // Don't need to update root if no updates
-                    storageTree.UpdateRootHash(canBeParallel: true);
+                    lock (state.toUpdateRoots)
+                    {
+                        state.toUpdateRoots.Remove(kvp.Key);
+                    }
                 }
 
                 return state;
@@ -349,6 +309,38 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 // Update the storage root for the Account
                 _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
             }
+        }
+
+        static int ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree, bool canBeParallel)
+        {
+            int writes = 0;
+            int skipped = 0;
+            foreach (var kvp in dict)
+            {
+                byte[] after = kvp.Value.After;
+                if (!Bytes.AreEqual(kvp.Value.Before, after))
+                {
+                    dict[kvp.Key] = new(after, after);
+                    storageTree.Set(kvp.Key, after);
+                    writes++;
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+
+            if (skipped > 0)
+            {
+                Db.Metrics.IncrementStorageSkippedWrites(skipped);
+            }
+            if (writes > 0)
+            {
+                Db.Metrics.IncrementStorageTreeWrites(writes);
+                storageTree.UpdateRootHash(canBeParallel);
+            }
+
+            return writes;
         }
     }
 
@@ -596,7 +588,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             set => _dictionary[key] = value;
         }
 
-        public Dictionary<UInt256, ChangeTrace>.KeyCollection Keys => _dictionary.Keys;
+        public Dictionary<UInt256, ChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
         private sealed class Comparer : IEqualityComparer<UInt256>
         {
