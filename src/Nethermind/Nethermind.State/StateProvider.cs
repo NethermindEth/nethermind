@@ -580,7 +580,7 @@ namespace Nethermind.State
                 ReportChanges(stateTracer, trace);
             }
 
-            if (commitRoots)
+            //if (commitRoots)
             {
                 WriteToTree();
             }
