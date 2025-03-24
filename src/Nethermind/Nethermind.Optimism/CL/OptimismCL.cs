@@ -47,7 +47,7 @@ public class OptimismCL : IDisposable
         _logger = logManager.GetClassLogger();
 
         IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
-        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger, _cancellationTokenSource.Token);
+        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger);
 
         _decodingPipeline = new DecodingPipeline(_logger);
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _logger);
@@ -77,8 +77,8 @@ public class OptimismCL : IDisposable
     {
         try
         {
-            _executionEngineManager.Initialize();
-            L2Block finalized = _l2Api.GetFinalizedBlock();
+            await _executionEngineManager.Initialize();
+            L2Block finalized = await _l2Api.GetFinalizedBlock();
             _l1Bridge.Reset(finalized.L1BlockInfo);
             await Task.WhenAll(
                 _decodingPipeline.Run(_cancellationTokenSource.Token),

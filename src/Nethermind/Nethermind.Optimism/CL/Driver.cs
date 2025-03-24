@@ -15,7 +15,7 @@ public class Driver : IDisposable
 {
     private readonly ILogger _logger;
     private readonly IDerivationPipeline _derivationPipeline;
-    private readonly IL2Api _il2Api;
+    private readonly IL2Api _l2Api;
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
@@ -24,13 +24,13 @@ public class Driver : IDisposable
         IDecodingPipeline decodingPipeline,
         CLChainSpecEngineParameters engineParameters,
         IExecutionEngineManager executionEngineManager,
-        IL2Api il2Api,
+        IL2Api l2Api,
         ulong chainId,
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         _logger = logger;
-        _il2Api = il2Api;
+        _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         _executionEngineManager = executionEngineManager;
@@ -55,7 +55,7 @@ public class Driver : IDisposable
             BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
 
             ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
-            L2Block l2Parent = _il2Api.GetBlockByNumber(parentNumber);
+            L2Block l2Parent = await _l2Api.GetBlockByNumber(parentNumber);
 
             PayloadAttributesRef[] derivedPayloadAttributes = await _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token);
             foreach (PayloadAttributesRef payloadAttributes in derivedPayloadAttributes)

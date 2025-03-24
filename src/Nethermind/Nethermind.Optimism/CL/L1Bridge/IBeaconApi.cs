@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Optimism.CL;
 
 public interface IBeaconApi
 {
     // /eth/v1/beacon/blob_sidecars/:slot:
-    Task<BlobSidecar[]?> GetBlobSidecars(ulong slot, int indexFrom, int indexTo);
+    Task<BlobSidecar[]> GetBlobSidecars(ulong slot, int indexFrom, int indexTo, CancellationToken cancellationToken);
 }
 
 public struct BlobSidecar

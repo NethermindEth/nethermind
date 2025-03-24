@@ -18,13 +18,16 @@ namespace Nethermind.Optimism.CL;
 
 public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2EngineRpc, ISystemConfigDeriver systemConfigDeriver, ILogger logger) : IL2Api
 {
-    public L2Block GetBlockByNumber(ulong number)
+    private const int L2ApiRetryDelayMilliseconds = 1000;
+
+    public async Task<L2Block> GetBlockByNumber(ulong number)
     {
         var blockResult = l2EthRpc.eth_getBlockByNumber(new((long)number), true);
-        if (blockResult.Result != Result.Success)
+        while (blockResult.Result.ResultType != ResultType.Success)
         {
-            logger.Error($"Unable to get L2 block by number: {number}");
-            throw new Exception($"Unable to get L2 block by number: {blockResult.Result}");
+            if (logger.IsWarn) logger.Warn($"Unable to get L2 block by number: {number}");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            blockResult = l2EthRpc.eth_getBlockByNumber(new((long)number), true);
         }
         var block = blockResult.Data;
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
@@ -72,13 +75,14 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
         return result;
     }
 
-    public L2Block GetHeadBlock()
+    public async Task<L2Block> GetHeadBlock()
     {
         var blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Latest, true);
-        if (blockResult.Result != Result.Success)
+        while (blockResult.Result.ResultType != ResultType.Success)
         {
-            logger.Error($"Unable to get L2 head block");
-            throw new Exception($"Unable to get L2 head block");
+            if (logger.IsWarn) logger.Warn($"Unable to get L2 head block");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Latest, true);
         }
         var block = blockResult.Data;
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
@@ -90,13 +94,14 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
         };
     }
 
-    public L2Block GetFinalizedBlock()
+    public async Task<L2Block> GetFinalizedBlock()
     {
         var blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Finalized, true);
-        if (blockResult.Result != Result.Success)
+        while (blockResult.Result.ResultType != ResultType.Success)
         {
-            logger.Error($"Unable to get L2 finalized block");
-            throw new Exception($"Unable to get L2 finalized block");
+            if (logger.IsWarn) logger.Warn("Unable to get L2 finalized block");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Finalized, true);
         }
         var block = blockResult.Data;
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
@@ -108,13 +113,14 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
         };
     }
 
-    public L2Block GetSafeBlock()
+    public async Task<L2Block> GetSafeBlock()
     {
         var blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Safe, true);
-        if (blockResult.Result != Result.Success)
+        while (blockResult.Result.ResultType != ResultType.Success)
         {
-            logger.Error($"Unable to get L2 safe block");
-            throw new Exception($"Unable to get L2 safe block");
+            if (logger.IsWarn) logger.Warn($"Unable to get L2 safe block");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            blockResult = l2EthRpc.eth_getBlockByNumber(BlockParameter.Safe, true);
         }
         var block = blockResult.Data;
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
@@ -129,23 +135,26 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
     public async Task<ForkchoiceUpdatedV1Result> ForkChoiceUpdatedV3(Hash256 headHash, Hash256 finalizedHash, Hash256 safeHash,
         OptimismPayloadAttributes? payloadAttributes = null)
     {
-        var result = await l2EngineRpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(headHash, finalizedHash, safeHash), payloadAttributes);
+        var fcuResult = await l2EngineRpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(headHash, finalizedHash, safeHash), payloadAttributes);
 
-        if (result.Result.ResultType == ResultType.Failure)
+        while (fcuResult.Result.ResultType != ResultType.Success)
         {
-            if (logger.IsError) logger.Error($"ForkChoiceUpdated request error: {result.Result.Error}");
-            throw new Exception($"ForkChoiceUpdated request error: {result.Result.Error}");
+            if (logger.IsWarn) logger.Warn($"ForkChoiceUpdated request error: {fcuResult.Result.Error}");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            fcuResult = await l2EngineRpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(headHash, finalizedHash, safeHash), payloadAttributes);
         }
-        return result.Data;
+        return fcuResult.Data;
     }
 
     public async Task<OptimismGetPayloadV3Result> GetPayloadV3(string payloadId)
     {
         byte[] payloadIdBytes = Convert.FromHexString(payloadId.Substring(2));
         var getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
-        if (getPayloadResult.Result != Result.Success)
+        while (getPayloadResult.Result.ResultType != ResultType.Success)
         {
-            throw new ArgumentException($"Unable to build block. Error: {getPayloadResult.Result.Error}");
+            if (logger.IsWarn) logger.Warn($"GetPayload request error: {getPayloadResult.Result.Error}");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
         }
 
         return getPayloadResult.Data!;
@@ -154,11 +163,11 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
     public async Task<PayloadStatusV1> NewPayloadV3(ExecutionPayloadV3 payload, Hash256? parentBeaconBlockRoot)
     {
         var npResult = await l2EngineRpc.engine_newPayloadV3(payload, [], parentBeaconBlockRoot);
-
-        if (npResult.Result.ResultType == ResultType.Failure)
+        while (npResult.Result.ResultType != ResultType.Success)
         {
-            if (logger.IsError) logger.Error($"NewPayload request error: {npResult.Result.Error}");
-            throw new Exception($"NewPayload request error: {npResult.Result.Error}");
+            if (logger.IsWarn) logger.Warn($"NewPayload request error: {npResult.Result.Error}");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            npResult = await l2EngineRpc.engine_newPayloadV3(payload, [], parentBeaconBlockRoot);
         }
         return npResult.Data;
     }

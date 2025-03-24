@@ -70,13 +70,13 @@ public class EthereumL1Bridge : IL1Bridge
                 if (currentHeadBlock.Hash != _currentHeadHash)
                 {
                     // Reorg currentHead
-                    await BuildUp(_currentFinalizedNumber, newFinalized.Number);
+                    await BuildUp(_currentFinalizedNumber, newFinalized.Number, token);
                     await RollBack(newHead.Hash, newHeadNumber, newFinalized.Number, token);
                 }
                 else
                 {
                     // CurrentHead is ok
-                    await BuildUp(_currentHeadNumber, newFinalized.Number); // Will build up if _currentHead < newFinalized
+                    await BuildUp(_currentHeadNumber, newFinalized.Number, token); // Will build up if _currentHead < newFinalized
                     await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber, token);
                 }
 
@@ -90,14 +90,14 @@ public class EthereumL1Bridge : IL1Bridge
             // TODO we can have reorg here
             _currentHeadNumber = newHeadNumber;
             _currentHeadHash = newHead.Hash;
-            await ProcessBlock(newHead);
+            await ProcessBlock(newHead, token);
             await TryUpdateFinalized();
 
             await Task.Delay(12000, token);
         }
     }
 
-    private async Task ProcessBlock(L1Block block)
+    private async Task ProcessBlock(L1Block block, CancellationToken cancellationToken)
     {
         try
         {
@@ -114,8 +114,7 @@ public class EthereumL1Bridge : IL1Bridge
                         _engineParameters.BatchSubmitter == transaction.From)
                     {
                         ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
-                        await ProcessBlobBatcherTransaction(transaction,
-                            startingBlobIndex, slotNumber);
+                        await ProcessBlobBatcherTransaction(transaction, startingBlobIndex, slotNumber, cancellationToken);
                     }
 
                     startingBlobIndex += transaction.BlobVersionedHashes!.Length;
@@ -143,10 +142,10 @@ public class EthereumL1Bridge : IL1Bridge
         return (timestamp - _engineParameters.L1BeaconGenesisSlotTime!.Value) / l1SlotTime;
     }
 
-    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber, CancellationToken cancellationToken)
     {
-        BlobSidecar[]? blobSidecars = await _beaconApi.GetBlobSidecars(slotNumber, startingBlobIndex,
-            startingBlobIndex + transaction.BlobVersionedHashes!.Length - 1);
+        BlobSidecar[] blobSidecars = await _beaconApi.GetBlobSidecars(slotNumber, startingBlobIndex,
+            startingBlobIndex + transaction.BlobVersionedHashes!.Length - 1, cancellationToken);
 
         if (blobSidecars is null)
         {
@@ -161,7 +160,7 @@ public class EthereumL1Bridge : IL1Bridge
 
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
-            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob);
+            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob, cancellationToken);
         }
     }
 
@@ -195,7 +194,7 @@ public class EthereumL1Bridge : IL1Bridge
     }
 
     // Gets all blocks from range [{segmentStartNumber}, {headNumber})
-    private async Task RollBack(Hash256 headHash, ulong headNumber, ulong segmentStartNumber, CancellationToken token)
+    private async Task RollBack(Hash256 headHash, ulong headNumber, ulong segmentStartNumber, CancellationToken cancellationToken)
     {
         Hash256 currentHash = headHash;
         L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber + 1];
@@ -204,7 +203,7 @@ public class EthereumL1Bridge : IL1Bridge
             _logger.Info($"Rolling back L1 head. {i} to go. Block {currentHash}");
             chainSegment[i] = await GetBlockByHash(currentHash);
             currentHash = chainSegment[i].ParentHash;
-            if (token.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
@@ -217,22 +216,17 @@ public class EthereumL1Bridge : IL1Bridge
 
         for (int i = 0; i < chainSegment.Length; i++)
         {
-            await ProcessBlock(chainSegment[i]);
+            await ProcessBlock(chainSegment[i], cancellationToken);
         }
     }
 
     // Gets all blocks from range ({from}, {to}). It's safe only if {to} is finalized
-    private async Task BuildUp(ulong from, ulong to)
+    private async Task BuildUp(ulong from, ulong to, CancellationToken cancellationToken)
     {
         for (ulong i = from + 1; i < to; i++)
         {
-            await ProcessBlock(await GetBlock(i));
+            await ProcessBlock(await GetBlock(i), cancellationToken);
         }
-    }
-
-    public Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo)
-    {
-        return _beaconApi.GetBlobSidecars(slotNumber, indexFrom, indexTo)!;
     }
 
     public async Task<L1Block> GetBlock(ulong blockNumber)
@@ -250,16 +244,10 @@ public class EthereumL1Bridge : IL1Bridge
 
     // TODO: pruning
     private readonly ConcurrentDictionary<Hash256, L1Block> _cachedL1Blocks = new();
-    private readonly ConcurrentDictionary<Hash256, ReceiptForRpc[]> _cachedReceipts = new();
 
     private void CacheBlock(L1Block block)
     {
         _cachedL1Blocks.TryAdd(block.Hash, block);
-    }
-
-    private void CacheReceipts(Hash256 blockHash, ReceiptForRpc[] receipts)
-    {
-        _cachedReceipts.TryAdd(blockHash, receipts);
     }
 
     public async Task<L1Block> GetBlockByHash(Hash256 blockHash)
@@ -282,11 +270,6 @@ public class EthereumL1Bridge : IL1Bridge
 
     public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash)
     {
-        if (_cachedReceipts.TryGetValue(blockHash, out ReceiptForRpc[]? cachedReceipts))
-        {
-            return cachedReceipts;
-        }
-
         ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
         while (result is null)
         {
@@ -294,7 +277,6 @@ public class EthereumL1Bridge : IL1Bridge
             result = await _ethL1Api.GetReceiptsByHash(blockHash);
         }
 
-        CacheReceipts(blockHash, result);
         return result;
     }
 
