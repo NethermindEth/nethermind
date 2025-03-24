@@ -260,7 +260,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 StorageTree storageTree = kvp.Value;
                 DefaultableDictionary dict = _blockChanges[kvp.Key];
-                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: true);
+                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree);
                 ReportMetrics(writes, skipped);
                 if (writes > 0)
                 {
@@ -276,7 +276,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             ParallelUnbalancedWork.For(
                 0,
                 storages.Count,
-                RuntimeInformation.ParallelOptionsLogicalCores,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
                 (storages, toUpdateRoots: _toUpdateRoots, changes: _blockChanges, writes: 0, skips: 0),
                 static (i, state) =>
             {
@@ -289,7 +289,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 StorageTree storageTree = kvp.Value;
                 DefaultableDictionary dict = state.changes[kvp.Key];
-                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: false);
+                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree);
                 if (writes == 0)
                 {
                     lock (state.toUpdateRoots)
@@ -321,7 +321,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        static (int writes, int skipped) ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree, bool canBeParallel)
+        static (int writes, int skipped) ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree)
         {
             int writes = 0;
             int skipped = 0;
@@ -342,7 +342,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (writes > 0)
             {
-                storageTree.UpdateRootHash(canBeParallel);
+                storageTree.UpdateRootHash(canBeParallel: true);
             }
 
             return (writes, skipped);
