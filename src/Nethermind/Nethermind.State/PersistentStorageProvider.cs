@@ -289,7 +289,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 StorageTree storageTree = kvp.Value;
                 DefaultableDictionary dict = state.changes[kvp.Key];
-                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: false);
+                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: true);
                 if (writes == 0)
                 {
                     lock (state.toUpdateRoots)
@@ -306,7 +306,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 return state;
             },
-            (state) => ReportMetrics(state.writes, state.skips));
+            (state) => ReportMetrics(state.writes, state.skips),
+                _trieStore.ConcurrencyController);
 
             // Update the storage roots in the main thread non in parallel
             foreach (ref var kvp in storages.AsSpan())
