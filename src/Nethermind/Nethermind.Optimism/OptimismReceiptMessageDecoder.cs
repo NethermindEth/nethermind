@@ -12,10 +12,8 @@ namespace Nethermind.Optimism;
 public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true) { }
 
 [Rlp.Decoder]
-public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlpStreamDecoder<OptimismTxReceipt>, IRlpStreamDecoder<TxReceipt>
+public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlpStreamDecoder<TxReceipt>
 {
-    private readonly bool _isEncodedForTrie = isEncodedForTrie;
-
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
@@ -72,7 +70,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         return txReceipt;
     }
 
-    private (int Total, int Logs) GetContentLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)
+    private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
@@ -95,21 +93,23 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
                 : Rlp.LengthOf(item.PostTransactionState);
         }
 
-        if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
-            (item.DepositReceiptVersion is not null || !_isEncodedForTrie))
+        if (item.TxType == TxType.DepositTx && item is OptimismTxReceipt opItem)
         {
-            contentLength += Rlp.LengthOf(item.DepositNonce);
-
-            if (item.DepositReceiptVersion is not null)
+            if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
-                contentLength += Rlp.LengthOf(item.DepositReceiptVersion.Value);
+                contentLength += Rlp.LengthOf(opItem.DepositNonce);
+
+                if (opItem.DepositReceiptVersion is not null)
+                {
+                    contentLength += Rlp.LengthOf(opItem.DepositReceiptVersion.Value);
+                }
             }
         }
 
         return (contentLength, logsLength);
     }
 
-    private static int GetLogsLength(OptimismTxReceipt item)
+    public static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
         for (var i = 0; i < item.Logs?.Length; i++)
@@ -123,7 +123,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public int GetLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)
+    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
     {
         (int Total, _) = GetContentLength(item, rlpBehaviors);
         int receiptPayloadLength = Rlp.LengthOfSequence(Total);
@@ -137,7 +137,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         return result;
     }
 
-    public void Encode(RlpStream rlpStream, OptimismTxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -173,14 +173,16 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
             rlpStream.Encode(item.Logs[i]);
         }
 
-        if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
-            (item.DepositReceiptVersion is not null || !_isEncodedForTrie))
+        if (item.TxType == TxType.DepositTx && item is OptimismTxReceipt opItem)
         {
-            rlpStream.Encode(item.DepositNonce.Value);
-
-            if (item.DepositReceiptVersion is not null)
+            if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
-                rlpStream.Encode(item.DepositReceiptVersion.Value);
+                rlpStream.Encode(opItem.DepositNonce.Value);
+
+                if (opItem.DepositReceiptVersion is not null)
+                {
+                    rlpStream.Encode(opItem.DepositReceiptVersion.Value);
+                }
             }
         }
     }
@@ -188,15 +190,5 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
     TxReceipt IRlpStreamDecoder<TxReceipt>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         return Decode(rlpStream, rlpBehaviors);
-    }
-
-    public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Encode(stream, (OptimismTxReceipt)item, rlpBehaviors);
-    }
-
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
-    {
-        return GetLength((OptimismTxReceipt)item, rlpBehaviors);
     }
 }
