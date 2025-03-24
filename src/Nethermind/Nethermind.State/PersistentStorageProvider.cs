@@ -207,6 +207,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (_stateProvider.AccountExists(address))
             {
                 _toUpdateRoots.Add(address);
+                // Add storage tree, will accessed later, which may be in parallel
+                // As we can't add a new storage tries in parallel to the _storages Dict do it here
                 GetOrCreateStorage(address, out _);
             }
             else
