@@ -91,14 +91,16 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     {
         long start = Stopwatch.GetTimestamp();
         innerState.Commit(releaseSpec, isGenesis, commitRoots);
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        if (commitRoots)
+            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();
         innerState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        if (commitRoots)
+            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
     public void CommitTree(long blockNumber)
