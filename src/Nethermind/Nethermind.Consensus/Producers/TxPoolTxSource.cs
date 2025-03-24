@@ -155,7 +155,7 @@ namespace Nethermind.Consensus.Producers
 
                 if (txBlobCount == 1 && candidates is null)
                 {
-                    selectedBlobTxs.Add(blobTx);
+                    selectedBlobTxs.Add(fullBlobTx);
                     if (selectedBlobTxs.Count == maxBlobsPerBlock)
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees
