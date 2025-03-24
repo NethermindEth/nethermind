@@ -21,7 +21,7 @@ public static class ILMode
 
 public enum AnalysisPhase
 {
-    NotStarted, Queued, Processing, Completed
+    NotStarted, Queued, Processing, Completed, Failed
 }
 
 /// <summary>
@@ -51,7 +51,6 @@ internal class IlInfo
     // assumes small number of ILed
     public InstructionChunk[] IlevmChunks { get; set; }
 
-    public ContractMetadata? ContractMetadata { get; set; }
     public PrecompiledContract? PrecompiledContract { get; set; }
 
     public void AddMapping(int index, InstructionChunk handler)

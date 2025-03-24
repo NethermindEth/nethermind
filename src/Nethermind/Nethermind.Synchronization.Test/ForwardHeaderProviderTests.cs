@@ -309,30 +309,23 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        await forwardHeader.GetBlockHeaders(0, 128, default);
+        using IOwnedReadOnlyList<BlockHeader?>? _ = await forwardHeader.GetBlockHeaders(0, 128, default);
 
         sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
         sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
         sealValidator.Received().ValidateSeal(blockHeadersCopy![^1], true);
     }
 
-    private class ThrowingPeer : ISyncPeer
+    private class ThrowingPeer(long number, UInt256? totalDiff, Hash256? headHash = null) : ISyncPeer
     {
-        public ThrowingPeer(long number, UInt256? totalDiff, Hash256? headHash = null)
-        {
-            HeadNumber = number;
-            TotalDifficulty = totalDiff ?? UInt256.MaxValue;
-            HeadHash = headHash ?? Keccak.Zero;
-        }
-
         public string Name => "Throwing";
         public string ClientId => "EX peer";
         public Node Node { get; } = null!;
         public string ProtocolCode { get; } = null!;
         public byte ProtocolVersion { get; } = default;
-        public Hash256 HeadHash { get; set; }
-        public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
+        public long HeadNumber { get; set; } = number;
+        public UInt256 TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -353,7 +346,7 @@ public partial class ForwardHeaderProviderTests
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            throw new Exception();
+            throw new InvalidOperationException();
         }
 
         public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
@@ -405,7 +398,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, default);
-        await headerTask.Should().ThrowAsync<Exception>();
+        await headerTask.Should().ThrowAsync<InvalidOperationException>();
     }
 
     [Flags]

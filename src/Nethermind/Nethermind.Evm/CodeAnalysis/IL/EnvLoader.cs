@@ -31,7 +31,6 @@ public abstract class EnvLoader<T>
     public abstract void LoadGasAvailable(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadMachineCode(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadCalldata(Emit<T> il, Locals<T> locals, bool loadAddress);
-    public abstract void LoadImmediatesData(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadResult(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadLogger(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadReturnDataBuffer(Emit<T> il, Locals<T> locals, bool loadAddress);

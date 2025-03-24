@@ -168,6 +168,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.FindBestFullState().Returns(0);
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                    SyncProgressResolver.SyncPivot.Returns((Pivot.Number, Keccak.Zero));
 
                     SyncConfig.FastSync = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();

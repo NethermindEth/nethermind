@@ -21,6 +21,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 
@@ -40,13 +41,17 @@ public static class GasEmit
 }
 public static class ReleaseSpecEmit
 {
-    public static void DeclareOpcodeValidityCheckVariables<T>(Emit<T> method, ContractMetadata metadata, Locals<T> locals)
+    private static string GetSegmentId(SubSegmentMetadata subsegment) => subsegment.Instructions
+            .Aggregate(new StringBuilder(), (acc, op) => acc.Append(op.ToString()))
+            .ToString();
+    public static void DeclareOpcodeValidityCheckVariables<T>(Emit<T> method, ContractCompilerMetadata metadata, Locals<T> locals)
     {
+
         foreach (var segment in metadata.Segments)
         {
             foreach (var subSegment in segment.SubSegments.Values.Where(subs => subs.IsReachable))
             {
-                locals.TryDeclareLocal(subSegment.GetHashCode().ToString(), typeof(Nullable<bool>));
+                locals.TryDeclareLocal(GetSegmentId(subSegment), typeof(Nullable<bool>));
             }
         }
     }
@@ -62,7 +67,7 @@ public static class ReleaseSpecEmit
     {
         Label alreadyCheckedLabel = method.DefineLabel();
         Label hasToCheckLabel = method.DefineLabel();
-        string segmentRefName = segmentMetadata.GetHashCode().ToString();
+        string segmentRefName = GetSegmentId(segmentMetadata);
         if (!locals.TryLoadLocal(segmentRefName, true))
         {
             throw new InvalidOperationException($"method {nameof(DeclareOpcodeValidityCheckVariables) } must be called before calling {nameof(EmitAmortizedOpcodeCheck)}");
@@ -115,12 +120,41 @@ public static class StackEmit
         il.StoreLocal(stackHeadRef);
     }
 
-    public static void LoadItemFromSpan<T, U>(this Emit<T> il, Local local, Local idx)
+    public static void LoadItemFromSpan<T, U>(this Emit<T> il, Local idx, bool isReadOnly, Local? local = null)
     {
-        il.LoadLocalAddress(local);
+        if (local is not null)
+        {
+            il.LoadLocalAddress(local);
+        }
+
         il.LoadLocal(idx);
-        il.Call(typeof(Span<U>).GetMethod("get_Item"));
+        if (isReadOnly)
+        {
+            il.Call(typeof(ReadOnlySpan<U>).GetMethod("get_Item"));
+        }
+        else
+        {
+            il.Call(typeof(Span<U>).GetMethod("get_Item"));
+        }
     }
+    public static void LoadItemFromSpan<T, U>(this Emit<T> il, int idx, bool isReadOnly, Local? local = null)
+    {
+        if (local is not null)
+        {
+            il.LoadLocalAddress(local);
+        }
+
+        il.LoadConstant(idx);
+        if(isReadOnly)
+        {
+            il.Call(typeof(ReadOnlySpan<U>).GetMethod("get_Item"));
+        }
+        else
+        {
+            il.Call(typeof(Span<U>).GetMethod("get_Item"));
+        }
+    }
+
 
     public static void CleanWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
     {
@@ -533,9 +567,9 @@ static class EmitExtensions
         }
     }
 
-    public static void UpdateStackHeadIdxAndPushRefOpcodeMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, OpcodeInfo op)
+    public static void UpdateStackHeadIdxAndPushRefOpcodeMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, OpcodeMetadata opMetadata)
     {
-        var delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
+        var delta = opMetadata.StackBehaviorPush - opMetadata.StackBehaviorPop;
         method.LoadLocal(stackHeadIdx);
         method.LoadConstant(delta);
         method.Add();
@@ -573,7 +607,7 @@ static class EmitExtensions
 
         method.MarkLabel(skipTracing);
     }
-    public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, OpcodeInfo op, EnvLoader<T> envLoader, Locals<T> locals)
+    public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, int pc, Instruction op, EnvLoader<T> envLoader, Locals<T> locals)
     {
         Label skipTracing = method.DefineLabel();
         envLoader.LoadTxTracer(method, locals, false);
@@ -581,10 +615,10 @@ static class EmitExtensions
         method.BranchIfFalse(skipTracing);
 
         envLoader.LoadTxTracer(method, locals, false);
-        method.LoadConstant((int)op.Operation);
+        method.LoadConstant((int)op);
         envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(gasAvailable);
-        method.LoadConstant(op.ProgramCounter);
+        method.LoadConstant(pc);
         method.LoadLocal(head);
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.StartInstructionTrace), BindingFlags.Static | BindingFlags.Public));
 
@@ -647,15 +681,14 @@ static class EmitExtensions
     }
 
     // requires a zeroed WORD on the stack
-    public static void SpecialPushOpcode<T>(this Emit<T> il, OpcodeInfo op, byte[][] data)
+    public static void SpecialPushOpcode<T>(this Emit<T> il, Instruction op, ReadOnlySpan<byte> immediates)
     {
-        uint count = op.Operation - Instruction.PUSH0;
+        uint count = op - Instruction.PUSH0;
         uint argSize = BitOperations.RoundUpToPowerOf2(count);
 
-        int argIndex = op.Arguments.Value;
-        byte[] zpbytes = data[argIndex].AsSpan().SliceWithZeroPadding(0, (int)argSize, PadDirection.Left).ToArray();
+        byte[] zpbytes = immediates.SliceWithZeroPadding(0, (int)argSize, PadDirection.Left).ToArray();
 
-        switch (op.Operation)
+        switch (op)
         {
             case Instruction.PUSH1:
                 il.LoadConstant(zpbytes[0]);

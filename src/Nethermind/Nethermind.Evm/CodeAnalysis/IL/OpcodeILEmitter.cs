@@ -28,10 +28,10 @@ using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal delegate void OpcodeILEmitterDelegate<T>(
     IVMConfig ilCompilerConfig,
-    ContractMetadata contractMetadata,
+    ContractCompilerMetadata contractMetadata,
     SegmentMetadata currentSegment,
     SubSegmentMetadata currentSubSegment,
-    int opcodeIndex, OpcodeInfo opcodeMetadata,
+    int programCounter, Instruction op, OpcodeMetadata opcodeMetadata,
     Sigil.Emit<T> method, Locals<T> localVariables, EnvLoader<T> envStateLoader,
     Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label jumpTable, Label exitLabel) returnLabel);
 internal abstract class OpcodeILEmitter<T>
@@ -57,24 +57,24 @@ internal abstract class OpcodeILEmitter<T>
         opcodeEmitters.Remove(instruction);
     }
 
-    public void Emit(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, SubSegmentMetadata currentSubSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method, Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label jumpTable, Label exitLabel) exitLabels)
+    public void Emit(IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SegmentMetadata currentSegment, SubSegmentMetadata currentSubSegment, int programCounter, Instruction op, OpcodeMetadata opcodeMetadata, Sigil.Emit<T> method, Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label jumpTable, Label exitLabel) exitLabels)
     {
-        if (opcodeEmitters.TryGetValue(opcodeMetadata.Operation, out var emitter))
+        if (opcodeEmitters.TryGetValue(op, out var emitter))
         {
-            emitter(ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
+            emitter(ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, programCounter, op, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
         }
         else
         {
             if (opcodeEmitters.TryGetValue(Instruction.INVALID, out var emitInvalidOpcode))
             {
-                emitInvalidOpcode(ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
+                emitInvalidOpcode(ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, programCounter, op, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
             }
             else
             {
-                throw new InvalidOperationException($"Opcode {opcodeMetadata.Operation} is not supported");
+                throw new InvalidOperationException($"Opcode {op} is not supported");
             }
         }
     }
 
-    internal OpcodeILEmitterDelegate<T> emptyEmitter = (ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels) => { };
+    internal OpcodeILEmitterDelegate<T> emptyEmitter = (ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, opcodeIndex, instruction,  opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels) => { };
 }

@@ -9,21 +9,24 @@ using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Org.BouncyCastle.Asn1.Cms;
 using Sigil;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 internal static class Precompiler
 {
-    public static PrecompiledContract CompileContract(string contractName, ContractMetadata metadata, IVMConfig config)
+    public static PrecompiledContract CompileContract(string contractName, ContractCompilerMetadata metadata, IVMConfig config)
     {
         // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
@@ -34,13 +37,17 @@ internal static class Precompiler
         return dynEmitedDelegate;
     }
 
-    public static void EmitMoveNext(Emit<PrecompiledContract> method, ContractMetadata contractMetadata, IVMConfig config)
+    public static void EmitMoveNext(Emit<PrecompiledContract> method, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
+        var machineCodeAsSpan = contractMetadata.TargetCodeInfo.MachineCode.Span;
+
         var locals = new Locals<PrecompiledContract>(method);
         var opEmitter = new AotOpcodeEmitter<PrecompiledContract>();
         var envLoader = new FullAotEnvLoader();
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
+        Dictionary<int, Label> jumpDestinations = new();
+        Dictionary<int, Label> entryPoints = new();
 
         // set up spec
         envLoader.CacheSpec(method, locals);
@@ -54,7 +61,6 @@ internal static class Precompiler
         Label isContinuation = method.DefineLabel(); // jump table
         Label ret = method.DefineLabel();
 
-        Dictionary<int, Label> jumpDestinations = new();
 
         envLoader.LoadStackHead(method, locals, false);
         method.StoreLocal(locals.stackHeadIdx);
@@ -85,26 +91,24 @@ internal static class Precompiler
 
         foreach (var segmentMetadata in contractMetadata.Segments)
         {
-            method.MarkLabel(jumpDestinations[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
+            method.MarkLabel(entryPoints[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
 
             if (!config.IsIlEvmAggressiveModeEnabled)
-                segmentMetadata.StackOffsets.Fill(0);
+                contractMetadata.StackOffsets.Clear();
 
             SubSegmentMetadata currentSegment = default;
 
             // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
-            for (var i = 0; i < segmentMetadata.Segment.Length; i++)
+            for (var i = segmentMetadata.Boundaries.Start.Value; i < segmentMetadata.Boundaries.End.Value; )
             {
-                OpcodeInfo op = segmentMetadata.Segment[i];
+                (Instruction Instruction, OpcodeMetadata Metadata) opcodeInfo = ((Instruction)machineCodeAsSpan[i], OpcodeMetadata.GetMetadata((Instruction)machineCodeAsSpan[i]));
 
-                hasEmittedJump |= op.IsJump;
+                hasEmittedJump |= opcodeInfo.Instruction.IsJump();
 
-                if (op.Operation is Instruction.JUMPDEST)
+                if (opcodeInfo.Instruction is Instruction.JUMPDEST)
                 {
                     // mark the jump destination
-                    method.MarkLabel(jumpDestinations[op.ProgramCounter] = method.DefineLabel());
-                    method.LoadConstant(op.ProgramCounter);
-                    method.StoreLocal(locals.programCounter);
+                    method.MarkLabel(jumpDestinations[i] = method.DefineLabel());
                 }
 
                 if (config.IsIlEvmAggressiveModeEnabled)
@@ -115,18 +119,18 @@ internal static class Precompiler
 
                         if (!currentSegment.IsReachable)
                         {
-                            i = currentSegment.End;
+                            i = currentSegment.End + 1;
                             continue;
                         }
 
                         if (currentSegment.IsFailing)
                         {
                             method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
-                            i = currentSegment.End;
+                            i = currentSegment.End + 1;
                             continue;
                         }
 
-                        if(!currentSegment.RequiresStaticEnv)
+                        if(currentSegment.RequiresStaticEnvCheck)
                         {
                             method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
@@ -154,43 +158,43 @@ internal static class Precompiler
                         }
                     }
 
-                    if (currentSegment.StaticGasSubSegmentes.TryGetValue(i, out var gasCost) && gasCost > 0)
+                    if (contractMetadata.StaticGasSubSegmentes.TryGetValue(i, out var gasCost) && gasCost > 0)
                     {
                         method.EmitStaticGasCheck(locals.gasAvailable, gasCost, evmExceptionLabels);
                     }
 
-                    if (i == segmentMetadata.Segment.Length - 1 || op.IsTerminating)
+                    if (i == segmentMetadata.Boundaries.End.Value - 1 || opcodeInfo.Instruction.IsTerminating())
                     {
-                        method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
+                        method.LoadConstant(i + opcodeInfo.Metadata.AdditionalBytes);
                         method.StoreLocal(locals.programCounter);
                     }
                 }
                 else
                 {
-                    EmitCallToStartInstructionTrace(method, locals.gasAvailable, locals.stackHeadIdx, op, envLoader, locals);
-                    if (op.Operation.RequiresAvailabilityCheck())
+                    EmitCallToStartInstructionTrace(method, locals.gasAvailable, locals.stackHeadIdx, i, opcodeInfo.Instruction, envLoader, locals);
+                    if (opcodeInfo.Instruction.RequiresAvailabilityCheck())
                     {
                         envLoader.LoadSpec(method, locals, false);
-                        method.LoadConstant((byte)op.Operation);
+                        method.LoadConstant((byte)opcodeInfo.Instruction);
                         method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
                         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                     }
 
-                    if(op.Metadata.IsNotStaticOpcode)
+                    if(opcodeInfo.Metadata.IsNotStaticOpcode)
                     {
                         method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                     }
 
-                    method.EmitStaticGasCheck(locals.gasAvailable, op.Metadata.GasCost, evmExceptionLabels);
+                    method.EmitStaticGasCheck(locals.gasAvailable, opcodeInfo.Metadata.GasCost, evmExceptionLabels);
 
-                    method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
+                    method.LoadConstant(i + opcodeInfo.Metadata.AdditionalBytes);
                     method.StoreLocal(locals.programCounter);
 
                     method.LoadLocal(locals.stackHeadIdx);
-                    method.LoadConstant(op.Metadata.StackBehaviorPop);
+                    method.LoadConstant(opcodeInfo.Metadata.StackBehaviorPop);
                     method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
 
-                    var delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
+                    var delta = opcodeInfo.Metadata.StackBehaviorPush - opcodeInfo.Metadata.StackBehaviorPop;
                     method.LoadLocal(locals.stackHeadIdx);
                     method.LoadConstant(delta);
                     method.Add();
@@ -198,10 +202,32 @@ internal static class Precompiler
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
+                /*
+                using Local depth = method.DeclareLocal<int>();
 
-                opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
+                envLoader.LoadEnv(method, locals, true);
+                method.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.CallDepth)));
+                method.StoreLocal(depth);
 
-                if(!op.IsTerminating)
+                using Local pc = method.DeclareLocal<int>();
+                method.LoadConstant(i);
+                method.StoreLocal(pc);
+
+                using Local stackOffset = method.DeclareLocal<short>();
+                method.LoadConstant((short)contractMetadata.StackOffsets.GetValueOrDefault(i, (short)0));
+                method.StoreLocal(stackOffset);
+
+                using Local instructionName = method.DeclareLocal<string>();
+                method.LoadConstant(opcodeInfo.Instruction.ToString());
+                method.StoreLocal(instructionName);
+
+                // method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
+                */
+
+                opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, opcodeInfo.Instruction, opcodeInfo.Metadata, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
+
+                i += opcodeInfo.Metadata.AdditionalBytes;
+                if (!opcodeInfo.Instruction.IsTerminating())
                 {
                     if (config.IsIlEvmAggressiveModeEnabled)
                     {
@@ -209,12 +235,13 @@ internal static class Precompiler
                     }
                     else
                     {
-                        UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                        UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeInfo.Metadata);
                         EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                     }
                 }
+                i += 1;
 
-                if (op.IsTerminating && !hasEmittedJump)
+                if (opcodeInfo.Instruction.IsTerminating() && !hasEmittedJump)
                 {
                     goto exitLoops;
                 }
@@ -266,7 +293,14 @@ internal static class Precompiler
         method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
         method.BranchIfGreaterOrEqual(exit);
 
-        method.Branch(skipJumpValidation);
+        foreach (KeyValuePair<int, Label> continuationSites in entryPoints)
+        {
+            method.LoadLocal(locals.jmpDestination);
+            method.LoadConstant(continuationSites.Key);
+            method.BranchIfEqual(continuationSites.Value);
+        }
+
+        method.Branch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         method.MarkLabel(jumpTable);
         method.LoadLocal(locals.wordRef256A);

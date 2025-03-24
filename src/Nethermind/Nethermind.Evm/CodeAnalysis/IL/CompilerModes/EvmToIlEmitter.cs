@@ -16,7 +16,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Core.Specs;
 
 using static Nethermind.Evm.CodeAnalysis.IL.WordEmit;
+using static Nethermind.Evm.CodeAnalysis.IL.UnsafeEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 
@@ -34,14 +36,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     AddEmitter(instruction, emptyEmitter);
                     break;
                 case Instruction.JUMP:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                         method.StoreLocal(locals.wordRef256A);
 
                         if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
                         }
                         else
                         {
@@ -52,22 +54,22 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     });
                     break;
                 case Instruction.JUMPI:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
                         Label noJump = method.DefineLabel();
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                         method.EmitCheck(nameof(Word.IsZero));
                         // if the jump condition is false, we do not jump
                         method.BranchIfTrue(noJump);
 
                         // we jump into the jump table
 
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                         method.StoreLocal(locals.wordRef256A);
 
                         if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
                         }
                         else
                         {
@@ -80,14 +82,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     });
                     break;
                 case Instruction.POP:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
                         // do nothing
                     });
                     break;
                 case Instruction.STOP:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             envLoader.LoadResult(method, locals, true);
                             method.LoadConstant((int)ContractState.Finished);
@@ -98,9 +100,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CHAINID:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadChainId(method, locals, false);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         });
@@ -108,7 +110,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.NOT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             MethodInfo refWordToRefByteMethod = UnsafeEmit.GetAsMethodInfo<Word, byte>();
                             MethodInfo readVector256Method = UnsafeEmit.GetReadUnalignedMethodInfo<Vector256<byte>>();
@@ -117,7 +119,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                                 .GetMethod(nameof(Vector256.OnesComplement), BindingFlags.Public | BindingFlags.Static)!
                                 .MakeGenericMethod(typeof(byte));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(refWordToRefByteMethod);
                             method.Duplicate();
                             method.Call(readVector256Method);
@@ -128,9 +130,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.PUSH0:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                         });
                     }
                     break;
@@ -143,14 +145,16 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.PUSH7:
                 case Instruction.PUSH8:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            if (contractMetadata.EmbeddedData[opcodeMetadata.Arguments.Value].IsZero())
-                                method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            int length = Math.Min(contractMetadata.TargetCodeInfo.MachineCode.Length - pc - 1, opcode - Instruction.PUSH0);
+                            var immediateBytes = contractMetadata.TargetCodeInfo.MachineCode.Slice(pc + 1, length).Span;
+                            if (immediateBytes.IsZero())
+                                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             else
                             {
-                                method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                                method.SpecialPushOpcode(opcodeMetadata, contractMetadata.EmbeddedData);
+                                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                                method.SpecialPushOpcode(instruction, immediateBytes);
                             }
                         });
                     }
@@ -180,32 +184,45 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
                     {// we load the locals.stackHeadRef
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            if (contractMetadata.EmbeddedData[opcodeMetadata.Arguments.Value].IsZero())
-                                method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            int length = Math.Min(contractMetadata.TargetCodeInfo.MachineCode.Length - pc - 1, opcode - Instruction.PUSH0);
+                            var immediateBytes = contractMetadata.TargetCodeInfo.MachineCode.Slice(pc + 1, length).Span;
+                            if (immediateBytes.IsZero())
+                                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             else
                             {
-                                method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                                envLoader.LoadImmediatesData(method, locals, false);
-                                method.LoadConstant(opcodeMetadata.Arguments.Value);
-                                method.LoadElement<byte[]>();
-                                method.Call(Word.SetArray);
+                                if(length != 32)
+                                {
+                                    method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                                    method.Call(GetAsMethodInfo<Word, byte>());
+                                    method.LoadConstant(32 - length);
+                                    method.Convert<nint>();
+                                    method.Call(GetAddBytesOffsetRef<byte>());
+                                } else
+                                {
+                                    method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                                    method.Call(GetAsMethodInfo<Word, byte>());
+                                }
+                                envLoader.LoadMachineCode(method, locals, true);
+                                method.LoadItemFromSpan<TDelegateType, byte>(pc + 1, true);
+                                method.LoadConstant(length);
+                                method.CopyBlock();
                             }
                         });
                     }
                     break;
                 case Instruction.ADD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                         });
                     }
                     break;
                 case Instruction.SUB:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label pushNegItemB = method.DefineLabel();
                             Label pushItemA = method.DefineLabel();
@@ -213,19 +230,19 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
                             // we the two uint256 from the locals.stackHeadRef
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                             method.BranchIfTrue(pushItemA);
 
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushItemA);
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
@@ -236,16 +253,16 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MUL:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label push0Zero = method.DefineLabel();
                             Label pushItemA = method.DefineLabel();
                             Label pushItemB = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
                             // we the two uint256 from the locals.stackHeadRef
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             method.LoadLocal(locals.wordRef256A);
@@ -267,15 +284,15 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                             method.BranchIfTrue(pushItemA);
 
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(push0Zero);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushItemA);
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
@@ -286,25 +303,25 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label pushZeroLabel = method.DefineLabel();
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
                             method.BranchIfTrue(pushZeroLabel);
 
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.MarkLabel(endofOpcode);
                         });
 
@@ -312,23 +329,23 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.SMOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label bIsOneOrZero = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             // if b is 1 or 0 result is always 0
                             method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
                             method.BranchIfTrue(bIsOneOrZero);
 
-                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(bIsOneOrZero);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.MarkLabel(endofOpcode);
                         });
 
@@ -336,16 +353,16 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.DIV:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label pushZeroLabel = method.DefineLabel();
                             Label pushALabel = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             // if a or b are 0 result is directly 0
@@ -358,11 +375,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                             method.BranchIfTrue(pushALabel);
 
-                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushALabel);
@@ -379,16 +396,16 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.SDIV:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label pushZeroLabel = method.DefineLabel();
                             Label pushALabel = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
 
@@ -410,11 +427,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.BranchIfTrue(pushALabel);
 
                             method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushALabel);
@@ -432,24 +449,24 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.ADDMOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label push0Zero = method.DefineLabel();
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.StoreLocal(locals.wordRef256C);
 
                             // if c is 1 or 0 result is 0
                             method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256C);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
+                            EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
                             method.MarkLabel(endofOpcode);
                         });
 
@@ -457,17 +474,17 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MULMOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label push0Zero = method.DefineLabel();
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
                             // we the two uint256 from the locals.stackHeadRef
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.StoreLocal(locals.wordRef256C);
 
                             // since (a * b) % c 
@@ -492,11 +509,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.BranchIfTrue(push0Zero);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
+                            EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(push0Zero);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(endofOpcode);
@@ -505,59 +522,59 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     }
                     break;
                 case Instruction.SHL:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                        EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.SHR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                        EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.SAR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitShiftInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), evmExceptionLabels, locals.uint256A, locals.uint256B);
+                        EmitShiftInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.AND:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     });
 
                     break;
                 case Instruction.OR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     });
 
                     break;
                 case Instruction.XOR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     });
 
                     break;
                 case Instruction.EXP:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label powerIsZero = method.DefineLabel();
                             Label baseIsOneOrZero = method.DefineLabel();
                             Label endOfExpImpl = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Duplicate();
                             method.Call(Word.LeadingZeroProp);
                             method.StoreLocal(locals.uint64A);
@@ -591,20 +608,20 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.uint256R);
                             method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadLocal(locals.uint256R);
                             method.Call(Word.SetUInt256);
 
                             method.Branch(endOfExpImpl);
 
                             method.MarkLabel(powerIsZero);
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadConstant(1);
                             method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                             method.Branch(endOfExpImpl);
 
                             method.MarkLabel(baseIsOneOrZero);
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadLocal(locals.uint256A);
                             method.Call(Word.SetUInt256);
                             method.Branch(endOfExpImpl);
@@ -615,55 +632,55 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.LT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
                         });
                     }
 
                     break;
                 case Instruction.GT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
+                            EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
                         });
                     }
                     break;
                 case Instruction.SLT:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                        EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.SGT:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
-                        EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                        EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.EQ:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             MethodInfo refWordToRefByteMethod = UnsafeEmit.GetAsMethodInfo<Word, byte>();
                             MethodInfo readVector256Method = UnsafeEmit.GetReadUnalignedMethodInfo<Vector256<byte>>();
                             MethodInfo writeVector256Method = UnsafeEmit.GetWriteUnalignedMethodInfo<Vector256<byte>>();
                             MethodInfo operationUnegenerified = typeof(Vector256).GetMethod(nameof(Vector256.EqualsAll), BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(typeof(byte));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(refWordToRefByteMethod);
                             method.Call(readVector256Method);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(refWordToRefByteMethod);
                             method.Call(readVector256Method);
 
                             method.Call(operationUnegenerified);
                             method.StoreLocal(locals.lbool);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadLocal(locals.lbool);
                             method.Convert<uint>();
                             method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
@@ -673,9 +690,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.ISZERO:
                     {// we load the locals.stackHeadRef
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Duplicate();
                             method.Duplicate();
                             method.EmitCheck(nameof(Word.IsZero));
@@ -703,11 +720,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.DUP15:
                 case Instruction.DUP16:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            var count = (int)opcodeMetadata.Operation - (int)Instruction.DUP1 + 1;
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count);
+                            var count = (int)opcode - (int)Instruction.DUP1 + 1;
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), count);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
                         });
@@ -730,21 +747,21 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.SWAP15:
                 case Instruction.SWAP16:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            var count = (int)opcodeMetadata.Operation - (int)Instruction.SWAP1 + 1;
+                            var count = (int)opcode - (int)Instruction.SWAP1 + 1;
 
                             method.LoadLocalAddress(locals.uint256R);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count + 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), count + 1);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count + 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), count + 1);
                             method.LoadLocalAddress(locals.uint256R);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
@@ -753,9 +770,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CODESIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         });
@@ -763,19 +780,19 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.PC:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadConstant(opcodeMetadata.ProgramCounter);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                            method.LoadConstant(pc);
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         });
                     }
                     break;
                 case Instruction.COINBASE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
@@ -786,9 +803,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.TIMESTAMP:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
@@ -799,9 +816,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.NUMBER:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
@@ -812,9 +829,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.GASLIMIT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
@@ -825,9 +842,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CALLER:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadEnv(method, locals, false);
 
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
@@ -837,9 +854,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.ADDRESS:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadEnv(method, locals, false);
 
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
@@ -849,9 +866,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.ORIGIN:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadTxContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
                             method.Call(Word.SetAddress);
@@ -860,9 +877,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CALLVALUE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadEnv(method, locals, false);
 
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
@@ -872,9 +889,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.GASPRICE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadTxContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
                             method.Call(Word.SetUInt256);
@@ -883,17 +900,17 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CALLDATACOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256C);
 
@@ -941,13 +958,13 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CALLDATALOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
                             envLoader.LoadCalldata(method, locals, false);
                             method.LoadLocalAddress(locals.uint256A);
@@ -960,9 +977,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CALLDATASIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadCalldata(method, locals, true);
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
@@ -971,9 +988,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MSIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
                             envLoader.LoadMemory(method, locals, true);
                             method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
@@ -983,12 +1000,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MSTORE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.StoreLocal(locals.wordRef256B);
 
                             envLoader.LoadVmState(method, locals, false);
@@ -1012,12 +1029,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MSTORE8:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.CallGetter(Word.GetByte0, BitConverter.IsLittleEndian);
                             method.StoreLocal(locals.byte8A);
 
@@ -1042,9 +1059,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MLOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
@@ -1067,7 +1084,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
                             method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.LoadLocal(locals.localReadonOnlySpan);
                             method.Call(Word.SetReadOnlySpan);
                         });
@@ -1075,17 +1092,17 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.MCOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256C);
 
@@ -1125,14 +1142,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.KECCAK256:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             MethodInfo refWordToRefValueHashMethod = UnsafeEmit.GetAsMethodInfo<Word, ValueHash256>();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
@@ -1161,7 +1178,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(refWordToRefValueHashMethod);
                             method.Call(typeof(KeccakCache).GetMethod(nameof(KeccakCache.ComputeTo), [typeof(ReadOnlySpan<byte>), typeof(ValueHash256).MakeByRefType()]));
                         });
@@ -1169,14 +1186,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.BYTE:
                     {// load a
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Duplicate();
                             method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
                             method.StoreLocal(locals.uint32A);
                             method.StoreLocal(locals.wordRef256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetReadOnlySpan);
                             method.StoreLocal(locals.localReadonOnlySpan);
 
@@ -1201,24 +1218,24 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Convert<uint>();
                             method.StoreLocal(locals.uint32A);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.LoadLocal(locals.uint32A);
                             method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                             method.Branch(endOfInstructionImpl);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.MarkLabel(endOfInstructionImpl);
                         });
                     }
                     break;
                 case Instruction.CODECOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256C);
 
@@ -1234,10 +1251,10 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
@@ -1254,15 +1271,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             envLoader.LoadMachineCode(method, locals, false);
-                            method.StoreLocal(locals.localReadOnlyMemory);
-
-                            method.LoadLocal(locals.localReadOnlyMemory);
                             method.LoadLocalAddress(locals.uint256B);
                             method.LoadLocalAddress(locals.uint256C);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                             method.Convert<int>();
                             method.LoadConstant((int)PadDirection.Right);
-                            method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
+                            method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlySpan<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                             method.StoreLocal(locals.localZeroPaddedSpan);
 
                             envLoader.LoadMemory(method, locals, true);
@@ -1276,9 +1290,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.GAS:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             method.LoadLocal(locals.gasAvailable);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         });
@@ -1286,9 +1300,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.RETURNDATASIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadReturnDataBuffer(method, locals, true);
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
@@ -1297,19 +1311,19 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.RETURNDATACOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label endOfOpcode = method.DefineLabel();
                             using Local tempResult = method.DeclareLocal(typeof(UInt256));
 
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256C);
 
@@ -1370,12 +1384,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.RETURN or Instruction.REVERT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
@@ -1395,7 +1409,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.StoreObject<ReadOnlyMemory<byte>>();
 
                             envLoader.LoadResult(method, locals, true);
-                            switch (opcodeMetadata.Operation)
+                            switch (opcode)
                             {
                                 case Instruction.REVERT:
                                     method.LoadConstant((int)ContractState.Revert);
@@ -1411,9 +1425,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.BASEFEE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
@@ -1424,10 +1438,10 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.BLOBBASEFEE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?));
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
                             method.StoreLocal(uint256Nullable);
@@ -1439,11 +1453,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.PREVRANDAO:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label isPostMergeBranch = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
                             envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
@@ -1466,7 +1480,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.BLOBHASH:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label blobVersionedHashNotFound = method.DefineLabel();
                             Label indexTooLarge = method.DefineLabel();
@@ -1480,7 +1494,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadNull();
                             method.BranchIfEqual(blobVersionedHashNotFound);
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
@@ -1497,26 +1511,26 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadElement<byte[]>();
                             method.StoreLocal(locals.localArray);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.LoadLocal(locals.localArray);
                             method.Call(Word.SetArray);
                             method.Branch(endOfOpcode);
 
                             method.MarkLabel(blobVersionedHashNotFound);
                             method.MarkLabel(indexTooLarge);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.MarkLabel(endOfOpcode);
                         });
                     }
                     break;
                 case Instruction.BLOCKHASH:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label blockHashReturnedNull = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
@@ -1535,7 +1549,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.BranchIfEqual(blockHashReturnedNull);
 
                             // not equal
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.LoadLocal(locals.hash256);
                             method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
@@ -1544,7 +1558,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             // equal to null
 
                             method.MarkLabel(blockHashReturnedNull);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
                             method.MarkLabel(endOfOpcode);
                         });
@@ -1552,14 +1566,14 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.SIGNEXTEND:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label signIsNegative = method.DefineLabel();
                             Label endOfOpcodeHandling = method.DefineLabel();
                             Label argumentGt32 = method.DefineLabel();
                             using Local wordSpan = method.DeclareLocal(typeof(Span<byte>));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Duplicate();
                             method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
                             method.StoreLocal(locals.uint32A);
@@ -1571,7 +1585,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
                             method.BranchIfFalse(argumentGt32);
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetMutableSpan);
                             method.StoreLocal(wordSpan);
 
@@ -1580,7 +1594,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Subtract();
                             method.StoreLocal(locals.uint32A);
 
-                            method.LoadItemFromSpan<TDelegateType, byte>(wordSpan, locals.uint32A);
+                            method.LoadItemFromSpan<TDelegateType, byte>(locals.uint32A, false, wordSpan);
                             method.LoadIndirect<byte>();
                             method.Convert<sbyte>();
                             method.LoadConstant(0);
@@ -1615,15 +1629,15 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.LOG3:
                 case Instruction.LOG4:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            var topicsCount = (sbyte)(opcodeMetadata.Operation - Instruction.LOG0);
+                            var topicsCount = (sbyte)(opcode - Instruction.LOG0);
                             using Local logEntry = method.DeclareLocal<LogEntry>();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A); // position
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B); // length
                                                                 // UpdateMemoryCost
@@ -1685,7 +1699,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                                 method.LoadConstant(k);
                                 using (Local keccak = method.DeclareLocal(typeof(ValueHash256)))
                                 {
-                                    method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i] - 2, k + 1);
+                                    method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0) - 2, k + 1);
                                     method.Call(Word.GetKeccak);
                                     method.StoreLocal(keccak);
                                     method.LoadLocalAddress(keccak);
@@ -1715,13 +1729,13 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.TSTORE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetArray);
                             method.StoreLocal(locals.localArray);
 
@@ -1741,9 +1755,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.TLOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
@@ -1759,7 +1773,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
                             method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.LoadLocal(locals.localReadonOnlySpan);
                             method.Call(Word.SetReadOnlySpan);
                         });
@@ -1767,12 +1781,12 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.SSTORE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetReadOnlySpan);
                             method.StoreLocal(locals.localReadonOnlySpan);
 
@@ -1835,7 +1849,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.SLOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             method.LoadLocal(locals.gasAvailable);
                             envLoader.LoadSpec(method, locals, false);
@@ -1846,7 +1860,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
@@ -1872,7 +1886,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
                             method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.LoadLocal(locals.localReadonOnlySpan);
                             method.Call(Word.SetReadOnlySpan);
                         });
@@ -1880,7 +1894,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.EXTCODESIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             method.LoadLocal(locals.gasAvailable);
                             envLoader.LoadSpec(method, locals, false);
@@ -1891,7 +1905,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetAddress);
                             method.StoreLocal(locals.address);
 
@@ -1906,13 +1920,13 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
                             envLoader.LoadCodeInfoRepository(method, locals, false);
                             envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             envLoader.LoadSpec(method, locals, false);
-                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfoDoesntFollowsDelegation), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
                             method.StoreLocal(locals.localReadOnlyMemory);
                             method.LoadLocalAddress(locals.localReadOnlyMemory);
@@ -1924,11 +1938,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.EXTCODECOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 4);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 4);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256C);
 
@@ -1947,13 +1961,13 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetAddress);
                             method.StoreLocal(locals.address);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
@@ -1984,7 +1998,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             envLoader.LoadSpec(method, locals, false);
-                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfoDoesntFollowsDelegation), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+                            method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 
                             method.LoadLocalAddress(locals.uint256B);
@@ -2006,7 +2020,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.EXTCODEHASH:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
@@ -2019,7 +2033,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetAddress);
                             method.StoreLocal(locals.address);
 
@@ -2048,7 +2062,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
                             method.BranchIfTrue(pushZeroLabel);
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             envLoader.LoadCodeInfoRepository(method, locals, false);
                             envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
@@ -2058,7 +2072,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                             // Push 0
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
                             method.MarkLabel(endOfOpcode);
                         });
@@ -2066,9 +2080,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.SELFBALANCE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             envLoader.LoadWorldState(method, locals, false);
                             envLoader.LoadEnv(method, locals, false);
 
@@ -2080,7 +2094,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.BALANCE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             method.LoadLocal(locals.gasAvailable);
                             envLoader.LoadSpec(method, locals, false);
@@ -2091,7 +2105,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             method.Call(Word.GetAddress);
                             method.StoreLocal(locals.address);
 
@@ -2107,7 +2121,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                             envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
@@ -2116,7 +2130,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     }
                     break;
                 case Instruction.SELFDESTRUCT:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
                         MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
                             .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
@@ -2143,7 +2157,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         envLoader.LoadVmState(method, locals, false);
                         envLoader.LoadWorldState(method, locals, false);
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                         method.Call(Word.GetAddress);
                         method.LoadLocalAddress(locals.gasAvailable);
                         envLoader.LoadSpec(method, locals, false);
@@ -2190,7 +2204,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                 case Instruction.CALLCODE:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
                         MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
                             .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
@@ -2215,11 +2229,11 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         var index = 1;
                         // load gasLimit
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load codeSource
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetAddress);
 
                         if(instruction is Instruction.DELEGATECALL)
@@ -2233,23 +2247,23 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         }
                         else
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                             method.Call(Word.GetUInt256);
                         }
                         // load dataoffset
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load datalength
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load outputOffset
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load outputLength
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
                         method.Call(Word.GetUInt256);
 
                         method.LoadLocalAddress(toPushToStack);
@@ -2304,7 +2318,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
                         }
                         else
                         {
@@ -2329,7 +2343,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
                         method.BranchIfFalse(hasNoItemsToPush);
 
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
                         method.LoadLocalAddress(toPushToStack);
                         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
                         method.Call(Word.SetUInt256);
@@ -2339,7 +2353,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                     {
                         MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
                             .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
@@ -2366,21 +2380,21 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         var index = 1;
 
                         // load value
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load memory offset
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load initcode len
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
                         method.Call(Word.GetUInt256);
 
                         // load callvalue
                         if (instruction is Instruction.CREATE2)
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
                             method.Call(Word.GetMutableSpan);
                         }
                         else
@@ -2434,7 +2448,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
                         method.BranchIfFalse(hasNoItemsToPush);
 
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
                         method.LoadLocalAddress(toPushToStack);
                         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
                         method.Call(Word.SetUInt256);
@@ -2449,7 +2463,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
                         {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
                         }
                         else
                         {
@@ -2471,7 +2485,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     break;
                 default:
                     {
-                        AddEmitter(Instruction.INVALID, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                        AddEmitter(Instruction.INVALID, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
                             method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                         });
