@@ -372,8 +372,6 @@ internal class BlobSender
                     blobhashes[blobIndex].AsSpan(),
                     ProofVersion.V2);
 
-                var proofArray = proofs;
-                proofs = new byte[blobs.Length * Ckzg.Ckzg.CellsPerExtBlob][];
                 for (int i = 0; i < Ckzg.Ckzg.CellsPerExtBlob; i++)
                 {
                     proofs[blobIndex * Ckzg.Ckzg.CellsPerExtBlob + i] = flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof).ToArray();
@@ -382,6 +380,7 @@ internal class BlobSender
                 blobIndex++;
             }
 
+            var d = KzgPolynomialCommitments.AreCellProofsValid(blobs, commitments, proofs);
 
             return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V2));
         }
