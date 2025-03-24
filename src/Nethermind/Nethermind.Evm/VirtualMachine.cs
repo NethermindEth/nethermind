@@ -31,6 +31,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 using Int256;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Config;
 using Sigil;
 using System.Diagnostics;
@@ -682,6 +683,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
+
         }
         if (env.CodeInfo.MachineCode.Length == 0)
         {
@@ -717,12 +719,13 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
+                ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
                 Metrics.IlvmAotPrecompiledCalls++;
                 PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
                 int programCounter = vmState.ProgramCounter;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                if (precompiledContract(
-                    env.CodeInfo.IlInfo.ContractMetadata, _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
+                if (precompiledContract(ref code,
+                    _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
                     ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger,
                     ref chunkExecutionState))
                 {
@@ -848,6 +851,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
+
+            // Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
 
             if (isCancelable && _txTracer.IsCancelled)
             {
@@ -2339,7 +2344,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfoFollowsDelegation(state, codeSource, spec);
+        CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec, out _);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)

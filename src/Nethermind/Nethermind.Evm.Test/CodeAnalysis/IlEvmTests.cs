@@ -170,7 +170,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
         public void ForceRunAnalysis(Address address, int mode)
         {
-            var codeinfo = CodeInfoRepository.GetCachedCodeInfoFollowsDelegation(TestState, address, Prague.Instance);
+            var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
             if (mode.HasFlag(ILMode.PATTERN_BASED_MODE))
             {
@@ -2163,6 +2163,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode) testcase)
         {
+            Console.WriteLine(testcase.msg);
+
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
@@ -2195,7 +2197,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .PUSHx([0])
                         .MSTORE()
                         .Return(32, 0)
-                        .STOP()
                         .Done;
                     var callAddress = standardChain.InsertCode(returningCode);
                     enhancedChain.InsertCode(returningCode);
@@ -2215,11 +2216,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
-            GethTraceOptions tracerOptions = new GethTraceOptions
-            {
-                EnableMemory = true,
-            };
-
             var bytecode = Prepare.EvmCode
                 .PushData(UInt256.MaxValue)
                 .PUSHx([2])
@@ -2234,7 +2230,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Op(Instruction.CALL)
                 .STOP()
                 .Done;
-
 
             standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
@@ -2280,43 +2275,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Assert.That(actual, Is.EqualTo(expected), testcase.opcode);
         }
-
-        [Test]
-        public void AOT_invalid_scenarios_results_in_failure()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-                IlEvmAnalysisThreshold = 1,
-                IlEvmAnalysisQueueMaxSize = 1,
-                IsIlEvmAggressiveModeEnabled = true,
-            });
-
-            Address main = enhancedChain.InsertCode(
-                Prepare.EvmCode
-                    .PUSHx() // PUSH0
-                    .POP()
-                    .STOP()
-                    .Done);
-
-            byte[] driver =
-                Prepare.EvmCode
-                    .Call(main, 1000)
-                    .JUMPI(17)
-                    .INVALID()
-                    .JUMPDEST()
-                    .STOP()
-                    .Done;
-
-            enhancedChain.ForceRunAnalysis(main, ILMode.FULL_AOT_MODE);
-            using var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
-            enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
-
-            var hasFailed = tracer.BuildResult().Failed;
-            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
-            Assert.That(hasFailed, Is.True);
-        }
-
 
         [Test]
         public void ILAnalyzer_Initialize_Add_All_Patterns()

@@ -60,7 +60,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         IMergeConfig? mergeConfig,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
-        : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
+        : base(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));

@@ -171,6 +171,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)

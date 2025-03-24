@@ -2,33 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-public class ContractMetadata
+
+public struct ContractCompilerMetadata
 {
     public CodeInfo TargetCodeInfo { get; set; }
-    public OpcodeInfo[] Opcodes { get; set; }
-    public int[] Jumpdests { get; set; }
-    public SegmentMetadata[] Segments { get; set; }
-    public byte[][] EmbeddedData { get; set; }
+    public List<SegmentMetadata> Segments { get; set; }
+    public Dictionary<int, short> StackOffsets { get; set; }
+    public Dictionary<int, long> StaticGasSubSegmentes { get; set; }
 }
 
 public class SegmentMetadata
 {
-    public OpcodeInfo[] Segment { get; set; }
-    public Range Boundaries => Segment[0].ProgramCounter..(Segment[^1].ProgramCounter + Segment[^1].Metadata.AdditionalBytes);
+    public Range Boundaries { get; set; }
     public Dictionary<int, SubSegmentMetadata> SubSegments { get; set; }
-    public int[] StackOffsets { get; set; }
     public int[] Jumpdests { get; set; }
 }
 
 public class SubSegmentMetadata
 {
-    public OpcodeInfo[] SubSegment { get; set; }
     public int Start { get; set; }
     public int End { get; set; }
 
@@ -46,11 +44,7 @@ public class SubSegmentMetadata
         LeftOutStack = leftOut;
     }
 
-    public Dictionary<int, long> StaticGasSubSegmentes { get; set; } = new();
-
-    public HashSet<Instruction> Instructions => SubSegment.Select(x => x.Operation).ToHashSet();
-
-    public bool RequiresStaticEnv => SubSegment.All(x => !x.Metadata.IsNotStaticOpcode);
-
-    public bool RequiresOpcodeCheck => Instructions.Any(x => x.RequiresAvailabilityCheck());
+    public HashSet<Instruction> Instructions { get; set; }
+    public bool RequiresStaticEnvCheck { get; set; }
+    public bool RequiresOpcodeCheck { get; set; }
 }

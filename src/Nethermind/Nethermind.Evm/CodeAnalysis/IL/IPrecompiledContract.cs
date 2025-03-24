@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public delegate bool PrecompiledContract(
-    ContractMetadata contractMetadata,
+    ref ReadOnlySpan<byte> machineCode,
     ISpecProvider specProvider,
     IBlockhashProvider blockhashProvider,
     ICodeInfoRepository codeInfoProvider,
