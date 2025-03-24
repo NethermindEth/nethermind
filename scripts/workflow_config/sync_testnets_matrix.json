@@ -56,7 +56,7 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "world-sepolia",
+    "network": "worldchain-sepolia",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
@@ -80,7 +80,7 @@
     "agent": "g6-standard-8"
   },
   {
-    "network": "world-mainnet",
+    "network": "worldchain-mainnet",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

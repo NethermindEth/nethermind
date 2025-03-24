@@ -8,7 +8,8 @@ on:
       - completed
 
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 1 * *"  # Run regular and superchain networks on first day of month
+    - cron: "0 0 * * 0"  # Run random superchain subset on Sundays and regular chains
     
   workflow_dispatch:
     inputs:
@@ -17,9 +18,17 @@ on:
         default: ""
         required: false
       network_filter:
-        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        description: "Filter networks by name (partial or full match)"
         default: ""
-        required: false    
+        required: false
+      network_type:
+        description: "Type of networks to run (regulars or superchain)"
+        default: "regular"
+        required: true
+        type: choice
+        options:
+          - regular
+          - superchain
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -30,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      network_type: ${{ steps.set-matrix.outputs.network_type }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,13 +49,99 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
-
-          if [ -n "${{ github.event.inputs.network_filter }}" ]; then
-            matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
+          # Set network type and load appropriate matrix
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # For manual runs, use the specified network type
+            network_type="${{ github.event.inputs.network_type }}"
+            echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+            echo "network_type=$network_type" >> $GITHUB_OUTPUT
+            if [ "${{ github.event.inputs.network_type }}" = "superchain" ]; then
+              echo "Loading superchains matrix for workflow_dispatch"
+              matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+            else
+              echo "Loading regular networks matrix for workflow_dispatch"
+              matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+            fi
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "${{ github.event.schedule }}" = "0 0 1 * *" ]; then
+              # First day of month: Run both regular and superchain networks
+              network_type="superchain"
+              echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+              echo "network_type=$network_type" >> $GITHUB_OUTPUT
+              echo "Loading both matrices for monthly run"
+              regular_matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+              superchain_matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+              matrix=$(echo "$regular_matrix" "$superchain_matrix" | jq -s 'add')
+            else
+              # Sunday runs: Regular networks + random subset of superchain networks
+              network_type="superchain"
+              echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+              echo "network_type=$network_type" >> $GITHUB_OUTPUT
+              echo "Loading regular networks and random superchain subset for weekly run"
+              regular_matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+              superchain_matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+              random_count=$(( ( RANDOM % 6 ) + 5 ))
+              echo "Selecting $random_count random superchain networks"
+              superchain_subset=$(echo "$superchain_matrix" | jq --arg count "$random_count" 'shuffle | .[:($count | tonumber)]')
+              matrix=$(echo "$regular_matrix" "$superchain_subset" | jq -s 'add')
+            fi
+          else
+            # Default to regular for workflow_run triggers
+            network_type="regular"
+            echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+            echo "network_type=$network_type" >> $GITHUB_OUTPUT
+            echo "Loading regular networks matrix for workflow_run"
+            matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
           fi
 
-          echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
+          # Validate matrix is not empty
+          if [ "$(echo "$matrix" | jq '. | length')" -eq 0 ]; then
+            echo "Error: Matrix is empty"
+            exit 1
+          fi
+
+          # Apply network filter if provided
+          if [ -n "${{ github.event.inputs.network_filter }}" ]; then
+            matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
+          # On weekly runs, select random subset
+          elif [ "${{ github.event.schedule }}" = "0 0 * * 0" ]; then
+            random_count=$(( ( RANDOM % 6 ) + 5 ))
+            echo "Running weekly test with $random_count random chains"
+            matrix=$(echo "$matrix" | jq --arg count "$random_count" 'shuffle | .[:($count | tonumber)]')
+          fi
+
+          # Add runner_network field with shortened name for runner interactions
+          # Format is: t-<run_id>-<network>, where run_id can be up to 20 chars
+          # So we need to ensure: len("t-" + run_id + "-" + network) <= 32
+          # This means network name should be: 32 - 2 - 20 - 1 = 9 chars max
+          matrix_json=$(echo "$matrix" | jq -c '[ .[] | 
+            . + { 
+              "runner_network": (.network | 
+                # First, replace any non-alphanumeric chars with hyphen
+                gsub("[^a-zA-Z0-9]+"; "-") |
+                # Then create a short but recognizable name
+                split("-") | 
+                # For each part, take first 3 chars, join with hyphens
+                map(if length > 3 then .[0:3] else . end) |
+                join("-") |
+                # Ensure total length <= 9
+                if length > 9 then
+                  .[0:9] | rtrimstr("-")
+                else
+                  .
+                end
+              ) 
+            } 
+          ]')
+
+          # Set matrix output and validate it
+          echo "Matrix content: $matrix_json"
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          echo "Matrix length: $(echo "$matrix_json" | jq '. | length')"
+
+          # Print network name mappings for reference
+          echo "Network name mappings:"
+          echo "$matrix_json" | jq -r '.[] | "\(.network) -> \(.runner_network)"'
 
   create_a_runner:
     needs: [setup-matrix]
@@ -57,6 +153,8 @@ jobs:
     outputs:
       runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
       machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
+    env:
+      NETWORK_TYPE: ${{ needs.setup-matrix.outputs.network_type }}
     steps:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
@@ -68,7 +166,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "create"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -85,8 +183,10 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
         
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
     timeout-minutes: ${{ matrix.config.timeout }}
+    env:
+      NETWORK_TYPE: ${{ needs.setup-matrix.outputs.network_type }}
     
     steps:
       - name: Authenticate App
@@ -131,7 +231,12 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          # Use core-superchains branch for superchain networks, core for regular
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || [[ "${{ matrix.config.network }}" == base-* || "${{ matrix.config.network }}" == op-* || "${{ matrix.config.network }}" == world-* ]]; then
+            git clone https://github.com/NethermindEth/sedge.git sedge --branch core-superchains --single-branch
+          else
+            git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          fi
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
@@ -159,7 +264,9 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          # Handle network type detection and setup
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || ([[ "$network" == *-mainnet || "$network" == *-sepolia ]]); then
+            # Superchain network
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
@@ -171,17 +278,20 @@ jobs:
               exit 1
             fi
 
-            if [[ "$network" == base-* ]]; then
-              extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
+            # Extract superchain and network name
+            if [[ "$network" =~ (.*)-((mainnet|sepolia)$) ]]; then
+              # Everything before the last mainnet/sepolia is the superchain
+              superchain="${BASH_REMATCH[1]}"
+              network_name="${BASH_REMATCH[2]}"
+              echo "Extracted superchain: $superchain, network: $network_name"
+            else
+              echo "Network name doesn't match expected pattern: $network"
+              exit 1
             fi
-
-            if [[ "$network" == world-* ]]; then
-              extra_param="--world"
-            fi
-
-            stripped_network="${network#base-}"
-            stripped_network="${stripped_network#op-}"
-            stripped_network="${stripped_network#world-}"
+            
+            # Set environment variables
+            export SUPERCHAIN="$superchain"
+            export NETWORK="$network_name"
 
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
@@ -193,7 +303,8 @@ jobs:
             --op-execution opnethermind:$docker_image \
             --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
-            --network $stripped_network \
+            --chain $SUPERCHAIN \
+            --network $NETWORK \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
             --el-op-extra-flag Sync.NonValidatorNode=true \
@@ -238,6 +349,11 @@ jobs:
           else
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
+
+            # Extract base network name (e.g. mainnet from hashkeychain-mainnet)
+            IFS='-' read -r -a network_parts <<< "$network"
+            base_network="${network_parts[-1]}"
+            echo "Using base network: $base_network"
           
             ./build/sedge generate \
             --logging none \
@@ -248,7 +364,7 @@ jobs:
             --map-all \
             --no-mev-boost \
             --no-validator \
-            --network ${{ matrix.config.network }} \
+            --network $base_network \
             --el-extra-flag Sync.NonValidatorNode=true \
             --el-extra-flag Sync.DownloadBodiesInFastSync=false \
             --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -267,15 +383,23 @@ jobs:
         env:
           NETWORK: ${{ matrix.config.network }}
         run: |
-          python scripts/waitForSync.py
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ]; then
+            python scripts/waitForSyncSuperchains.py
+          else
+            python scripts/waitForSync.py
+          fi
 
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}
         id: find-and-upload
         run: |      
-          target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
-          cd "$target_dir"
-          cd logs
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || [[ "${{ matrix.config.network }}" == base-* || "${{ matrix.config.network }}" == op-* || "${{ matrix.config.network }}" == world-* ]]; then
+            cd execution-data-op/logs
+          elif [[ "${{ matrix.config.network }}" == taiko-* ]]; then
+            cd execution-data-taiko/logs
+          else
+            cd execution-data/logs
+          fi
           ls
           log_file=$(find . -type f -name "*.log" | head -n 1)
           echo "Found log file: $log_file"
@@ -297,12 +421,13 @@ jobs:
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia' && matrix.config.network != 'energyweb' && matrix.config.network != 'volta'
         run: |
           network="${{ matrix.config.network }}"
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ]; then
+            # All superchains use the same container name
             docker logs sedge-consensus-op-l2-client
           elif [[ "$network" == taiko-* ]]; then
             docker logs sedge-consensus-taikodriver-client
           else
-            docker logs sedge-consensus-client      
+            docker logs sedge-consensus-client
           fi
           
       - name: Check size of DB 
@@ -317,8 +442,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -339,8 +464,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -351,8 +476,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-runner"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
