@@ -13,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using static Nethermind.Core.ShardBlobNetworkWrapper;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 namespace Nethermind.Core
@@ -354,11 +353,11 @@ namespace Nethermind.Core
         public byte[][] Proofs { get; set; } = proofs;
         //public byte[][] CellProofs { get; set; } = proofs;
 
+    }
 
-        public enum ProofVersion : byte
-        {
-            V1 = 0x01,
-            V2 = 0x02,
-        }
+    public enum ProofVersion : byte
+    {
+        V1 = 0x01,
+        V2 = 0x02,
     }
 }

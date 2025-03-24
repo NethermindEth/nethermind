@@ -15,6 +15,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;
     public const ulong PragueTimestamp = 0x67C7FD60;
+    public const ulong OsakaTimestamp = 0xFFFFFFFF;
 
     private static IReleaseSpec? _prague;
 
@@ -30,7 +31,8 @@ public class SepoliaSpecProvider : ISpecProvider
             { Timestamp: null } or { Timestamp: < ShanghaiTimestamp } => London.Instance,
             { Timestamp: < CancunTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueTimestamp } => Cancun.Instance,
-            _ => Prague
+            { Timestamp: < OsakaTimestamp } => Prague,
+            _ => Osaka.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

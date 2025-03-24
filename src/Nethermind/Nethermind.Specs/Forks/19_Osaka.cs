@@ -6,15 +6,15 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
 
-public class Fusaka : Prague
+public class Osaka : Prague
 {
     private static IReleaseSpec _instance;
 
-    public Fusaka()
+    public Osaka()
     {
-        Name = "Fusaka";
+        Name = "Osaka";
         IsEip7594Enabled = true;
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Prague());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Osaka());
 }

@@ -285,7 +285,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     {
         ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
-        if (networkWrapper.Version == ShardBlobNetworkWrapper.ProofVersion.V1 && releaseSpec.IsEip7594Enabled)
+        if (networkWrapper.Version == ProofVersion.V1 && releaseSpec.IsEip7594Enabled)
         {
             networkWrapper.Proofs = GetBlobProofs(networkWrapper.Blobs).ToArray();
         }

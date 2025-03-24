@@ -178,14 +178,14 @@ namespace Nethermind.Core.Test.Builders
 
             if (isMempoolTx)
             {
-                int proofVersion = spec?.GetBlobProofVersion() ?? 1;
+                ProofVersion proofVersion = spec?.GetBlobProofVersion() ?? ProofVersion.V1;
 
                 TestObjectInternal.BlobVersionedHashes = new byte[blobCount][];
                 ShardBlobNetworkWrapper wrapper = new(
                     blobs: new byte[blobCount][],
                     commitments: new byte[blobCount][],
                     proofs: new byte[blobCount][],
-                    ShardBlobNetworkWrapper.ProofVersion.V1
+                    ProofVersion.V1
                     );
 
                 if (!KzgPolynomialCommitments.IsInitialized)
@@ -199,7 +199,7 @@ namespace Nethermind.Core.Test.Builders
                     wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
                     wrapper.Blobs[i][0] = (byte)(i % 256);
                     wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                    wrapper.Proofs[i] = new byte[proofVersion switch { 1 => Ckzg.Ckzg.BytesPerProof, 2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
+                    wrapper.Proofs[i] = new byte[proofVersion switch { ProofVersion.V1 => Ckzg.Ckzg.BytesPerProof, ProofVersion.V2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
 
                     KzgPolynomialCommitments.KzgifyBlob(
                         wrapper.Blobs[i],

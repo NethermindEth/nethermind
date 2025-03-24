@@ -40,7 +40,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
-                            if (wrapper is not { Version: ShardBlobNetworkWrapper.ProofVersion.V1 })
+                            if (wrapper is not { Version: ProofVersion.V1 })
                             {
                                 break;
                             }
@@ -75,7 +75,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
-                            if (wrapper is not { Version: ShardBlobNetworkWrapper.ProofVersion.V2 })
+                            if (wrapper is not { Version: ProofVersion.V2 })
                             {
                                 break;
                             }

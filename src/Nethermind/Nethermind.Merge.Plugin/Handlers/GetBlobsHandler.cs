@@ -10,7 +10,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, IAsyncHandler<(byte[][] request, ShardBlobNetworkWrapper.ProofVersion v), IEnumerable<BlobAndProofV2?>>
+public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, IAsyncHandler<(byte[][] request, ProofVersion v), IEnumerable<BlobAndProofV2?>>
 {
     private const int MaxRequest = 128;
 
@@ -25,7 +25,7 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
         return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
     }
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> HandleAsync((byte[][] request, ShardBlobNetworkWrapper.ProofVersion v) @params)
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> HandleAsync((byte[][] request, ProofVersion v) @params)
     {
         if (@params.request.Length > MaxRequest)
         {

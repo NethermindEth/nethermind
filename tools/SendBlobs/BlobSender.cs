@@ -304,45 +304,87 @@ internal class BlobSender
         return result;
     }
 
-    private static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobData(byte[][] blobs, int proofVersion)
+    private static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobData(byte[][] blobs, ProofVersion proofVersion)
     {
-        byte[][] commitments = new byte[blobs.Length][];
-        byte[][] proofs = new byte[blobs.Length][];
-        byte[][] blobhashes = new byte[blobs.Length][];
 
+        return proofVersion switch
         {
+            ProofVersion.V1 => GenerateBlobDataV1(blobs),
+            ProofVersion.V2 => GenerateBlobDataV2(blobs),
+            _ => throw new NotSupportedException(),
+        };
+
+        static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobDataV1(byte[][] blobs)
+        {
+            byte[][] commitments = new byte[blobs.Length][];
+            byte[][] proofs = new byte[blobs.Length][];
+            byte[][] blobhashes = new byte[blobs.Length][];
+
+            {
+                int blobIndex = 0;
+                foreach (var blob in blobs)
+                {
+                    commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
+                    proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
+                    blobhashes[blobIndex] = new byte[32];
+
+                    KzgPolynomialCommitments.KzgifyBlob(
+                        blobs[blobIndex].AsSpan(),
+                        commitments[blobIndex].AsSpan(),
+                        proofs[blobIndex].AsSpan(),
+                        blobhashes[blobIndex].AsSpan(),
+                        ProofVersion.V1);
+
+                    blobIndex++;
+                }
+            }
+
+
+            var d = KzgPolynomialCommitments.AreProofsValid(
+               blobs,
+               commitments,
+               proofs);
+
+            return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V1));
+        }
+
+
+
+        static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobDataV2(byte[][] blobs)
+        {
+            byte[][] commitments = new byte[blobs.Length][];
+            byte[][] proofs = new byte[blobs.Length * Ckzg.Ckzg.CellsPerExtBlob][];
+            byte[][] blobhashes = new byte[blobs.Length][];
+
             int blobIndex = 0;
             foreach (var blob in blobs)
             {
                 commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                proofs[blobIndex] = new byte[proofVersion switch { 1 => Ckzg.Ckzg.BytesPerProof, 2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
+
+                var flatProofs = new byte[Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob];
+
                 blobhashes[blobIndex] = new byte[32];
 
                 KzgPolynomialCommitments.KzgifyBlob(
                     blobs[blobIndex].AsSpan(),
                     commitments[blobIndex].AsSpan(),
-                    proofs[blobIndex].AsSpan(),
+                    flatProofs.AsSpan(),
                     blobhashes[blobIndex].AsSpan(),
-                    proofVersion);
-                blobIndex++;
-            }
-        }
+                    ProofVersion.V2);
 
-
-        if (proofVersion == 2)
-        {
-            var proofArray = proofs;
-            proofs = new byte[blobs.Length * Ckzg.Ckzg.CellsPerExtBlob][];
-            for (int blobIndex = 0; blobIndex < blobs.Length; blobIndex++)
-            {
+                var proofArray = proofs;
+                proofs = new byte[blobs.Length * Ckzg.Ckzg.CellsPerExtBlob][];
                 for (int i = 0; i < Ckzg.Ckzg.CellsPerExtBlob; i++)
                 {
-                    proofs[blobIndex * Ckzg.Ckzg.CellsPerExtBlob + i] = proofArray[blobIndex].Slice((blobIndex * Ckzg.Ckzg.CellsPerExtBlob + i) * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof);
+                    proofs[blobIndex * Ckzg.Ckzg.CellsPerExtBlob + i] = flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof).ToArray();
                 }
+
+                blobIndex++;
             }
 
+
+            return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V1));
         }
-        return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs, ShardBlobNetworkWrapper.ProofVersion.V1));
     }
 
     private async Task<Hash256?> SendTransaction(ulong chainId, ulong nonce,

@@ -6,6 +6,7 @@ using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -138,9 +139,9 @@ public static class KzgPolynomialCommitments
 
     public static bool AreCellProofsValid(byte[][] blobs, byte[][] commitments, byte[][] cellProofs)
     {
-        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
-        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
+        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob * 2;
+        byte[] cellsArray = ArrayPool<byte>.Shared.Rent(length);
+        Span<byte> cells = new(cellsArray, 0, length);
 
         length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment * Ckzg.Ckzg.CellsPerExtBlob;
         byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
@@ -155,7 +156,8 @@ public static class KzgPolynomialCommitments
 
         for (int i = 0; i < blobs.Length; i++)
         {
-            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+
+            Ckzg.Ckzg.ComputeCells(cells.Slice(i * Ckzg.Ckzg.BytesPerBlob * 2, Ckzg.Ckzg.BytesPerBlob * 2), blobs[i], _ckzgSetup);
 
             for (int j = 0; j < Ckzg.Ckzg.CellsPerExtBlob; j++)
             {
@@ -169,7 +171,7 @@ public static class KzgPolynomialCommitments
 
         try
         {
-            return Ckzg.Ckzg.VerifyCellKzgProofBatch(flatCommitments, indices, flatBlobs,
+            return Ckzg.Ckzg.VerifyCellKzgProofBatch(flatCommitments, indices, cells,
                 flatProofs, blobs.Length * Ckzg.Ckzg.CellsPerExtBlob, _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
@@ -178,7 +180,7 @@ public static class KzgPolynomialCommitments
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(flatBlobsArray);
+            ArrayPool<byte>.Shared.Return(cellsArray);
             ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
             ArrayPool<byte>.Shared.Return(flatProofsArray);
             ArrayPool<ulong>.Shared.Return(indices);
@@ -188,22 +190,21 @@ public static class KzgPolynomialCommitments
     /// <summary>
     /// Method to generate correct data for tests only, not safe
     /// </summary>
-    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1, int proofVersion)
+    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1, ProofVersion proofVersion)
     {
         Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
         TryComputeCommitmentHashV1(commitment, hashV1);
 
         switch (proofVersion)
         {
-            case 1:
+            case ProofVersion.V1:
                 Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
                 break;
-            case 2:
+            case ProofVersion.V2:
                 Span<byte> cells = stackalloc byte[Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob];
                 Ckzg.Ckzg.ComputeCellsAndKzgProofs(cells, proof, blob, _ckzgSetup);
                 break;
         }
-
     }
 
     public static void GetCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
