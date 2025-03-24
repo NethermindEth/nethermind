@@ -338,10 +338,10 @@ namespace Nethermind.Evm.Benchmark
             switch (mode)
             {
                 case ILMode.NO_ILVM:
-                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + BenchmarkName, bytecode);
+                    yield return new LocalSetup<NotOptimizing>("ILEVM::0::std::" + BenchmarkName, bytecode);
                     break;
                 case ILMode.PATTERN_BASED_MODE:
-                    yield return new LocalSetup<IsPatternChecking>("ILEVM::2::pat::" + BenchmarkName, bytecode);
+                    yield return new LocalSetup<IsPatternChecking>("ILEVM::1::pat::" + BenchmarkName, bytecode);
                     break;
                 case ILMode.FULL_AOT_MODE:
                     yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + BenchmarkName, bytecode);

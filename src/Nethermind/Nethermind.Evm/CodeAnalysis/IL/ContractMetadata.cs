@@ -36,13 +36,6 @@ public class SubSegmentMetadata
     public int MaxStack { get; set; }
     public int LeftOutStack { get; set; }
 
-    public void SetInitialStackData(int required, int max, int leftOut)
-    {
-        RequiredStack = required;
-        MaxStack = max;
-        LeftOutStack = leftOut;
-    }
-
     public HashSet<Instruction> Instructions { get; set; }
     public bool RequiresStaticEnvCheck { get; set; }
     public bool RequiresOpcodeCheck { get; set; }
