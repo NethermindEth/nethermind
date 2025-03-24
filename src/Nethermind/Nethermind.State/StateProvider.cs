@@ -579,14 +579,9 @@ namespace Nethermind.State
             {
                 ReportChanges(stateTracer, trace);
             }
-
-            //if (commitRoots)
-            {
-                WriteToTree();
-            }
         }
 
-        private void WriteToTree()
+        private void FlushToTree()
         {
             int writes = 0;
             int skipped = 0;
@@ -868,6 +863,8 @@ namespace Nethermind.State
 
         public void CommitTree()
         {
+            FlushToTree();
+
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
