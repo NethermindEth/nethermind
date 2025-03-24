@@ -80,10 +80,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         if (pruningStrategy.PruningEnabled)
         {
             _shardBit = _pruningStrategy.ShardBit;
-            _shardedDirtyNodeCount = 1 << _shardBit;
+            _shardedDirtyNodeCount = 1 << (_shardBit - 1);
 
-            // 30 because of the 1 << 31 become negative
-            if (_shardBit is < 0 or > 30)
+            // 31 because of the 1 << (32 - 1) become negative
+            if (_shardBit is <= 0 or > 31)
             {
                 throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
             }
