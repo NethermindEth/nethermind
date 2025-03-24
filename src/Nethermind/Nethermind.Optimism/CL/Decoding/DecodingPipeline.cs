@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism.CL.Decoding;
@@ -25,20 +27,36 @@ public class DecodingPipeline : IDecodingPipeline
 
     public async Task Run(CancellationToken token)
     {
+        var buffer = new Memory<byte>(new byte[BlobDecoder.MaxBlobDataSize]);
         while (!token.IsCancellationRequested)
         {
-            // TODO: a lot of allocations here
-            byte[] blob = await _inputChannel.Reader.ReadAsync(token);
-            byte[] data = BlobDecoder.DecodeBlob(blob);
-            Frame[] frames = FrameDecoder.DecodeFrames(data);
-            _channelStorage.ConsumeFrames(frames);
-            BatchV1[]? batches = _channelStorage.GetReadyBatches();
-            if (batches is not null)
+            buffer.Clear();
+            var blob = await _inputChannel.Reader.ReadAsync(token);
+
+            try
             {
-                foreach (BatchV1 batch in batches)
+                var read = BlobDecoder.DecodeBlob(blob, buffer.Span);
+                foreach (var frame in FrameDecoder.DecodeFrames(buffer[..read]))
                 {
-                    await _outputChannel.Writer.WriteAsync(batch, token);
+                    _channelStorage.ConsumeFrame(frame);
                 }
+
+                var batches = _channelStorage.GetReadyBatches();
+                if (batches is not null)
+                {
+                    foreach (var batch in batches)
+                    {
+                        await _outputChannel.Writer.WriteAsync(batch, token);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
             }
         }
     }

@@ -8,39 +8,50 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+
 namespace Nethermind.Optimism.CL.Decoding;
 
 public class ChannelDecoder
 {
+    private const int MaxRlpBytesPerChannel = 100_000_000;
+
     public static byte[] DecodeChannel(byte[] data)
     {
-        // TODO: avoid allocation
-        // TODO: zip bomb
-        var memoryStream = new MemoryStream();
+        MemoryStream memoryStream = new();
         if ((data[0] & 0x0F) == 8 || (data[0] & 0x0F) == 15)
         {
             // zlib
-            // TODO: test
             var deflateStream = new DeflateStream(new MemoryStream(data[2..]), CompressionMode.Decompress);
-            deflateStream.CopyTo(memoryStream);
+            CopyDataWithLimit(deflateStream, memoryStream);
         }
         else if (data[0] == 1)
         {
             // brotli
             BrotliStream stream = new BrotliStream(new MemoryStream(data[1..]), CompressionMode.Decompress);
-            stream.CopyTo(memoryStream);
+            CopyDataWithLimit(stream, memoryStream);
         }
         else
         {
             throw new Exception($"Unsupported compression algorithm {data[0]}");
         }
-        // TODO: make rlp stream out of MemoryStream without conversion
         return memoryStream.ToArray();
+    }
+
+    private static void CopyDataWithLimit(Stream input, Stream output)
+    {
+        byte[] buffer = new byte[4096];
+        int bytesRead = 0;
+        int totalRead = 0;
+
+        while (totalRead <= MaxRlpBytesPerChannel &&
+               (bytesRead = input.Read(buffer, 0, Math.Min(buffer.Length, MaxRlpBytesPerChannel - totalRead))) > 0)
+        {
+            totalRead += bytesRead;
+            output.Write(buffer, 0, bytesRead);
+        }
     }
 }
 
-// TODO: support singular batches
-// In op spec BatchV0 is called Singular batch
 public struct BatchV0
 {
     public Hash256 ParentHash;

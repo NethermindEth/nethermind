@@ -5,26 +5,37 @@ using System;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class BlobDecoder
+public static class BlobDecoder
 {
-    public static byte[] DecodeBlob(byte[] blob)
+    public const int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
+
+    private const int BlobSize = 4096 * 32;
+    private const int EncodingVersion = 0;
+
+    public static int DecodeBlob(ReadOnlySpan<byte> blob, Span<byte> output)
     {
-        int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
-        int BlobSize = 4096 * 32;
-        int length = ((int)blob[2] << 16) | ((int)blob[3] << 8) |
-                     ((int)blob[4]);
-        if (length > MaxBlobDataSize)
+        if (output.Length < MaxBlobDataSize)
         {
-            throw new Exception("Blob size is too big");
+            throw new ArgumentException("Output buffer is too small");
         }
 
-        byte[] output = new byte[MaxBlobDataSize];
+        if (blob[1] != EncodingVersion)
+        {
+            throw new FormatException($"Expected version {EncodingVersion}, got {blob[1]}");
+        }
+
+        int length = (blob[2] << 16) | (blob[3] << 8) | blob[4];
+        if (length > MaxBlobDataSize)
+        {
+            throw new FormatException("Blob size is too big");
+        }
+
         for (int i = 0; i < 27; ++i)
         {
             output[i] = blob[i + 5];
         }
 
-        byte[] encodedByte = new byte[4];
+        Span<byte> encodedByte = stackalloc byte[4];
         int blobPos = 32;
         int outputPos = 28;
 
@@ -40,8 +51,7 @@ public class BlobDecoder
         {
             for (int j = 0; j < 4; j++)
             {
-                (encodedByte[j], outputPos, blobPos) =
-                    DecodeFieldElement(blob, outputPos, blobPos, output);
+                (encodedByte[j], outputPos, blobPos) = DecodeFieldElement(blob, outputPos, blobPos, output);
             }
 
             outputPos = ReassembleBytes(outputPos, encodedByte, output);
@@ -51,29 +61,28 @@ public class BlobDecoder
         {
             if (output[i] != 0)
             {
-                throw new Exception("Wrong output");
+                throw new FormatException("Wrong output");
             }
         }
 
-        output = output[..length];
         for (; blobPos < BlobSize; blobPos++)
         {
             if (blob[blobPos] != 0)
             {
-                throw new Exception("Blob excess data");
+                throw new FormatException("Blob excess data");
             }
         }
 
-        return output;
+        return length;
     }
 
-    private static (byte, int, int) DecodeFieldElement(byte[] blob, int outPos, int blobPos, byte[] output)
+    private static (byte, int, int) DecodeFieldElement(ReadOnlySpan<byte> blob, int outPos, int blobPos, Span<byte> output)
     {
         // two highest order bits of the first byte of each field element should always be 0
         if ((blob[blobPos] & 0b1100_0000) != 0)
         {
             // TODO: remove exception
-            throw new Exception("Invalid field element");
+            throw new FormatException("Invalid field element");
         }
 
         for (int i = 0; i < 31; i++)
@@ -84,7 +93,7 @@ public class BlobDecoder
         return (blob[blobPos], outPos + 32, blobPos + 32);
     }
 
-    static int ReassembleBytes(int outPos, byte[] encodedByte, byte[] output)
+    private static int ReassembleBytes(int outPos, ReadOnlySpan<byte> encodedByte, Span<byte> output)
     {
         outPos--; // account for fact that we don't output a 128th byte
         byte x = (byte)((encodedByte[0] & 0b0011_1111) | ((encodedByte[1] & 0b0011_0000) << 2));

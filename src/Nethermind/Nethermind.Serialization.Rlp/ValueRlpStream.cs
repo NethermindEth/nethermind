@@ -282,6 +282,11 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         _position += length;
     }
 
+    public readonly bool IsSequenceNext()
+    {
+        return PeekByte() >= 192;
+    }
+
     public ReadOnlySpan<byte> Read(int length)
     {
         ReadOnlySpan<byte> data = Data.Slice(_position, length);
