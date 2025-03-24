@@ -126,8 +126,8 @@ public partial class EngineModuleTests
     {
         get
         {
-            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay / 10) { ExpectedResult = 3, TestName = "Production manages to finish" };
-            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay * 2) { ExpectedResult = 0, TestName = "Production takes too long" };
+            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 10) { ExpectedResult = 3, TestName = "Production manages to finish" };
+            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2) { ExpectedResult = 0, TestName = "Production takes too long" };
         }
     }
 
