@@ -91,6 +91,7 @@ namespace Nethermind.Api
                     readOnlyTree,
                     DbProvider!,
                     SpecProvider!,
+                    SimulateTransactionProcessorFactory,
                     LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
@@ -246,6 +247,7 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory { get; set; } = Nethermind.Facade.Simulate.SimulateTransactionProcessorFactory.Instance;
 
         public IContainer? ApiWithNetworkServiceContainer { get; set; }
     }

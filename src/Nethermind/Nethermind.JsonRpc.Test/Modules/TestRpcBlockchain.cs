@@ -161,6 +161,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 roBlockTree,
                 new ReadOnlyDbProvider(dbProvider, true),
                 SpecProvider,
+                SimulateTransactionProcessorFactory.Instance,
                 LimboLogs.Instance);
 
             BlocksConfig blocksConfig = new BlocksConfig();
