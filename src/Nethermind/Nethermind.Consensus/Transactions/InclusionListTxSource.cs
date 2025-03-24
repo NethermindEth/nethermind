@@ -12,7 +12,6 @@ public class InclusionListTxSource(ulong chainId) : ITxSource
 {
     private IEnumerable<Transaction> _inclusionListTransactions = [];
 
-
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         => _inclusionListTransactions;
 

@@ -249,6 +249,7 @@ public partial class EngineModuleTests
                 LogManager,
                 ExecutionRequestsProcessor);
 
+            InclusionListTxSource = new InclusionListTxSource(SpecProvider.ChainId);
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(InclusionListTxSource);
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;

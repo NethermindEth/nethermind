@@ -242,9 +242,7 @@ public class PayloadPreparationService : IPayloadPreparationService
     {
         if (_payloadStorage.TryGetValue(payloadId, out PayloadStore store))
         {
-            store.CancellationTokenSource.Cancel();
-            store.CancellationTokenSource.TryReset();
-            store.ImprovementContext = CreateBlockImprovementContext(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CancellationTokenSource.Token);
+            ImproveBlock(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime);
         }
     }
 
