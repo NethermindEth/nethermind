@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -102,7 +103,7 @@ namespace Nethermind.Core
             }
             return right is null;
         }
-        public override int GetHashCode() => throw new NotImplementedException();
+        public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
         public static bool operator !=(Account? left, Account? right) => !(left == right);
 
         public Account WithChangedBalance(in UInt256 newBalance)
