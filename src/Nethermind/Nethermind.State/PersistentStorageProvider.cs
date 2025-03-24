@@ -294,6 +294,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 {
                     lock (state.toUpdateRoots)
                     {
+                        // No changes to this storage, remove from toUpdateRoots
+                        // Needs to be under lock as regular HashSet, should be
+                        // uncommon enough not to cause contention.
                         state.toUpdateRoots.Remove(kvp.Key);
                     }
                 }
@@ -308,7 +311,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             },
             (state) => ReportMetrics(state.writes, state.skips));
 
-            // Update the storage roots in the main thread non in parallel
+            // Update the storage roots in the main thread not in parallel,
+            // as can't update the StateTrie in parallel.
             foreach (ref var kvp in storages.AsSpan())
             {
                 if (!_toUpdateRoots.Contains(kvp.Key))
