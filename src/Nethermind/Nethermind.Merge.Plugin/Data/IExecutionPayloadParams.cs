@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -48,10 +49,20 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
+            // verification of the requests
+            for (int i = 0; i < ExecutionRequests.Length; i++)
             {
-                error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
-                return ValidationResult.Invalid;
+                if (ExecutionRequests[i] == null || ExecutionRequests[i].Length <= 1)
+                {
+                    error = "Execution request data must be longer than 1 byte";
+                    return ValidationResult.Fail;
+                }
+
+                if (i > 0 && ExecutionRequests[i][0] <= ExecutionRequests[i - 1][0])
+                {
+                    error = "Execution requests must not contain duplicates and be ordered by request_type in ascending order";
+                    return ValidationResult.Fail;
+                }
             }
 
         }

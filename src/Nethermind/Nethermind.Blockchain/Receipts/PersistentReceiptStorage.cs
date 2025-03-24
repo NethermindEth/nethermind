@@ -256,7 +256,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (ensureCanonical)
             {
-                EnsureCanonical(block);
+                EnsureCanonical(block, lastBlockNumber);
             }
         }
 
@@ -332,12 +332,17 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
+            EnsureCanonical(block, null);
+        }
+
+        private void EnsureCanonical(Block block, long? lastBlockNumber)
+        {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
 
-            long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
-            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
+            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= lastBlockNumber - _receiptConfig.TxLookupLimit) return;
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;

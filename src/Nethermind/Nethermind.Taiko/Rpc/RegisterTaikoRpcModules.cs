@@ -9,6 +9,7 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using System;
+using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -45,7 +46,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
 
 
         ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(
-            _jsonRpcConfig,
+            JsonRpcConfig,
             _api,
             _api.BlockTree.AsReadOnly(),
             _api.ReceiptStorage,
@@ -64,7 +65,23 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.L1OriginStore);
 
         rpcModuleProvider.RegisterBounded(ethModuleFactory,
-            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+            JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
+    }
+
+    protected override void RegisterProofRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        TaikoProofModuleFactory proofModuleFactory = new(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _api.BlockPreprocessor,
+            _api.ReceiptFinder,
+            _api.SpecProvider,
+            _api.LogManager);
+        rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, JsonRpcConfig.Timeout);
     }
 
     protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -76,10 +93,15 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         TaikoTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree.AsReadOnly(),
-            _jsonRpcConfig,
+            JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            secondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -87,6 +109,42 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.PoSSwitcher,
             _api.LogManager);
 
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
+    }
+
+    protected override void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
+        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
+        StepDependencyException.ThrowIfNull(_api.BlockValidator);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.KeyStore);
+        StepDependencyException.ThrowIfNull(_api.PeerPool);
+        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+
+        TaikoDebugModuleFactory debugModuleFactory = new(
+            _api.WorldStateManager,
+            _api.DbProvider,
+            _api.BlockTree,
+            JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            _api.Config<IBlocksConfig>().SecondsPerSlot,
+            _api.BlockValidator,
+            _api.BlockPreprocessor,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
+            new ReceiptMigration(_api),
+            _api.ConfigProvider,
+            _api.SpecProvider,
+            _api.SyncModeSelector,
+            _api.BadBlocksStore,
+            _api.FileSystem,
+            _api.LogManager);
+
+        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
     }
 }

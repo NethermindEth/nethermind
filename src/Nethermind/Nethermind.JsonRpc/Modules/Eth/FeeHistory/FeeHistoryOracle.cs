@@ -22,7 +22,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
     public class FeeHistoryOracle : IFeeHistoryOracle, IDisposable
     {
+        private static readonly ResultWrapper<FeeHistoryResults> _success = ResultWrapper<FeeHistoryResults>.Success(null);
         private const int MaxBlockCount = 1024;
+        private const int RewardPercentilesLengthLimit = 100;
         private readonly int _oldestBlockDistanceFromHeadAllowedInCache;
         private long _lastCleanupHeadBlockNumber = 0;
         private Task? _cleanupTask = null;
@@ -106,16 +108,26 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
         private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
         {
+            double CalculateBlobGasUsedRatio(Block b, out UInt256 feePerBlobGas)
+            {
+                IReleaseSpec spec = _specProvider.GetSpec(b.Header);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas);
+
+                var maxBlobGasPerBlob = spec.GetMaxBlobGasPerBlock();
+                return maxBlobGasPerBlob == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlob;
+            }
+
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
-                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
+                double blobGasUsedRatio = CalculateBlobGasUsedRatio(b, out UInt256 feePerBlobGas);
+
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
-                    (b.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
+                    blobGasUsedRatio,
                     b.ParentHash,
                     b.GasUsed,
                     b.Transactions.Length,
@@ -140,8 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockParameter newestBlock,
             double[]? rewardPercentiles = null)
         {
-            ResultWrapper<FeeHistoryResults> initialCheckResult =
-                Validate(ref blockCount, newestBlock, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(ref blockCount, newestBlock, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
             {
                 return initialCheckResult;
@@ -306,27 +317,38 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     break;
             }
 
-            if (rewardPercentiles is null) return ResultWrapper<FeeHistoryResults>.Success(null);
-            double previousPercentile = -1;
-            for (int i = 0; i < rewardPercentiles.Length; i++)
+            if (rewardPercentiles is not null)
             {
-                double currentPercentile = rewardPercentiles[i];
-                if (currentPercentile > 100 || currentPercentile < 0)
-                {
-                    return ResultWrapper<FeeHistoryResults>.Fail("rewardPercentiles: Some values are below 0 or greater than 100.",
-                        ErrorCodes.InvalidParams);
-                }
-                if (currentPercentile <= previousPercentile)
+                if (rewardPercentiles.Length > RewardPercentilesLengthLimit)
                 {
                     return ResultWrapper<FeeHistoryResults>.Fail(
-                        $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than or equal to the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.",
+                        $"rewardPercentiles: {rewardPercentiles.Length} is over the query limit {RewardPercentilesLengthLimit}.",
                         ErrorCodes.InvalidParams);
                 }
 
-                previousPercentile = currentPercentile;
+                double previousPercentile = -1;
+                for (int i = 0; i < rewardPercentiles.Length; i++)
+                {
+                    double currentPercentile = rewardPercentiles[i];
+                    if (currentPercentile is > 100 or < 0)
+                    {
+                        return ResultWrapper<FeeHistoryResults>.Fail(
+                            "rewardPercentiles: Some values are below 0 or greater than 100.",
+                            ErrorCodes.InvalidParams);
+                    }
+
+                    if (currentPercentile <= previousPercentile)
+                    {
+                        return ResultWrapper<FeeHistoryResults>.Fail(
+                            $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than or equal to the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.",
+                            ErrorCodes.InvalidParams);
+                    }
+
+                    previousPercentile = currentPercentile;
+                }
             }
 
-            return ResultWrapper<FeeHistoryResults>.Success(null);
+            return _success;
         }
 
         public void Dispose()

@@ -11,12 +11,14 @@ using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -33,6 +35,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncReport _syncReport;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
+        private readonly IPoSSwitcher _poSSwitcher;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
 
         private readonly Lock _handlerLock = new();
@@ -82,7 +85,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) <= 1;
 
-        protected virtual long TotalBlocks => _syncConfig.PivotNumberParsed;
+        protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
@@ -150,6 +153,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
+            IPoSSwitcher? poSSwitcher,
             ILogManager? logManager,
             ITotalDifficultyStrategy? totalDifficultyStrategy = null,
             bool alwaysStartHeaderSync = false)
@@ -159,6 +163,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
@@ -187,23 +192,55 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
-            HeadersSyncProgressLoggerReport.Reset(0, TotalBlocks);
+            HeadersSyncProgressLoggerReport.Reset(_pivotNumber - (LowestInsertedBlockHeader?.Number ?? 0) + 1, TotalBlocks);
         }
 
         protected virtual void ResetPivot()
         {
-            _pivotNumber = _syncConfig.PivotNumberParsed;
+            (_pivotNumber, _nextHeaderHash) = _blockTree.SyncPivot;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _nextHeaderHash = _syncConfig.PivotHashParsed;
-            _nextHeaderTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
+            _nextHeaderTotalDifficulty = TryGetPivotTotalDifficulty();
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
             if (lowestInserted is not null && lowestInserted!.Number < _pivotNumber)
             {
-                SetExpectedNextHeaderToParent(lowestInserted);
-                _lowestRequestedHeaderNumber = lowestInserted.Number;
+                if (lowestInserted.TotalDifficulty is null)
+                {
+                    // When the LowestInsertedHeader is set in blockTree initializer, its TD is not set from block info.
+                    // So here we explicitly try to fetch it again.
+                    lowestInserted = _blockTree.FindHeader(lowestInserted.Number, BlockTreeLookupOptions.RequireCanonical);
+
+                    // In case of some strange corruption, we will have to reset the whole sync.
+                    if (lowestInserted!.TotalDifficulty is null)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Missing total difficulty on lowest inserted header: {lowestInserted!.ToString(BlockHeader.Format.Short)}. Resetting header sync.");
+                        _blockTree.LowestInsertedHeader = null;
+                    }
+                }
+
+                if (lowestInserted?.TotalDifficulty is not null)
+                {
+                    SetExpectedNextHeaderToParent(lowestInserted);
+                    _lowestRequestedHeaderNumber = lowestInserted.Number;
+                }
             }
+        }
+
+        private UInt256 TryGetPivotTotalDifficulty()
+        {
+            if (_pivotNumber == LongConverter.FromString(_syncConfig.PivotNumber))
+                return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
+
+            // Got from header
+            BlockHeader? pivotHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.RequireCanonical);
+            if (pivotHeader?.TotalDifficulty is not null) return pivotHeader.TotalDifficulty.Value;
+
+            // Probably PoS
+            if (_poSSwitcher.FinalTotalDifficulty is not null) return _poSSwitcher.FinalTotalDifficulty.Value;
+
+            throw new InvalidOperationException(
+                $"Unable to determine final total difficulty of pivot ({_pivotNumber}, {_nextHeaderHash})");
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -306,7 +343,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    batch = ProcessPersistedHeadersOrBuildNewBatch();
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(cancellationToken);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -329,14 +366,14 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch()
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(CancellationToken cancellationToken)
         {
             HeadersSyncBatch? batch = null;
             do
             {
                 batch = BuildNewBatch();
                 batch = ProcessPersistedPortion(batch);
-            } while (batch is null && ShouldBuildANewBatch());
+            } while (batch is null && ShouldBuildANewBatch() && !cancellationToken.IsCancellationRequested);
             return batch;
         }
 
@@ -802,6 +839,7 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         private bool _disposed = false;
+
         public override void Dispose()
         {
             if (!_disposed)

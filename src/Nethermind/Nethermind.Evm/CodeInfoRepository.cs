@@ -55,14 +55,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         }.ToFrozenDictionary();
     }
 
-    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)>? precompileCache = null)
+    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
         _localPrecompiles = precompileCache is null
             ? _precompiles
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
@@ -74,7 +74,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
-            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
+            if (followDelegation)
+                cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
         }
 
         return cachedCodeInfo;
@@ -159,9 +160,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
-            : TryGetDelegatedAddress(codeInfo.MachineCode.Span, out Address? delegationAddress)
-                ? worldState.GetCodeHash(delegationAddress)
-                : codeHash;
+            : codeHash;
     }
 
     /// <remarks>
@@ -182,7 +181,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
@@ -191,7 +190,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) : IPrecompile
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) : IPrecompile
     {
         public static Address Address => Address.Zero;
 
@@ -199,10 +198,10 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
-            if (!cache.TryGetValue(key, out (ReadOnlyMemory<byte>, bool) result))
+            if (!cache.TryGetValue(key, out (byte[], bool) result))
             {
                 result = precompile.Run(inputData, releaseSpec);
                 // we need to rebuild the key with data copy as the data can be changed by VM processing

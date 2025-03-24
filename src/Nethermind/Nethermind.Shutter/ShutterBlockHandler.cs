@@ -23,7 +23,7 @@ namespace Nethermind.Shutter;
 public class ShutterBlockHandler : IShutterBlockHandler
 {
     private readonly ILogger _logger;
-    private readonly ShutterTime _time;
+    private readonly SlotTime _time;
     private readonly IShutterEon _eon;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ShutterTxLoader _txLoader;
@@ -53,7 +53,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
         ShutterTxLoader txLoader,
-        ShutterTime time,
+        SlotTime time,
         ILogManager logManager,
         TimeSpan slotLength,
         TimeSpan blockWaitCutoff)

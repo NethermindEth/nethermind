@@ -329,9 +329,6 @@ namespace Nethermind.Core.Specs
         /// OP Holocene
         bool IsOpHoloceneEnabled { get; }
 
-        /// Taiko Ontake
-        bool IsOntakeEnabled { get; }
-
         /// <summary>
         ///  Increase call data cost
         /// </summary>
@@ -342,6 +339,13 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
+
+        /// <summary>
+        /// EIP-7780: Add blob schedule to EL config files
+        /// </summary>
+        public ulong TargetBlobCount { get; }
+        public ulong MaxBlobCount { get; }
+        public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 

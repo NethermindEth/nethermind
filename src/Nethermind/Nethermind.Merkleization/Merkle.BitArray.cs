@@ -8,14 +8,14 @@ namespace Nethermind.Merkleization;
 
 public static partial class Merkle
 {
-    public static void Ize(out UInt256 root, BitArray value)
+    public static void Merkleize(out UInt256 root, BitArray value)
     {
         Merkleizer merkleizer = new Merkleizer(0);
         merkleizer.Feed(value);
         merkleizer.CalculateRoot(out root);
     }
 
-    public static void Ize(out UInt256 root, BitArray value, ulong limit)
+    public static void Merkleize(out UInt256 root, BitArray value, ulong limit)
     {
         Merkleizer merkleizer = new Merkleizer(0);
         merkleizer.Feed(value, limit);

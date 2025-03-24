@@ -37,9 +37,9 @@ public static class ExecutionRequestExtensions
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
         // make sure that length is 3 or less elements
-        if (flatEncodedRequests is null || flatEncodedRequests.Length > MaxRequestsCount)
+        if (flatEncodedRequests is null)
         {
-            throw new ArgumentException("Flat encoded requests must be an array of 3 or less elements");
+            throw new ArgumentException("Flat encoded requests must be an array");
         }
 
         using SHA256 sha256 = SHA256.Create();
@@ -51,7 +51,7 @@ public static class ExecutionRequestExtensions
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
+        return new Hash256(sha256.ComputeHash(concatenatedHashes.UnsafeGetInternalArray(), 0, concatenatedHashes.Count));
     }
 
 
