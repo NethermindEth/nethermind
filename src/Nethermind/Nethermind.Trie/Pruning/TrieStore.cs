@@ -80,10 +80,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         if (pruningStrategy.PruningEnabled)
         {
             _shardBit = _pruningStrategy.ShardBit;
-            _shardedDirtyNodeCount = 1 << (_shardBit - 1);
+            _shardedDirtyNodeCount = 1 << _shardBit;
 
-            // 31 because of the 1 << (32 - 1) become negative
-            if (_shardBit is <= 0 or > 31)
+            // 30 because of the 1 << 31 become negative
+            if (_shardBit is <= 0 or > 30)
             {
                 throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
             }
@@ -287,10 +287,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         // Using some early bits so that nodes of similar prefix would get put in the same shard.
         uint shardIdx = baseSize >> (32 - _shardBit);
-        if (shardIdx < 0 || shardIdx >= _shardedDirtyNodeCount)
-        {
-            Console.Error.WriteLine($"Its {shardIdx} {baseSize} on {_shardedDirtyNodeCount} anv {_shardBit}");
-        }
         return (int)shardIdx;
     }
 
