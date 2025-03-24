@@ -18,6 +18,7 @@ public class ConcurrencyController(int concurrency)
 {
     public static readonly ConcurrencyController SingleThread = new ConcurrencyController(1);
     private int _slots = concurrency;
+    public bool MaybeCanTakeSlot => Volatile.Read(ref _slots) > 1;
 
     public bool TryTakeSlot(out Slot returner)
     {

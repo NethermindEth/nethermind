@@ -133,7 +133,10 @@ namespace Nethermind.Trie
                 Metrics.TreeNodeRlpEncodings++;
 
                 const int valueRlpLength = 1;
-                int contentLength = valueRlpLength + (UseParallel(canBeParallel) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
+                int contentLength = valueRlpLength + (
+                    tree.ConcurrencyController.MaybeCanTakeSlot && canBeParallel
+                    ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool)
+                    : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 CappedArray<byte> result = pool.SafeRentBuffer(sequenceLength);
                 Span<byte> resultSpan = result.AsSpan();
@@ -143,8 +146,6 @@ namespace Nethermind.Trie
                 resultSpan[position] = 128;
 
                 return result;
-
-                static bool UseParallel(bool canBeParallel) => Environment.ProcessorCount > 1 && canBeParallel;
             }
 
             private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
