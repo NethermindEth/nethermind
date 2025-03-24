@@ -383,7 +383,7 @@ internal class BlobSender
             }
 
 
-            return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V1));
+            return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V2));
         }
     }
 

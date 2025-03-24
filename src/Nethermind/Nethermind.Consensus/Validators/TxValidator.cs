@@ -232,7 +232,8 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
-        return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
+        var wrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+        return wrapper is null ? ValidationResult.Success
             : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Proofs.Length != blobCount && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData
@@ -271,10 +272,10 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             }
 
             // TODO: remove after Fusaka
-            SetBlobProofsAndCellProofs(transaction, releaseSpec);
+            //SetBlobProofsAndCellProofs(transaction, releaseSpec);
 
             return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
-                   || !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
+                   && !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
         }
