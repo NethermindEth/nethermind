@@ -292,11 +292,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: false);
                 if (writes == 0)
                 {
-                    state.writes += writes;
                     lock (state.toUpdateRoots)
                     {
                         state.toUpdateRoots.Remove(kvp.Key);
                     }
+                }
+                else
+                {
+                    state.writes += writes;
                 }
 
                 state.skips += skipped;
