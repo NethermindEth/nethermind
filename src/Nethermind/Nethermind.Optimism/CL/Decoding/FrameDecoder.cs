@@ -11,6 +11,7 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public static class FrameDecoder
 {
+    // TODO: Evaluate if a custom `Enumerator` would be worth it
     public static IEnumerable<Frame> DecodeFrames(Memory<byte> source)
     {
         while (source.Length != 0)
@@ -33,12 +34,12 @@ public static class FrameDecoder
 /// <remarks>
 /// https://specs.optimism.io/protocol/derivation.html#frame-format
 /// </remarks>
-public struct Frame : IEquatable<Frame>
+public readonly struct Frame : IEquatable<Frame>
 {
-    public UInt128 ChannelId;
-    public UInt16 FrameNumber;
-    public byte[] FrameData;
-    public bool IsLast;
+    public readonly UInt128 ChannelId { get; init; }
+    public readonly UInt16 FrameNumber { get; init; }
+    public readonly byte[] FrameData { get; init; }
+    public readonly bool IsLast { get; init; }
 
     public int Size
     {
@@ -59,6 +60,16 @@ public struct Frame : IEquatable<Frame>
     public override bool Equals(object? obj)
     {
         return obj is Frame other && Equals(other);
+    }
+
+    public static bool operator ==(Frame left, Frame right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(Frame left, Frame right)
+    {
+        return !(left == right);
     }
 
     public override int GetHashCode()
@@ -84,7 +95,6 @@ public struct Frame : IEquatable<Frame>
             {
                 ChannelId = channelId,
                 FrameNumber = frameNumber,
-                // TODO: Can we avoid this copying?
                 FrameData = frameData.ToArray(),
                 IsLast = isLast == 1
             };
