@@ -258,7 +258,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 StorageTree storageTree = kvp.Value;
                 DefaultableDictionary dict = _blockChanges[kvp.Key];
-                int writes = ProcessStorageChanges(dict, storageTree, canBeParallel: true);
+                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: true);
+                ReportMetrics(writes, skipped);
                 if (writes > 0)
                 {
                     _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
@@ -274,7 +275,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 0,
                 storages.Count,
                 RuntimeInformation.ParallelOptionsLogicalCores,
-                (storages, toUpdateRoots: _toUpdateRoots, changes: _blockChanges),
+                (storages, toUpdateRoots: _toUpdateRoots, changes: _blockChanges, writes: 0, skips: 0),
                 static (i, state) =>
             {
                 ref var kvp = ref state.storages.GetRef(i);
@@ -286,17 +287,21 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 StorageTree storageTree = kvp.Value;
                 DefaultableDictionary dict = state.changes[kvp.Key];
-                int writes = ProcessStorageChanges(dict, storageTree, canBeParallel: false);
+                (int writes, int skipped) = ProcessStorageChanges(dict, storageTree, canBeParallel: false);
                 if (writes == 0)
                 {
+                    state.writes += writes;
                     lock (state.toUpdateRoots)
                     {
                         state.toUpdateRoots.Remove(kvp.Key);
                     }
                 }
 
+                state.skips += skipped;
+
                 return state;
-            });
+            },
+            (state) => ReportMetrics(state.writes, state.skips));
 
             // Update the storage roots in the main thread non in parallel
             foreach (ref var kvp in storages.AsSpan())
@@ -311,7 +316,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        static int ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree, bool canBeParallel)
+        static (int writes, int skipped) ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree, bool canBeParallel)
         {
             int writes = 0;
             int skipped = 0;
@@ -330,6 +335,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 }
             }
 
+            if (writes > 0)
+            {
+                storageTree.UpdateRootHash(canBeParallel);
+            }
+
+            return (writes, skipped);
+        }
+
+        static void ReportMetrics(int writes, int skipped)
+        {
             if (skipped > 0)
             {
                 Db.Metrics.IncrementStorageSkippedWrites(skipped);
@@ -337,10 +352,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (writes > 0)
             {
                 Db.Metrics.IncrementStorageTreeWrites(writes);
-                storageTree.UpdateRootHash(canBeParallel);
             }
-
-            return writes;
         }
     }
 
