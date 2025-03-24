@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text;
 using Nethermind.Cli;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -10,6 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace SendBlobs;
 internal class FundsDistributor
@@ -113,7 +115,7 @@ internal class FundsDistributor
 
                 await distributeFrom.Sign(tx);
 
-                string txRlp = Convert.ToHexStringLower(txDecoder
+                string txRlp = Hex.ToHexString(txDecoder
                     .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
                 string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
@@ -188,7 +190,7 @@ internal class FundsDistributor
                                       toSend);
             await signer.Sign(tx);
 
-            string txRlp = Convert.ToHexStringLower(txDecoder
+            string txRlp = Hex.ToHexString(txDecoder
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
             string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
