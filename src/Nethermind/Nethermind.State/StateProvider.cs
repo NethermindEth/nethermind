@@ -437,6 +437,10 @@ namespace Nethermind.State
             if (currentPosition < 0)
             {
                 if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
+                if (commitRoots)
+                {
+                     FlushToTree();
+                }
                 return;
             }
 
@@ -578,6 +582,11 @@ namespace Nethermind.State
             if (isTracing)
             {
                 ReportChanges(stateTracer, trace);
+            }
+
+            if (commitRoots)
+            {
+                 FlushToTree();
             }
         }
 
@@ -863,8 +872,6 @@ namespace Nethermind.State
 
         public void CommitTree()
         {
-            FlushToTree();
-
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
