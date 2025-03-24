@@ -44,6 +44,16 @@ public class PowForwardHeaderProvider(
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
 
+    private IOwnedReadOnlyList<BlockHeader>? LastResponseBatch
+    {
+        get => _lastResponseBatch;
+        set
+        {
+            _lastResponseBatch?.Dispose();
+            _lastResponseBatch = value;
+        }
+    }
+
     public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation)
     {
         return syncPeerPool.AllocateAndRun(async (peerInfo) =>
@@ -76,38 +86,36 @@ public class PowForwardHeaderProvider(
                 if (_logger.IsTrace) _logger.Trace($"No header received");
             }
 
-            if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) _lastResponseBatch = headers.ToPooledList(headers.Count);
+            if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.ToPooledList(headers.Count);
             return headers;
         }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
     }
 
     private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch()
     {
-        if (_lastResponseBatch is null) return null;
+        if (LastResponseBatch is null) return null;
 
         long currentNumber = _currentNumber;
         bool sameFound = false;
         ArrayPoolList<BlockHeader>? newResponse = null;
-        for (int i = 0; i < _lastResponseBatch.Count; i++)
+        for (int i = 0; i < LastResponseBatch.Count; i++)
         {
-            if (!sameFound && _lastResponseBatch[i].Number != currentNumber) continue;
+            if (!sameFound && LastResponseBatch[i].Number != currentNumber) continue;
             sameFound = true;
 
-            newResponse ??= new ArrayPoolList<BlockHeader>(_lastResponseBatch.Count - i);
-            newResponse.Add(_lastResponseBatch[i]);
+            newResponse ??= new ArrayPoolList<BlockHeader>(LastResponseBatch.Count - i);
+            newResponse.Add(LastResponseBatch[i]);
         }
 
         if (newResponse is null || newResponse.Count <= MinCachedHeaderBatchSize)
         {
-            _lastResponseBatch.Dispose();
-            _lastResponseBatch = null;
+            LastResponseBatch = null;
             newResponse?.Dispose();
             return null;
         }
 
-        _lastResponseBatch.Dispose();
-        _lastResponseBatch = newResponse;
-        return _lastResponseBatch;
+        LastResponseBatch = newResponse;
+        return LastResponseBatch;
     }
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
@@ -115,19 +123,13 @@ public class PowForwardHeaderProvider(
         if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer}, new best peer: {newBestPeer}");
         if (newBestPeer?.HeadHash != _currentBestPeer?.HeadHash)
         {
-            ClearLastResponseBatch();
+            LastResponseBatch = null;
         }
 
         // TODO: Is there a (fast) way to know if the new peer's head has the parent of last peer?
         _ancestorLookupLevel = 0;
         _currentNumber = Math.Max(0, Math.Min(blockTree.BestKnownNumber, newBestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
         _currentBestPeer = newBestPeer;
-    }
-
-    private void ClearLastResponseBatch()
-    {
-        _lastResponseBatch?.Dispose();
-        _lastResponseBatch = null;
     }
 
     private async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeaders, CancellationToken cancellation)

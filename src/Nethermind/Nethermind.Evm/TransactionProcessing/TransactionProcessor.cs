@@ -171,6 +171,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -277,12 +278,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     || s > Secp256K1Curve.HalfN
                     //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
                     || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
                 {
                     error = "Bad signature.";
                     return false;
