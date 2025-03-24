@@ -65,8 +65,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0xe05eb5783e1ee8b0b6a6c4c9a09a9bdeb798835d3d44cda510e3083c0578165f",
         "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba")]
-    public override Task NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot)
-        => base.NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(blockHash, stateRoot);
+    public override Task NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot)
+        => base.NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(blockHash, stateRoot);
 
     [TestCase(
         "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
