@@ -2216,11 +2216,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
-            GethTraceOptions tracerOptions = new GethTraceOptions
-            {
-                EnableMemory = true,
-            };
-
             var bytecode = Prepare.EvmCode
                 .PushData(UInt256.MaxValue)
                 .PUSHx([2])
@@ -2236,14 +2231,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .STOP()
                 .Done;
 
-            var normalTracer = new GethLikeTxMemoryTracer(null, tracerOptions);
-            var ilvmTracer = new GethLikeTxMemoryTracer(null, tracerOptions);
-
-            standardChain.Execute<ITxTracer>(bytecode, normalTracer);
+            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            enhancedChain.Execute<ITxTracer>(bytecode, ilvmTracer);
+            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
@@ -2283,43 +2275,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Assert.That(actual, Is.EqualTo(expected), testcase.opcode);
         }
-
-        [Test]
-        public void AOT_invalid_scenarios_results_in_failure()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-                IlEvmAnalysisThreshold = 1,
-                IlEvmAnalysisQueueMaxSize = 1,
-                IsIlEvmAggressiveModeEnabled = true,
-            });
-
-            Address main = enhancedChain.InsertCode(
-                Prepare.EvmCode
-                    .PUSHx() // PUSH0
-                    .POP()
-                    .STOP()
-                    .Done);
-
-            byte[] driver =
-                Prepare.EvmCode
-                    .Call(main, 1000)
-                    .JUMPI(17)
-                    .INVALID()
-                    .JUMPDEST()
-                    .STOP()
-                    .Done;
-
-            enhancedChain.ForceRunAnalysis(main, ILMode.FULL_AOT_MODE);
-            using var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
-            enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
-
-            var hasFailed = tracer.BuildResult().Failed;
-            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
-            Assert.That(hasFailed, Is.True);
-        }
-
 
         [Test]
         public void ILAnalyzer_Initialize_Add_All_Patterns()

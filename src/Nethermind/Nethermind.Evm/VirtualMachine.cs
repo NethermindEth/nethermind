@@ -692,13 +692,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                try
-                {
-                    IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
-                }
-                catch(Exception e) {
-                    Console.WriteLine(e.Message);
-                }
+                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
             }
         }
         if (env.CodeInfo.MachineCode.Length == 0)

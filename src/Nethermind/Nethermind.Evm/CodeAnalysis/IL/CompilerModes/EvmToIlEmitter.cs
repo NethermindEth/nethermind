@@ -147,7 +147,8 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            var immediateBytes = contractMetadata.TargetCodeInfo.MachineCode.Slice(pc + 1, opcodeMetadata.AdditionalBytes).Span;
+                            int length = Math.Min(contractMetadata.TargetCodeInfo.MachineCode.Length - pc - 1, opcode - Instruction.PUSH0);
+                            var immediateBytes = contractMetadata.TargetCodeInfo.MachineCode.Slice(pc + 1, length).Span;
                             if (immediateBytes.IsZero())
                                 method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                             else
@@ -185,7 +186,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {// we load the locals.stackHeadRef
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, pc, opcode, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels)  =>
                         {
-                            int length = Math.Min(contractMetadata.TargetCodeInfo.MachineCode.Length - pc, opcode - Instruction.PUSH0);
+                            int length = Math.Min(contractMetadata.TargetCodeInfo.MachineCode.Length - pc - 1, opcode - Instruction.PUSH0);
                             var immediateBytes = contractMetadata.TargetCodeInfo.MachineCode.Slice(pc + 1, length).Span;
                             if (immediateBytes.IsZero())
                                 method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);

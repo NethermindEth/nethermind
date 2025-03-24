@@ -46,6 +46,8 @@ internal static class Precompiler
         var envLoader = new FullAotEnvLoader();
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
+        Dictionary<int, Label> jumpDestinations = new();
+        Dictionary<int, Label> entryPoints = new();
 
         // set up spec
         envLoader.CacheSpec(method, locals);
@@ -59,7 +61,6 @@ internal static class Precompiler
         Label isContinuation = method.DefineLabel(); // jump table
         Label ret = method.DefineLabel();
 
-        Dictionary<int, Label> jumpDestinations = new();
 
         envLoader.LoadStackHead(method, locals, false);
         method.StoreLocal(locals.stackHeadIdx);
@@ -90,7 +91,7 @@ internal static class Precompiler
 
         foreach (var segmentMetadata in contractMetadata.Segments)
         {
-            method.MarkLabel(jumpDestinations[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
+            method.MarkLabel(entryPoints[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
 
             if (!config.IsIlEvmAggressiveModeEnabled)
                 contractMetadata.StackOffsets.Clear();
@@ -118,14 +119,14 @@ internal static class Precompiler
 
                         if (!currentSegment.IsReachable)
                         {
-                            i = currentSegment.End;
+                            i = currentSegment.End + 1;
                             continue;
                         }
 
                         if (currentSegment.IsFailing)
                         {
                             method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
-                            i = currentSegment.End;
+                            i = currentSegment.End + 1;
                             continue;
                         }
 
@@ -201,7 +202,6 @@ internal static class Precompiler
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
-
                 /*
                 using Local depth = method.DeclareLocal<int>();
 
@@ -221,11 +221,13 @@ internal static class Precompiler
                 method.LoadConstant(opcodeInfo.Instruction.ToString());
                 method.StoreLocal(instructionName);
 
-                method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
+                // method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
                 */
+
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, opcodeInfo.Instruction, opcodeInfo.Metadata, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
-                if(!opcodeInfo.Instruction.IsTerminating())
+                i += opcodeInfo.Metadata.AdditionalBytes;
+                if (!opcodeInfo.Instruction.IsTerminating())
                 {
                     if (config.IsIlEvmAggressiveModeEnabled)
                     {
@@ -237,8 +239,7 @@ internal static class Precompiler
                         EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                     }
                 }
-
-                i += 1 + opcodeInfo.Metadata.AdditionalBytes;
+                i += 1;
 
                 if (opcodeInfo.Instruction.IsTerminating() && !hasEmittedJump)
                 {
@@ -292,7 +293,14 @@ internal static class Precompiler
         method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
         method.BranchIfGreaterOrEqual(exit);
 
-        method.Branch(skipJumpValidation);
+        foreach (KeyValuePair<int, Label> continuationSites in entryPoints)
+        {
+            method.LoadLocal(locals.jmpDestination);
+            method.LoadConstant(continuationSites.Key);
+            method.BranchIfEqual(continuationSites.Value);
+        }
+
+        method.Branch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         method.MarkLabel(jumpTable);
         method.LoadLocal(locals.wordRef256A);

@@ -50,8 +50,14 @@ public static class IlAnalyzer
         while (itemsLeft-- > 0 && _queue.TryDequeue(out CodeInfo worklet))
         {
             worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
-            Analyse(worklet, config.IlEvmEnabledMode, config, logger);
-            worklet.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
+            try
+            {
+                Analyse(worklet, config.IlEvmEnabledMode, config, logger);
+                worklet.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
+            } catch
+            {
+                worklet.IlInfo.AnalysisPhase = AnalysisPhase.Failed;
+            }
         }
     }
 
