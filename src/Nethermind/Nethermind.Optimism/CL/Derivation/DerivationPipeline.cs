@@ -98,7 +98,7 @@ public class DerivationPipeline : IDerivationPipeline
             _logger.Warn($"L1Origin unavailable. Number: {lastL1OriginNum}, L1 origin check: {batch.L1OriginCheck.ToHexString()}");
             return (null, null);
         }
-        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck))
+        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck.Span))
         {
             _logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Value.Hash}");
             return (null, null);

@@ -19,12 +19,25 @@ public class BatchV1
 {
     public required ulong RelTimestamp;
     public required ulong L1OriginNum;
-    public required byte[] ParentCheck; // 20 bytes
-    public required byte[] L1OriginCheck; // 20 bytes
+    public required ReadOnlyMemory<byte> ParentCheck; // 20 bytes
+    public required ReadOnlyMemory<byte> L1OriginCheck; // 20 bytes
     public required ulong BlockCount;
     public required BigInteger OriginBits;
-    public required ulong[] BlockTxCounts;
-    public required BatchV1Transactions Txs;
+    public required IReadOnlyList<ulong> BlockTxCounts;
+    public required Transactions Txs;
+
+    public class Transactions
+    {
+        public required BigInteger ContractCreationBits;
+        public required BigInteger YParityBits;
+        public required IReadOnlyList<(UInt256 R, UInt256 S)> Signatures;
+        public required IReadOnlyList<Address> Tos;
+        public required IReadOnlyList<ReadOnlyMemory<byte>> Datas;
+        public required IReadOnlyList<ulong> Nonces;
+        public required IReadOnlyList<ulong> Gases;
+        public required BigInteger ProtectedBits;
+        public required IReadOnlyList<TxType> Types;
+    }
 
     public IEnumerable<SingularBatch> ToSingularBatches(ulong chainId, ulong genesisTimestamp, ulong blockTime)
     {
@@ -46,18 +59,20 @@ public class BatchV1
             batch.EpochNumber = currentL1OriginNum;
             batch.Timestamp = currentTimestamp;
             currentTimestamp += blockTime;
-            (Transaction[] userTransactions, tosFrom, legacyTxFrom) =
-                BuildUserTransactions(
-                    chainId, txIdx, BlockTxCounts[i], tosFrom, legacyTxFrom);
+            (Transaction[] userTransactions, tosFrom, legacyTxFrom) = BuildUserTransactions(chainId, txIdx, BlockTxCounts[i], tosFrom, legacyTxFrom);
             txIdx += BlockTxCounts[i];
             batch.Transactions = userTransactions
                 .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-                .ToArray().ToArray();
+                .ToArray();
             yield return batch;
         }
     }
 
-    private (Transaction[], ulong, ulong) BuildUserTransactions(ulong chainId, ulong from, ulong txCount, ulong tosFrom,
+    private (Transaction[], ulong, ulong) BuildUserTransactions(
+        ulong chainId,
+        ulong from,
+        ulong txCount,
+        ulong tosFrom,
         ulong legacyTxFrom)
     {
         var userTransactions = new Transaction[txCount];
@@ -70,19 +85,19 @@ public class BatchV1
             var tx = new Transaction
             {
                 ChainId = chainId,
-                Type = Txs.Types[txIdx],
-                Nonce = Txs.Nonces[txIdx],
-                GasLimit = (long)Txs.Gases[txIdx],
+                Type = Txs.Types[(int)txIdx],
+                Nonce = Txs.Nonces[(int)txIdx],
+                GasLimit = (long)Txs.Gases[(int)txIdx],
             };
             bool contractCreationBit = ((Txs.ContractCreationBits >> (int)txIdx) & 1) == 1;
             if (!contractCreationBit)
             {
-                tx.To = Txs.Tos[tosIdx];
+                tx.To = Txs.Tos[(int)tosIdx];
                 tosIdx++;
             }
 
             ulong v;
-            switch (Txs.Types[txIdx])
+            switch (Txs.Types[(int)txIdx])
             {
                 case TxType.Legacy:
                     {
@@ -97,29 +112,29 @@ public class BatchV1
                             v = 27u + (parityBit ? 1u : 0u);
                         }
 
-                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Datas[txIdx]);
+                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Datas[(int)txIdx].Span);
                         break;
                     }
                 case TxType.AccessList:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Datas[txIdx]);
+                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Datas[(int)txIdx].Span);
                         break;
                     }
                 case TxType.EIP1559:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
                         (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) =
-                            DecodeEip1559Transaction(Txs.Datas[txIdx]);
+                            DecodeEip1559Transaction(Txs.Datas[(int)txIdx].Span);
                         break;
                     }
                 default:
                     {
-                        throw new ArgumentException($"Invalid tx type {Txs.Types[txIdx]}");
+                        throw new ArgumentException($"Invalid tx type {Txs.Types[(int)txIdx]}");
                     }
             }
 
-            Signature signature = new(Txs.Signatures[txIdx].R, Txs.Signatures[txIdx].S, v);
+            Signature signature = new(Txs.Signatures[(int)txIdx].R, Txs.Signatures[(int)txIdx].S, v);
             tx.Signature = signature;
             userTransactions[i] = tx;
         }
@@ -127,43 +142,41 @@ public class BatchV1
         return (userTransactions, tosIdx, legacyTxIdx);
     }
 
-    private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(byte[] encoded)
+    private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(ReadOnlySpan<byte> encoded)
     {
         // rlp_encode(value, gasPrice, data)
-        RlpStream stream = new(encoded);
-        int length = stream.ReadSequenceLength();
-        UInt256 value = stream.DecodeUInt256();
-        UInt256 gasPrice = stream.DecodeUInt256();
-        byte[] data = stream.DecodeByteArray();
+        Rlp.ValueDecoderContext decoder = new(encoded);
+        int length = decoder.ReadSequenceLength();
+        UInt256 value = decoder.DecodeUInt256();
+        UInt256 gasPrice = decoder.DecodeUInt256();
+        byte[] data = decoder.DecodeByteArray();
         return (value, gasPrice, data);
     }
 
-    private (UInt256 Value, UInt256 GasPrice, byte[] Data, AccessList? AccessList)
-        DecodeAccessListTransaction(byte[] encoded)
+    private (UInt256 Value, UInt256 GasPrice, byte[] Data, AccessList? AccessList) DecodeAccessListTransaction(ReadOnlySpan<byte> encoded)
     {
         // 0x01 ++ rlp_encode(value, gasPrice, data, accessList)
-        RlpStream stream = new(encoded);
-        stream.ReadByte(); // type
-        int length = stream.ReadSequenceLength();
-        UInt256 value = stream.DecodeUInt256();
-        UInt256 gasPrice = stream.DecodeUInt256();
-        byte[] data = stream.DecodeByteArray();
-        AccessList? accessList = AccessListDecoder.Instance.Decode(stream);
+        Rlp.ValueDecoderContext decoder = new(encoded);
+        decoder.ReadByte(); // type
+        int length = decoder.ReadSequenceLength();
+        UInt256 value = decoder.DecodeUInt256();
+        UInt256 gasPrice = decoder.DecodeUInt256();
+        byte[] data = decoder.DecodeByteArray();
+        AccessList? accessList = AccessListDecoder.Instance.Decode(ref decoder);
         return (value, gasPrice, data, accessList);
     }
 
-    private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList)
-        DecodeEip1559Transaction(byte[] encoded)
+    private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList) DecodeEip1559Transaction(ReadOnlySpan<byte> encoded)
     {
         // 0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)
-        RlpStream stream = new(encoded);
-        byte type = stream.ReadByte(); // type
-        int length = stream.ReadSequenceLength();
-        UInt256 value = stream.DecodeUInt256();
-        UInt256 maxPriorityFeePerGas = stream.DecodeUInt256();
-        UInt256 maxFeePerGas = stream.DecodeUInt256();
-        byte[] data = stream.DecodeByteArray();
-        AccessList? accessList = AccessListDecoder.Instance.Decode(stream);
+        Rlp.ValueDecoderContext decoder = new(encoded);
+        byte type = decoder.ReadByte(); // type
+        int length = decoder.ReadSequenceLength();
+        UInt256 value = decoder.DecodeUInt256();
+        UInt256 maxPriorityFeePerGas = decoder.DecodeUInt256();
+        UInt256 maxFeePerGas = decoder.DecodeUInt256();
+        byte[] data = decoder.DecodeByteArray();
+        AccessList? accessList = AccessListDecoder.Instance.Decode(ref decoder);
         return (value, maxPriorityFeePerGas, maxFeePerGas, data, accessList);
     }
 }

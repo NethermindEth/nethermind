@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
@@ -24,10 +25,9 @@ public class ChannelStorage : IChannelStorage
         if (queue.IsReady())
         {
             byte[] decompressed = ChannelDecoder.DecodeChannel(queue.BuildChannel());
-            // TODO: avoid rlpStream here
-            RlpStream rlpStream = new(decompressed);
-            ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
-            BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
+            Rlp.ValueDecoderContext decoder = new(decompressed, sliceMemory: true);
+            Memory<byte> batchData = decoder.DecodeByteArrayMemory()!.Value;
+            BatchV1[] batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             _batches.Enqueue(batches);
             // TODO: we need to remove frames and do not allow to reuse channelId at the same time. Check the specs!
             //_frameQueues.Remove(frames[0].ChannelId);
