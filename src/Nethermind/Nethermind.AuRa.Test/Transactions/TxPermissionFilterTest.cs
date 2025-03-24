@@ -227,9 +227,9 @@ public class TxPermissionFilterTest
         {
             foreach (ITransactionPermissionContract.TxPermissions txType in TxPermissionsTypes)
             {
-                Task<TestTxPermissionsBlockchain> chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
                 async Task<TestTxPermissionsBlockchain> testFactory()
                 {
+                    Task<TestTxPermissionsBlockchain> chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
                     TestTxPermissionsBlockchain chain = await chainTask;
                     chain.TxPermissionFilterCache.Permissions.Clear();
                     chain.TransactionPermissionContractVersions.Clear();
@@ -269,13 +269,6 @@ public class TxPermissionFilterTest
         {
             TransactionPermissionContractVersions =
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
-
-            IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-            IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
-                WorldStateManager,
-                BlockTree.AsReadOnly(),
-                SpecProvider,
-                LimboLogs.Instance);
 
             VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
                 new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);

@@ -171,6 +171,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -231,9 +232,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out _))
+                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid");
+                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
                     }
                     else
                     {
@@ -260,19 +261,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 StackAccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
-                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
-                if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN
-                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || (authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1))
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                if ((authorizationTuple.ChainId != 0
-                    && SpecProvider.ChainId != authorizationTuple.ChainId)
-                    )
+                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
                     return false;
@@ -284,17 +273,16 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
-                if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
+                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                if (authorizationTuple.Authority is null
+                    || s > Secp256K1Curve.HalfN
+                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
                 {
                     error = "Bad signature.";
                     return false;
                 }
 
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
@@ -302,6 +290,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                     return false;
                 }
+
                 UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
                 if (authNonce != authorizationTuple.Nonce)
                 {
@@ -613,92 +602,85 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayValue(tx, spec, opts);
 
-            try
+            if (tx.IsContractCreation)
             {
+                // if transaction is a contract creation then recipient address is the contract deployment address
+                if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                {
+                    goto FailContractCreate;
+                }
+            }
+
+            using (EvmState state = EvmState.RentTopLevel(
+                unspentGas,
+                tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
+                snapshot,
+                env,
+                accessedItems))
+            {
+
+                substate = !tracer.IsTracingActions
+                    ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
+                    : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
+
+                unspentGas = state.GasAvailable;
+
+                if (tracer.IsTracingAccess)
+                {
+                    tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
+                }
+            }
+
+            if (substate.ShouldRevert || substate.IsError)
+            {
+                if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                WorldState.Restore(snapshot);
+            }
+            else
+            {
+                // tks: there is similar code fo contract creation from init and from CREATE
+                // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                 if (tx.IsContractCreation)
                 {
-                    // if transaction is a contract creation then recipient address is the contract deployment address
-                    if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                    long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
+                    if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                     {
-                        goto Fail;
+                        goto FailContractCreate;
+                    }
+
+                    if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                    {
+                        goto FailContractCreate;
+                    }
+
+                    if (unspentGas >= codeDepositGasCost)
+                    {
+                        var code = substate.Output.ToArray();
+                        _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+
+                        unspentGas -= codeDepositGasCost;
                     }
                 }
 
-                using (EvmState state = EvmState.RentTopLevel(
-                    unspentGas,
-                    tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
-                    snapshot,
-                    env,
-                    accessedItems))
+                foreach (Address toBeDestroyed in substate.DestroyList)
                 {
+                    if (Logger.IsTrace)
+                        Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                    substate = !tracer.IsTracingActions
-                        ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
-                        : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
+                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.DeleteAccount(toBeDestroyed);
 
-                    unspentGas = state.GasAvailable;
-
-                    if (tracer.IsTracingAccess)
-                    {
-                        tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
-                    }
+                    if (tracer.IsTracingRefunds)
+                        tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                 }
 
-                if (substate.ShouldRevert || substate.IsError)
-                {
-                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                    WorldState.Restore(snapshot);
-                }
-                else
-                {
-                    // tks: there is similar code fo contract creation from init and from CREATE
-                    // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
-                    if (tx.IsContractCreation)
-                    {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
-                        {
-                            goto Fail;
-                        }
-
-                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
-                        {
-                            goto Fail;
-                        }
-
-                        if (unspentGas >= codeDepositGasCost)
-                        {
-                            var code = substate.Output.ToArray();
-                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
-
-                            unspentGas -= codeDepositGasCost;
-                        }
-                    }
-
-                    foreach (Address toBeDestroyed in substate.DestroyList)
-                    {
-                        if (Logger.IsTrace)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                        WorldState.ClearStorage(toBeDestroyed);
-                        WorldState.DeleteAccount(toBeDestroyed);
-
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
-                    }
-
-                    statusCode = StatusCode.Success;
-                }
-
-                gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
-                    env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
-                goto Complete;
+                statusCode = StatusCode.Success;
             }
-            catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
-            {
-                if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
-            }
-        Fail:
+            gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
+                env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
+            goto Complete;
+
+        FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
 
@@ -714,25 +696,31 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
         {
+            UInt256 fees = (UInt256)spentGas * premiumPerGas;
+
+            // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
-                UInt256 fees = (UInt256)spentGas * premiumPerGas;
-                UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
-                UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
-
-                if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
-                {
-                    collectedFees += blobBaseFee;
-                }
-
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+            }
 
-                if (spec.FeeCollector is not null && !collectedFees.IsZero)
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+            UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+            UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
-                if (tracer.IsTracingFees)
-                    tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
+            if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
+            {
+                collectedFees += blobBaseFee;
+            }
+
+            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+            {
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+            }
+
+            if (tracer.IsTracingFees)
+            {
+                tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
             }
         }
 

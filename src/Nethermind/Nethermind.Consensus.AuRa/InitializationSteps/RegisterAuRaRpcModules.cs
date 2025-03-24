@@ -35,6 +35,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Facade;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -71,6 +72,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.BlockTree,
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            _api.Config<IBlocksConfig>().SecondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -86,6 +89,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge,
+        ulong secondsPerSlot,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculatorSource rewardCalculatorSource,
         IReceiptStorage receiptFinder,
@@ -93,7 +98,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IPoSSwitcher poSSwitcher,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource,
+        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, recoveryStep, rewardCalculatorSource,
             receiptFinder, specProvider, poSSwitcher, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
@@ -201,11 +206,16 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         AuRaDebugModuleFactory debugModuleFactory = new(
             _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            secondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
@@ -227,6 +237,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge,
+        ulong secondsPerSlot,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculatorSource rewardCalculator,
@@ -239,7 +251,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IFileSystem fileSystem,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep,
+        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep,
             rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
             badBlockStore, fileSystem, logManager)
     {

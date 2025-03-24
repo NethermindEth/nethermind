@@ -42,11 +42,13 @@ public class RegisterRpcModules : IStep
     private readonly INethermindApi _api;
     protected readonly IJsonRpcConfig JsonRpcConfig;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBlocksConfig _blocksConfig;
 
     public RegisterRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher)
     {
         _api = api;
         JsonRpcConfig = _api.Config<IJsonRpcConfig>();
+        _blocksConfig = _api.Config<IBlocksConfig>();
         _poSSwitcher = poSSwitcher;
     }
 
@@ -230,6 +232,8 @@ public class RegisterRpcModules : IStep
             _api.DbProvider,
             _api.BlockTree,
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            _blocksConfig.SecondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
@@ -259,7 +263,7 @@ public class RegisterRpcModules : IStep
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
-        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        IBlocksConfig blockConfig = _blocksConfig;
         ulong secondsPerSlot = blockConfig.SecondsPerSlot;
 
         return new EthModuleFactory(
@@ -300,6 +304,8 @@ public class RegisterRpcModules : IStep
             _api.WorldStateManager,
             _api.BlockTree,
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            _blocksConfig.SecondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,

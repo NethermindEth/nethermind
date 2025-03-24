@@ -6,9 +6,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Flashbots.Handlers;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Consensus.Processing;
+using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
@@ -33,19 +33,22 @@ public class Flashbots(IFlashbotsConfig flashbotsConfig) : INethermindPlugin
             _api.LogManager
         );
 
-        ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
-            _api.HeaderValidator ?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
-            _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
-            _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
+        ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(
+            _api.HeaderValidator!,
+            _api.BlockTree,
+            _api.BlockValidator!,
             readOnlyTxProcessingEnvFactory,
-            _api.LogManager ?? throw new ArgumentNullException(nameof(_api.LogManager)),
-            _api.SpecProvider ?? throw new ArgumentNullException(nameof(_api.SpecProvider)),
-            flashbotsConfig
+            _api.LogManager,
+            _api.SpecProvider,
+            flashbotsConfig,
+            _api.EthereumEcdsa!
         );
 
-        ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(validateSubmissionHandler);
         _api.RpcModuleProvider.RegisterBounded(flashbotsRpcModule,
             flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+
+        RbuilderRpcModule rbuilderRpcModule = new(_api.BlockTree, _api.SpecProvider, _api.WorldStateManager);
+        _api.RpcModuleProvider.RegisterSingle<IRbuilderRpcModule>(rbuilderRpcModule);
 
         return Task.CompletedTask;
     }

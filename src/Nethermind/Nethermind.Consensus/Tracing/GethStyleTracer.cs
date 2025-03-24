@@ -27,38 +27,24 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Tracing;
 
-public class GethStyleTracer : IGethStyleTracer
+public class GethStyleTracer(
+    IBlockchainProcessor processor,
+    IWorldState worldState,
+    IReceiptStorage receiptStorage,
+    IBlockTree blockTree,
+    IBadBlockStore badBlockStore,
+    ISpecProvider specProvider,
+    ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
+    IFileSystem fileSystem,
+    IOverridableTxProcessorSource env)
+    : IGethStyleTracer
 {
-    private readonly IBadBlockStore _badBlockStore;
-    private readonly IBlockTree _blockTree;
-    private readonly ISpecProvider _specProvider;
-    private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
-    private readonly IBlockchainProcessor _processor;
-    private readonly IWorldState _worldState;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IFileSystem _fileSystem;
-    private readonly IOverridableTxProcessorSource _env;
-
-    public GethStyleTracer(IBlockchainProcessor processor,
-        IWorldState worldState,
-        IReceiptStorage receiptStorage,
-        IBlockTree blockTree,
-        IBadBlockStore badBlockStore,
-        ISpecProvider specProvider,
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
-        IFileSystem fileSystem,
-        IOverridableTxProcessorSource env)
-    {
-        _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-        _worldState = worldState;
-        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
-        _specProvider = specProvider;
-        _transactionProcessorAdapter = transactionProcessorAdapter;
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _env = env ?? throw new ArgumentNullException(nameof(env));
-    }
+    private readonly IBadBlockStore _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private readonly IBlockchainProcessor _processor = processor ?? throw new ArgumentNullException(nameof(processor));
+    private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+    private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+    private readonly IOverridableTxProcessorSource _env = env ?? throw new ArgumentNullException(nameof(env));
 
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
@@ -78,8 +64,8 @@ public class GethStyleTracer : IGethStyleTracer
         Block block = _blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        ITransactionProcessorAdapter currentAdapter = _transactionProcessorAdapter.CurrentAdapter;
-        _transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(_transactionProcessorAdapter.TransactionProcessor);
+        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
+        transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
 
         try
         {
@@ -87,7 +73,7 @@ public class GethStyleTracer : IGethStyleTracer
         }
         finally
         {
-            _transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+            transactionProcessorAdapter.CurrentAdapter = currentAdapter;
         }
     }
 
@@ -123,7 +109,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, worldState, specProvider);
         try
         {
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
@@ -193,7 +179,7 @@ public class GethStyleTracer : IGethStyleTracer
         ArgumentNullException.ThrowIfNull(txHash);
 
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, worldState, specProvider);
 
         try
         {
@@ -207,11 +193,11 @@ public class GethStyleTracer : IGethStyleTracer
         }
     }
 
-    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
+    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, _worldState)),
-            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options),
         };
 
@@ -231,7 +217,7 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, worldState, specProvider);
         try
         {
             _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
