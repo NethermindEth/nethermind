@@ -34,19 +34,12 @@ internal class IlInfo
     /// <summary>
     /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.
     /// </summary>
-    public static IlInfo Empty(int size) => new(size);
+    public static IlInfo Empty() => new();
 
     public bool IsNotProcessed => AnalysisPhase is AnalysisPhase.NotStarted;
 
 
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
-    /// <summary>
-    /// No overrides.
-    /// </summary>
-    private IlInfo(int bytecodeSize)
-    {
-        IlevmChunks = new InstructionChunk[bytecodeSize];
-    }
 
     // assumes small number of ILed
     public InstructionChunk[] IlevmChunks { get; set; }

@@ -43,7 +43,6 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Address = source;
             MachineCode = code;
-            IlInfo = IlInfo.Empty(MachineCode.Length);
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
@@ -51,7 +50,6 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Address = source;
             MachineCode = code;
-            IlInfo = IlInfo.Empty(MachineCode.Length);
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
@@ -61,7 +59,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// <summary>
         /// Gets information whether this code info has IL-EVM optimizations ready.
         /// </summary>
-        internal IlInfo? IlInfo { get; set; }
+        internal IlInfo? IlInfo { get; set; } = IlInfo.Empty();
 
         public CodeInfo(IPrecompile precompile)
         {

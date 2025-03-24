@@ -129,6 +129,7 @@ public static class IlAnalyzer
 
     internal static void CheckPatterns(byte[] bytecode, IlInfo ilinfo)
     {
+        ilinfo.IlevmChunks = new InstructionChunk[bytecode.Length];
         var strippedBytecode = EnumerateOpcodes(bytecode).ToArray();
 
         foreach ((Type _, IPatternChunk chunkHandler) in _patterns)

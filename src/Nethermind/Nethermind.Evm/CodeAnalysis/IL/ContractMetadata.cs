@@ -22,7 +22,6 @@ public class SegmentMetadata
 {
     public Range Boundaries { get; set; }
     public Dictionary<int, SubSegmentMetadata> SubSegments { get; set; }
-    public int[] Jumpdests { get; set; }
 }
 
 public class SubSegmentMetadata
