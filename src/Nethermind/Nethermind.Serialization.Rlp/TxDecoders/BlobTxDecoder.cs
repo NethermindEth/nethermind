@@ -116,7 +116,6 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             rlpStream.Encode(networkWrapper.Blobs);
             rlpStream.Encode(networkWrapper.Commitments);
             rlpStream.Encode(networkWrapper.Proofs);
-            if (networkWrapper.Proofs is not null) rlpStream.Encode(networkWrapper.Proofs);
         }
     }
 
@@ -148,7 +147,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         var startingRlp = rlpStream.PeekNextItem();
         if (startingRlp.Length is 1)
         {
-            version = (ProofVersion)startingRlp[0];
+            version = (ProofVersion)rlpStream.ReadByte();
             if (version != ProofVersion.V2)
             {
                 throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected {0x02} and is {version}");
@@ -158,11 +157,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         byte[][] blobs = rlpStream.DecodeByteArrays();
         byte[][] commitments = rlpStream.DecodeByteArrays();
         byte[][] proofs = rlpStream.DecodeByteArrays();
-        byte[][]? blobProofs = null;
-        if (rlpStream.Position < positionAfterNetworkWrapper)
-        {
-            blobProofs = rlpStream.DecodeByteArrays();
-        }
+
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
 
@@ -172,7 +167,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         var startingRlp = decoderContext.PeekNextItem();
         if (startingRlp.Length is 1)
         {
-            version = (ProofVersion)startingRlp[0];
+            version = (ProofVersion)decoderContext.ReadByte();
             if (version != ProofVersion.V2)
             {
                 throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected {0x02} and is {version}");
@@ -214,8 +209,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                    + networkWrapper.Version switch { ProofVersion.V1 => 0, ProofVersion.V2 => 1, _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {networkWrapper.Version}") }
                    + Rlp.LengthOf(networkWrapper.Blobs)
                    + Rlp.LengthOf(networkWrapper.Commitments)
-                   + Rlp.LengthOf(networkWrapper.Proofs)
-                   + (networkWrapper.Proofs is null ? 0 : Rlp.LengthOf(networkWrapper.Proofs));
+                   + Rlp.LengthOf(networkWrapper.Proofs);
         }
     }
 
