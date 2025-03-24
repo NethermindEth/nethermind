@@ -396,7 +396,7 @@ internal class BlobSender
             Type = TxType.Blob,
             ChainId = chainId,
             Nonce = nonce,
-            GasLimit = GasCostOf.Transaction,
+            GasLimit = GasCostOf.Transaction * 10,
             GasPrice = maxPriorityFeePerGas,
             DecodedMaxFeePerGas = gasPrice,
             MaxFeePerBlobGas = maxFeePerBlobGas,

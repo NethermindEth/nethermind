@@ -3,14 +3,13 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, IAsyncHandler<(byte[][] request, ProofVersion v), IEnumerable<BlobAndProofV2?>>
+public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
 {
     private const int MaxRequest = 128;
 
@@ -25,17 +24,6 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
         return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
     }
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> HandleAsync((byte[][] request, ProofVersion v) @params)
-    {
-        if (@params.request.Length > MaxRequest)
-        {
-            var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
-        }
-
-        return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Success(GetBlobsAndProofsV2(@params.request));
-    }
-
     private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
     {
         Metrics.NumberOfRequestedBlobs += request.Length;
@@ -46,24 +34,6 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
             {
                 Metrics.NumberOfSentBlobs++;
                 yield return new BlobAndProofV1(blob, proof);
-            }
-            else
-            {
-                yield return null;
-            }
-        }
-    }
-
-    private IEnumerable<BlobAndProofV2?> GetBlobsAndProofsV2(byte[][] request)
-    {
-        Metrics.NumberOfRequestedBlobs += request.Length;
-
-        foreach (byte[] requestedBlobVersionedHash in request)
-        {
-            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
-            {
-                Metrics.NumberOfSentBlobs++;
-                yield return new BlobAndProofV2(blob, cellProofs);
             }
             else
             {

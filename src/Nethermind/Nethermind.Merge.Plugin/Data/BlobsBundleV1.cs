@@ -17,15 +17,18 @@ public class BlobsBundleV1
     public BlobsBundleV1(Block block)
     {
         int blobsCount = 0;
+        int proofsCount = 0;
         foreach (Transaction? tx in block.Transactions)
         {
             blobsCount += tx?.GetBlobCount() ?? 0;
+            proofsCount += tx?.GetProofsCount() ?? 0;
         }
 
         Commitments = new byte[blobsCount][];
         Blobs = new byte[blobsCount][];
-        Proofs = new byte[blobsCount][];
+        Proofs = new byte[proofsCount][];
         int blockIndex = 0;
+        int proofIndex = 0;
 
         foreach (Transaction? tx in block.Transactions)
         {
@@ -45,7 +48,13 @@ public class BlobsBundleV1
             {
                 Commitments[blockIndex] = wrapper.Commitments[txIndex];
                 Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                Proofs[blockIndex] = wrapper.Proofs[txIndex];
+            }
+
+            for (int txProofIndex = 0;
+                 txProofIndex < wrapper.Proofs.Length;
+                 proofIndex++, txProofIndex++)
+            {
+                Proofs[proofIndex] = wrapper.Proofs[txProofIndex];
             }
         }
     }
