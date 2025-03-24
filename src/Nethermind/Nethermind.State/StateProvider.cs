@@ -692,7 +692,7 @@ namespace Nethermind.State
         {
             _blockChanges[address] = account;
             _needsStateRootUpdate = true;
-            Metrics.StateTreeWrites++;
+            Metrics.IncrementStateTreeWrites(1);
             _tree.Set(address, account);
         }
 

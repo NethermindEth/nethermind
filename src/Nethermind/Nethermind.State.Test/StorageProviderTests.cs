@@ -185,20 +185,17 @@ public class StorageProviderTests
         WorldState storageProvider = BuildStorageProvider(ctx);
         storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         storageProvider.Commit(Frontier.Instance);
-
-        ctx.StateProvider.Commit(Frontier.Instance);
-        ctx.StateProvider.CommitTree(0);
+        storageProvider.Commit(Frontier.Instance);
+        storageProvider.CommitTree(0);
 
         // block 2
         Hash256 stateRoot = ctx.StateProvider.StateRoot;
         storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
         storageProvider.Commit(Frontier.Instance);
-        ctx.StateProvider.Commit(Frontier.Instance);
 
         // revert
-        ctx.StateProvider.Reset();
         storageProvider.Reset();
-        ctx.StateProvider.StateRoot = stateRoot;
+        storageProvider.StateRoot = stateRoot;
 
         byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
 

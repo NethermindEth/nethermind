@@ -192,7 +192,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                 }
 
-                SaveToTree(toUpdateRoots, change);
+                SaveChange(toUpdateRoots, change);
 
                 if (isTracing)
                 {
@@ -207,6 +207,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (_stateProvider.AccountExists(address))
             {
                 _toUpdateRoots.Add(address);
+                GetOrCreateStorage(address, out _);
             }
             else
             {
@@ -243,6 +244,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             UpdateRootHashesMultiThread();
         }
 
+        _toUpdateRoots.Clear();
+
         void UpdateRootHashesSingleThread()
         {
             foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
@@ -254,8 +257,34 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 }
 
                 StorageTree storageTree = kvp.Value;
-                storageTree.UpdateRootHash(canBeParallel: true);
-                _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, kvp.Key);
+                int writes = 0;
+                int skipped = 0;
+                foreach (var key in dict.Keys)
+                {
+                    ref var change = ref dict.GetValueRefOrNullRef(key);
+                    if (!Bytes.AreEqual(change.Before, change.After))
+                    {
+                        change.Before = change.After;
+                        storageTree.Set(key, change.After);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+
+                if (skipped > 0)
+                {
+                    Db.Metrics.IncrementStorageSkippedWrites(skipped);
+                }
+                if (writes > 0)
+                {
+                    Db.Metrics.IncrementStorageTreeWrites(writes);
+                    storageTree.UpdateRootHash(canBeParallel: true);
+                    _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                }
             }
         }
 
@@ -267,7 +296,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 0,
                 storages.Count,
                 RuntimeInformation.ParallelOptionsLogicalCores,
-                (storages, toUpdateRoots: _toUpdateRoots),
+                (storages, toUpdateRoots: _toUpdateRoots, changes: _blockChanges),
                 static (i, state) =>
             {
                 ref var kvp = ref state.storages.GetRef(i);
@@ -277,7 +306,35 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     return state;
                 }
                 StorageTree storageTree = kvp.Value;
-                storageTree.UpdateRootHash(canBeParallel: false);
+                ref var dict = ref CollectionsMarshal.GetValueRefOrNullRef(state.changes, kvp.Key);
+                int writes = 0;
+                int skipped = 0;
+                foreach (var key in dict.Keys)
+                {
+                    ref var change = ref dict.GetValueRefOrNullRef(key);
+                    if (!Bytes.AreEqual(change.Before, change.After))
+                    {
+                        change.Before = change.After;
+                        storageTree.Set(key, change.After);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+
+                if (skipped > 0)
+                {
+                    Db.Metrics.IncrementStorageSkippedWrites(skipped);
+                }
+                if (writes > 0)
+                {
+                    Db.Metrics.IncrementStorageTreeWrites(writes);
+                    // Don't need to update root if no updates
+                    storageTree.UpdateRootHash(canBeParallel: true);
+                }
+
                 return state;
             });
 
@@ -295,7 +352,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private void SaveToTree(HashSet<AddressAsKey> toUpdateRoots, Change change)
+    private void SaveChange(HashSet<AddressAsKey> toUpdateRoots, Change change)
     {
         if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
             initialValue.AsSpan().SequenceEqual(change.Value))
@@ -304,10 +361,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return;
         }
 
-        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address, out _);
-        Db.Metrics.StorageTreeWrites++;
         toUpdateRoots.Add(change.StorageCell.Address);
-        tree.Set(change.StorageCell.Index, change.Value);
 
         ref DefaultableDictionary? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, change.StorageCell.Address, out bool exists);
         if (!exists)
@@ -338,11 +392,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
         foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
         {
-            if (!_toUpdateRoots.Contains(storage.Key))
-            {
-                continue;
-            }
-
             if (blockCommitter.TryRequestConcurrencyQuota())
             {
                 commitTask.Add(Task.Factory.StartNew((ctx) =>
@@ -360,8 +409,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         Task.WaitAll(commitTask.AsSpan());
 
-        _toUpdateRoots.Clear();
-        // only needed here as there is no control over cached storage size otherwise
         _storages.Clear();
     }
 
@@ -541,10 +588,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return ref value;
         }
 
+        public ref ChangeTrace GetValueRefOrNullRef(UInt256 storageCellIndex)
+            => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
+
         public ChangeTrace this[UInt256 key]
         {
             set => _dictionary[key] = value;
         }
+
+        public Dictionary<UInt256, ChangeTrace>.KeyCollection Keys => _dictionary.Keys;
 
         private sealed class Comparer : IEqualityComparer<UInt256>
         {
