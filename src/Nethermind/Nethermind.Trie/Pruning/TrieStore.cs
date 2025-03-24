@@ -82,9 +82,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             _shardBit = _pruningStrategy.ShardBit;
             _shardedDirtyNodeCount = 1 << _shardBit;
 
-            if (_shardBit is < 0 or > 31)
+            // 30 because of the 1 << 31 become negative
+            if (_shardBit is < 0 or > 30)
             {
-                throw new InvalidOperationException($"Sharded node count is {_shardedDirtyNodeCount} must be more than 0 and less than {ushort.MaxValue}.");
+                throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
             }
 
             _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
@@ -280,12 +281,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         // When enabled, the shard have dictionaries for tracking past path hash also.
         // So the same path need to be in the same shard for the remove logic to work.
-        // Using the address first byte however, causes very uneven distribution. So the path is used.
         uint baseSize = _livePruningEnabled
             ? BinaryPrimitives.ReadUInt32BigEndian(path.Path.Bytes[..4])
             : BinaryPrimitives.ReadUInt32BigEndian(hash.Bytes[..4]);
 
-        // Note: Not modulo as we want nodes of same path prefix to tend to stick to the same shard.
+        // Using some early bits so that nodes of similar prefix would get put in the same shard.
         uint shardIdx = baseSize >> (32 - _shardBit);
         if (shardIdx < 0 || shardIdx >= _shardedDirtyNodeCount)
         {
