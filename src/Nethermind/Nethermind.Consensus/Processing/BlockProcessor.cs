@@ -177,7 +177,7 @@ public partial class BlockProcessor(
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
                 preWarmTask = null;
-                _stateProvider.Reset(resizeCollections: true);
+                _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
@@ -324,7 +324,7 @@ public partial class BlockProcessor(
 
         StoreBeaconRoot(block, spec);
         _blockhashStore.ApplyBlockhashStateChanges(header);
-        _stateProvider.Commit(spec, commitStorageRoots: false);
+        _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
         CalculateBlooms(receipts);
@@ -341,13 +341,13 @@ public partial class BlockProcessor(
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        _stateProvider.Commit(spec);
+        _stateProvider.Commit(spec, commitRoots: false);
 
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec, commitStorageRoots: true);
+        _stateProvider.Commit(spec, commitRoots: true);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
