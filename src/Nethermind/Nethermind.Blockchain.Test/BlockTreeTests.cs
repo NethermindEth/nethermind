@@ -2030,4 +2030,34 @@ public class BlockTreeTests
             return Task.FromResult(LevelVisitOutcome.None);
         }
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Load_SyncPivot_FromConfig()
+    {
+        SyncConfig syncConfig = new SyncConfig()
+        {
+            FastSync = true,
+            PivotNumber = "999",
+            PivotHash = Hash256.Zero.ToString(),
+        };
+        BlockTree blockTree = Build.A.BlockTree().WithSyncConfig(syncConfig).TestObject;
+        blockTree.SyncPivot.Should().Be((999, Hash256.Zero));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Load_SyncPivot_FromDb()
+    {
+        SyncConfig syncConfig = new SyncConfig()
+        {
+            FastSync = true,
+            PivotNumber = "999",
+            PivotHash = Hash256.Zero.ToString(),
+        };
+        IDb metadataDb = new MemDb();
+        BlockTree blockTree = Build.A.BlockTree().WithMetadataDb(metadataDb).WithSyncConfig(syncConfig).TestObject;
+        blockTree.SyncPivot = (1000, TestItem.KeccakA);
+
+        blockTree = Build.A.BlockTree().WithMetadataDb(metadataDb).WithSyncConfig(syncConfig).TestObject;
+        blockTree.SyncPivot.Should().Be((1000, TestItem.KeccakA));
+    }
 }

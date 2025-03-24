@@ -226,6 +226,11 @@ public class BlockTreeOverlay : IBlockTree
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
+    public (long BlockNumber, Hash256 BlockHash) SyncPivot
+    {
+        get => _baseTree.SyncPivot;
+        set => _baseTree.SyncPivot = value;
+    }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);
