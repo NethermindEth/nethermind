@@ -22,7 +22,7 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int StackallocByteThreshold = 256;
+        private const int StackallocByteThreshold = 384;
 
         private class TrieNodeDecoder
         {
