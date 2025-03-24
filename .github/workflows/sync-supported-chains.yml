@@ -191,16 +191,19 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.10.3 \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
+            --el-op-extra-flag Sync.NonValidatorNode=true \
+            --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
           elif [[ "$network" == taiko-* ]]; then
-            if [[ "$network" == *mainnet* ]]; then
+            if [[ "$network" == *alethia* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
               stripped_network="mainnet"
@@ -226,6 +229,9 @@ jobs:
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
+            --el-l2-extra-flag Sync.NonValidatorNode=true \
+            --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
@@ -271,9 +277,9 @@ jobs:
           cd "$target_dir"
           cd logs
           ls
-          log_file=$(find . -type f -name "*logs.txt" | head -n 1)
+          log_file=$(find . -type f -name "*.log" | head -n 1)
           echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file" .txt)-${{ github.run_id }}
+          artifact_name=$(basename "$log_file")-${{ github.run_id }}
           zip "${artifact_name}.zip" "$log_file"
           echo "Compressed log file into ${artifact_name}.zip"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV

@@ -110,6 +110,7 @@ namespace Nethermind.TxPool
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
@@ -343,7 +344,7 @@ namespace Nethermind.TxPool
                 if (blockTx.SupportsBlobs)
                 {
                     blobTxs++;
-                    blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
+                    blobs += blockTx.GetBlobCount();
 
                     if (_blobReorgsSupportEnabled)
                     {
@@ -422,6 +423,7 @@ namespace Nethermind.TxPool
         }
 
         public bool AcceptTxWhenNotSynced { get; set; }
+        public bool SupportsBlobs { get; }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
