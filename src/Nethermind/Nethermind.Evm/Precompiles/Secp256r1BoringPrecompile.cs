@@ -26,6 +26,10 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint EC_KEY_new_by_curve_name(int nid);
 
+    [LibraryImport(LibraryName, EntryPoint = "EC_KEY_set_public_key")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int EC_KEY_set_public_key(nint key, nint point);
+
     [LibraryImport(LibraryName, EntryPoint = "EC_KEY_free")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void EC_KEY_free(nint key);
@@ -38,25 +42,21 @@ public partial class Secp256r1BoringPrecompile : IPrecompile<Secp256r1BoringPrec
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint EC_POINT_new(nint group);
 
+    [LibraryImport(LibraryName, EntryPoint = "EC_POINT_set_affine_coordinates_GFp")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int EC_POINT_set_affine_coordinates_GFp(nint group, nint point, nint x, nint y, nint ctx);
+
     [LibraryImport(LibraryName, EntryPoint = "EC_POINT_free")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void EC_POINT_free(nint point);
-
-    [LibraryImport(LibraryName, EntryPoint = "BN_free")]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial void BN_free(nint bn);
 
     [LibraryImport(LibraryName, EntryPoint = "BN_bin2bn")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static unsafe partial nint BN_bin2bn(byte* bin, int len, nint ret);
 
-    [LibraryImport(LibraryName, EntryPoint = "EC_POINT_set_affine_coordinates_GFp")]
+    [LibraryImport(LibraryName, EntryPoint = "BN_free")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int EC_POINT_set_affine_coordinates_GFp(nint group, nint point, nint x, nint y, nint ctx);
-
-    [LibraryImport(LibraryName, EntryPoint = "EC_KEY_set_public_key")]
-    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial int EC_KEY_set_public_key(nint key, nint point);
+    public static partial void BN_free(nint bn);
 
     [LibraryImport(LibraryName, EntryPoint = "ECDSA_verify")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
