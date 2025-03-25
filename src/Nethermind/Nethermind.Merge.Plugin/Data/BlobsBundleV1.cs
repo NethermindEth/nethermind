@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -18,7 +19,7 @@ public class BlobsBundleV1
         int blobsCount = 0;
         foreach (Transaction? tx in block.Transactions)
         {
-            blobsCount += tx?.BlobVersionedHashes?.Length ?? 0;
+            blobsCount += tx?.GetBlobCount() ?? 0;
         }
 
         Commitments = new byte[blobsCount][];
@@ -47,6 +48,14 @@ public class BlobsBundleV1
                 Proofs[blockIndex] = wrapper.Proofs[txIndex];
             }
         }
+    }
+
+    [JsonConstructor]
+    public BlobsBundleV1(byte[][] commitments, byte[][] blobs, byte[][] proofs)
+    {
+        Commitments = commitments;
+        Blobs = blobs;
+        Proofs = proofs;
     }
 
     public byte[][] Commitments { get; }

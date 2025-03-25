@@ -26,24 +26,28 @@ using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
 public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, IBlocksConfig blocksConfig) : Module
 {
+    public MergeModule(IConfigProvider configProvider) : this(
+        configProvider.GetConfig<ITxPoolConfig>(),
+        configProvider.GetConfig<IMergeConfig>(),
+        configProvider.GetConfig<IBlocksConfig>()
+    )
+    {
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
-            .AddModule(new MergeSynchronizerModule())
+            .AddModule(new MergePluginModule())
 
-            .AddSingleton<IBlockCacheService, BlockCacheService>()
-            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
-            .AddSingleton<IInvalidChainTracker, InvalidChainTracker>()
             .OnActivate<MainBlockProcessingContext>(((context, componentContext) =>
             {
                 componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
@@ -65,14 +69,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
-
-            // Sync related
-            .AddSingleton<BeaconSync>()
-            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
-            .AddSingleton<IBeaconPivot, BeaconPivot>()
-            .Bind<IPivot, IBeaconPivot>()
-            .Bind<IMergeSyncController, BeaconSync>()
-            .Bind<IBeaconSyncStrategy, BeaconSync>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

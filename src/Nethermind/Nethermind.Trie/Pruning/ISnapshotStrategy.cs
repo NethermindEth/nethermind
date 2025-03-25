@@ -7,7 +7,11 @@ namespace Nethermind.Trie.Pruning
     {
         bool PruningEnabled { get; }
         int MaxDepth { get; }
-        bool ShouldPrune(in long currentMemory);
+        bool ShouldPruneDirtyNode(in long dirtyNodeMemory);
+        bool ShouldPrunePersistedNode(in long persistedNodeMemory);
+        double PrunePersistedNodePortion { get; }
+        long PrunePersistedNodeMinimumTarget { get; }
         int TrackedPastKeyCount { get; }
+        int ShardBit { get; }
     }
 }

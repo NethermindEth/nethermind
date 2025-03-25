@@ -39,12 +39,11 @@ public class NetworkModule(IInitConfig initConfig) : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
-            .AddSingleton<IPivot, Pivot>()
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()
@@ -77,8 +76,12 @@ public class NetworkModule(IInitConfig initConfig) : Module
             {
                 ILogManager logManager = ctx.Resolve<ILogManager>();
                 ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                    new GetNodeDataTrieNodeRecovery(peerPool, logManager),
-                    new SnapTrieNodeRecovery(peerPool, logManager));
+                    new PathNodeRecovery(
+                        new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
+                        new SnapRangeRecovery(peerPool!, logManager),
+                        logManager
+                    )
+                );
             })
 
             // TODO: LastNStateRootTracker

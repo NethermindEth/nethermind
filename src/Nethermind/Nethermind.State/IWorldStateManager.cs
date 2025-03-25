@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.State.Healing;
-using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
@@ -23,9 +20,15 @@ public interface IWorldStateManager
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
+    /// <returns></returns>
+    IWorldState CreateResettableWorldState();
+
+    /// <summary>
+    /// Create a read only world state to warm up another world state
+    /// </summary>
     /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState(IWorldState? forWarmup = null);
+    IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -33,7 +36,7 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
     IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
-    void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
+    void InitializeNetwork(IPathRecovery pathRecovery);
 
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.

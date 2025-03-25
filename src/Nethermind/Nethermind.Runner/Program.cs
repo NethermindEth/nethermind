@@ -38,6 +38,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
@@ -147,7 +148,6 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    processExitSource = new(cancellationToken);
 
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
@@ -182,27 +182,11 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    ApiBuilder apiBuilder = new(configProvider, logManager);
-    IList<INethermindPlugin> plugins = [];
+    processExitSource = new(cancellationToken);
+    ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
+    IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
 
-    foreach (Type pluginType in pluginLoader.PluginTypes)
-    {
-        try
-        {
-            if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
-                plugins.Add(plugin);
-        }
-        catch (Exception ex)
-        {
-            if (logger.IsError) logger.Error($"Failed to create plugin {pluginType.FullName}", ex);
-        }
-    }
-
-    INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-    ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-    nethermindApi.ProcessExit = processExitSource;
-
-    EthereumRunner ethereumRunner = new(nethermindApi);
     try
     {
         await ethereumRunner.Start(processExitSource.Token);
@@ -232,6 +216,11 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
 void AddConfigurationOptions(CliCommand command)
 {
+    static CliOption CreateOption<T>(string name, Type configType) =>
+        new CliOption<T>(
+            $"--{ConfigExtensions.GetCategoryName(configType)}.{name}",
+            $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
+
     IEnumerable<Type> configTypes = TypeDiscovery
         .FindNethermindBasedTypes(typeof(IConfig))
         .Where(ct => ct.IsInterface);
@@ -249,27 +238,25 @@ void AddConfigurationOptions(CliCommand command)
 
         bool categoryHidden = typeLevel?.HiddenFromDocs == true;
 
-        foreach (PropertyInfo propertyInfo in
+        foreach (PropertyInfo prop in
             configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
-            ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? configItemAttribute = prop.GetCustomAttribute<ConfigItemAttribute>();
 
             if (configItemAttribute?.DisabledForCli != true)
             {
-                bool hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
+                CliOption option = prop.PropertyType == typeof(bool)
+                    ? CreateOption<bool>(prop.Name, configType)
+                    : CreateOption<string>(prop.Name, configType);
+                option.Description = configItemAttribute?.Description;
+                option.HelpName = "value";
+                option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
 
-                command.Add(new CliOption<string>(
-                    $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
-                    $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
-                {
-                    Description = configItemAttribute?.Description,
-                    HelpName = "value",
-                    Hidden = hidden
-                });
+                command.Add(option);
             }
 
             if (configItemAttribute?.IsPortOption == true)
-                ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
+                ConfigExtensions.AddPortOptionName(configType, prop.Name);
         }
     }
 }
@@ -311,9 +298,9 @@ CliConfiguration ConfigureCli()
 
     if (versionOption is not null)
     {
-        versionOption.Action = new AnonymousCliAction(r =>
+        versionOption.Action = new AnonymousCliAction(parseResult =>
         {
-            Console.WriteLine($"""
+            parseResult.Configuration.Output.WriteLine($"""
                 Version:    {ProductInfo.Version}
                 Commit:     {ProductInfo.Commit}
                 Build date: {ProductInfo.BuildTimestamp:u}
@@ -386,7 +373,10 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     {
         if (child is OptionResult result)
         {
-            var value = result.GetValueOrDefault<string>();
+            var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
+            var value = isBoolean
+                ? result.GetValueOrDefault<bool>().ToString().ToLowerInvariant()
+                : result.GetValueOrDefault<string>();
 
             if (value is not null)
                 configArgs.Add(result.Option.Name.TrimStart('-'), value);
@@ -434,10 +424,6 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
             logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
         }
-    }
-    else
-    {
-        configFile = configFile.GetApplicationResourcePath();
     }
 
     // Resolve the full path for logging purposes

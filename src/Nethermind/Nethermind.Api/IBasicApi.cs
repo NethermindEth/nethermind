@@ -26,45 +26,43 @@ namespace Nethermind.Api
         DisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
+        [SkipServiceCollection]
         ChainSpec ChainSpec { get; set; }
+
+        [SkipServiceCollection]
         IConfigProvider ConfigProvider { get; set; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
+        [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; set; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
+        [SkipServiceCollection]
         ILogManager LogManager { get; set; }
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
-        string SealEngineType { get; set; }
+        string SealEngineType { get; }
+        [SkipServiceCollection]
         ISpecProvider? SpecProvider { get; set; }
-        IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
         IProcessExitSource? ProcessExit { get; set; }
 
+        [SkipServiceCollection]
+        ILifetimeScope Context { get; set; }
+
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
                 .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
+                .SingleOrDefault();
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
-
-        public ContainerBuilder ConfigureContainerBuilderFromBasicApi(ContainerBuilder builder)
-        {
-            builder
-                .AddPropertiesFrom<IBasicApi>(this)
-                .AddSource(new ConfigRegistrationSource())
-                .AddModule(new DbModule());
-
-            return builder;
-        }
     }
 }

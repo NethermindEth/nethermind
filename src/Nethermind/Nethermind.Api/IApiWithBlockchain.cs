@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -18,15 +17,11 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Era1;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
@@ -37,10 +32,8 @@ namespace Nethermind.Api
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
-        IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
-        IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner? BlockProducerRunner { get; set; }
         IBlockValidator? BlockValidator { get; set; }
@@ -51,10 +44,6 @@ namespace Nethermind.Api
         IHeaderValidator? HeaderValidator { get; set; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        /// <summary>
-        /// PoS switcher for The Merge
-        /// </summary>
-        IPoSSwitcher PoSSwitcher { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
@@ -65,8 +54,7 @@ namespace Nethermind.Api
         INodeStorage? MainNodeStorage { get; set; }
         CompositePruningTrigger? PruningTrigger { get; set; }
         IVerifyTrieStarter? VerifyTrieStarter { get; set; }
-
-        ITransactionProcessor? TransactionProcessor { get; set; }
+        IMainProcessingContext? MainProcessingContext { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
@@ -98,14 +86,5 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
-
-        IAdminEraService AdminEraService { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromApiWithStores(builder)
-                .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(MainNodeStorage!);
-        }
     }
 }

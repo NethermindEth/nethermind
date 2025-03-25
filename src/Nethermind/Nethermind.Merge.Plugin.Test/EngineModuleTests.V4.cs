@@ -200,6 +200,39 @@ public partial class EngineModuleTests
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
 
+    [Test]
+    public async Task NewPayloadV4_reject_payload_with_bad_execution_requests()
+    {
+        ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
+            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+
+        Block TestBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1).TestObject;
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
+
+        // must reject if execution requests types are not in ascending order
+        var response = await rpc.engine_newPayloadV4(
+                executionPayload,
+                [],
+                TestBlock.ParentBeaconBlockRoot,
+                executionRequests: [Bytes.FromHexString("0x0001"), Bytes.FromHexString("0x0101"), Bytes.FromHexString("0x0101")]
+        );
+
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+
+        //must reject if one of the execution requests size is <= 1 byte
+        response = await rpc.engine_newPayloadV4(
+                executionPayload,
+                [],
+                TestBlock.ParentBeaconBlockRoot,
+                executionRequests: [Bytes.FromHexString("0x0001"), Bytes.FromHexString("0x01"), Bytes.FromHexString("0x0101")]
+        );
+
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
     [TestCase(30)]
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
@@ -247,7 +280,7 @@ public partial class EngineModuleTests
             ExecutionPayloadV3? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
                 parentBlock.Timestamp + 12,
                 random ?? TestItem.KeccakA, Address.Zero);
-            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, [], Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : new byte[][] { [], [], [] })).Data;
+            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, [], Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : new byte[][] { })).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
             if (setHead)
             {
@@ -319,15 +352,9 @@ public partial class EngineModuleTests
         Withdrawal[]? withdrawals,
         bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
-
-        if (waitForBlockImprovement)
-        {
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
-        }
+        Task blockImprovementWait = waitForBlockImprovement
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
         PayloadAttributes payloadAttributes = new PayloadAttributes
@@ -342,8 +369,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result;
         string? payloadId = result.Data.PayloadId;
 
-        if (waitForBlockImprovement)
-            await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
 
         ResultWrapper<GetPayloadV4Result?> getPayloadResult =
             await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));

@@ -66,12 +66,12 @@ public class SnapServer : ISnapServer
         _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
     }
 
-    private bool IsRootMissing(in ValueHash256 stateRoot)
+    private bool IsRootMissing(Hash256 stateRoot)
     {
-        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment()) || (_lastNStateRootTracker?.HasStateRoot(stateRoot) == false);
+        return !_stateReader.HasStateForRoot(stateRoot) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
-    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
+    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
 
@@ -92,7 +92,7 @@ public class SnapServer : ISnapServer
                 case 1:
                     try
                     {
-                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash.ToCommitment());
+                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
                         response.Add(rlp);
                     }
                     catch (MissingTrieNodeException)
@@ -169,7 +169,12 @@ public class SnapServer : ISnapServer
         return response;
     }
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(
+        Hash256 rootHash,
+        in ValueHash256 startingHash,
+        in ValueHash256? limitHash,
+        long byteLimit,
+        CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
@@ -189,7 +194,13 @@ public class SnapServer : ISnapServer
         return (nodes, proofs);
     }
 
-    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
+        Hash256 rootHash,
+        IReadOnlyList<PathWithAccount> accounts,
+        in ValueHash256? startingHash,
+        in ValueHash256? limitHash,
+        long byteLimit,
+        CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
@@ -268,7 +279,7 @@ public class SnapServer : ISnapServer
     {
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
-        VisitingOptions opt = new() { ExpectAccounts = false };
+        VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();

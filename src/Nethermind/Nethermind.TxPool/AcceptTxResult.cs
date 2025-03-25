@@ -96,6 +96,16 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
 
         /// <summary>
+        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation. 
+        /// </summary>
+        public static readonly AcceptTxResult NotCurrentNonceForDelegation = new(17, nameof(NotCurrentNonceForDelegation));
+
+        /// <summary>
+        /// There is a pending transaction from a delegation in the tx pool already.
+        /// </summary>
+        public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, nameof(DelegatorHasPendingTx));
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));

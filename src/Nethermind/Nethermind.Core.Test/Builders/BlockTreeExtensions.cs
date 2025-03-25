@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Core.Events;
 using Nethermind.Crypto;
 
 namespace Nethermind.Core.Test.Builders
 {
     public static class BlockTreeExtensions
     {
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber)
+        public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber)
         {
             int splitVariant = 0;
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
@@ -35,7 +38,7 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new();
@@ -52,9 +55,18 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public static void UpdateMainChain(this BlockTree blockTree, Block block)
+        public static void UpdateMainChain(this IBlockTree blockTree, Block block)
         {
             blockTree.UpdateMainChain(new[] { block }, true);
+        }
+
+        public static Task WaitForNewBlock(this IBlockTree blockTree, CancellationToken cancellation)
+        {
+            return Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellation,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
+                (e) => true);
         }
     }
 }

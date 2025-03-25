@@ -32,7 +32,12 @@ namespace Nethermind.Specs.Test
 
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public UInt256 BlockReward { get; set; }
+        private UInt256? _blockReward;
+        public UInt256 BlockReward
+        {
+            get => _blockReward ?? _spec.BlockReward;
+            set => _blockReward = value;
+        }
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
@@ -116,12 +121,6 @@ namespace Nethermind.Specs.Test
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => _spec.IsOpHoloceneEnabled;
 
-        private bool? _isOntakeEnabled;
-        public bool IsOntakeEnabled
-        {
-            get => _isOntakeEnabled ?? _spec.IsOntakeEnabled;
-            set => _isOntakeEnabled = value;
-        }
         public bool IsEip7623Enabled => _spec.IsEip7623Enabled;
 
         public bool IsEip3607Enabled { get; set; }
@@ -143,6 +142,7 @@ namespace Nethermind.Specs.Test
         }
 
         private ulong? _overridenEip4844TransitionTimeStamp;
+
         public ulong Eip4844TransitionTimestamp
         {
             get
