@@ -3,79 +3,60 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Optimism.CL.Decoding;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-// Compressed batches of L2 txs are split into multiple frames.
-// This class is used to merge these frames back together
-// Workflow should look like this:
-// ConsumeFrame(frame)
-// IsReady() - false
-// ConsumeFrame(frame)
-// IsReady() - true
-// BuildChannel() - merges all frames together and returns compressed data
 public class FrameQueue : IFrameQueue
 {
-    // Make thread safe
-    private UInt128? _channelId;
-    private ushort? _numberOfFrames;
-    private readonly Dictionary<ushort, Frame> _frames = new();
+    private readonly Queue<BatchV1[]> _batches = new();
 
+    private readonly List<byte> _frameData = new();
+    private Frame? _latestFrame;
+
+    // https://specs.optimism.io/protocol/holocene/derivation.html#frame-queue
     public void ConsumeFrame(Frame frame)
     {
-        if (_channelId is null)
+        if (frame.FrameNumber > 0)
         {
-            _channelId = frame.ChannelId;
+            // If a non-first frame (i.e., a frame with index >0)
+            // decoded from a batcher transaction is out of order, it is immediately dropped
+            if (_latestFrame is null) return;
+            if (_latestFrame.Value.FrameNumber + 1 != frame.FrameNumber) return;
+            if (_latestFrame.Value.IsLast) return;
+            if (_latestFrame.Value.ChannelId != frame.ChannelId) return;
         }
-        else if (_channelId != frame.ChannelId)
+        else
         {
-            throw new ArgumentException(
-                $"Frame with wrong ChannelId. Expected: {_channelId}, got {frame.ChannelId}");
+            // If a first frame is decoded while the previous frame isn't a last frame (i.e., is_last is false),
+            // all previous frames for the same channel are dropped and this new first frame remains in the queue.
+            if (_latestFrame is null || !_latestFrame.Value.IsLast)
+            {
+                _frameData.Clear();
+            }
         }
+
+        _frameData.AddRange(frame.FrameData);
+        _latestFrame = frame;
 
         if (frame.IsLast)
         {
-            if (_numberOfFrames is not null)
-            {
-                throw new ArgumentException($"Multiple last frames in a channel: {_channelId}");
-            }
-
-            // TODO: limit number of frames
-            _numberOfFrames = (ushort)(frame.FrameNumber + 1);
+            byte[] decompressed = ChannelDecoder.DecodeChannel(_frameData.ToArray());
+            _frameData.Clear();
+            RlpStream rlpStream = new(decompressed);
+            ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArraySpan();
+            BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
+            _batches.Enqueue(batches);
         }
-
-        if (frame.FrameNumber > _numberOfFrames)
-        {
-            throw new ArgumentException($"Inconsistent frame number in a channel: {_channelId}");
-        }
-
-        if (_frames.ContainsKey(frame.FrameNumber))
-        {
-            throw new ArgumentException($"Duplicate frame number in a channel: {_channelId}");
-        }
-
-        _frames.Add(frame.FrameNumber, frame);
     }
 
-    public bool IsReady()
+    public BatchV1[]? GetReadyBatches()
     {
-        return _frames.Count == _numberOfFrames;
-    }
+        if (_batches.TryDequeue(out BatchV1[]? batches))
+        {
+            return batches;
+        }
 
-    // TODO: do not merge frames to save memory
-    public byte[] BuildChannel()
-    {
-        if (!IsReady())
-        {
-            throw new InvalidOperationException(
-                $"Channel is not ready. Frames consumed: {_frames.Count}, expected: {_numberOfFrames}");
-        }
-        List<byte> result = new();
-        for (ushort i = 0; i < _numberOfFrames; i++)
-        {
-            result.AddRange(_frames[i].FrameData);
-        }
-        return result.ToArray();
+        return null;
     }
 }

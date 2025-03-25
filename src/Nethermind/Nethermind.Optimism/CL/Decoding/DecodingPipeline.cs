@@ -14,7 +14,7 @@ public class DecodingPipeline : IDecodingPipeline
 {
     private readonly Channel<byte[]> _inputChannel = Channel.CreateUnbounded<byte[]>();
     private readonly Channel<BatchV1> _outputChannel = Channel.CreateUnbounded<BatchV1>();
-    private readonly IChannelStorage _channelStorage = new ChannelStorage();
+    private readonly IFrameQueue _frameQueue = new FrameQueue();
     private readonly ILogger _logger;
 
     public ChannelWriter<byte[]> DaDataWriter => _inputChannel.Writer;
@@ -38,10 +38,10 @@ public class DecodingPipeline : IDecodingPipeline
                 var read = BlobDecoder.DecodeBlob(blob, buffer.Span);
                 foreach (var frame in FrameDecoder.DecodeFrames(buffer[..read]))
                 {
-                    _channelStorage.ConsumeFrame(frame);
+                    _frameQueue.ConsumeFrame(frame);
                 }
 
-                var batches = _channelStorage.GetReadyBatches();
+                var batches = _frameQueue.GetReadyBatches();
                 if (batches is not null)
                 {
                     foreach (var batch in batches)
@@ -52,11 +52,11 @@ public class DecodingPipeline : IDecodingPipeline
             }
             catch (OperationCanceledException)
             {
-
+                return;
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
+                if (_logger.IsWarn) _logger.Warn($"Exception in decoding pipeline: {e}");
             }
         }
     }
