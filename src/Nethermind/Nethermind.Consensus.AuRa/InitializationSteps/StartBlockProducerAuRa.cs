@@ -85,7 +85,7 @@ public class StartBlockProducerAuRa
 
         BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
 
-        IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(_api);
+        IGasLimitCalculator gasLimitCalculator = CreateGasLimitCalculator(_api);
 
         IBlockProducer blockProducer = new AuRaBlockProducer(
             producerEnv.TxSource,
