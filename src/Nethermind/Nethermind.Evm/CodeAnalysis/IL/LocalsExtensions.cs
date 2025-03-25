@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
+namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public class Locals<T>(Emit<T> method) : IDisposable
 {

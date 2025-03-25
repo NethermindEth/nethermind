@@ -31,7 +31,6 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 using Int256;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Config;
 using Sigil;
 using System.Diagnostics;
@@ -725,8 +724,9 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
+                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
+
                 ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
-                Metrics.IlvmAotPrecompiledCalls++;
                 PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
                 int programCounter = vmState.ProgramCounter;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
@@ -736,6 +736,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     ref chunkExecutionState))
                 {
                     UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
+                    Metrics.IlvmAotPrecompiledCalls--; // to compensate for the increment at the beginning of the next continuation 
                     return new CallResult(chunkExecutionState.CallResult);
                 }
 

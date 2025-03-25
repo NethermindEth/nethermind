@@ -29,4 +29,7 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="CodeAnalysis\IL\CompilerModes\" />
+  </ItemGroup>
 </Project>

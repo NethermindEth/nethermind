@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;

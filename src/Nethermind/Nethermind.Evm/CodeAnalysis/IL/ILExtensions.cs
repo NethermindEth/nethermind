@@ -4,8 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.CodeAnalysis.IL;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Org.BouncyCastle.Tls;
@@ -52,14 +50,14 @@ public static class ReleaseSpecEmit
         }
     }
 
-    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, EnvLoader<T> env, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
-        env.LoadVmState(method, locals, false);
+        method.LoadVmState(locals, false);
         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
         method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
     }
 
-    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, EnvLoader<T> env, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         Label alreadyCheckedLabel = method.DefineLabel();
         Label hasToCheckLabel = method.DefineLabel();
@@ -74,7 +72,7 @@ public static class ReleaseSpecEmit
 
         foreach (var opcode in segmentMetadata.Instructions)
         {
-            env.LoadSpec(method, locals, false);
+            method.LoadSpec(locals, false);
             method.LoadConstant((byte)opcode);
             method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
@@ -574,45 +572,45 @@ static class EmitExtensions
         method.StackSetHead(stackHeadRef, delta);
     }
 
-    public static void EmitCallToErrorTrace<T>(Emit<T> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, EnvLoader<T> envLoader, Locals<T> locals)
+    public static void EmitCallToErrorTrace<T>(Emit<T> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, Locals<T> locals)
     {
         Label skipTracing = method.DefineLabel();
-        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadTxTracer(locals, false);
         method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
         method.BranchIfFalse(skipTracing);
 
-        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadTxTracer(locals, false);
         method.LoadLocal(gasAvailable);
         method.LoadConstant((int)kvp.Key);
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.Public));
 
         method.MarkLabel(skipTracing);
     }
-    public static void EmitCallToEndInstructionTrace<T>(Emit<T> method, Local gasAvailable, EnvLoader<T> envLoader, Locals<T> locals)
+    public static void EmitCallToEndInstructionTrace<T>(Emit<T> method, Local gasAvailable, Locals<T> locals)
     {
         Label skipTracing = method.DefineLabel();
-        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadTxTracer(locals, false);
         method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
         method.BranchIfFalse(skipTracing);
 
-        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadTxTracer(locals, false);
         method.LoadLocal(gasAvailable);
-        envLoader.LoadMemory(method, locals, true);
+        method.LoadMemory(locals, true);
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.EndInstructionTrace), BindingFlags.Static | BindingFlags.Public));
 
         method.MarkLabel(skipTracing);
     }
-    public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, int pc, Instruction op, EnvLoader<T> envLoader, Locals<T> locals)
+    public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, int pc, Instruction op, Locals<T> locals)
     {
         Label skipTracing = method.DefineLabel();
-        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadTxTracer(locals, false);
         method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
         method.BranchIfFalse(skipTracing);
 
-        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadTxTracer(locals, false);
         method.LoadConstant((int)op);
-        envLoader.LoadVmState(method, locals, false);
+        method.LoadVmState(locals, false);
         method.LoadLocal(gasAvailable);
         method.LoadConstant(pc);
         method.LoadLocal(head);
