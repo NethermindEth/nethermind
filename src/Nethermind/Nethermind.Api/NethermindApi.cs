@@ -194,7 +194,6 @@ namespace Nethermind.Api
 
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
-        public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
         public ISyncProgressResolver? SyncProgressResolver => Context.Resolve<ISyncProgressResolver>();
