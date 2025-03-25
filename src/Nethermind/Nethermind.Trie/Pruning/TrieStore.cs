@@ -281,13 +281,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         // When enabled, the shard have dictionaries for tracking past path hash also.
         // So the same path need to be in the same shard for the remove logic to work.
-        uint baseSize = (uint)(_livePruningEnabled
+        uint hashCode = (uint)(_livePruningEnabled
             ? path.GetHashCode()
             : hash.GetHashCode());
 
-        // Using some early bits so that nodes of similar prefix would get put in the same shard.
-        uint shardIdx = baseSize >> (32 - _shardBit);
-        return (int)shardIdx;
+        return (int)(hashCode % _shardedDirtyNodeCount);
     }
 
     private int GetNodeShardIdx(in TrieStoreDirtyNodesCache.Key key) => GetNodeShardIdx(key.Path, key.Keccak);
