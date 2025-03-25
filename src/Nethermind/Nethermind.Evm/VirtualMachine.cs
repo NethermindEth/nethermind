@@ -81,8 +81,8 @@ public class VirtualMachine : IVirtualMachine
         _vmConfig = new VMConfig
         {
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisQueueMaxSize = 8,
-            IlEvmAnalysisThreshold = 32,
+            IlEvmAnalysisQueueMaxSize = 16,
+            IlEvmAnalysisThreshold = 64,
             IsIlEvmAggressiveModeEnabled = true
         };
 

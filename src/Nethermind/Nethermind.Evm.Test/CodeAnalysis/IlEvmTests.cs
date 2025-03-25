@@ -1606,12 +1606,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PUSHx()
                     .POP()
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
-
                 yield return ([Instruction.POP], Prepare.EvmCode
                     .POP()
                     .POP()
                     .POP()
                     .POP()
+                    .Done, EvmExceptionType.StackUnderflow, turnOnAggressiveMode);
+
+                yield return ([Instruction.POP], Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(23)
+                    .Op((Instruction)0x2c) // an unused opcode should be here
                     .Done, EvmExceptionType.StackUnderflow, turnOnAggressiveMode);
 
 

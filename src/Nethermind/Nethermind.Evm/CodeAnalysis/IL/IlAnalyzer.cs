@@ -122,7 +122,7 @@ public static class IlAnalyzer
                 {
                     return;
                 }
-                CompileContract(codeInfo, compilerMetadata.Value, codeInfo.IlInfo, vmConfig);
+                CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
                 break;
         }
     }
@@ -154,9 +154,10 @@ public static class IlAnalyzer
     internal static bool AnalyseContract(CodeInfo codeInfo,  IVMConfig config, out ContractCompilerMetadata? compilerMetadata)
     {
         byte[] codeAsSpan = codeInfo.MachineCode.ToArray();
-        List<SegmentMetadata> segments = [];
         Dictionary<int, short> stackOffsets = [];
         Dictionary<int, long> gasOffsets = [];
+        Dictionary<int, SubSegmentMetadata> subSegmentData = [];
+        Dictionary<int, int> entryPoints = [];
 
         int startSegment = 0;
         foreach(var (pc, opcode, metadata) in EnumerateOpcodes(codeAsSpan))
@@ -169,7 +170,8 @@ public static class IlAnalyzer
             if (opcode.IsCall() || opcode.IsCreate())
             {
                 int endSegment = pc + metadata.AdditionalBytes + 1;
-                segments.Add(AnalyzeSegment(codeAsSpan, startSegment..endSegment, stackOffsets, gasOffsets));
+                entryPoints.Add(startSegment, endSegment);
+                AnalyzeSegment(codeAsSpan, startSegment..endSegment, stackOffsets, gasOffsets, subSegmentData);
                 startSegment = endSegment;
                 continue;
             }
@@ -177,41 +179,30 @@ public static class IlAnalyzer
 
         if (startSegment < codeAsSpan.Length)
         {
-            segments.Add(AnalyzeSegment(codeAsSpan, startSegment..codeAsSpan.Length, stackOffsets, gasOffsets));
+            entryPoints.Add(startSegment, codeAsSpan.Length);
+            AnalyzeSegment(codeAsSpan, startSegment..codeAsSpan.Length, stackOffsets, gasOffsets, subSegmentData);
         }
 
         compilerMetadata =  new ContractCompilerMetadata
         {
-            Segments = segments,
-            TargetCodeInfo = codeInfo,
             StackOffsets = stackOffsets,
-            StaticGasSubSegmentes = gasOffsets
+            StaticGasSubSegmentes = gasOffsets,
+            SubSegments = subSegmentData,
+            SegmentsBoundaries = entryPoints
         };
         return true;
     }
 
-    internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
+    internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
-        var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), contractMetadata, vmConfig);
+        var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), codeInfo, contractMetadata, vmConfig);
 
-        ilinfo.PrecompiledContract = contractDelegate;
+        codeInfo.IlInfo.PrecompiledContract = contractDelegate;
     }
 
-    internal static SegmentMetadata AnalyzeSegment(byte[] fullcode, Range segmentRange, Dictionary<int, short> stackOffsets, Dictionary<int, long> gasOffsets)
+    internal static void AnalyzeSegment(byte[] fullcode, Range segmentRange, Dictionary<int, short> stackOffsets, Dictionary<int, long> gasOffsets, Dictionary<int, SubSegmentMetadata> subSegmentData)
     {
-        SegmentMetadata metadata = new()
-        {
-            Boundaries = segmentRange
-        };
-        
-
-        ReadOnlySpan<byte> segment = fullcode[segmentRange];
-
-        var opcodeEnumerator = EnumerateOpcodes(fullcode, segmentRange);
-
         SubSegmentMetadata subSegment = new();
-        metadata.SubSegments = new();
-
         int subsegmentStart = segmentRange.Start.Value;
         int costStart = subsegmentStart;
 
@@ -231,7 +222,7 @@ public static class IlAnalyzer
 
         HashSet<Instruction> instructionsIncluded = [];
 
-        foreach (var (pc, op, opcodeMetadata) in opcodeEnumerator)
+        foreach (var (pc, op, opcodeMetadata) in EnumerateOpcodes(fullcode, segmentRange))
         {
             lastOpcodeIsAjumpdest = op is Instruction.JUMPDEST;
             stackOffsets[pc] = currentStackSize;
@@ -249,7 +240,7 @@ public static class IlAnalyzer
                     subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
                     gasOffsets[costStart] = coststack;
-                    metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+                    subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
                     
                     subsegmentStart = pc;
                     subSegment = new();
@@ -299,7 +290,7 @@ public static class IlAnalyzer
                             subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
                             gasOffsets[costStart] = coststack;
-                            metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+                            subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
                             subsegmentStart = pc + 1;
                             subSegment = new();
@@ -328,7 +319,7 @@ public static class IlAnalyzer
             notStart = false;
         }
 
-        if ((subsegmentStart < segmentRange.End.Value && !metadata.SubSegments.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
+        if ((subsegmentStart < segmentRange.End.Value && !subSegmentData.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
         {
             subSegment.Start = subsegmentStart;
             subSegment.IsReachable = hasJumpdest;
@@ -340,9 +331,7 @@ public static class IlAnalyzer
             subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
             gasOffsets[costStart] = coststack;
-            metadata.SubSegments[subSegment.Start] = subSegment;
+            subSegmentData[subSegment.Start] = subSegment;
         }
-
-        return metadata;
     }
 }

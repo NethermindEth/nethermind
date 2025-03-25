@@ -46,13 +46,9 @@ public static class ReleaseSpecEmit
             .ToString();
     public static void DeclareOpcodeValidityCheckVariables<T>(Emit<T> method, ContractCompilerMetadata metadata, Locals<T> locals)
     {
-
-        foreach (var segment in metadata.Segments)
+        foreach (var subSegment in metadata.SubSegments.Values.Where(subs => subs.IsReachable))
         {
-            foreach (var subSegment in segment.SubSegments.Values.Where(subs => subs.IsReachable))
-            {
-                locals.TryDeclareLocal(GetSegmentId(subSegment), typeof(Nullable<bool>));
-            }
+            locals.TryDeclareLocal(GetSegmentId(subSegment), typeof(Nullable<bool>));
         }
     }
 

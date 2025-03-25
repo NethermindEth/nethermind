@@ -12,16 +12,10 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public struct ContractCompilerMetadata
 {
-    public CodeInfo TargetCodeInfo { get; set; }
-    public List<SegmentMetadata> Segments { get; set; }
     public Dictionary<int, short> StackOffsets { get; set; }
     public Dictionary<int, long> StaticGasSubSegmentes { get; set; }
-}
-
-public class SegmentMetadata
-{
-    public Range Boundaries { get; set; }
     public Dictionary<int, SubSegmentMetadata> SubSegments { get; set; }
+    public Dictionary<int, int> SegmentsBoundaries { get; set; }
 }
 
 public class SubSegmentMetadata
