@@ -151,7 +151,7 @@ public interface ISyncConfig : IConfig
     bool NeedToWaitForHeader { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool VerifyTrieOnStateSyncFinished { get; }
+    bool VerifyTrieOnStateSyncFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     int StateMaxDistanceFromHead { get; set; }
