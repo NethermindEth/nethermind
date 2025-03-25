@@ -59,19 +59,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
             LoadBeaconPivot();
         }
 
-        public long PivotNumber => CurrentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
+        public long PivotNumber => CurrentBeaconPivot?.Number ?? _blockTree.SyncPivot.BlockNumber;
 
-        public Hash256? PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
+        public Hash256? PivotHash => CurrentBeaconPivot?.Hash ?? _blockTree.SyncPivot.BlockHash;
 
         public BlockHeader? ProcessDestination { get; set; }
         public bool ShouldForceStartNewSync { get; set; } = false;
 
         // We actually start beacon header sync from the pivot parent hash because hive test.... And because
         // we can I guess?
-        public Hash256? PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _syncConfig.PivotHashParsed;
-
-        public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
-            _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
+        public Hash256? PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _blockTree.SyncPivot.BlockHash;
 
         // The stopping point (inclusive) for the reverse beacon header sync.
         public long PivotDestinationNumber
@@ -93,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     return Math.Max(1, safeNumber);
                 }
 
-                return _syncConfig.PivotNumberParsed + 1;
+                return _blockTree.SyncPivot.BlockNumber + 1;
             }
         }
 

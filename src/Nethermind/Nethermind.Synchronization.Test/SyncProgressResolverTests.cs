@@ -141,6 +141,7 @@ namespace Nethermind.Synchronization.Test
                 DownloadReceiptsInFastSync = true,
                 PivotNumber = "1",
             };
+            blockTree.SyncPivot.Returns((1, Hash256.Zero));
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 

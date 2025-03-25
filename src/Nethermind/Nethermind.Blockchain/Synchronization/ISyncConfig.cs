@@ -54,13 +54,10 @@ public interface ISyncConfig : IConfig
     string? PivotHash { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-    long PivotNumberParsed => LongConverter.FromString(PivotNumber);
+    private long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
-
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-    Hash256? PivotHashParsed => PivotHash is null ? null : new Hash256(Bytes.FromHexString(PivotHash));
 
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
     int MaxAttemptsToUpdatePivot { get; set; }
@@ -154,7 +151,7 @@ public interface ISyncConfig : IConfig
     bool NeedToWaitForHeader { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool VerifyTrieOnStateSyncFinished { get; }
+    bool VerifyTrieOnStateSyncFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     int StateMaxDistanceFromHead { get; set; }

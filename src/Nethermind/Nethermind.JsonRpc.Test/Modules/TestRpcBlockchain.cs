@@ -33,9 +33,12 @@ using Nethermind.Db;
 using Nethermind.Facade.Simulate;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Consensus.Rewards;
+using System.IO.Abstractions;
+using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -43,6 +46,8 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
+        public IDebugRpcModule DebugRpcModule { get; private set; } = null!;
+        public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
         public IBlockchainBridge Bridge { get; private set; } = null!;
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
@@ -139,6 +144,40 @@ namespace Nethermind.JsonRpc.Test.Modules
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             new BlocksConfig().SecondsPerSlot);
 
+        private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
+            @this.WorldStateManager,
+            @this.DbProvider,
+            @this.BlockTree,
+            @this.RpcConfig,
+            @this.Bridge,
+            new BlocksConfig().SecondsPerSlot,
+            @this.BlockValidator,
+            @this.BlockPreprocessorStep,
+            new RewardCalculator(@this.SpecProvider),
+            @this.ReceiptStorage,
+            Substitute.For<IReceiptsMigration>(),
+            Substitute.For<IConfigProvider>(),
+            @this.SpecProvider,
+            Substitute.For<ISyncModeSelector>(),
+            new BadBlockStore(@this.BlocksDb, 100),
+            new FileSystem(),
+            @this.LogManager).Create();
+
+
+        private readonly Func<TestRpcBlockchain, ITraceRpcModule> _traceRpcModuleBuilder = static @this => new TraceModuleFactory(
+            @this.WorldStateManager,
+            @this.BlockTree,
+            @this.RpcConfig,
+            @this.Bridge,
+            new BlocksConfig().SecondsPerSlot,
+            @this.BlockPreprocessorStep,
+            new RewardCalculator(@this.SpecProvider),
+            @this.ReceiptStorage,
+            @this.SpecProvider,
+            @this.PoSSwitcher,
+            @this.LogManager
+        ).Create();
+
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
@@ -175,6 +214,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
             EthRpcModule = _ethRpcModuleBuilder(this);
+            TraceRpcModule = _traceRpcModuleBuilder(this);
+            DebugRpcModule = _debugRpcModuleBuilder(this);
             OverridableWorldStateManager = overridableWorldStateManager;
 
             return this;

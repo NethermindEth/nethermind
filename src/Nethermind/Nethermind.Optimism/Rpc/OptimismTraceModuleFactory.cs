@@ -13,6 +13,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Facade;
 using Nethermind.State;
 
 namespace Nethermind.Optimism.Rpc;
@@ -21,6 +22,8 @@ public class OptimismTraceModuleFactory(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
+    IBlockchainBridge blockchainBridge,
+    ulong secondsPerSlot,
     IBlockPreprocessorStep recoveryStep,
     IRewardCalculatorSource rewardCalculatorSource,
     IReceiptStorage receiptFinder,
@@ -34,6 +37,8 @@ public class OptimismTraceModuleFactory(
         worldStateManager,
         blockTree,
         jsonRpcConfig,
+        blockchainBridge,
+        secondsPerSlot,
         recoveryStep,
         rewardCalculatorSource,
         receiptFinder,
