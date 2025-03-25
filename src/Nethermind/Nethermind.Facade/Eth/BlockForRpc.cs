@@ -21,7 +21,7 @@ public class BlockForRpc
     private readonly BlockDecoder _blockDecoder = new();
     private readonly bool _isAuRaBlock;
 
-    protected BlockForRpc()
+    public BlockForRpc()
     {
 
     }
