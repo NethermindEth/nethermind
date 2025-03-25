@@ -685,7 +685,7 @@ namespace Nethermind.TxPool.Test
                         wrapper.Commitments[0],
                         wrapper.Proofs[0],
                         blobTxs[i].BlobVersionedHashes[0].AsSpan(),
-                        1);
+                        ProofVersion.V1);
                 }
 
                 blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();

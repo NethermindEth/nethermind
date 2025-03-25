@@ -232,8 +232,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
-        var wrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
-        return wrapper is null ? ValidationResult.Success
+        return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
             : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Proofs.Length != blobCount && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData

@@ -378,6 +378,7 @@ public partial class EngineModuleTests
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+                 Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
                  newPayloadHandlerMock,
                  Substitute.For<IForkchoiceUpdatedHandler>(),
                  Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),

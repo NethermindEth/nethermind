@@ -152,19 +152,20 @@ public static class KzgPolynomialCommitments
         Span<byte> flatProofs = new(flatProofsArray, 0, length);
 
         length = blobs.Length * Ckzg.Ckzg.CellsPerExtBlob;
-        ulong[] indices = ArrayPool<ulong>.Shared.Rent(length);
+        ulong[] indicesArray = ArrayPool<ulong>.Shared.Rent(length);
+        Span<ulong> indices = new(indicesArray, 0, length);
 
         for (int i = 0; i < blobs.Length; i++)
         {
 
-            Ckzg.Ckzg.ComputeCells(cells.Slice(i * Ckzg.Ckzg.BytesPerBlob * 2, Ckzg.Ckzg.BytesPerBlob * 2), blobs[i], _ckzgSetup);
+            Ckzg.Ckzg.ComputeCells(cells.Slice(i * Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob), blobs[i], _ckzgSetup);
 
             for (int j = 0; j < Ckzg.Ckzg.CellsPerExtBlob; j++)
             {
                 int cellNumber = i * Ckzg.Ckzg.CellsPerExtBlob + j;
 
                 commitments[i].CopyTo(flatCommitments.Slice(cellNumber * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-                indices[cellNumber] = (ulong)cellNumber;
+                indices[cellNumber] = (ulong)j;
                 cellProofs[cellNumber].CopyTo(flatProofs.Slice(cellNumber * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
             }
         }
@@ -183,7 +184,7 @@ public static class KzgPolynomialCommitments
             ArrayPool<byte>.Shared.Return(cellsArray);
             ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
             ArrayPool<byte>.Shared.Return(flatProofsArray);
-            ArrayPool<ulong>.Shared.Return(indices);
+            ArrayPool<ulong>.Shared.Return(indicesArray);
         }
     }
 

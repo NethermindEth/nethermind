@@ -21,7 +21,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -112,6 +111,10 @@ public partial class BaseEngineModuleTests
                 chain.SpecProvider!,
                 chain.LogManager),
             new GetPayloadV4Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
+            new GetPayloadV5Handler(
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
