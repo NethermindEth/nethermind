@@ -298,11 +298,17 @@ namespace Nethermind.Synchronization.FastBlocks
             _sent.Clear(); // we my still be waiting for some bad branches
         }
 
+        private bool CanHandleDependentBatch()
+        {
+            long? lowest = LowestInsertedBlockHeader?.Number;
+            return lowest.HasValue && _dependencies.ContainsKey(lowest.Value - 1);
+        }
+
         private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
             long processedBatchCount = 0;
-            const long maxBatchToProcess = 4;
+            long maxBatchToProcess = (MemoryInQueue < _fastHeadersMemoryBudget / 2) ? 2 : 4; // Try to keep queue large
             while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch dependentBatch))
             {
                 using (dependentBatch)
@@ -373,6 +379,17 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch = BuildNewBatch();
                 batch = ProcessPersistedPortion(batch);
+
+                if (batch is null)
+                {
+                    // Return new pending batch first
+                    if (_pending.TryDequeue(out batch)) return batch;
+
+                    // If it can process new batch, do it otherwise, this loop will keep filling up the memory
+                    // and a lot of the CPU cycle is spent on calculating memory.
+                    if (CanHandleDependentBatch()) HandleDependentBatches(cancellationToken);
+                }
+
             } while (batch is null && ShouldBuildANewBatch() && !cancellationToken.IsCancellationRequested);
             return batch;
         }
@@ -582,6 +599,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 0;
             }
 
+            using ArrayPoolList<BlockHeader> headersToAdd = new ArrayPoolList<BlockHeader>(batch.Response.Count);
+
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
             BlockHeader? lowestInsertedHeader = null;
@@ -627,25 +646,26 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                 }
 
-                header.TotalDifficulty = _nextHeaderTotalDifficulty;
-                AddBlockResult addBlockResult = InsertHeader(header);
-                if (addBlockResult == AddBlockResult.InvalidBlock)
-                {
-                    if (batch.ResponseSourcePeer is not null)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidHeader, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
-                    }
-
-                    break;
-                }
-                else
-                {
-                    lowestInsertedHeader = header;
-                }
+                headersToAdd.Add(header);
 
                 addedEarliest = Math.Min(addedEarliest, header.Number);
                 addedLast = Math.Max(addedLast, header.Number);
+            }
+
+
+            UInt256? totalDifficulty = _nextHeaderTotalDifficulty;
+            foreach (var blockHeader in headersToAdd)
+            {
+                blockHeader.TotalDifficulty = totalDifficulty;
+                totalDifficulty = DetermineParentTotalDifficulty(blockHeader);
+            }
+
+            // Remember, the above loop is in revers order, so this need to be reversed again.
+            headersToAdd.AsSpan().Reverse();
+            if (headersToAdd.Count > 0)
+            {
+                InsertHeaders(headersToAdd);
+                lowestInsertedHeader = headersToAdd[0];
             }
 
             int added = (int)(addedLast - addedEarliest + 1);
@@ -659,6 +679,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (lowestInsertedHeader is not null && lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
             {
                 LowestInsertedBlockHeader = lowestInsertedHeader;
+                SetExpectedNextHeaderToParent(lowestInsertedHeader);
             }
 
             added = Math.Max(0, added);
@@ -805,31 +826,23 @@ namespace Nethermind.Synchronization.FastBlocks
             Volatile.Write(ref _memoryEstimate, ulong.MaxValue);
         }
 
-        private AddBlockResult InsertHeader(BlockHeader header)
+        protected virtual void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
         {
-            if (header.IsGenesis)
-            {
-                return AddBlockResult.AlreadyKnown;
-            }
+            if (headersToAdd.Count == 0) return;
+            if (headersToAdd[0].IsGenesis) headersToAdd = headersToAdd.Slice(1);
 
-            return InsertToBlockTree(header);
-        }
-
-        protected virtual AddBlockResult InsertToBlockTree(BlockHeader header)
-        {
-            AddBlockResult insertOutcome = _blockTree.Insert(header);
-            if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
-            {
-                SetExpectedNextHeaderToParent(header);
-            }
-
-            return insertOutcome;
+            _blockTree.BulkInsertHeader(headersToAdd);
         }
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             _nextHeaderHash = header.ParentHash!;
-            _nextHeaderTotalDifficulty = _totalDifficultyStrategy.ParentTotalDifficulty(header);
+            _nextHeaderTotalDifficulty = DetermineParentTotalDifficulty(header);
+        }
+
+        protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header)
+        {
+            return _totalDifficultyStrategy.ParentTotalDifficulty(header);
         }
 
         private bool _disposed = false;

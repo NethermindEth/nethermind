@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -398,6 +399,7 @@ public class BeaconHeadersSyncTests
                 : lowestHeaderNumber - batch.RequestSize;
 
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
+            blockTree.LowestInsertedBeaconHeader?.Number.Should().Be(lowestHeader?.Number);
             blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
         }
     }
