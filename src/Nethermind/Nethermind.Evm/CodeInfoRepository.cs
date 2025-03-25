@@ -63,11 +63,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
-    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
-    {
-        return GetCachedCodeInfo(worldState, codeSource, followDelegation: true, vmSpec, out delegationAddress);
-    }
-
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;

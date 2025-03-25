@@ -1959,6 +1959,33 @@ public class BlockTreeTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_insert_headers_in_batch()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        BlockHeader currentHeader = Build.A.BlockHeader.WithTotalDifficulty(1).WithDifficulty(1).WithNumber(1).TestObject;
+        using ArrayPoolList<BlockHeader> batch = new ArrayPoolList<BlockHeader>(1);
+        batch.Add(currentHeader);
+
+        for (int i = 0; i < 100; i++)
+        {
+            currentHeader = Build.A.BlockHeader
+                .WithDifficulty(1)
+                .WithTotalDifficulty((long)(currentHeader.TotalDifficulty + 1)!)
+                .WithParent(currentHeader)
+                .TestObject;
+            batch.Add(currentHeader);
+        }
+
+        blockTree.BulkInsertHeader(batch);
+
+        for (int i = 1; i < 101; i++)
+        {
+            blockTree.FindHeader(i, BlockTreeLookupOptions.None).Should().NotBeNull();
+        }
+    }
+
     private class TestBlockTreeVisitor : IBlockTreeVisitor
     {
         private readonly ManualResetEvent _manualResetEvent;
@@ -2002,5 +2029,35 @@ public class BlockTreeTests
         {
             return Task.FromResult(LevelVisitOutcome.None);
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Load_SyncPivot_FromConfig()
+    {
+        SyncConfig syncConfig = new SyncConfig()
+        {
+            FastSync = true,
+            PivotNumber = "999",
+            PivotHash = Hash256.Zero.ToString(),
+        };
+        BlockTree blockTree = Build.A.BlockTree().WithSyncConfig(syncConfig).TestObject;
+        blockTree.SyncPivot.Should().Be((999, Hash256.Zero));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Load_SyncPivot_FromDb()
+    {
+        SyncConfig syncConfig = new SyncConfig()
+        {
+            FastSync = true,
+            PivotNumber = "999",
+            PivotHash = Hash256.Zero.ToString(),
+        };
+        IDb metadataDb = new MemDb();
+        BlockTree blockTree = Build.A.BlockTree().WithMetadataDb(metadataDb).WithSyncConfig(syncConfig).TestObject;
+        blockTree.SyncPivot = (1000, TestItem.KeccakA);
+
+        blockTree = Build.A.BlockTree().WithMetadataDb(metadataDb).WithSyncConfig(syncConfig).TestObject;
+        blockTree.SyncPivot.Should().Be((1000, TestItem.KeccakA));
     }
 }

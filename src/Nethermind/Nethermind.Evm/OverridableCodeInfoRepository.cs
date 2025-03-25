@@ -16,16 +16,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, ICodeInfo> _codeOverwrites = new();
 
-    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
-    {
-        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
-    }
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         return _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
             ? result
-            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>

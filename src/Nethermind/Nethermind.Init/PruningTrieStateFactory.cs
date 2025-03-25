@@ -128,6 +128,7 @@ public class PruningTrieStateFactory(
                 // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
                 // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
                 .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
+                .WithDirtyNodeShardCount(pruningConfig.DirtyNodeShardBit)
                 .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else

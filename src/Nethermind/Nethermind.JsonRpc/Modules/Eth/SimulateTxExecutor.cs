@@ -50,6 +50,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
                         asLegacy!.EnsureDefaults(_gasCapBudget);
                         _gasCapBudget -= asLegacy.Gas!.Value;
+                        _gasCapBudget = Math.Max(0, _gasCapBudget);
 
                         Transaction tx = callTransactionModel.ToTransaction();
                         tx.ChainId = _blockchainBridge.GetChainId();

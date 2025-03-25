@@ -158,7 +158,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
             if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
+            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
@@ -184,7 +184,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Finalize
             if (restore)
             {
-                WorldState.Reset();
+                WorldState.Reset(resetBlockChanges: false);
                 if (deleteCallerAccount)
                 {
                     WorldState.DeleteAccount(tx.SenderAddress!);
@@ -195,12 +195,12 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
                     DecrementNonce(tx);
 
-                    WorldState.Commit(spec);
+                    WorldState.Commit(spec, commitRoots: false);
                 }
             }
             else if (commit)
             {
-                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitStorageRoots: !spec.IsEip658Enabled);
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
             }
             else
             {
@@ -286,12 +286,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     || s > Secp256K1Curve.HalfN
                     //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
                     || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
                 {
                     error = "Bad signature.";
                     return false;
