@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -36,6 +37,22 @@ public class HeaderStore : IHeaderStore
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
         _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
         InsertBlockNumber(header.Hash, header.Number);
+    }
+
+    public void BulkInsert(IReadOnlyList<BlockHeader> headers)
+    {
+        using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
+        using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
+
+        Span<byte> blockNumberSpan = stackalloc byte[8];
+        foreach (var header in headers)
+        {
+            using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
+            headerWriteBatch.Set(header.Number, header.Hash, newRlp.AsSpan());
+
+            header.Number.WriteBigEndian(blockNumberSpan);
+            blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+        }
     }
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)

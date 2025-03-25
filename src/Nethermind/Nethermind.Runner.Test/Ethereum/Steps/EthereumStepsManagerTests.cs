@@ -9,6 +9,7 @@ using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -17,6 +18,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -107,16 +109,27 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await act.Should().ThrowAsync<StepDependencyException>();
         }
 
-        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
-            CreateCommonBuilder(stepInfos)
-                .AddSingleton<NethermindApi>(new NethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
+        {
+            IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+            consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(NethermindApi));
+
+            return CreateCommonBuilder(stepInfos)
+                .AddSingleton<NethermindApi>(new NethermindApi(new ConfigProvider(), new EthereumJsonSerializer(),
+                    LimboLogs.Instance, new ChainSpec()))
+                .AddSingleton<IConsensusPlugin>(consensusPlugin)
                 .Bind<INethermindApi, NethermindApi>()
                 .Build();
+        }
 
         private static IContainer CreateAuraApi(params IEnumerable<StepInfo> stepInfos)
         {
+            IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+            consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(AuRaNethermindApi));
+
             return CreateCommonBuilder(stepInfos)
                 .AddSingleton<AuRaNethermindApi>(new AuRaNethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+                .AddSingleton<IConsensusPlugin>(consensusPlugin)
                 .Bind<INethermindApi, AuRaNethermindApi>()
                 .Build();
         }
