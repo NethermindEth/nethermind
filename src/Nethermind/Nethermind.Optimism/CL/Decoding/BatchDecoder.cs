@@ -102,14 +102,14 @@ public class BatchDecoder
             {
                 throw new NotSupportedException($"Only span batches are supported. Got type {type}");
             }
-            yield return parser.Read(ParseSpanBatch);
+            yield return parser.Read(DecodeSpanBatch);
         }
     }
 
     /// <remarks>
     /// https://specs.optimism.io/protocol/delta/span-batches.html#span-batch-format
     /// </remarks>
-    private static BatchV1 ParseSpanBatch(BinaryMemoryReader reader)
+    private static BatchV1 DecodeSpanBatch(BinaryMemoryReader reader)
     {
         ulong relTimestamp = reader.Read(Protobuf.DecodeULong);
         ulong l1OriginNum = reader.Read(Protobuf.DecodeULong);
