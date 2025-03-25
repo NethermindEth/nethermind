@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
@@ -59,7 +60,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         TimeSpan timeout = timePerSlot;
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
-        ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
+        Core.Timers.ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
         timer.Elapsed += CleanupOldPayloads;
         timer.Start();
 
@@ -216,7 +217,13 @@ public class PayloadPreparationService : IPayloadPreparationService
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
-                    await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay));
+                    using CancellationTokenSource cts = new();
+                    Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
+                    Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
+                    if (completedTask != timeout)
+                    {
+                        cts.Cancel();
+                    }
                 }
 
                 return blockContext;
