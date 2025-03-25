@@ -4,7 +4,7 @@
 using System;
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
@@ -14,20 +14,23 @@ namespace Nethermind.Optimism;
 /// Calculation is still the same: the current block's <see cref="BlockHeader.TotalDifficulty"/> is the parent's <see cref="BlockHeader.TotalDifficulty"/> plus the current block's <see cref="BlockHeader.Difficulty"/>.
 /// <seealso href="https://github.com/NethermindEth/nethermind/issues/7626"/>
 /// </remarks>
-public sealed class OptimismSynchronizerModule(OptimismChainSpecEngineParameters parameters, ISpecProvider provider) : Module
+public sealed class OptimismSynchronizerModule(ChainSpec chainSpec) : Module
 {
     private const ulong OptimismMainnetChainId = 0xA;
 
     protected override void Load(ContainerBuilder builder)
     {
-        if (provider.ChainId == OptimismMainnetChainId)
+        if (chainSpec.ChainId == OptimismMainnetChainId)
         {
+            OptimismChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
             ArgumentNullException.ThrowIfNull(parameters.BedrockBlockNumber);
+
             builder.AddSingleton<ITotalDifficultyStrategy>(
                 new FixedTotalDifficultyStrategy(
                     new CumulativeTotalDifficultyStrategy(),
                     fixesBlockNumber: parameters.BedrockBlockNumber.Value - 1,
-                    toTotalDifficulty: provider.TerminalTotalDifficulty ?? throw new ArgumentNullException(nameof(provider.TerminalTotalDifficulty))
+                    toTotalDifficulty: chainSpec.TerminalTotalDifficulty ?? throw new ArgumentNullException(nameof(chainSpec.TerminalTotalDifficulty))
                 )
             );
         }
