@@ -36,6 +36,7 @@ public class OptimismCL : IDisposable
         IJsonSerializer jsonSerializer,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
+        ulong l2GenesisTimestamp,
         ILogManager logManager,
         IOptimismEthRpcModule l2EthRpc,
         IOptimismEngineRpcModule engineRpcModule)
@@ -62,6 +63,7 @@ public class OptimismCL : IDisposable
             _executionEngineManager,
             _l2Api,
             specProvider.ChainId,
+            l2GenesisTimestamp,
             _logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,

@@ -337,6 +337,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _api.EthereumJsonSerializer,
                 _api.EthereumEcdsa,
                 _api.Timestamper,
+                _api.ChainSpec.Genesis.Timestamp,
                 _api!.LogManager,
                 _api.OptimismEthRpcModule,
                 opEngine);
