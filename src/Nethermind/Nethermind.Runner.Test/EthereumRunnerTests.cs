@@ -13,6 +13,7 @@ using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -26,6 +27,7 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -194,6 +196,18 @@ public class EthereumRunnerTests
                 if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
                 {
                     propertyInfo.GetValue(api);
+                }
+
+                if (propertyInfo.GetSetMethod() is not null)
+                {
+                    if (runner.LifetimeScope.ComponentRegistry.TryGetRegistration(new TypedService(propertyInfo.PropertyType), out var registration))
+                    {
+                        var isFallback = registration.Metadata.ContainsKey(FallbackToFieldFromApi<INethermindApi>.FallbackMetadata);
+                        if (!isFallback)
+                        {
+                            Assert.Fail($"A setter in {nameof(INethermindApi)} of type {propertyInfo.PropertyType} also has a container registration that is not a fallback to api. This is likely a bug.");
+                        }
+                    }
                 }
             }
 

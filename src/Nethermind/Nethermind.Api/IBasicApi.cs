@@ -17,7 +17,6 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Api
 {
@@ -27,32 +26,32 @@ namespace Nethermind.Api
 
         IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
-        ChainSpec ChainSpec { get; set; }
+        ChainSpec ChainSpec { get; }
 
         [SkipServiceCollection]
-        IConfigProvider ConfigProvider { get; set; }
+        IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         [SkipServiceCollection]
-        IJsonSerializer EthereumJsonSerializer { get; set; }
+        IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
-        ILogManager LogManager { get; set; }
+        ILogManager LogManager { get; }
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
         string SealEngineType { get; }
         [SkipServiceCollection]
-        ISpecProvider? SpecProvider { get; set; }
+        ISpecProvider? SpecProvider { get; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
-        IProcessExitSource? ProcessExit { get; set; }
+        IProcessExitSource? ProcessExit { get; }
 
         [SkipServiceCollection]
-        ILifetimeScope Context { get; set; }
+        ILifetimeScope Context { get; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

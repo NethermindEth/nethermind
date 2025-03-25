@@ -104,7 +104,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             _api.L1CostHelper,
             _api.LogManager);
 
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
 
         BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
@@ -114,7 +114,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
             producerEnv.ReadOnlyStateProvider,
-            _api.GasLimitCalculator,
+            gasLimitCalculator,
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
