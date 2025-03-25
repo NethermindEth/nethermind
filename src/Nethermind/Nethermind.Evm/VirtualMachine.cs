@@ -2312,6 +2312,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         }
+        if (_txTracer.IsTracingState)
+        {
+            _txTracer.ReportAccountRead(inheritor);
+        }
 
         if (!inheritorAccountExists)
         {
