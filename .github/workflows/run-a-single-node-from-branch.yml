@@ -17,12 +17,14 @@ on:
           - op-mainnet
           - op-sepolia
           - base-mainnet
-          - base-sepolia
+          - base-sepolia          
+          - world-sepolia
+          - world-mainnet
           - joc-mainnet
           - joc-testnet
           - linea-mainnet
           - linea-sepolia
-          - taiko-mainnet
+          - taiko-alethia
           - taiko-hekla
           - energyweb
           - volta

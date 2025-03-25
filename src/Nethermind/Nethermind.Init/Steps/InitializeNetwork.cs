@@ -107,7 +107,7 @@ public class InitializeNetwork : IStep
             await plugin.InitSynchronization();
         }
 
-        _api.Pivot ??= new Pivot(_syncConfig);
+        _api.Pivot ??= new Pivot(_api.BlockTree);
 
         if (_api.Synchronizer is null)
         {
@@ -204,8 +204,11 @@ public class InitializeNetwork : IStep
             throw new InvalidOperationException("Cannot initialize network without knowing own enode");
         }
 
+        ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
+
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
+        ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }

@@ -75,7 +75,8 @@ public partial class FlashbotsModuleTests
                 readOnlyTxProcessingEnvFactory,
                 chain.LogManager,
                 chain.SpecProvider,
-                new FlashbotsConfig()
+                new FlashbotsConfig(),
+                chain.EthereumEcdsa
             )
         );
     }
