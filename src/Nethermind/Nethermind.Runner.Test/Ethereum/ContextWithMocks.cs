@@ -53,23 +53,31 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static NethermindApi ContextWithMocks()
         {
-            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(),
+            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+                Substitute.For<IConfigProvider>(),
+                Substitute.For<IJsonSerializer>(),
                 LimboLogs.Instance,
-                new ChainSpec { Parameters = new ChainParameters(), });
+                new ChainSpec { Parameters = new ChainParameters(), },
+                Substitute.For<ISpecProvider>(),
+                [],
+                Substitute.For<IProcessExitSource>(),
+                new ContainerBuilder()
+                    .AddSingleton(Substitute.For<IPoSSwitcher>())
+                    .AddSingleton(Substitute.For<IAdminEraService>())
+                    .AddSingleton(Substitute.For<ISyncModeSelector>())
+                    .AddSingleton(Substitute.For<ISyncProgressResolver>())
+                    .AddSingleton(Substitute.For<ISyncPointers>())
+                    .AddSingleton(Substitute.For<ISynchronizer>())
+                    .AddSingleton(Substitute.For<ISyncPeerPool>())
+                    .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
+                    .AddSingleton(Substitute.For<ISyncServer>())
+                    .Build()
+            );
+
+            var api = new NethermindApi(apiDependencies);
             MockOutNethermindApi(api);
             api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
-            api.Context = new ContainerBuilder()
-                .AddSingleton(Substitute.For<IPoSSwitcher>())
-                .AddSingleton(Substitute.For<IAdminEraService>())
-                .AddSingleton(Substitute.For<ISyncModeSelector>())
-                .AddSingleton(Substitute.For<ISyncProgressResolver>())
-                .AddSingleton(Substitute.For<ISyncPointers>())
-                .AddSingleton(Substitute.For<ISynchronizer>())
-                .AddSingleton(Substitute.For<ISyncPeerPool>())
-                .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
-                .AddSingleton(Substitute.For<ISyncServer>())
-                .Build();
             return api;
         }
 
@@ -82,7 +90,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.DbProvider = TestMemDbProvider.Init();
             api.PeerManager = Substitute.For<IPeerManager>();
             api.PeerPool = Substitute.For<IPeerPool>();
-            api.SpecProvider = Substitute.For<ISpecProvider>();
             api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
@@ -131,7 +138,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
-            api.ProcessExit = Substitute.For<IProcessExitSource>();
 
             api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
