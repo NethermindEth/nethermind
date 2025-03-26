@@ -272,7 +272,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             }
 
             return !(wrapper.Version == ProofVersion.V1 && KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs))
-                   || !(wrapper.Version == ProofVersion.V2 && KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs))
+                   && !(wrapper.Version == ProofVersion.V2 && KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs))
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
         }
