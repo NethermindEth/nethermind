@@ -235,7 +235,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
             : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Version == ProofVersion.V1 && wrapper.Proofs.Length != blobCount? TxErrorMessages.InvalidBlobData
+            : wrapper.Version == ProofVersion.V1 && wrapper.Proofs.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Version == ProofVersion.V2 && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData
             : ValidateBlobs();
 
