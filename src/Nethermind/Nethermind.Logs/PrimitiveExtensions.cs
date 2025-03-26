@@ -9,9 +9,9 @@ namespace Nethermind.Logs;
 
 public static class PrimitiveExtensions
 {
-    public static void WriteNativeEndian(this IBufferWriter<byte> w, int deduplicatedLength)
+    public static void WriteNativeEndian(this IBufferWriter<byte> w, int value)
     {
-        w.Write(MemoryMarshal.Cast<int, byte>(MemoryMarshal.CreateSpan(ref deduplicatedLength, 1)));
+        w.Write(MemoryMarshal.Cast<int, byte>(MemoryMarshal.CreateSpan(ref value, 1)));
     }
 
     public static void WriteNativeEndianSpan<T>(this IBufferWriter<byte> w, ReadOnlySpan<T> data)

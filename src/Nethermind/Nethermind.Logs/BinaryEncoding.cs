@@ -53,4 +53,9 @@ public static class BinaryEncoding
         span[offset - 1] &= 0x7F;
         return count;
     }
+
+    /// <summary>
+    /// Provides a span that represents zero.
+    /// </summary>
+    public static readonly byte[] Zero = [0];
 }
