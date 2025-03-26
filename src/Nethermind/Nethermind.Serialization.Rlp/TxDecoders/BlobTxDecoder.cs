@@ -27,7 +27,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
-                DecodeShardBlobNetworkWrapper(transaction, rlpStream, positionAfterNetworkWrapper);
+                DecodeShardBlobNetworkWrapper(transaction, rlpStream);
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
@@ -67,7 +67,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
-                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext, networkWrapperCheck);
+                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext);
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
@@ -141,7 +141,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         stream.Encode(transaction.BlobVersionedHashes!);
     }
 
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream, int positionAfterNetworkWrapper)
+    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream)
     {
         ProofVersion version = ProofVersion.V1;
         var startingRlp = rlpStream.PeekNextItem();
@@ -161,7 +161,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
 
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, int positionAfterNetworkWrapper)
+    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         ProofVersion version = ProofVersion.V1;
         var startingRlp = decoderContext.PeekNextItem();
@@ -177,11 +177,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         byte[][] blobs = decoderContext.DecodeByteArrays();
         byte[][] commitments = decoderContext.DecodeByteArrays();
         byte[][] proofs = decoderContext.DecodeByteArrays();
-        byte[][]? blobProofs = null;
-        if (decoderContext.Position < positionAfterNetworkWrapper)
-        {
-            blobProofs = decoderContext.DecodeByteArrays();
-        }
+
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
 
