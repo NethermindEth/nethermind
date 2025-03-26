@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -18,13 +20,15 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api)
+public class InitializeBlockchainOptimism(
+    OptimismNethermindApi api,
+    IPoSSwitcher poSSwitcher,
+    IInvalidChainTracker invalidChainTracker) : InitializeBlockchain(api)
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
@@ -61,7 +65,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override IHeaderValidator CreateHeaderValidator()
     {
-        if (api.InvalidChainTracker is null) throw new StepDependencyException(nameof(api.InvalidChainTracker));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
         if (api.SealValidator is null) throw new StepDependencyException(nameof(api.SealValidator));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
@@ -69,19 +72,18 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         if (api.LogManager is null) throw new StepDependencyException(nameof(api.LogManager));
 
         OptimismHeaderValidator opHeaderValidator = new(
-            api.PoSSwitcher,
+            poSSwitcher,
             api.BlockTree,
             api.SealValidator,
             api.SpecProvider,
             api.LogManager);
 
-        return new InvalidHeaderInterceptor(opHeaderValidator, api.InvalidChainTracker, api.LogManager);
+        return new InvalidHeaderInterceptor(opHeaderValidator, invalidChainTracker, api.LogManager);
     }
 
     protected override IBlockValidator CreateBlockValidator()
     {
-        if (api.InvalidChainTracker is null) throw new StepDependencyException(nameof(api.InvalidChainTracker));
-        return new InvalidBlockInterceptor(base.CreateBlockValidator(), api.InvalidChainTracker, api.LogManager);
+        return new InvalidBlockInterceptor(base.CreateBlockValidator(), invalidChainTracker, api.LogManager);
     }
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)

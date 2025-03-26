@@ -11,20 +11,6 @@ namespace Nethermind.Core.Test;
 public class ContainerBuilderExtensionsTests
 {
     [Test]
-    public void AddPropertiesFrom_CanAddProperties()
-    {
-        ITestInterface interfaceImplementation = new InterfaceImplementation();
-        IContainer sp = new ContainerBuilder()
-            .AddPropertiesFrom(interfaceImplementation)
-            .Build();
-
-        sp.ResolveOptional<DeclaredService>().Should().NotBeNull();
-        sp.ResolveOptional<DeclaredInBase>().Should().BeNull();
-        sp.ResolveOptional<Ignored>().Should().BeNull();
-        sp.ResolveOptional<DeclaredButNullService>().Should().BeNull();
-    }
-
-    [Test]
     public void TestRegisterNamedComponent()
     {
         IContainer sp = new ContainerBuilder()
