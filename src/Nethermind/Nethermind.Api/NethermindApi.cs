@@ -124,7 +124,7 @@ namespace Nethermind.Api
         }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
-        public IVMConfig? VMConfig { get; set; }
+        public IVMConfig? VMConfig { get; }
         public IBlobTxStorage? BlobTxStorage { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }

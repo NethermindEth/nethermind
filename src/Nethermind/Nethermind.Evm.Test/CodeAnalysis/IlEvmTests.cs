@@ -407,6 +407,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var actual = enhancedChain.StateRoot;
             var expected = standardChain.StateRoot;
 
+            Assert.That(Metrics.IlvmPredefinedPatternsExecutions, Is.GreaterThan(0));
             Assert.That(actual, Is.EqualTo(expected), testcase.opcode);
         }
 

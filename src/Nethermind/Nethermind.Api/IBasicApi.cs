@@ -34,7 +34,7 @@ namespace Nethermind.Api
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
-        IVMConfig? VMConfig { get; set; }
+        IVMConfig? VMConfig { get; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; }

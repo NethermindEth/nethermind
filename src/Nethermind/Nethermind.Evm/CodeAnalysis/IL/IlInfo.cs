@@ -70,7 +70,7 @@ internal class IlInfo
 
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
-        if (programCounter > ushort.MaxValue || this.IsNotProcessed)
+        if (programCounter > ushort.MaxValue || AnalysisPhase is not AnalysisPhase.Completed)
             return false;
 
         var bytecodeChunkHandler = IlevmChunks[programCounter];

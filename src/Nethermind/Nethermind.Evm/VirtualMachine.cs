@@ -764,7 +764,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (typeof(IsPatternChecking) == typeof(TOptimizing))
             {
-                while (ilInfo is not null && (ilInfo.TryExecute(_logger,
+                while (ilInfo.TryExecute(_logger,
                     vmState,
                     in env,
                     in txCtx,
@@ -781,7 +781,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                     ref _returnDataBuffer,
 
-                    ref chunkExecutionResult)))
+                    ref chunkExecutionResult))
                 {
                     switch(chunkExecutionResult.ContractState)
                     {
