@@ -690,9 +690,15 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] storageKeys,
-        BlockParameter blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
     {
+        if (storageKeys.Count > 1000)
+        {
+            return ResultWrapper<AccountProof>.Fail(
+                $"storageKeys: {storageKeys.Count} is over the query limit 1000.",
+                ErrorCodes.InvalidParams);
+        }
+
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
