@@ -26,8 +26,6 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected static readonly byte[] _zeroValue = { 0 };
-
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -145,34 +143,37 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitStorageRoots = true)
+        public void Commit(bool commitRoots = true)
         {
-            Commit(NullStateTracer.Instance, commitStorageRoots);
+            Commit(NullStateTracer.Instance, commitRoots);
         }
 
-        protected readonly struct ChangeTrace
+        protected struct ChangeTrace
         {
+            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+            public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
+
             public ChangeTrace(byte[]? before, byte[]? after)
             {
-                After = after ?? _zeroValue;
-                Before = before ?? _zeroValue;
+                After = after ?? StorageTree.ZeroBytes;
+                Before = before ?? StorageTree.ZeroBytes;
             }
 
             public ChangeTrace(byte[]? after)
             {
-                After = after ?? _zeroValue;
-                Before = _zeroValue;
+                After = after ?? StorageTree.ZeroBytes;
+                Before = StorageTree.ZeroBytes;
             }
 
-            public byte[] Before { get; }
-            public byte[] After { get; }
+            public byte[] Before;
+            public byte[] After;
         }
 
         /// <summary>
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitStorageRoots = true)
+        public void Commit(IStorageTracer tracer, bool commitRoots = true)
         {
             if (_changes.Count == 0)
             {
@@ -183,7 +184,7 @@ namespace Nethermind.State
                 CommitCore(tracer);
             }
 
-            if (commitStorageRoots)
+            if (commitRoots)
             {
                 CommitStorageRoots();
             }
@@ -209,7 +210,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resizeCollections = true)
+        public virtual void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
@@ -285,7 +286,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, _zeroValue);
+                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
                 }
             }
         }

@@ -38,6 +38,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -86,6 +87,10 @@ public partial class BaseEngineModuleTests
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = syncConfig ?? new SyncConfig();
 
+        chain.BlockTree.SyncPivot = (
+            LongConverter.FromString(synchronizationConfig.PivotNumber),
+            synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
+        );
         chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.PoSSwitcher, chain.LogManager);
         BlockCacheService blockCacheService = new();
         InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(

@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Autofac;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -49,19 +47,10 @@ namespace Nethermind.Api
         ISyncModeSelector SyncModeSelector { get; }
         ISyncProgressResolver? SyncProgressResolver { get; }
         ISyncPointers? SyncPointers { get; }
-        IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; }
         IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
-
-        IContainer? ApiWithNetworkServiceContainer { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromApiWithBlockchain(builder)
-                .AddPropertiesFrom<IApiWithNetwork>(this);
-        }
     }
 }
