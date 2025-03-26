@@ -231,9 +231,29 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public void Can_check_config()
+    public void Can_accept_valid_config()
     {
-        IHistoryConfig historyConfig = new HistoryConfig
+        IHistoryConfig validHistoryConfig = new HistoryConfig
+        {
+            HistoryRetentionEpochs = 100000,
+            DropPreMerge = false
+        };
+
+        HistoryPruner historyPruner = new(
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IReceiptStorage>(),
+            Substitute.For<ISpecProvider>(),
+            validHistoryConfig,
+            SecondsPerSlot,
+            LimboLogs.Instance);
+
+        Assert.That(historyPruner.CheckConfig());
+    }
+
+    [Test]
+    public void Can_reject_invalid_config()
+    {
+        IHistoryConfig invalidHistoryConfig = new HistoryConfig
         {
             HistoryRetentionEpochs = 10,
             DropPreMerge = false
@@ -243,7 +263,7 @@ public class HistoryPrunerTests
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
-            historyConfig,
+            invalidHistoryConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
 
