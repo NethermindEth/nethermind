@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -184,8 +185,8 @@ namespace Nethermind.Core.Test.Builders
                 ShardBlobNetworkWrapper wrapper = new(
                     blobs: new byte[blobCount][],
                     commitments: new byte[blobCount][],
-                    proofs: new byte[blobCount][],
-                    ProofVersion.V1
+                    proofs: new byte[proofVersion switch {ProofVersion.V1 => blobCount, ProofVersion.V2 => blobCount * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion))}][],
+                    proofVersion
                     );
 
                 if (!KzgPolynomialCommitments.IsInitialized)
@@ -199,14 +200,28 @@ namespace Nethermind.Core.Test.Builders
                     wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
                     wrapper.Blobs[i][0] = (byte)(i % 256);
                     wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                    wrapper.Proofs[i] = new byte[proofVersion switch { ProofVersion.V1 => Ckzg.Ckzg.BytesPerProof, ProofVersion.V2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
+
+                    byte[] oneBlobProofs = new byte[proofVersion switch { ProofVersion.V1 => Ckzg.Ckzg.BytesPerProof, ProofVersion.V2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
 
                     KzgPolynomialCommitments.KzgifyBlob(
                         wrapper.Blobs[i],
                         wrapper.Commitments[i],
-                        wrapper.Proofs[i],
+                        oneBlobProofs,
                         TestObjectInternal.BlobVersionedHashes[i].AsSpan(),
                         proofVersion);
+
+                    if (proofVersion == ProofVersion.V1)
+                    {
+                        wrapper.Proofs[i] = oneBlobProofs;
+                    }
+                    else
+                    {
+                        int cellProofIndex = 0;
+                        foreach (byte[] cellProof in oneBlobProofs.Chunk(Ckzg.Ckzg.BytesPerProof))
+                        {
+                            wrapper.Proofs[cellProofIndex++] = cellProof;
+                        }
+                    }
                 }
 
                 TestObjectInternal.NetworkWrapper = wrapper;

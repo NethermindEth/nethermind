@@ -15,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
@@ -789,8 +790,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction blobTxAdded = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
-                // .WithProofsAndCellProofs()
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() {IsEip7594Enabled = true})
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(UInt256.Zero)
@@ -800,6 +800,7 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
 
             blobTxReturned.Should().BeEquivalentTo(blobTxAdded);
+            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(Ckzg.Ckzg.CellsPerExtBlob);
 
             blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
             if (isPersistentStorage)
@@ -808,9 +809,6 @@ namespace Nethermind.TxPool.Test
                     .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
                     .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
             }
-
-            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(Ckzg.Ckzg.CellsPerExtBlob);
-            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(1);
         }
 
         private Transaction GetTx(PrivateKey sender)
