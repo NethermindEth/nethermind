@@ -243,6 +243,6 @@ public class HistoryPrunerTests
             SecondsPerSlot,
             LimboLogs.Instance);
 
-        Assert.That(historyPruner.CheckConfig());
+        Assert.That(!historyPruner.CheckConfig());
     }
 }
