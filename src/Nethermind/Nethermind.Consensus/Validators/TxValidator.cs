@@ -235,7 +235,8 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
             : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
             : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Proofs.Length != blobCount && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData
+            : wrapper.Version == ProofVersion.V1 && wrapper.Proofs.Length != blobCount? TxErrorMessages.InvalidBlobData
+            : wrapper.Version == ProofVersion.V2 && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData
             : ValidateBlobs();
 
         ValidationResult ValidateBlobs()
@@ -270,8 +271,8 @@ public sealed class MempoolBlobTxValidator : ITxValidator
                 }
             }
 
-            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
-                   && !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
+            return !(wrapper.Version == ProofVersion.V1 && KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs))
+                   || !(wrapper.Version == ProofVersion.V2 && KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs))
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
         }
