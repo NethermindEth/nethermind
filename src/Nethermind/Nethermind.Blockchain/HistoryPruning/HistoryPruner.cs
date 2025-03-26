@@ -29,10 +29,6 @@ public class HistoryPruner(
     private readonly ulong _epochLength = secondsPerSlot * 32;
     private readonly ulong _minHistoryRetentionEpochs = 82125;
 
-    public class HistoryPrunerException(string message) : Exception(message)
-    {
-    }
-
     public async Task TryPruneHistory(CancellationToken cancellationToken)
     {
         if (!ShouldPruneHistory())
@@ -52,12 +48,14 @@ public class HistoryPruner(
         await _pruneHistoryTask;
     }
 
-    public void CheckConfig()
+    public bool CheckConfig()
     {
         if (historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
         {
-            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
+            _logger.Error($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
+            return false;
         }
+        return true;
     }
 
     private bool ShouldPruneHistory()
