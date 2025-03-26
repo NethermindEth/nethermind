@@ -72,10 +72,13 @@ public static class ReleaseSpecEmit
 
         foreach (var opcode in segmentMetadata.Instructions)
         {
-            method.LoadSpec(locals, false);
-            method.LoadConstant((byte)opcode);
-            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
-            method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+            if(opcode.RequiresAvailabilityCheck())
+            {
+                method.LoadSpec(locals, false);
+                method.LoadConstant((byte)opcode);
+                method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+            }
         }
 
         method.LoadConstant(true);
