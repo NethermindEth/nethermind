@@ -77,13 +77,7 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = new VMConfig
-        {
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisQueueMaxSize = 16,
-            IlEvmAnalysisThreshold = 32,
-            IsIlEvmAggressiveModeEnabled = true
-        };
+        _vmConfig = vmConfig ?? new VMConfig();
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
@@ -92,12 +86,6 @@ public class VirtualMachine : IVirtualMachine
                 break;
             case ILMode.NO_ILVM when logger.IsTrace:
                 _evm = new VirtualMachine<IsTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
-                break;
-            case ILMode.PATTERN_BASED_MODE when !logger.IsTrace:
-                _evm = new VirtualMachine<NotTracing, IsPatternChecking>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
-                break;
-            case ILMode.PATTERN_BASED_MODE when logger.IsTrace:
-                _evm = new VirtualMachine<IsTracing, IsPatternChecking>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
                 break;
             case ILMode.FULL_AOT_MODE when !logger.IsTrace:
                 _evm = new VirtualMachine<NotTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
@@ -169,7 +157,6 @@ public class VirtualMachine : IVirtualMachine
 
     public interface IIsOptimizing { }
     public readonly struct NotOptimizing : IIsOptimizing { }
-    public readonly struct IsPatternChecking : IIsOptimizing { }
     public readonly struct IsPrecompiling : IIsOptimizing { }
 }
 
@@ -809,50 +796,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         var chunkExecutionResult = new ILChunkExecutionState();
         while ((uint)programCounter < codeLength)
         {
-            if (typeof(IsPatternChecking) == typeof(TOptimizing))
-            {
-                while (ilInfo is not null && (ilInfo.TryExecute(_logger,
-                    vmState,
-                    in env,
-                    in txCtx,
-                    in blkCtx,
-
-                    _specProvider.ChainId,
-                    _state,
-                    _blockhashProvider,
-                    vmState.Env.TxExecutionContext.CodeInfoRepository,
-                    spec, _txTracer,
-                    ref programCounter,
-                    ref gasAvailable,
-                    ref stack,
-
-                    ref _returnDataBuffer,
-
-                    ref chunkExecutionResult)))
-                {
-                    switch(chunkExecutionResult.ContractState)
-                    {
-                        case ContractState.Return or ContractState.Revert:
-                            returnData = ((ReadOnlyMemory<byte>)_returnDataBuffer).ToArray();
-                            isRevert = chunkExecutionResult.ContractState == ContractState.Revert;
-                            goto DataReturn;
-                        case ContractState.Finished:
-                            goto EmptyReturn;
-                        case ContractState.Failed:
-                            exceptionType = chunkExecutionResult.ExceptionType;
-                            goto ReturnFailure;
-                        case ContractState.Halted:
-                            returnData = chunkExecutionResult.CallResult;
-                            goto DataReturnNoTrace;
-                    }
-
-                    if (programCounter >= codeLength)
-                    {
-                        goto EmptyReturnNoTrace;
-                    }
-                }
-            }
-
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif

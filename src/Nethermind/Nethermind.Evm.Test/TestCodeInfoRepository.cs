@@ -110,10 +110,6 @@ public class TestCodeInfoRepository : ICodeInfoRepository
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
-        else
-        {
-            Db.Metrics.IncrementCodeDbCache();
-        }
 
         return cachedCodeInfo;
 

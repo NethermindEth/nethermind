@@ -67,39 +67,6 @@ public static class IlAnalyzer
         }
     }
 
-    private static Dictionary<Type, IPatternChunk> _patterns = new Dictionary<Type, IPatternChunk>();
-    internal static void AddPattern(IPatternChunk handler)
-    {
-        lock (_patterns)
-        {
-            _patterns[handler.GetType()] = handler;
-        }
-    }
-    internal static void AddPattern<T>() where T : IPatternChunk
-    {
-        var handler = Activator.CreateInstance<T>();
-        lock (_patterns)
-        {
-            _patterns[typeof(T)] = handler;
-        }
-    }
-    internal static T GetPatternHandler<T>() where T : IPatternChunk
-    {
-        lock (_patterns)
-        {
-            return (T)_patterns[typeof(T)];
-        }
-    }
-
-    public static void Initialize()
-    {
-        Type[] InstructionChunks = typeof(IPatternChunk).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(IPatternChunk))).ToArray();
-        foreach (var chunkType in InstructionChunks)
-        {
-            _patterns[chunkType] = (IPatternChunk)Activator.CreateInstance(chunkType);
-        }
-    }
-
     public static IEnumerable<(int, Instruction,  OpcodeMetadata)> EnumerateOpcodes(byte[] machineCode, Range? slice = null)
     {
         slice ??= 0..machineCode.Length;
@@ -120,9 +87,6 @@ public static class IlAnalyzer
         Metrics.IlvmContractsAnalyzed++;
         switch (mode)
         {
-            case ILMode.PATTERN_BASED_MODE:
-                CheckPatterns(codeInfo.MachineCode.ToArray(), codeInfo.IlInfo);
-                break;
             case ILMode.FULL_AOT_MODE:
                 if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
                 {
@@ -130,30 +94,6 @@ public static class IlAnalyzer
                 }
                 CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
                 break;
-        }
-    }
-
-    internal static void CheckPatterns(byte[] bytecode, IlInfo ilinfo)
-    {
-        ilinfo.IlevmChunks = new InstructionChunk[bytecode.Length];
-        var strippedBytecode = EnumerateOpcodes(bytecode).ToArray();
-
-        foreach ((Type _, IPatternChunk chunkHandler) in _patterns)
-        {
-            for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
-            {
-                bool found = true;
-                for (int j = 0; j < chunkHandler.Pattern.Length && found; j++)
-                {
-                    found = ((byte)strippedBytecode[i + j].Item2 == chunkHandler.Pattern[j]);
-                }
-
-                if (found)
-                {
-                    ilinfo.AddMapping(strippedBytecode[i].Item1, chunkHandler);
-                    i += chunkHandler.Pattern.Length - 1;
-                }
-            }
         }
     }
 

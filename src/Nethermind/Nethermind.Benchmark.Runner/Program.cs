@@ -73,7 +73,7 @@ namespace Nethermind.Benchmark.Runner
             [Option('n', "identifier", Required = false, HelpText = "Benchmark Name")]
             public string Name { get; set; }
 
-            [Option('c', "config", Required = false, HelpText = "EVM configs : 0-STD, 1-PAT, 2-AOT")]
+            [Option('c', "config", Required = false, HelpText = "EVM configs : 0-STD, 2-AOT")]
             public string Config { get; set; }
         }
 
@@ -89,8 +89,6 @@ namespace Nethermind.Benchmark.Runner
 
         public static void Main(string[] args)
         {
-            IlAnalyzer.Initialize();
-
             ParserResult<Options> options = Parser.Default.ParseArguments<Options>(args);
             switch (options.Value.Mode)
             {
