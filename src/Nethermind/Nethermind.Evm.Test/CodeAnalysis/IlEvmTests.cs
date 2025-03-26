@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     internal class IlEvmTests
     {
         private const string PatternField = "_patterns";
-        private const int RepeatCount = 64;
+        private const int RepeatCount = 256;
         public static IEnumerable<(string, Instruction[], byte[], EvmExceptionType, bool)> GetJitBytecodesSamples()
         {
             IEnumerable<(Instruction[], byte[], EvmExceptionType, bool)> GetJitBytecodesSamplesGenerator(bool turnOnAggressiveMode)
