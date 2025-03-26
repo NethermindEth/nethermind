@@ -67,14 +67,6 @@ public class PreBlockCaches
     }
 }
 
-public interface ISingleBlockProcessingCache<TKey, TValue>
-{
-    TValue? GetOrAdd(TKey key, Func<TKey, TValue> valueFactory);
-    bool TryGetValue(TKey key, out TValue value);
-    TValue this[TKey key] { get; set; }
-    bool NoResizeClear();
-}
-
 [Flags]
 public enum CacheType
 {
