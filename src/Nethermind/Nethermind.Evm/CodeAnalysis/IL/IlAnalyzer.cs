@@ -26,7 +26,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 public static class IlAnalyzer
 {
     private static readonly ConcurrentQueue<CodeInfo> _queue = new();
-
+    private static int tasksRunningCount = 0;
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
         if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted)
@@ -39,7 +39,14 @@ public static class IlAnalyzer
 
         if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
         {
-            Task.Run(() => AnalyzeQueue(config, logger));
+            if(tasksRunningCount < config.IlEvmAnalysisQueueMaxSize)
+            {
+                Task.Run(() => {
+                    Interlocked.Increment(ref tasksRunningCount);
+                    AnalyzeQueue(config, logger);
+                    Interlocked.Decrement(ref tasksRunningCount);
+                });
+            }
         }
     }
 
