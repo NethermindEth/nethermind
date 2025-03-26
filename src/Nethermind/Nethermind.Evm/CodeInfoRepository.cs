@@ -51,7 +51,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new(Secp256r1BoringPrecompile.Instance),
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
         }.ToFrozenDictionary();
     }
 

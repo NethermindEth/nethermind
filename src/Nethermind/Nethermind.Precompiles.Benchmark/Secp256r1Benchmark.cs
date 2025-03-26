@@ -10,8 +10,7 @@ public class Secp256r1Benchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles =>
     [
-        Secp256r1BoringPrecompile.Instance, Secp256r1GoBoringPrecompile.Instance, Secp256r1GoPrecompile.Instance,
-        Secp256r1FastCryptoPrecompile.Instance, Secp256r1RustPrecompile.Instance, Secp256r1Precompile.Instance
+        Secp256r1Precompile.Instance
     ];
 
     protected override string InputsDirectory => "secp256r1";

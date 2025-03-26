@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Benchmark
             _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
         }
 
-        [Benchmark]
+        [Benchmark(Baseline = true)]
         public void ExecuteCode()
         {
             _virtualMachine.Run<VirtualMachine.IsTracing>(_evmState, _stateProvider, _txTracer);
@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Reset();
         }
 
-        [Benchmark]
+        [Benchmark(Baseline = true)]
         public void No_machine_running()
         {
             _stateProvider.Reset();

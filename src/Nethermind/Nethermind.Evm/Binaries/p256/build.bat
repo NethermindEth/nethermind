@@ -1,1 +1,0 @@
-gcc -c -O2 -s -DNDEBUG -DBUILD_DLL -march=native -mtune=native p256.c && gcc -shared -o p256.dll p256.o -Wl,--add-stdcall-alias && dumpbin /exports p256.dll

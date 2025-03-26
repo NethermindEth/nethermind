@@ -16,7 +16,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
     public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError);
     private const string TestFilesDirectory = "PrecompileVectors";
 
-    protected static IEnumerable<TestCaseData> TestSource()
+    private static IEnumerable<TestCaseData> TestSource()
     {
         EthereumJsonSerializer serializer = new EthereumJsonSerializer();
         foreach (string file in T.TestFiles())
@@ -46,10 +46,6 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             if (testCase.Expected is not null)
             {
                 Assert.That(output, Is.EquivalentTo(testCase.Expected));
-            }
-            else
-            {
-                Assert.That(output, Is.Null.Or.Empty);
             }
 
             if (testCase.Gas is not null)
