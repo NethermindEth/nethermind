@@ -351,8 +351,6 @@ namespace Nethermind.Core
         public byte[][] Commitments { get; set; } = commitments;
         public byte[][] Blobs { get; set; } = blobs;
         public byte[][] Proofs { get; set; } = proofs;
-        //public byte[][] CellProofs { get; set; } = proofs;
-
     }
 
     public enum ProofVersion : byte

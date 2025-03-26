@@ -219,34 +219,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        // TODO: to be deprecated after Fusaka
-        public TransactionBuilder<T> WithProofsAndCellProofs()
-        {
-            if (TestObjectInternal.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-            {
-                if (!KzgPolynomialCommitments.IsInitialized)
-                {
-                    KzgPolynomialCommitments.InitializeAsync().Wait();
-                }
-
-                wrapper.Proofs = wrapper.Proofs;
-
-                List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
-
-                foreach (byte[] blob in wrapper.Blobs)
-                {
-                    byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
-                    KzgPolynomialCommitments.GetCellProofs(blob, cellProofsOfOneBlob);
-                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
-                    cellProofs.AddRange(cellProofsSeparated);
-                }
-
-                wrapper.Proofs = cellProofs.ToArray();
-            }
-
-            return this;
-        }
-
         public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
         {
             return TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;

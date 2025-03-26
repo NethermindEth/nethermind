@@ -207,16 +207,4 @@ public static class KzgPolynomialCommitments
                 break;
         }
     }
-
-    public static void GetCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
-    {
-        Ckzg.Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
-    }
-
-    public static void GetBlobProof(ReadOnlySpan<byte> blob, Span<byte> blobProof)
-    {
-        byte[] commitment = new byte[Ckzg.Ckzg.BytesPerCommitment];
-        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
-        Ckzg.Ckzg.ComputeBlobKzgProof(blobProof, blob, commitment, _ckzgSetup);
-    }
 }

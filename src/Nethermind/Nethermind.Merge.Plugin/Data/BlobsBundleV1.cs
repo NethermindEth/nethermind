@@ -17,7 +17,6 @@ public class BlobsBundleV1
     public BlobsBundleV1(Block block)
     {
         int blobsCount = 0;
-
         foreach (Transaction? tx in block.Transactions)
         {
             blobsCount += tx?.GetBlobCount() ?? 0;
@@ -26,7 +25,6 @@ public class BlobsBundleV1
         Commitments = new byte[blobsCount][];
         Blobs = new byte[blobsCount][];
         Proofs = new byte[blobsCount][];
-
         int blockIndex = 0;
 
         foreach (Transaction? tx in block.Transactions)

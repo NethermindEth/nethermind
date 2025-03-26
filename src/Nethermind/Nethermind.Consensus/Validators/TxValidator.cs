@@ -270,49 +270,10 @@ public sealed class MempoolBlobTxValidator : ITxValidator
                 }
             }
 
-            // TODO: remove after Fusaka
-            //SetBlobProofsAndCellProofs(transaction, releaseSpec);
-
             return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                    && !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
                 ? TxErrorMessages.InvalidBlobProof
                 : ValidationResult.Success;
-        }
-    }
-
-    // TODO: remove after Fusaka
-    private void SetBlobProofsAndCellProofs(Transaction blobTx, IReleaseSpec releaseSpec)
-    {
-        ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-
-        if (networkWrapper.Version == ProofVersion.V1 && releaseSpec.IsEip7594Enabled)
-        {
-            networkWrapper.Proofs = GetBlobProofs(networkWrapper.Blobs).ToArray();
-        }
-    }
-
-    // TODO: remove after Fusaka
-    private IEnumerable<byte[]> GetCellProofs(byte[][] blobs)
-    {
-        foreach (byte[] blob in blobs)
-        {
-            byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
-            KzgPolynomialCommitments.GetCellProofs(blob, cellProofsOfOneBlob);
-            foreach (byte[] cellProof in cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof))
-            {
-                yield return cellProof;
-            }
-        }
-    }
-
-    // TODO: remove after Fusaka
-    private IEnumerable<byte[]> GetBlobProofs(byte[][] blobs)
-    {
-        foreach (byte[] blob in blobs)
-        {
-            byte[] blobProof = new byte[Ckzg.Ckzg.BytesPerProof];
-            KzgPolynomialCommitments.GetBlobProof(blob, blobProof);
-            yield return blobProof;
         }
     }
 }
