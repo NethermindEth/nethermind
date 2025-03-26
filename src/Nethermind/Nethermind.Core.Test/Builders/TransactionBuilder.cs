@@ -199,7 +199,7 @@ namespace Nethermind.Core.Test.Builders
                     wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
                     wrapper.Blobs[i][0] = (byte)(i % 256);
                     wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                    wrapper.Proofs[i] = new byte[proofVersion switch { ProofVersion.V1 => 1, ProofVersion.V2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
+                    wrapper.Proofs[i] = new byte[proofVersion switch { ProofVersion.V1 => Ckzg.Ckzg.BytesPerProof, ProofVersion.V2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
 
                     KzgPolynomialCommitments.KzgifyBlob(
                         wrapper.Blobs[i],
