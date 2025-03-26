@@ -28,6 +28,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -797,8 +798,8 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_proof_withTooManyKeys()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), $"[{string.Join(", ", Enumerable.Range(1, 1_005).Select(i => "\"" + i.ToHexString() + "\""))}]", "0x2");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"storageKeys: 1005 is over the query limit 1000.\"},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), $"[{string.Join(", ", Enumerable.Range(1, EthRpcModule.GetProofStorageKeyLimit + 1).Select(i => "\"" + i.ToHexString() + "\""))}]", "0x2");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"storageKeys: 1001 is over the query limit 1000.\"},\"id\":67}"));
     }
 
     [Test]
