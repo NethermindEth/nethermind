@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         {
             var rng = RandomNumberGenerator.Create();
             var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            var validResult = new byte[] {1}.PadLeft(32);
+            var validResult = new byte[] { 1 }.PadLeft(32);
 
             for (var i = 0; i < 100; i++)
             {
