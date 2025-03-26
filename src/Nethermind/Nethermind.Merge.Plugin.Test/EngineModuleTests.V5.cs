@@ -299,8 +299,7 @@ public partial class EngineModuleTests
             prevRandao = prevRandao.ToString(),
             suggestedFeeRecipient = feeRecipient.ToString(),
             withdrawals = withdrawals ?? [],
-            parentBeaconBlockRoot = Keccak.Zero,
-            // inclusionListTransactions
+            parentBeaconBlockRoot = Keccak.Zero
         };
 
         string?[] @params =
