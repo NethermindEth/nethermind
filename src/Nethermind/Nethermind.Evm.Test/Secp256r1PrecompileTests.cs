@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -39,6 +40,32 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(success, Is.True);
                 Assert.That(output.ToArray(), Is.EquivalentTo(Array.Empty<byte>()));
+            }
+        }
+
+        [Test]
+        public void Validates_Random_ECDsa_Signatures()
+        {
+            var rng = RandomNumberGenerator.Create();
+            var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var validResult = new byte[] {1}.PadLeft(32);
+
+            for (var i = 0; i < 100; i++)
+            {
+                var hash = new byte[32];
+                rng.GetBytes(hash);
+
+                ECParameters pub = ecdsa.ExportParameters(false);
+                byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                byte[] input = [.. hash, .. sig, .. pub.Q.X, .. pub.Q.Y];
+
+                (ReadOnlyMemory<byte> output, var success) = Precompile().Run(input, Prague.Instance);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(success, Is.True);
+                    Assert.That(output.ToArray(), Is.EquivalentTo(validResult), $"#{i}: {input.ToHexString()}");
+                }
             }
         }
     }

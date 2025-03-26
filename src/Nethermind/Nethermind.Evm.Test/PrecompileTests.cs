@@ -47,6 +47,10 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             {
                 Assert.That(output, Is.EquivalentTo(testCase.Expected));
             }
+            else
+            {
+                Assert.That(output, Is.Null.Or.Empty);
+            }
 
             if (testCase.Gas is not null)
             {
