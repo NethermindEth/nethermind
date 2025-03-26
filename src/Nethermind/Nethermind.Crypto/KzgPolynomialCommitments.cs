@@ -6,7 +6,6 @@ using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -22,7 +21,7 @@ public static class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
     public const byte BytesPerBlobVersionedHash = 32;
 
-    private static IntPtr _ckzgSetup = IntPtr.Zero;
+    internal static IntPtr _ckzgSetup = IntPtr.Zero;
 
     private static Task? _initializeTask;
 
@@ -187,24 +186,5 @@ public static class KzgPolynomialCommitments
             ArrayPool<ulong>.Shared.Return(indicesArray);
         }
     }
-
-    /// <summary>
-    /// Method to generate correct data for tests only, not safe
-    /// </summary>
-    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1, ProofVersion proofVersion)
-    {
-        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
-        TryComputeCommitmentHashV1(commitment, hashV1);
-
-        switch (proofVersion)
-        {
-            case ProofVersion.V1:
-                Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
-                break;
-            case ProofVersion.V2:
-                Span<byte> cells = stackalloc byte[Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob];
-                Ckzg.Ckzg.ComputeCellsAndKzgProofs(cells, proof, blob, _ckzgSetup);
-                break;
-        }
-    }
 }
+

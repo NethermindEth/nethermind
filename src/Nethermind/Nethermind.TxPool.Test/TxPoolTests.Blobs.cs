@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -662,31 +661,32 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] blobTxs = new Transaction[poolSize * 2];
 
+            IBlobProofsManager blobProofsManager = IBlobProofsManager.For(ProofVersion.V1);
+
             // adding 2x more txs than pool capacity. First half will be evicted
             for (int i = 0; i < poolSize * 2; i++)
             {
                 EnsureSenderBalance(TestItem.Addresses[i], UInt256.MaxValue);
 
                 blobTxs[i] = Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields()
+                    .WithShardBlobTxTypeAndFields(isMempoolTx: !uniqueBlobs)
                     .WithMaxFeePerGas(1.GWei() + (UInt256)i)
                     .WithMaxPriorityFeePerGas(1.GWei() + (UInt256)i)
                     .WithMaxFeePerBlobGas(1000.Wei() + (UInt256)i)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
 
                 // making blobs unique. Otherwise, all txs have the same blob
-                if (uniqueBlobs
-                    && blobTxs[i].NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                if (uniqueBlobs)
                 {
-                    wrapper.Blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob];
-                    wrapper.Blobs[0][0] = (byte)(i % 256);
+                    byte[] blobs = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    blobs[0] = (byte)(i % 256);
 
-                    KzgPolynomialCommitments.KzgifyBlob(
-                        wrapper.Blobs[0],
-                        wrapper.Commitments[0],
-                        wrapper.Proofs[0],
-                        blobTxs[i].BlobVersionedHashes[0].AsSpan(),
-                        ProofVersion.V1);
+                    var networkWrapper = blobProofsManager.AllocateWrapper(blobs);
+                    blobProofsManager.ComputeProofsAndCommitments(networkWrapper);
+                    byte[][] hashes = blobProofsManager.ComputeHashes(networkWrapper);
+
+                    blobTxs[i].NetworkWrapper = networkWrapper;
+                    blobTxs[i].BlobVersionedHashes = hashes;
                 }
 
                 blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();
