@@ -95,9 +95,9 @@ public class BatchDecoder
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
         var parser = new BinaryMemoryReader(source);
-        while (source.Length != 0)
+        while (parser.HasRemainder)
         {
-            byte type = source.TakeAndMove(1).Span[0];
+            byte type = parser.TakeByte();
             if (type != 1)
             {
                 throw new NotSupportedException($"Only span batches are supported. Got type {type}");
@@ -120,7 +120,7 @@ public class BatchDecoder
         ulong blockCount = reader.Read(Protobuf.DecodeULong);
         BigInteger originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
 
-        ulong[] blockTransactionCounts = new ulong[blockCount];
+        ulong[] blockTransactionCounts = new ulong[blockCount]; // Diff `[0] == 11` instead of `[0] == 1`
         ulong totalTxCount = 0;
         for (int i = 0; i < (int)blockCount; ++i)
         {

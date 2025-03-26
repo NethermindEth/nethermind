@@ -53,7 +53,9 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
         return m.Span[0];
     }
 
-    public ReadOnlyMemory<byte> Remainder() => memory[_offset..];
+    public ReadOnlyMemory<byte> Remainder => memory[_offset..];
+
+    public bool HasRemainder => _offset < memory.Length;
 
     public TResult Read<TResult>(Func<BinaryMemoryReader, TResult> parser)
     {
@@ -105,7 +107,7 @@ public static class TxParser
             type = 0;
         }
 
-        Rlp.ValueDecoderContext decoder = new(reader.Remainder().Span);
+        Rlp.ValueDecoderContext decoder = new(reader.Remainder.Span);
         if (!decoder.IsSequenceNext())
         {
             throw new FormatException("Invalid tx data");
