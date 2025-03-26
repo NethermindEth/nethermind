@@ -39,6 +39,8 @@ public class HistoryPrunerTests
         var head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
+        // n.b. technically invalid, should be at least 82125 epochs
+        // however not feasible to test this
         IHistoryConfig historyConfig = new HistoryConfig
         {
             HistoryRetentionEpochs = 2,
@@ -58,7 +60,6 @@ public class HistoryPrunerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(historyPruner.CheckConfig());
             Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
             Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
             Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(0), Is.Not.Null, "Genesis block info should still exist");
