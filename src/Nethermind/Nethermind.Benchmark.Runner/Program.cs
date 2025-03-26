@@ -73,7 +73,7 @@ namespace Nethermind.Benchmark.Runner
             [Option('n', "identifier", Required = false, HelpText = "Benchmark Name")]
             public string Name { get; set; }
 
-            [Option('c', "config", Required = false, HelpText = "EVM configs : 0-STD, 1-PAT, 2-AOT")]
+            [Option('c', "config", Required = false, HelpText = "EVM configs : 0-STD, 1-PAT")]
             public string Config { get; set; }
         }
 

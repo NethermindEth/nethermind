@@ -41,8 +41,8 @@ namespace Nethermind.Evm.Benchmark
         void Run();
         void Reset();
     }
-    public struct LocalSetup<TIsCompiling> : ILocalSetup
-        where TIsCompiling : struct, VirtualMachine.IIsOptimizing
+    public struct LocalSetup<TIsOptimizing> : ILocalSetup
+        where TIsOptimizing : struct, VirtualMachine.IIsOptimizing
     {
 
         internal delegate CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Benchmark
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
-        private VirtualMachine<VirtualMachine.NotTracing, TIsCompiling> _virtualMachine;
+        private VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing> _virtualMachine;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
@@ -70,9 +70,7 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig = new VMConfig();
 
-            vmConfig.IlEvmEnabledMode = typeof(TIsCompiling) == typeof(VirtualMachine.IsPrecompiling)
-                ? ILMode.FULL_AOT_MODE
-                : typeof(TIsCompiling) == typeof(VirtualMachine.IsPatternChecking)
+            vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPatternChecking)
                 ? ILMode.PATTERN_BASED_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
@@ -91,7 +89,7 @@ namespace Nethermind.Evm.Benchmark
 
             _logger = logmanager.GetClassLogger();
 
-            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
+            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
             var address = InsertCode(bytecode);
 
@@ -273,9 +271,6 @@ namespace Nethermind.Evm.Benchmark
                     case ILMode.PATTERN_BASED_MODE:
                         yield return new LocalSetup<IsPatternChecking>("ILEVM::2::pat::" + benchName, bytecode);
                         break;
-                    case ILMode.FULL_AOT_MODE:
-                        yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
-                        break;
                 }
             }
 
@@ -296,9 +291,6 @@ namespace Nethermind.Evm.Benchmark
                         break;
                     case ILMode.PATTERN_BASED_MODE:
                         yield return new LocalSetup<IsPatternChecking>("ILEVM::2::pat::" + benchName, bytecode);
-                        break;
-                    case ILMode.FULL_AOT_MODE:
-                        yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
                         break;
                 }
             }
@@ -342,9 +334,6 @@ namespace Nethermind.Evm.Benchmark
                     break;
                 case ILMode.PATTERN_BASED_MODE:
                     yield return new LocalSetup<IsPatternChecking>("ILEVM::1::pat::" + BenchmarkName, bytecode);
-                    break;
-                case ILMode.FULL_AOT_MODE:
-                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + BenchmarkName, bytecode);
                     break;
             }
         }

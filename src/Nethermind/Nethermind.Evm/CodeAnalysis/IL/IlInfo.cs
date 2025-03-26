@@ -16,7 +16,6 @@ public static class ILMode
 {
     public const int NO_ILVM            = 0b00000000;
     public const int PATTERN_BASED_MODE = 0b00000001;
-    public const int FULL_AOT_MODE      = 0b00000010;
 }
 
 public enum AnalysisPhase
@@ -43,8 +42,6 @@ internal class IlInfo
 
     // assumes small number of ILed
     public InstructionChunk[] IlevmChunks { get; set; }
-
-    public PrecompiledContract? PrecompiledContract { get; set; }
 
     public void AddMapping(int index, InstructionChunk handler)
     {

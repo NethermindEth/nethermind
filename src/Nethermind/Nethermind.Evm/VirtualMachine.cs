@@ -77,13 +77,7 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = new VMConfig
-        {
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisQueueMaxSize = 16,
-            IlEvmAnalysisThreshold = 32,
-            IsIlEvmAggressiveModeEnabled = true
-        };
+        _vmConfig = vmConfig ?? new VMConfig();
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
@@ -98,12 +92,6 @@ public class VirtualMachine : IVirtualMachine
                 break;
             case ILMode.PATTERN_BASED_MODE when logger.IsTrace:
                 _evm = new VirtualMachine<IsTracing, IsPatternChecking>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
-                break;
-            case ILMode.FULL_AOT_MODE when !logger.IsTrace:
-                _evm = new VirtualMachine<NotTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
-                break;
-            case ILMode.FULL_AOT_MODE when logger.IsTrace:
-                _evm = new VirtualMachine<IsTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
                 break;
         }
     }
@@ -170,7 +158,6 @@ public class VirtualMachine : IVirtualMachine
     public interface IIsOptimizing { }
     public readonly struct NotOptimizing : IIsOptimizing { }
     public readonly struct IsPatternChecking : IIsOptimizing { }
-    public readonly struct IsPrecompiling : IIsOptimizing { }
 }
 
 public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
@@ -719,40 +706,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
-
-        if(typeof(IsPrecompiling) == typeof(TOptimizing))
-        {
-            if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
-            {
-                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
-
-                ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
-                PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
-                int programCounter = vmState.ProgramCounter;
-                ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                if (precompiledContract(ref code,
-                    _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
-                    ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger,
-                    ref chunkExecutionState))
-                {
-                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
-                    Metrics.IlvmAotPrecompiledCalls--; // to compensate for the increment at the beginning of the next continuation 
-                    return new CallResult(chunkExecutionState.CallResult);
-                }
-
-                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-
-                switch(chunkExecutionState.ContractState)
-                {
-                    case ContractState.Return or ContractState.Revert:
-                       return new CallResult(_returnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
-                    case ContractState.Failed:
-                        return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
-                    default:
-                        return CallResult.Empty;
-                }
-            }
-        } 
 
         // Struct generic parameter is used to burn out all the if statements
         // and inner code by typeof(TTracing) == typeof(NotTracing)
