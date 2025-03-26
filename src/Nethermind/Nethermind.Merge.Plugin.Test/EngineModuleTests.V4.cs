@@ -363,7 +363,7 @@ public partial class EngineModuleTests
         }
 
         ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new()
+        PayloadAttributes payloadAttributes = new PayloadAttributes()
         {
             Timestamp = timestamp,
             PrevRandao = random,
