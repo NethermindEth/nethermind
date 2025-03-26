@@ -108,7 +108,8 @@ internal static class SetupCli
                 parseResult.GetValue(maxFeePerBlobGasOption) ?? parseResult.GetValue(maxFeePerDataGasOptionObsolete),
                 parseResult.GetValue(feeMultiplierOption),
                 parseResult.GetValue(maxPriorityFeeGasOption),
-                parseResult.GetValue(waitOption), spec);
+                parseResult.GetValue(waitOption),
+                spec);
         });
     }
 
@@ -332,7 +333,7 @@ internal static class SetupCli
             HelpName = "fee"
         };
         CliOption<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
-        CliOption<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
+        CliOption<string> forkOption = new("--fork") { Description = "Specify fork for max blob count, target blob count, proof type" };
 
         command.Add(fileOption);
         command.Add(rpcUrlOption);
