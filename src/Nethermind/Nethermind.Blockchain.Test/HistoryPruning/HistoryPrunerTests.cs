@@ -41,7 +41,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryPruneEpochs = 2,
+            HistoryRetentionEpochs = 2,
             DropPreMerge = false
         };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -118,7 +118,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryPruneEpochs = null,
+            HistoryRetentionEpochs = null,
             DropPreMerge = true
         };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -192,7 +192,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryPruneEpochs = null,
+            HistoryRetentionEpochs = null,
             DropPreMerge = false
         };
 
@@ -231,7 +231,7 @@ public class HistoryPrunerTests
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryPruneEpochs = 10,
+            HistoryRetentionEpochs = 10,
             DropPreMerge = false
         };
 

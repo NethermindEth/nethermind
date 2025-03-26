@@ -27,7 +27,7 @@ public class HistoryPruner(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly bool _enabled = historyConfig.Enabled;
     private readonly ulong _epochLength = secondsPerSlot * 32;
-    private readonly ulong _minHistoryPruneEpochs = 82125;
+    private readonly ulong _minHistoryRetentionEpochs = 82125;
 
     public class HistoryPrunerException(string message) : Exception(message)
     {
@@ -54,9 +54,9 @@ public class HistoryPruner(
 
     public void CheckConfig()
     {
-        if (historyConfig.HistoryPruneEpochs < _minHistoryPruneEpochs)
+        if (historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
         {
-            throw new HistoryPrunerException($"HistoryPruneEpochs must be at least {_minHistoryPruneEpochs}.");
+            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
     }
 
@@ -109,9 +109,9 @@ public class HistoryPruner(
     {
         ulong cutoffTimestamp = 0;
 
-        if (historyConfig.HistoryPruneEpochs.HasValue)
+        if (historyConfig.HistoryRetentionEpochs.HasValue)
         {
-            cutoffTimestamp = blockTree.Head!.Timestamp - (historyConfig.HistoryPruneEpochs.Value * _epochLength);
+            cutoffTimestamp = blockTree.Head!.Timestamp - (historyConfig.HistoryRetentionEpochs.Value * _epochLength);
         }
 
         if (historyConfig.DropPreMerge)

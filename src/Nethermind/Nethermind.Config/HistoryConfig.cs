@@ -5,8 +5,8 @@ namespace Nethermind.Config;
 
 public class HistoryConfig : IHistoryConfig
 {
-    public bool Enabled => HistoryPruneEpochs is not null || DropPreMerge;
+    public bool Enabled => HistoryRetentionEpochs is not null || DropPreMerge;
 
-    public ulong? HistoryPruneEpochs { get; set; } = null;
+    public ulong? HistoryRetentionEpochs { get; set; } = null;
     public bool DropPreMerge { get; set; } = false;
 }

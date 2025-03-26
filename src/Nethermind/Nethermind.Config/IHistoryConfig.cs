@@ -11,7 +11,7 @@ public interface IHistoryConfig : IConfig
     [ConfigItem(
         Description = "The number of epochs to retain historical blocks and receipts. Set to null for unlimited retention. Must be at least 82125.",
         DefaultValue = "null")]
-    ulong? HistoryPruneEpochs { get; set; }
+    ulong? HistoryRetentionEpochs { get; set; }
 
     [ConfigItem(
         Description = "Whether to drop pre-merge blocks and receipts.",
