@@ -21,5 +21,6 @@ namespace Nethermind.Trie.Pruning
         public long PrunePersistedNodeMinimumTarget => 0;
 
         public int TrackedPastKeyCount => 0;
+        public int ShardBit => 0;
     }
 }

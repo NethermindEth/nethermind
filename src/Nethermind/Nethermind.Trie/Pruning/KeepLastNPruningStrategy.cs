@@ -17,4 +17,5 @@ public class KeepLastNPruningStrategy(IPruningStrategy baseStrategy, int depth) 
     public long PrunePersistedNodeMinimumTarget => baseStrategy.PrunePersistedNodeMinimumTarget;
 
     public int TrackedPastKeyCount => baseStrategy.TrackedPastKeyCount;
+    public int ShardBit => baseStrategy.ShardBit;
 }

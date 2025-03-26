@@ -104,11 +104,11 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections = false)
+        public void Reset(bool resetBlockChanges = true)
         {
-            _stateProvider.Reset(resizeCollections);
-            _persistentStorageProvider.Reset(resizeCollections);
-            _transientStorageProvider.Reset(resizeCollections);
+            _stateProvider.Reset(resetBlockChanges);
+            _persistentStorageProvider.Reset(resetBlockChanges);
+            _transientStorageProvider.Reset(resetBlockChanges);
         }
         public void WarmUp(AccessList? accessList)
         {
@@ -224,17 +224,17 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(commitStorageRoots);
-            _transientStorageProvider.Commit(commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, isGenesis);
+            _persistentStorageProvider.Commit(commitRoots);
+            _transientStorageProvider.Commit(commitRoots);
+            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
         }
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
-            _transientStorageProvider.Commit(tracer, commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+            _persistentStorageProvider.Commit(tracer, commitRoots);
+            _transientStorageProvider.Commit(tracer, commitRoots);
+            _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
@@ -253,9 +253,9 @@ namespace Nethermind.State
             _stateProvider.Restore(snapshot.StateSnapshot);
         }
 
-        internal void Restore(int state, int persistantStorage, int transientStorage)
+        internal void Restore(int state, int persistentStorage, int transientStorage)
         {
-            Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
+            Restore(new Snapshot(state, new Snapshot.Storage(persistentStorage, transientStorage)));
         }
 
         public void SetNonce(Address address, in UInt256 nonce)

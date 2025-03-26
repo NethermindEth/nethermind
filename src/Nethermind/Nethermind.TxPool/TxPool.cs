@@ -344,7 +344,7 @@ namespace Nethermind.TxPool
                 if (blockTx.SupportsBlobs)
                 {
                     blobTxs++;
-                    blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
+                    blobs += blockTx.GetBlobCount();
 
                     if (_blobReorgsSupportEnabled)
                     {

@@ -109,7 +109,7 @@ public class GethStyleTracer(
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, worldState, specProvider);
         try
         {
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
@@ -179,7 +179,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(txHash);
 
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, worldState, specProvider);
 
         try
         {
@@ -193,7 +193,7 @@ public class GethStyleTracer(
         }
     }
 
-    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
+    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
@@ -217,7 +217,7 @@ public class GethStyleTracer(
         }
 
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, worldState, specProvider);
         try
         {
             _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));

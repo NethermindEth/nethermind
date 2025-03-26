@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -20,10 +21,12 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
     {
         private readonly AuRaNethermindApi _api;
         private readonly AuRaChainSpecEngineParameters _parameters;
+        private readonly IPoSSwitcher _poSSwitcher;
 
-        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
+        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
         {
             _api = api;
+            _poSSwitcher = poSSwitcher;
             _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         }
@@ -59,10 +62,9 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
         {
             base.InitSealEngine();
 
-            if (_api.PoSSwitcher is null) throw new StepDependencyException(nameof(_api.PoSSwitcher));
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            _api.SealValidator = new Plugin.MergeSealValidator(_api.PoSSwitcher!, _api.SealValidator!);
+            _api.SealValidator = new Plugin.MergeSealValidator(_poSSwitcher!, _api.SealValidator!);
         }
     }
 }

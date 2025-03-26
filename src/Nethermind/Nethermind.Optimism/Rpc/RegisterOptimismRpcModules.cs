@@ -5,6 +5,7 @@ using System;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
@@ -22,10 +23,12 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     private readonly OptimismNethermindApi _api;
     private readonly ILogger _logger;
     private readonly IOptimismConfig _config;
+    private readonly IPoSSwitcher _poSSwitcher;
 
-    public RegisterOptimismRpcModules(INethermindApi api) : base(api)
+    public RegisterOptimismRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher) : base(api, poSSwitcher)
     {
         _api = (OptimismNethermindApi)api;
+        _poSSwitcher = poSSwitcher;
         _config = _api.Config<IOptimismConfig>();
         _logger = _api.LogManager.GetClassLogger();
     }
@@ -96,15 +99,20 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
 
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         OptimismTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
             _api.BlockTree,
             JsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            secondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             _api.SpecProvider,
-            _api.PoSSwitcher,
+            _poSSwitcher,
             _api.LogManager,
             _api.L1CostHelper,
             _api.SpecHelper,

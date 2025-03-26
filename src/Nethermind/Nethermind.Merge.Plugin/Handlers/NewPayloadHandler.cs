@@ -134,7 +134,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // because blocks would be ignored with this check:
         // block.Header.Number <= _syncConfig.PivotNumberParsed
         bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
-        if (hasNeverBeenInSync && block.Header.Number <= _syncConfig.PivotNumberParsed)
+        if (hasNeverBeenInSync && block.Header.Number <= _blockTree.SyncPivot.BlockNumber)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;
