@@ -790,7 +790,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction blobTxAdded = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() {IsEip7594Enabled = true})
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(UInt256.Zero)

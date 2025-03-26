@@ -185,7 +185,7 @@ namespace Nethermind.Core.Test.Builders
                 ShardBlobNetworkWrapper wrapper = new(
                     blobs: new byte[blobCount][],
                     commitments: new byte[blobCount][],
-                    proofs: new byte[proofVersion switch {ProofVersion.V1 => blobCount, ProofVersion.V2 => blobCount * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion))}][],
+                    proofs: new byte[proofVersion switch { ProofVersion.V1 => blobCount, ProofVersion.V2 => blobCount * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }][],
                     proofVersion
                     );
 
