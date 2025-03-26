@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -22,7 +23,7 @@ public static class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
     public const byte BytesPerBlobVersionedHash = 32;
 
-    private static IntPtr _ckzgSetup = IntPtr.Zero;
+    internal static IntPtr _ckzgSetup = IntPtr.Zero;
 
     private static Task? _initializeTask;
 
@@ -188,26 +189,6 @@ public static class KzgPolynomialCommitments
         }
     }
 
-    /// <summary>
-    /// Method to generate correct data for tests only, not safe
-    /// </summary>
-    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1, ProofVersion proofVersion)
-    {
-        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
-        TryComputeCommitmentHashV1(commitment, hashV1);
-
-        switch (proofVersion)
-        {
-            case ProofVersion.V1:
-                Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
-                break;
-            case ProofVersion.V2:
-                Span<byte> cells = stackalloc byte[Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob];
-                Ckzg.Ckzg.ComputeCellsAndKzgProofs(cells, proof, blob, _ckzgSetup);
-                break;
-        }
-    }
-
     public static void GetCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
     {
         Ckzg.Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
@@ -218,5 +199,164 @@ public static class KzgPolynomialCommitments
         byte[] commitment = new byte[Ckzg.Ckzg.BytesPerCommitment];
         Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
         Ckzg.Ckzg.ComputeBlobKzgProof(blobProof, blob, commitment, _ckzgSetup);
+    }
+}
+
+public interface IBlobProofsManager
+{
+    abstract ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
+
+    byte[][] ComputeHashes(ShardBlobNetworkWrapper wrapper)
+    {
+        byte[][] hashes = new byte[wrapper.Blobs.Length][];
+        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        {
+            hashes[i] = new byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
+            KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i], hashes[i]);
+        }
+        return hashes;
+    }
+
+    abstract void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
+    abstract bool ValidateLengths(ShardBlobNetworkWrapper blobs);
+    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
+    {
+        Span<byte> hash = stackalloc byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
+
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            if (blobVersionedHashes[i].Length != KzgPolynomialCommitments.BytesPerBlobVersionedHash || blobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < blobs.Blobs.Length; i++)
+        {
+            if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobs.Commitments[i], hash) || !hash.SequenceEqual(blobVersionedHashes[i].AsSpan()))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    abstract bool ValidateProofs(ShardBlobNetworkWrapper blobs);
+
+    static IBlobProofsManager For
+        (ProofVersion version) => version switch
+        {
+            ProofVersion.V1 => BlobProofsManagerV1.Instance,
+            ProofVersion.V2 => BlobProofsManagerV2.Instance,
+            _ => throw new NotSupportedException(),
+        };
+}
+
+internal class BlobProofsManagerV1 : IBlobProofsManager
+{
+    public static BlobProofsManagerV1 Instance { get; } = new BlobProofsManagerV1();
+
+    public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
+    {
+        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobs.Length][], new byte[blobs.Length][], ProofVersion.V1);
+
+        for (int i = 0; i < blobs.Length; i++)
+        {
+            result.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
+            result.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+        }
+
+        return result;
+    }
+
+    public void ComputeProofsAndCommitments(ShardBlobNetworkWrapper wrapper)
+    {
+        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        {
+            Ckzg.Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments._ckzgSetup);
+        }
+    }
+
+    public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
+    {
+        if (wrapper.Blobs.Length != wrapper.Commitments.Length || wrapper.Blobs.Length != wrapper.Proofs.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        {
+            if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment || wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public bool ValidateProofs(ShardBlobNetworkWrapper blobs)
+    {
+        return KzgPolynomialCommitments.AreProofsValid(blobs.Blobs, blobs.Commitments, blobs.Proofs);
+    }
+}
+internal class BlobProofsManagerV2 : IBlobProofsManager
+{
+    public static BlobProofsManagerV1 Instance { get; } = new BlobProofsManagerV1();
+
+    public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
+    {
+        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobs.Length][], new byte[blobs.Length * Ckzg.Ckzg.CellsPerExtBlob][], ProofVersion.V1);
+
+        for (int i = 0; i < blobs.Length; i++)
+        {
+            result.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
+            result.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+        }
+
+        return result;
+    }
+
+    public void ComputeProofsAndCommitments(ShardBlobNetworkWrapper wrapper)
+    {
+        Span<byte> cells = stackalloc byte[Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob];
+
+        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        {
+            Ckzg.Ckzg.ComputeCellsAndKzgProofs(cells, wrapper.Proofs[i], wrapper.Blobs[i], KzgPolynomialCommitments._ckzgSetup);
+        }
+    }
+
+    public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
+    {
+        if (wrapper.Blobs.Length != wrapper.Commitments.Length || wrapper.Blobs.Length != wrapper.Proofs.Length * Ckzg.Ckzg.CellsPerExtBlob)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        {
+            if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < wrapper.Proofs.Length; i++)
+        {
+            if (wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+            {
+                return false;
+            }
+
+        }
+
+        return true;
+    }
+
+    public bool ValidateProofs(ShardBlobNetworkWrapper blobs)
+    {
+        return KzgPolynomialCommitments.AreCellProofsValid(blobs.Blobs, blobs.Commitments, blobs.Proofs);
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -178,37 +177,24 @@ namespace Nethermind.Core.Test.Builders
 
             if (isMempoolTx)
             {
-                ProofVersion proofVersion = spec?.GetBlobProofVersion() ?? ProofVersion.V1;
+                IBlobProofsManager proofsManager = IBlobProofsManager.For(spec?.GetBlobProofVersion() ?? ProofVersion.V1);
 
-                TestObjectInternal.BlobVersionedHashes = new byte[blobCount][];
-                ShardBlobNetworkWrapper wrapper = new(
-                    blobs: new byte[blobCount][],
-                    commitments: new byte[blobCount][],
-                    proofs: new byte[blobCount][],
-                    ProofVersion.V1
-                    );
+                ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([.. Enumerable.Range(1, blobCount).Select(i =>
+                {
+                    byte[] blob = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    blob[0] = (byte)(i % 256);
+                    return blob;
+                })]);
+
 
                 if (!KzgPolynomialCommitments.IsInitialized)
                 {
                     KzgPolynomialCommitments.InitializeAsync().Wait();
                 }
 
-                for (int i = 0; i < blobCount; i++)
-                {
-                    TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
-                    wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
-                    wrapper.Blobs[i][0] = (byte)(i % 256);
-                    wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                    wrapper.Proofs[i] = new byte[proofVersion switch { ProofVersion.V1 => 1, ProofVersion.V2 => Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, _ => throw new ArgumentException(null, nameof(proofVersion)) }];
+                proofsManager.ComputeProofsAndCommitments(wrapper);
 
-                    KzgPolynomialCommitments.KzgifyBlob(
-                        wrapper.Blobs[i],
-                        wrapper.Commitments[i],
-                        wrapper.Proofs[i],
-                        TestObjectInternal.BlobVersionedHashes[i].AsSpan(),
-                        proofVersion);
-                }
-
+                TestObjectInternal.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
                 TestObjectInternal.NetworkWrapper = wrapper;
             }
             else
@@ -219,33 +205,33 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        // TODO: to be deprecated after Fusaka
-        public TransactionBuilder<T> WithProofsAndCellProofs()
-        {
-            if (TestObjectInternal.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-            {
-                if (!KzgPolynomialCommitments.IsInitialized)
-                {
-                    KzgPolynomialCommitments.InitializeAsync().Wait();
-                }
+        //// TODO: to be deprecated after Fusaka
+        //public TransactionBuilder<T> WithProofsAndCellProofs()
+        //{
+        //    if (TestObjectInternal.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+        //    {
+        //        if (!KzgPolynomialCommitments.IsInitialized)
+        //        {
+        //            KzgPolynomialCommitments.InitializeAsync().Wait();
+        //        }
 
-                wrapper.Proofs = wrapper.Proofs;
+        //        wrapper.Proofs = wrapper.Proofs;
 
-                List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+        //        List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
-                foreach (byte[] blob in wrapper.Blobs)
-                {
-                    byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
-                    KzgPolynomialCommitments.GetCellProofs(blob, cellProofsOfOneBlob);
-                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
-                    cellProofs.AddRange(cellProofsSeparated);
-                }
+        //        foreach (byte[] blob in wrapper.Blobs)
+        //        {
+        //            byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
+        //            KzgPolynomialCommitments.GetCellProofs(blob, cellProofsOfOneBlob);
+        //            byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
+        //            cellProofs.AddRange(cellProofsSeparated);
+        //        }
 
-                wrapper.Proofs = cellProofs.ToArray();
-            }
+        //        wrapper.Proofs = cellProofs.ToArray();
+        //    }
 
-            return this;
-        }
+        //    return this;
+        //}
 
         public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
         {

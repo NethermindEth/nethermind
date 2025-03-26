@@ -231,52 +231,20 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        int blobCount = transaction.BlobVersionedHashes!.Length;
-        return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
-            : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Proofs.Length != blobCount && wrapper.Proofs.Length != blobCount * Ckzg.Ckzg.CellsPerExtBlob ? TxErrorMessages.InvalidBlobData
-            : ValidateBlobs();
-
-        ValidationResult ValidateBlobs()
+        return transaction switch
         {
-            for (int i = 0; i < blobCount; i++)
-            {
-                if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob)
-                {
-                    return TxErrorMessages.ExceededBlobSize;
-                }
+            { NetworkWrapper: null } => ValidationResult.Success,
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
+            { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
+        };
 
-                if (wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
-                {
-                    return TxErrorMessages.ExceededBlobCommitmentSize;
-                }
-            }
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        {
+            IBlobProofsManager proofsManager = IBlobProofsManager.For(wrapper.Version);
 
-            foreach (byte[] proof in wrapper.Proofs)
-            {
-                if (proof.Length != Ckzg.Ckzg.BytesPerProof)
-                {
-                    return TxErrorMessages.InvalidBlobProofSize;
-                }
-            }
-
-            Span<byte> hash = stackalloc byte[32];
-            for (int i = 0; i < blobCount; i++)
-            {
-                if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i].AsSpan(), hash) || !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
-                {
-                    return TxErrorMessages.InvalidBlobCommitmentHash;
-                }
-            }
-
-            // TODO: remove after Fusaka
-            //SetBlobProofsAndCellProofs(transaction, releaseSpec);
-
-            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
-                   && !KzgPolynomialCommitments.AreCellProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
-                ? TxErrorMessages.InvalidBlobProof
-                : ValidationResult.Success;
+            return proofsManager.ValidateLengths(wrapper) && proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) && proofsManager.ValidateProofs(wrapper)
+                ? ValidationResult.Success
+                : TxErrorMessages.InvalidBlobData;
         }
     }
 
