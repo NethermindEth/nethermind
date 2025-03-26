@@ -9,31 +9,32 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
+public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2?>>
 {
     private const int MaxRequest = 128;
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(byte[][] request)
+
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> HandleAsync(byte[][] request)
     {
         if (request.Length > MaxRequest)
         {
             var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
+        return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Success(GetBlobsAndProofsV2(request));
     }
 
-    private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
+    private IEnumerable<BlobAndProofV2?> GetBlobsAndProofsV2(byte[][] request)
     {
         Metrics.NumberOfRequestedBlobs += request.Length;
 
         foreach (byte[] requestedBlobVersionedHash in request)
         {
-            if (txPool.TryGetBlobAndProof(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
+            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
             {
                 Metrics.NumberOfSentBlobs++;
-                yield return new BlobAndProofV1(blob, proof);
+                yield return new BlobAndProofV2(blob, cellProofs);
             }
             else
             {
