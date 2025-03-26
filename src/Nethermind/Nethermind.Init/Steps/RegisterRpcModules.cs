@@ -5,12 +5,15 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -38,13 +41,15 @@ public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
     protected readonly IJsonRpcConfig JsonRpcConfig;
+    private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBlocksConfig _blocksConfig;
 
-    public RegisterRpcModules(INethermindApi api)
+    public RegisterRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher)
     {
         _api = api;
         JsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _blocksConfig = _api.Config<IBlocksConfig>();
+        _poSSwitcher = poSSwitcher;
     }
 
     public virtual async Task Execute(CancellationToken cancellationToken)
@@ -144,7 +149,7 @@ public class RegisterRpcModules : IStep
             _api.VerifyTrieStarter!,
             _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
-            _api.AdminEraService,
+            _api.Context.Resolve<IAdminEraService>(),
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters,
@@ -305,7 +310,7 @@ public class RegisterRpcModules : IStep
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             _api.SpecProvider,
-            _api.PoSSwitcher,
+            _poSSwitcher,
             _api.LogManager);
     }
 

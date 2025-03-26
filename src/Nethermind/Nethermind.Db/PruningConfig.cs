@@ -37,5 +37,6 @@ namespace Nethermind.Db
         public bool AvailableSpaceCheckEnabled { get; set; } = true;
         public double TrackedPastKeyCountMemoryRatio { get; set; } = 0.1;
         public int PruningBoundary { get; set; } = 64;
+        public int DirtyNodeShardBit { get; set; } = 8;
     }
 }
