@@ -58,5 +58,15 @@ namespace Nethermind.State
             });
             return collector.Stats;
         }
+
+        public static Account GetAccount(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        {
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct accountStruct);
+            return new Account(
+                accountStruct.Nonce,
+                accountStruct.Balance,
+                accountStruct.StorageRoot,
+                accountStruct.CodeHash);
+        }
     }
 }
