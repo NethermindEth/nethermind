@@ -65,8 +65,8 @@ namespace Nethermind.State
             return new Account(
                 accountStruct.Nonce,
                 accountStruct.Balance,
-                accountStruct.StorageRoot,
-                accountStruct.CodeHash);
+                (Hash256)accountStruct.StorageRoot,
+                (Hash256)accountStruct.CodeHash);
         }
     }
 }
