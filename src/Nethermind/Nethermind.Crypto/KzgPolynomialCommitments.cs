@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
@@ -21,7 +20,8 @@ public static class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
     public const byte BytesPerBlobVersionedHash = 32;
 
-    internal static IntPtr _ckzgSetup = IntPtr.Zero;
+    private static IntPtr _ckzgSetup = IntPtr.Zero;
+    internal static IntPtr CkzgSetup => _ckzgSetup;
 
     private static Task? _initializeTask;
 
@@ -86,105 +86,5 @@ public static class KzgPolynomialCommitments
         }
     }
 
-    public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
-    {
-        if (blobs.Length is 1 && commitments.Length is 1 && proofs.Length is 1)
-        {
-            try
-            {
-                return Ckzg.Ckzg.VerifyBlobKzgProof(blobs[0], commitments[0], proofs[0], _ckzgSetup);
-            }
-            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-            {
-                return false;
-            }
-        }
-
-        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
-        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
-        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.BytesPerProof;
-        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatProofs = new(flatProofsArray, 0, length);
-
-        for (int i = 0; i < blobs.Length; i++)
-        {
-            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
-            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-            proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
-        }
-
-        try
-        {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, blobs.Length,
-                _ckzgSetup);
-        }
-        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-        {
-            return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(flatBlobsArray);
-            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
-            ArrayPool<byte>.Shared.Return(flatProofsArray);
-        }
-    }
-
-    public static bool AreCellProofsValid(byte[][] blobs, byte[][] commitments, byte[][] cellProofs)
-    {
-        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob * 2;
-        byte[] cellsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> cells = new(cellsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment * Ckzg.Ckzg.CellsPerExtBlob;
-        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob;
-        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatProofs = new(flatProofsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.CellsPerExtBlob;
-        ulong[] indicesArray = ArrayPool<ulong>.Shared.Rent(length);
-        Span<ulong> indices = new(indicesArray, 0, length);
-
-        for (int i = 0; i < blobs.Length; i++)
-        {
-
-            Ckzg.Ckzg.ComputeCells(cells.Slice(i * Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.BytesPerCell * Ckzg.Ckzg.CellsPerExtBlob), blobs[i], _ckzgSetup);
-
-            for (int j = 0; j < Ckzg.Ckzg.CellsPerExtBlob; j++)
-            {
-                int cellNumber = i * Ckzg.Ckzg.CellsPerExtBlob + j;
-
-                commitments[i].CopyTo(flatCommitments.Slice(cellNumber * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-                indices[cellNumber] = (ulong)j;
-                cellProofs[cellNumber].CopyTo(flatProofs.Slice(cellNumber * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
-            }
-        }
-
-        try
-        {
-            return Ckzg.Ckzg.VerifyCellKzgProofBatch(flatCommitments, indices, cells,
-                flatProofs, blobs.Length * Ckzg.Ckzg.CellsPerExtBlob, _ckzgSetup);
-        }
-        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-        {
-            return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(cellsArray);
-            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
-            ArrayPool<byte>.Shared.Return(flatProofsArray);
-            ArrayPool<ulong>.Shared.Return(indicesArray);
-        }
-    }
 }
 
