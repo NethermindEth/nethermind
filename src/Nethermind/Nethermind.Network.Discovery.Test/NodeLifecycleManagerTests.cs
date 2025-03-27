@@ -10,6 +10,7 @@ using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -85,6 +86,7 @@ public class NodeLifecycleManagerTests
         _discoveryManager.MsgSender = udpClient;
 
         _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
+        _discoveryManagerMock.NodesFilter.Returns(new ClockKeyCache<IDiscoveryManager.IpAddressAsKey>(16));
     }
 
     [Test]
@@ -148,7 +150,14 @@ public class NodeLifecycleManagerTests
     }
 
     [Test]
-    public async Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+    public Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0), 16);
+
+    [Test]
+    public Task processNeighboursMessage_willCombineDeduplicateMultipleIps()
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.100", 0), 1);
+
+    public async Task processNeighboursMessage_Test(Func<PublicKey, int, Node> createNode, int expectedCount)
     {
         IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
         discoveryConfig.PongTimeout = 50;
@@ -171,13 +180,13 @@ public class NodeLifecycleManagerTests
 
         Node[] firstNodes = TestItem.PublicKeys
             .Take(12)
-            .Select(static pubkey => new Node(pubkey, "127.0.0.2", 0))
+            .Select(createNode)
             .ToArray();
         NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
         Node[] secondNodes = TestItem.PublicKeys
             .Skip(12)
             .Take(4)
-            .Select(static pubkey => new Node(pubkey, "127.0.0.2", 0))
+            .Select((pubkey, i) => createNode(pubkey, i + 14))
             .ToArray();
         NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
 
@@ -185,7 +194,7 @@ public class NodeLifecycleManagerTests
         nodeManager.ProcessNeighborsMsg(secondNodeMsg);
 
         _discoveryManagerMock
-            .Received(16)
+            .Received(expectedCount)
             .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
     }
 
