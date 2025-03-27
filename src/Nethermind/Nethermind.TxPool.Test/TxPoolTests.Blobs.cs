@@ -778,36 +778,50 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_add_blob_tx_in_eip7594_form_and_return_when_requested([Values(true, false)] bool isPersistentStorage)
+        public void should_add_blob_tx_in_eip7594_form_and_return_when_requested([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool hasTxCellProofs, [Values(true, false)] bool isOsakaActivated)
         {
+            // tx is valid if:
+            // - osaka is activated and there are cell proofs
+            // - osaka is not activated and there is old proof
+            bool isTxValid = !(isOsakaActivated ^ hasTxCellProofs);
+
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
                 Size = 10
             };
             BlobTxStorage blobTxStorage = new();
-            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+
+            _txPool = CreatePool(txPoolConfig,
+                isOsakaActivated ? GetOsakaSpecProvider() : GetCancunSpecProvider(),
+                txStorage: blobTxStorage);
+
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction blobTxAdded = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = hasTxCellProofs })
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-            _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+            result.Should().Be(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
             _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
+            blobTxReturned.Should().BeEquivalentTo(isTxValid ? blobTxAdded : null);
 
-            blobTxReturned.Should().BeEquivalentTo(blobTxAdded);
-            ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length.Should().Be(Ckzg.Ckzg.CellsPerExtBlob);
-
-            blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
-            if (isPersistentStorage)
+            if (isTxValid)
             {
-                blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
-                    .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                    .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                int lengthOfProofs = ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length;
+                lengthOfProofs.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+
+                blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
+                if (isPersistentStorage)
+                {
+                    blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
+                        .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                        .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                }
             }
         }
 
