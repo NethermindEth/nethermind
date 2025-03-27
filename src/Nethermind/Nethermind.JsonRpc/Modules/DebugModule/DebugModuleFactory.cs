@@ -114,7 +114,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _syncModeSelector,
             _badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree, worldStateManager.GlobalStateReader);
     }
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
