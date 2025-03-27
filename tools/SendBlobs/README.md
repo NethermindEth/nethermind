@@ -22,6 +22,7 @@ Options:
   --maxfeeperblobgas <maxFeePerBlobGas>  (Optional) Set the maximum fee per blob data.
   --feemultiplier <feeMultiplier>        (Optional) A multiplier to use for gas fees.
   --maxpriorityfee <maxPriorityFee>      (Optional) The maximum priority fee for each transaction.
+  --fork <fork>                          (Optional) Fork rules: Cancun/Prague/Osaka
 
 Commands:
   distribute  Distribute funds from an address to a number of new addresses.

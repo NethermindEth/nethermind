@@ -138,9 +138,9 @@ internal class BlobSender
                     }
                 }
 
-                IBlobProofsManager proofs = IBlobProofsManager.For(ProofVersion.V1);
+                IBlobProofsManager proofs = IBlobProofsManager.For(spec.GetBlobProofVersion());
 
-                ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper();
+                ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
                 proofs.ComputeProofsAndCommitments(blobsContainer);
 
                 byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
@@ -241,9 +241,9 @@ internal class BlobSender
             Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
         }
 
-        IBlobProofsManager proofs = IBlobProofsManager.For(ProofVersion.V1);
+        IBlobProofsManager proofs = IBlobProofsManager.For(spec.GetBlobProofVersion());
 
-        ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper();
+        ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
         proofs.ComputeProofsAndCommitments(blobsContainer);
 
         byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
@@ -338,7 +338,9 @@ internal class BlobSender
 
         string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
+
         Console.WriteLine("Sending tx result:" + result);
+        Console.WriteLine("Blob hashes:" + string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"0x{Hex.ToHexString(bvh)}")));
 
         return result is not null ? tx.CalculateHash() : null;
     }
