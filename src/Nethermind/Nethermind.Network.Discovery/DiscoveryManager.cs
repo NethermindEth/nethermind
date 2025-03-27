@@ -52,7 +52,7 @@ public class DiscoveryManager : IDiscoveryManager
         _createNodeLifecycleManager = GetLifecycleManagerFunc(isPersisted: false);
         _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
 
-        NodesFilter = new(networkConfig?.MaxActivePeers ?? 256);
+        NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
     }
 
     public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
