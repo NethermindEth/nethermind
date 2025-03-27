@@ -59,8 +59,8 @@ public static class ReleaseSpecEmit
 
     public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
-        Label alreadyCheckedLabel = method.DefineLabel();
-        Label hasToCheckLabel = method.DefineLabel();
+        Label alreadyCheckedLabel = method.DefineLabel(locals.GetLabelName());
+        Label hasToCheckLabel = method.DefineLabel(locals.GetLabelName());
         string segmentRefName = GetSegmentId(segmentMetadata);
         if (!locals.TryLoadLocal(segmentRefName, true))
         {
@@ -168,15 +168,15 @@ public static class StackEmit
 }
 public static class WordEmit
 {
-    public static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params ReadOnlySpan<Local> locals)
     {
         MethodInfo shiftOp = typeof(UInt256).GetMethod(isLeft ? nameof(UInt256.LeftShift) : nameof(UInt256.RightShift));
-        Label skipPop = il.DefineLabel();
-        Label endOfOpcode = il.DefineLabel();
+        Label skipPop = il.DefineLabel(localNames.GetLabelName());
+        Label endOfOpcode = il.DefineLabel(localNames.GetLabelName());
 
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the locals.stackHeadRef
-        Local shiftBit = il.DeclareLocal<uint>();
+        Local shiftBit = il.DeclareLocal<uint>(localNames.GetLocalName());
 
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
@@ -213,11 +213,11 @@ public static class WordEmit
 
         il.MarkLabel(endOfOpcode);
     }
-    public static void EmitShiftInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitShiftInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
-        Label aBiggerOrEqThan256 = il.DefineLabel();
-        Label signIsNeg = il.DefineLabel();
-        Label endOfOpcode = il.DefineLabel();
+        Label aBiggerOrEqThan256 = il.DefineLabel(localNames.GetLabelName());
+        Label signIsNeg = il.DefineLabel(localNames.GetLabelName());
+        Label endOfOpcode = il.DefineLabel(localNames.GetLabelName());
 
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the locals.stackHeadRef
@@ -234,7 +234,7 @@ public static class WordEmit
         il.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfFalse(aBiggerOrEqThan256);
 
-        using Local shiftBits = il.DeclareLocal<int>();
+        using Local shiftBits = il.DeclareLocal<int>(localNames.GetLocalName());
 
 
         il.LoadLocalAddress(locals[1]);
@@ -265,7 +265,7 @@ public static class WordEmit
         il.MarkLabel(signIsNeg);
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
 
-        using Local minusOneLocal = il.DeclareLocal<Int256.Int256>();
+        using Local minusOneLocal = il.DeclareLocal<Int256.Int256>(localNames.GetLocalName());
         il.LoadField(GetFieldInfo(typeof(Int256.Int256), nameof(Int256.Int256.MinusOne)));
         il.StoreLocal(minusOneLocal);
 
@@ -277,7 +277,7 @@ public static class WordEmit
 
         il.MarkLabel(endOfOpcode);
     }
-    public static void EmitBitwiseUInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitBitwiseUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the stack.headRef
@@ -286,7 +286,7 @@ public static class WordEmit
         MethodInfo writeVector256Method = UnsafeEmit.GetWriteUnalignedMethodInfo<Vector256<byte>>();
         MethodInfo operationUnegenerified = operation.MakeGenericMethod(typeof(byte));
 
-        using Local vectorResult = il.DeclareLocal<Vector256<byte>>();
+        using Local vectorResult = il.DeclareLocal<Vector256<byte>>(localNames.GetLocalName());
 
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(refWordToRefByteMethod);
@@ -303,7 +303,7 @@ public static class WordEmit
         il.LoadLocal(vectorResult);
         il.Call(writeVector256Method);
     }
-    public static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         // we the two uint256 from the stack.headRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
@@ -328,10 +328,10 @@ public static class WordEmit
         il.LoadLocal(uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
-    public static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
-        Label endOpcodeHandling = il.DefineLabel();
-        Label pushOnehandling = il.DefineLabel();
+        Label endOpcodeHandling = il.DefineLabel(localNames.GetLabelName());
+        Label pushOnehandling = il.DefineLabel(localNames.GetLabelName());
         // we the two uint256 from the stack.headRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
@@ -370,9 +370,9 @@ public static class WordEmit
         il.MarkLabel(endOpcodeHandling);
         il.Call(Word.SetUInt256);
     }
-    public static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
-        Label label = il.DefineLabel();
+        Label label = il.DefineLabel(localNames.GetLabelName());
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[0]);
@@ -397,9 +397,9 @@ public static class WordEmit
         il.LoadLocal(uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
-    public static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
-        Label label = il.DefineLabel();
+        Label label = il.DefineLabel(localNames.GetLabelName());
 
         // we the two uint256 from the stack.headRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
@@ -429,9 +429,9 @@ public static class WordEmit
         il.LoadLocal(uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
-    public static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
-        Label label = il.DefineLabel();
+        Label label = il.DefineLabel(localNames.GetLabelName());
 
         // we the two uint256 from the locals.stackHeadRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
@@ -577,7 +577,7 @@ static class EmitExtensions
 
     public static void EmitCallToErrorTrace<T>(Emit<T> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, Locals<T> locals)
     {
-        Label skipTracing = method.DefineLabel();
+        Label skipTracing = method.DefineLabel(locals.GetLabelName());
         method.LoadTxTracer(locals, false);
         method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
         method.BranchIfFalse(skipTracing);
@@ -591,7 +591,7 @@ static class EmitExtensions
     }
     public static void EmitCallToEndInstructionTrace<T>(Emit<T> method, Local gasAvailable, Locals<T> locals)
     {
-        Label skipTracing = method.DefineLabel();
+        Label skipTracing = method.DefineLabel(locals.GetLabelName());
         method.LoadTxTracer(locals, false);
         method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
         method.BranchIfFalse(skipTracing);
@@ -606,7 +606,7 @@ static class EmitExtensions
     }
     public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, int pc, Instruction op, Locals<T> locals)
     {
-        Label skipTracing = method.DefineLabel();
+        Label skipTracing = method.DefineLabel(locals.GetLabelName());
         method.LoadTxTracer(locals, false);
         method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
         method.BranchIfFalse(skipTracing);
@@ -643,7 +643,7 @@ static class EmitExtensions
         return typeof(T).GetMethods().First(m => m.Name == name && m.ReturnType == returnType && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(argTypes));
     }
 
-    public static void FindCorrectBranchAndJump<T>(this Emit<T> il, Local jmpDestination, Dictionary<int, Sigil.Label> jumpDestinations, Dictionary<EvmExceptionType, Sigil.Label> evmExceptionLabels)
+    public static void FindCorrectBranchAndJump<T>(this Emit<T> il, Local jmpDestination, Locals<T> localNames, Dictionary<int, Sigil.Label> jumpDestinations, Dictionary<EvmExceptionType, Sigil.Label> evmExceptionLabels)
     {
         int numberOfBitsSet = BitOperations.Log2((uint)jumpDestinations.Count) + 1;
 
@@ -652,7 +652,7 @@ static class EmitExtensions
         Sigil.Label[] jumps = new Sigil.Label[length];
         for (int i = 0; i < length; i++)
         {
-            jumps[i] = il.DefineLabel();
+            jumps[i] = il.DefineLabel(localNames.GetLabelName());
         }
 
         il.LoadLocal(jmpDestination);
@@ -729,7 +729,7 @@ static class EmitExtensions
     {
         if (!dict.ContainsKey(evmExceptionType))
         {
-            dict[evmExceptionType] = il.DefineLabel();
+            dict[evmExceptionType] = il.DefineLabel(evmExceptionType.ToString());
         }
         return dict[evmExceptionType];
     }

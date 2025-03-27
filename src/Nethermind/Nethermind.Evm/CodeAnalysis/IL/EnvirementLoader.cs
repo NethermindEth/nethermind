@@ -57,7 +57,7 @@ internal static class EnvirementLoader
         il.LoadField(typeof(TxExecutionContext).GetField(nameof(TxExecutionContext.BlockExecutionContext)));
         if (loadAddress)
         {
-            using Local local = il.DeclareLocal<BlockExecutionContext>();
+            using Local local = il.DeclareLocal<BlockExecutionContext>(locals.GetLocalName());
             il.StoreLocal(local);
             il.LoadLocalAddress(local);
         }
@@ -93,7 +93,7 @@ internal static class EnvirementLoader
         il.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance));
         if (loadAddress)
         {
-            using Local local = il.DeclareLocal<CallData>();
+            using Local local = il.DeclareLocal<CallData>(locals.GetLocalName());
             il.StoreLocal(local);
             il.LoadLocalAddress(local);
         }
@@ -226,7 +226,7 @@ internal static class EnvirementLoader
 
         if (loadAddress)
         {
-            using Local local = il.DeclareLocal<IReleaseSpec>();
+            using Local local = il.DeclareLocal<IReleaseSpec>(locals.GetLocalName());
             il.StoreLocal(local);
             il.LoadLocalAddress(local);
         }
@@ -262,7 +262,7 @@ internal static class EnvirementLoader
         il.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance));
         if (loadAddress)
         {
-            using Local local = il.DeclareLocal<TxExecutionContext>();
+            using Local local = il.DeclareLocal<TxExecutionContext>(locals.GetLocalName());
             il.StoreLocal(local);
             il.LoadLocalAddress(local);
         }

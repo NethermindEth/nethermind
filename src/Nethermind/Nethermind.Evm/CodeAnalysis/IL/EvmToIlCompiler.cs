@@ -1,28 +1,17 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Common.Utilities;
-using Nethermind.Core.Attributes;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Config;
-using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.State;
-using Org.BouncyCastle.Asn1.Cms;
-using Sigil;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Reflection;
-using System.Reflection.Emit;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Linq;
+using Sigil;
+using Nethermind.Evm.Config;
+
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
+
 using Label = Sigil.Label;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
+
 internal static class Precompiler
 {
     public static PrecompiledContract CompileContract(string contractName, CodeInfo codeInfo, ContractCompilerMetadata metadata, IVMConfig config)
@@ -53,10 +42,10 @@ internal static class Precompiler
 
         ReleaseSpecEmit.DeclareOpcodeValidityCheckVariables(method, contractMetadata, locals);
 
-        Label exit = method.DefineLabel(); // the label just before return
-        Label jumpTable = method.DefineLabel(); // jump table
-        Label isContinuation = method.DefineLabel(); // jump table
-        Label ret = method.DefineLabel();
+        Label exit = method.DefineLabel(locals.GetLabelName()); // the label just before return
+        Label jumpTable = method.DefineLabel(locals.GetLabelName()); // jump table
+        Label isContinuation = method.DefineLabel(locals.GetLabelName()); // jump table
+        Label ret = method.DefineLabel(locals.GetLabelName());
 
 
         method.LoadStackHead(locals, false);
@@ -96,7 +85,7 @@ internal static class Precompiler
             if (contractMetadata.SegmentsBoundaries.ContainsKey(i))
             {
                 endOfSegment = contractMetadata.SegmentsBoundaries[i];
-                method.MarkLabel(entryPoints[i] = method.DefineLabel());
+                method.MarkLabel(entryPoints[i] = method.DefineLabel(locals.GetLabelName()));
             }
 
             hasEmittedJump |= opcodeInfo.Instruction.IsJump();
@@ -104,7 +93,7 @@ internal static class Precompiler
             if (opcodeInfo.Instruction is Instruction.JUMPDEST)
             {
                 // mark the jump destination
-                method.MarkLabel(jumpDestinations[i] = method.DefineLabel());
+                method.MarkLabel(jumpDestinations[i] = method.DefineLabel(locals.GetLabelName()));
             }
 
             if (config.IsIlEvmAggressiveModeEnabled)
@@ -275,7 +264,7 @@ internal static class Precompiler
         method.Return();
 
         // isContinuation
-        Label skipJumpValidation = method.DefineLabel();
+        Label skipJumpValidation = method.DefineLabel(locals.GetLabelName());
         method.MarkLabel(isContinuation);
 
         method.LoadLocal(locals.programCounter);
@@ -326,7 +315,7 @@ internal static class Precompiler
         }
         else
         {
-            method.FindCorrectBranchAndJump(locals.jmpDestination, jumpDestinations, evmExceptionLabels);
+            method.FindCorrectBranchAndJump(locals.jmpDestination, locals, jumpDestinations, evmExceptionLabels);
         }
 
         foreach (KeyValuePair<EvmExceptionType, Label> kvp in evmExceptionLabels)
