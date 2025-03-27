@@ -40,7 +40,7 @@ internal static class Precompiler
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
-        var locals = new Locals<PrecompiledContract>(method);
+        using var locals = new Locals<PrecompiledContract>(method);
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
         Dictionary<int, Label> jumpDestinations = new();
