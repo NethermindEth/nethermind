@@ -36,7 +36,7 @@ namespace Nethermind.Precompiles.Benchmark
             public override string ToString() => Name;
         }
 
-        public virtual IEnumerable<Param> Inputs
+        public IEnumerable<Param> Inputs
         {
             get
             {
