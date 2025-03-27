@@ -256,9 +256,6 @@ public partial class EngineModuleTests
             Assert.That(response, Is.EqualTo(expectedUpdatePayloadWithInclusionListResponse));
         });
 
-        // await Task.Delay(3000);
-        // await Task.Delay(100);
-
         Block block = ExpectedBlock(
             chain,
             blockHash,

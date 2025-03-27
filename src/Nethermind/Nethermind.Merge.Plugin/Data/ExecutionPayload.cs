@@ -25,7 +25,7 @@ public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutio
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload() : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
     public UInt256 BaseFeePerGas { get; set; }
 

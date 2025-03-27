@@ -346,9 +346,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     }
 
     public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
-    {
-        return _blockProcessorImplementation.ValidateInclusionList(suggestedBlock, block, options);
-    }
+        => _blockProcessorImplementation.ValidateInclusionList(suggestedBlock, block, options);
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
     {
