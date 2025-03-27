@@ -19,10 +19,10 @@ using Nethermind.State;
 
 namespace Nethermind.Evm;
 
-public class CodeInfoRepository : ICodeInfoRepository
+public class TestCodeInfoRepository : ICodeInfoRepository
 {
-    private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
-    private static readonly CodeLruCache _codeCache = new();
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
+    private readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
 
     private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
@@ -55,11 +55,17 @@ public class CodeInfoRepository : ICodeInfoRepository
         }.ToFrozenDictionary();
     }
 
-    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
+    public TestCodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
+        _codeCache = new CodeLruCache();
         _localPrecompiles = precompileCache is null
             ? _precompiles
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+    }
+
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -81,7 +87,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource)
+    private CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource)
     {
         CodeInfo? cachedCodeInfo = null;
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
@@ -103,10 +109,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             cachedCodeInfo = new CodeInfo(code, codeSource);
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
-        }
-        else
-        {
-            Db.Metrics.IncrementCodeDbCache();
         }
 
         return cachedCodeInfo;
