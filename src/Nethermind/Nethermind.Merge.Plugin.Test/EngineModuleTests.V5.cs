@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -273,6 +274,45 @@ public partial class EngineModuleTests
         {
             Assert.That(successResponse, Is.Not.Null);
             Assert.That(response, Is.EqualTo(ExpectedGetPayloadResponse(chain, block, new UInt256(Convert.ToUInt64(blockFees, 16)))));
+        });
+    }
+
+    [Test]
+    public async Task Can_force_rebuild_payload()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        var payloadPreparationService = chain.PayloadPreparationService!;
+
+        // Count calls to BlockImproved event
+        int blockImprovedCount = 0;
+        payloadPreparationService.BlockImproved += (sender, args) => blockImprovedCount++;
+
+        BlockHeader parentHeader = chain.BlockTree.Head!.Header;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = Timestamper.UnixTime.Seconds,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = TestItem.AddressC,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero
+        };
+
+        string payloadId = payloadPreparationService.StartPreparingPayload(parentHeader, payloadAttributes)!;
+        var initialContext = await payloadPreparationService.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initialContext, Is.Not.Null, "Initial payload context should not be null");
+            Assert.That(blockImprovedCount, Is.EqualTo(1));
+        }
+
+        payloadPreparationService.ForceRebuildPayload(payloadId);
+        var afterRebuildContext = await payloadPreparationService.GetPayload(payloadId);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(afterRebuildContext, Is.Not.Null, "Should be able to get the payload after rebuilding");
+            Assert.That(blockImprovedCount, Is.EqualTo(2), "Block improvement should be triggered after forcing rebuild");
         });
     }
 
