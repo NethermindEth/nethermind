@@ -115,6 +115,8 @@ public class Locals<T>(Emit<T> method) : IDisposable
         {
             local.Value.Dispose();
         }
+
+        AddtionalLocals.Clear();
     }
 
 }
