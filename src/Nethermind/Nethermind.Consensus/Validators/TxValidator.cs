@@ -234,12 +234,17 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, releaseSpec),
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec releaseSpec)
         {
+            if (wrapper.Version != releaseSpec.GetBlobProofVersion())
+            {
+                return TxErrorMessages.InvalidProofVersion;
+            }
+
             IBlobProofsManager proofsManager = IBlobProofsManager.For(wrapper.Version);
 
             return proofsManager.ValidateLengths(wrapper) && proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) && proofsManager.ValidateProofs(wrapper)
