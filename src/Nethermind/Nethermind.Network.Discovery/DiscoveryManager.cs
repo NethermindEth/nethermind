@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -26,8 +27,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
-    // Size not too large that don't retry; but not too small that we retry too often
-    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; } = new(256);
+    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; }
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
@@ -39,6 +39,7 @@ public class DiscoveryManager : IDiscoveryManager
         INodeTable? nodeTable,
         INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
+        INetworkConfig? networkConfig,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -50,6 +51,8 @@ public class DiscoveryManager : IDiscoveryManager
         _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
         _createNodeLifecycleManager = GetLifecycleManagerFunc(isPersisted: false);
         _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
+
+        NodesFilter = new(networkConfig?.MaxActivePeers ?? 256);
     }
 
     public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
