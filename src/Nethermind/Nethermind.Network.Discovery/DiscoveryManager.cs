@@ -27,7 +27,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
     // Size not too large that don't retry; but not too small that we retry too often
-    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; } = new(1024);
+    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; } = new(256);
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
