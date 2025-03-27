@@ -6,11 +6,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -24,6 +26,8 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
+    // Size not too large that don't retry; but not too small that we retry too often
+    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; } = new(1024);
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
@@ -48,6 +52,7 @@ public class DiscoveryManager : IDiscoveryManager
         _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
     }
 
+    public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
     private Func<Hash256, Node, INodeLifecycleManager> GetLifecycleManagerFunc(bool isPersisted)
     {
         return (_, node) =>
