@@ -272,6 +272,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
             (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork()
             {
+                if ((chainSpec.OsakaTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+                {
+                    return (Osaka.Instance, Prague.Instance);
+                }
+
                 if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
                 {
                     return (Prague.Instance, Cancun.Instance);
