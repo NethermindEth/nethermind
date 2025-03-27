@@ -77,7 +77,13 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = vmConfig ?? new VMConfig();
+        _vmConfig = new VMConfig()
+        {
+            IsILEvmEnabled = true,
+            IlEvmEnabledMode = ILMode.PATTERN_BASED_MODE,
+            IlEvmAnalysisQueueMaxSize = 8,
+            IlEvmAnalysisThreshold = 32
+        };
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
