@@ -75,15 +75,15 @@ public class DebugRpcModule : IDebugRpcModule
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transaction for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
         }
 
-        // Get the block hash
-        SearchResult<Hash256> blockHashSearch = _blockFinder.SearchForBlockHash(new BlockParameter(transactionAndBlock.Number));
-        if (blockHashSearch.IsError)
+        // Find the block hash
+        var receiptBlockHash = _debugBridge.GetReceiptsForBlock(new BlockParameter(transactionHash))?.FirstOrDefault()?.BlockHash;
+        if (receiptBlockHash == null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(blockHashSearch);
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find block for transaction hash: {transactionHash}", ErrorCodes.ResourceNotFound);
         }
 
         // Get the block header
-        SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(blockHashSearch.Object!));
+        SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(receiptBlockHash));
         if (headerSearch.IsError)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(headerSearch);
@@ -487,7 +487,7 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
     {
         IEnumerable<Block> blocks = _debugBridge.GetBadBlocks();
-        List<BadBlock> badBlocks = blocks.Select(static block => (BadBlock)block).ToList();
+        List<BadBlock> badBlocks = blocks.Select(block => new BadBlock(block, true, _specProvider, _blockDecoder)).ToList();
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
 
