@@ -70,6 +70,7 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig = new VMConfig();
 
+            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(VirtualMachine.NotOptimizing);
             vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling)
                 ? ILMode.FULL_AOT_MODE : ILMode.NO_ILVM;
 
