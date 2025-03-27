@@ -68,28 +68,28 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
-        // Первым делом находим блок по хешу транзакции
+        // First, find the block by transaction hash
         var transactionAndBlock = _debugBridge.GetTransactionFromHash(transactionHash);
         if (transactionAndBlock == null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transaction for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
         }
 
-        // Получаем хеш блока
+        // Get the block hash
         SearchResult<Hash256> blockHashSearch = _blockFinder.SearchForBlockHash(new BlockParameter(transactionAndBlock.Number));
         if (blockHashSearch.IsError)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(blockHashSearch);
         }
 
-        // Получаем заголовок блока
+        // Get the block header
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(blockHashSearch.Object!));
         if (headerSearch.IsError)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(headerSearch);
         }
 
-        // Проверяем наличие состояния для блока
+        // Check if state is available for the block
         if (!_stateReader.HasStateForBlock(headerSearch.Object!))
         {
             return GetStateFailureResult<GethLikeTxTrace>(headerSearch.Object!);
@@ -111,7 +111,7 @@ public class DebugRpcModule : IDebugRpcModule
     {
         blockParameter ??= BlockParameter.Latest;
         
-        // Проверка наличия состояния для блока
+        // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
         if (headerSearch.IsError)
         {
@@ -141,7 +141,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        // Проверка наличия состояния для блока
+        // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(blockhash));
         if (headerSearch.IsError)
         {
@@ -168,7 +168,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        // Проверка наличия состояния для блока
+        // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
         if (headerSearch.IsError)
         {
@@ -201,7 +201,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
-        // Для RLP блока не можем проверить состояние, т.к. мы не знаем хеш блока
+        // For RLP block we can't check state as we don't know the block hash
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, cancellationToken, options);
@@ -215,7 +215,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
-        // Для RLP блока не можем проверить состояние, т.к. мы не знаем хеш блока
+        // For RLP block we can't check state as we don't know the block hash
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
@@ -239,7 +239,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
-        // Для RLP блока не можем проверить состояние, т.к. мы не знаем хеш блока
+        // For RLP block we can't check state as we don't know the block hash
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         try
@@ -265,7 +265,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockParameter, GethTraceOptions options = null)
     {
-        // Проверка наличия состояния для блока
+        // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
         if (headerSearch.IsError)
         {
@@ -299,7 +299,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        // Проверка наличия состояния для блока
+        // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(blockHash));
         if (headerSearch.IsError)
         {
@@ -456,7 +456,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
-        // Проверка наличия состояния для блока
+        // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(blockHash));
         if (headerSearch.IsError)
         {
@@ -477,7 +477,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
-        // Для "плохого" блока не проверяем наличие состояния, так как блок может быть недействительным
+        // For "bad" block we don't check state availability since the block might be invalid
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         var txTraces = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
