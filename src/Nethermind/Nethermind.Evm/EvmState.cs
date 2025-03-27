@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.State;
 
 namespace Nethermind.Evm;
@@ -21,6 +23,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     public byte[]? DataStack;
     public int[]? ReturnStack;
+
+    public ILChunkExecutionState IlExecutionStepState;
 
     public long GasAvailable { get; set; }
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
@@ -69,7 +73,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isCreateOnPreExistingAccount: false,
             snapshot: snapshot,
             env: env,
-            stateForAccessLists: accessedItems);
+            stateForAccessLists: accessedItems,
+            new());
         return state;
     }
 
@@ -99,7 +104,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
             snapshot: snapshot,
             env: env,
-            stateForAccessLists: stateForAccessLists);
+            stateForAccessLists: stateForAccessLists,
+            new());
 
         return state;
     }
@@ -116,7 +122,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isCreateOnPreExistingAccount,
         in Snapshot snapshot,
         in ExecutionEnvironment env,
-        in StackAccessTracker stateForAccessLists)
+        in StackAccessTracker stateForAccessLists,
+        in ILChunkExecutionState initState)
     {
         GasAvailable = gasAvailable;
         OutputDestination = outputDestination;
@@ -133,6 +140,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
         _snapshot = snapshot;
         _env = env;
+        IlExecutionStepState = initState;
         _accessTracker = new(stateForAccessLists);
         if (executionType.IsAnyCreate())
         {
@@ -202,6 +210,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _env = default;
         _snapshot = default;
 
+        IlExecutionStepState = default;
         _statePool.Enqueue(this);
 
 #if DEBUG

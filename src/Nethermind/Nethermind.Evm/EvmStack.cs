@@ -13,6 +13,7 @@ using System.Runtime.Intrinsics;
 using System.Diagnostics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Extensions;
+using BytesExt = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Evm;
 
@@ -26,6 +27,8 @@ public ref struct EvmStack<TTracing>
     public const int MaxStackSize = EvmStack.MaxStackSize;
     public const int WordSize = EvmStack.WordSize;
     public const int AddressSize = EvmStack.AddressSize;
+
+    public ref byte HeadRef => ref _bytes[Head * EvmStack.WordSize];
 
     public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes)
     {
@@ -115,7 +118,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushOne()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.OneByteSpan);
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(BytesExt.OneByteSpan);
 
         ref byte bytes = ref PushBytesRef();
         // Not full entry, clear first
@@ -125,7 +128,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushZero()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.ZeroByteSpan);
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(BytesExt.ZeroByteSpan);
 
         ref byte bytes = ref PushBytesRef();
         Unsafe.As<byte, Word>(ref bytes) = default;
