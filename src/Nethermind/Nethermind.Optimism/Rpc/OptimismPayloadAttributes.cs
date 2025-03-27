@@ -77,9 +77,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + sizeof(long) // gasLimit
         + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
 
-    protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan, IEthereumEcdsa? ecdsa)
+    protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan, ecdsa);
+        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;

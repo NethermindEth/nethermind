@@ -59,13 +59,13 @@ public class PayloadAttributes
 
     private string? _payloadId;
 
-    public string GetPayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa = null) => _payloadId ??= ComputePayloadId(parentHeader, ecdsa);
+    public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
 
-    private string ComputePayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa)
+    private string ComputePayloadId(BlockHeader parentHeader)
     {
         int size = ComputePayloadIdMembersSize();
         Span<byte> inputSpan = stackalloc byte[size];
-        WritePayloadIdMembers(parentHeader, inputSpan, ecdsa);
+        WritePayloadIdMembers(parentHeader, inputSpan);
         return ComputePayloadId(inputSpan);
     }
 
@@ -83,7 +83,7 @@ public class PayloadAttributes
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
 
-    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan, IEthereumEcdsa? ecdsa)
+    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
         int position = 0;
 
