@@ -23,6 +23,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
@@ -220,7 +222,8 @@ namespace Nethermind.Init.Steps
                 blockhashProvider,
                 _api.SpecProvider,
                 codeInfoRepository,
-                _api.LogManager);
+                _api.LogManager,
+                _api.VMConfig!);
 
             return virtualMachine;
         }
