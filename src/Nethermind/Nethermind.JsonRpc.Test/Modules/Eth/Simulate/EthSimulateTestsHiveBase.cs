@@ -4,10 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using ResultType = Nethermind.Core.ResultType;
 
@@ -78,5 +83,58 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         Console.WriteLine();
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data, Is.Not.Null);
+    }
+
+    [TestCase(2)]
+    [TestCase(4)]
+    [TestCase(8)]
+    [TestCase(12)]
+    [TestCase(20)]
+    public async Task TestSimulate_TimestampIsComputedCorrectly(int secondsPerSlot)
+    {
+        const string data = """
+                              {
+                                "blockStateCalls": [
+                                  {
+                                    "blockOverrides": {
+                                      "baseFeePerGas": "0x9"
+                                    },
+                                    "stateOverrides": {
+                                      "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045": {
+                                        "balance": "0xf00000000"
+                                      }
+                                    },
+                                    "calls": [
+                                      {
+                                        "from": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                                        "to": "0x014d023e954bAae7F21E56ed8a5d81b12902684D",
+                                        "maxFeePerGas": "0xf",
+                                        "value": "0x1"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "validation": true,
+                                "traceTransfers": true
+                              }
+                            """;
+        var serializer = new EthereumJsonSerializer();
+        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+
+        var testSpecProvider = new TestSpecProvider(London.Instance);
+        var chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain())
+            .WithBlocksConfig(new BlocksConfig
+            {
+                SecondsPerSlot = (ulong) secondsPerSlot
+            })
+            .Build(testSpecProvider);
+
+        var latestResult = chain.EthRpcModule.eth_getBlockByNumber(BlockParameter.Latest);
+        var latestTimestamp = latestResult.Data.Timestamp;
+
+        var simulateResult = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        var simulateTimestamp = simulateResult.Data[0].Timestamp;
+
+        (simulateTimestamp - latestTimestamp).Should().Be((UInt256)secondsPerSlot);
     }
 }

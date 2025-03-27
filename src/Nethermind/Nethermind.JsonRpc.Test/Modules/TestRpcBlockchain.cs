@@ -52,6 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
+        public BlocksConfig BlocksConfig { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
 
@@ -76,6 +77,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
                 _blockchain.Bridge = blockchainBridge;
+                return this;
+            }
+
+            public Builder<T> WithBlocksConfig(BlocksConfig blocksConfig)
+            {
+                _blockchain.BlocksConfig = blocksConfig;
                 return this;
             }
 
@@ -142,7 +149,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
-            new BlocksConfig().SecondsPerSlot);
+            @this.BlocksConfig.SecondsPerSlot);
 
         private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
             @this.WorldStateManager,
@@ -150,7 +157,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.BlockTree,
             @this.RpcConfig,
             @this.Bridge,
-            new BlocksConfig().SecondsPerSlot,
+            @this.BlocksConfig.SecondsPerSlot,
             @this.BlockValidator,
             @this.BlockPreprocessorStep,
             new RewardCalculator(@this.SpecProvider),
@@ -203,9 +210,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SimulateTransactionProcessorFactory.Instance,
                 LimboLogs.Instance);
 
-            BlocksConfig blocksConfig = new BlocksConfig();
+            BlocksConfig ??= new BlocksConfig();
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, blocksConfig, false);
+            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
