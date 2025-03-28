@@ -56,6 +56,8 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
+        public ProofVersion CurrentProofVersion { get; internal set; }
+
         public bool IsSyncing
         {
             get
@@ -82,6 +84,7 @@ namespace Nethermind.Blockchain
                 BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
+            CurrentProofVersion = spec.GetBlobProofVersion();
             HeadChanged?.Invoke(sender, e);
         }
     }

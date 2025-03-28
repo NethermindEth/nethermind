@@ -31,7 +31,7 @@ public static class TxErrorMessages
     public const string NotAllowedBlobVersionedHashes =
         "NotAllowedBlobVersionedHashes: Cannot be set.";
 
-    public const string InvalidTransaction =
+    public const string InvalidTransactionForm =
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
     public const string NotAllowedCreateTransaction =
@@ -81,4 +81,7 @@ public static class TxErrorMessages
 
     public const string InvalidBlobData
         = "InvalidTxBlobData: Number of blobs, hashes, commitments and proofs must match.";
+
+    public const string InvalidProofVersion
+        = "InvalidTxProofVersion: Version of network wrapper is not supported.";
 }

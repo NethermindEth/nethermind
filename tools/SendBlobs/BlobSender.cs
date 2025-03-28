@@ -138,8 +138,12 @@ internal class BlobSender
                     }
                 }
 
-                (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
+                IBlobProofsManager proofs = IBlobProofsManager.For(spec.GetBlobProofVersion());
 
+                ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
+                proofs.ComputeProofsAndCommitments(blobsContainer);
+
+                byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
 
                 BlockModel<Hash256>? blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
@@ -237,7 +241,12 @@ internal class BlobSender
             Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
         }
 
-        (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
+        IBlobProofsManager proofs = IBlobProofsManager.For(spec.GetBlobProofVersion());
+
+        ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
+        proofs.ComputeProofsAndCommitments(blobsContainer);
+
+        byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
 
         BlockModel<Hash256>? blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
@@ -303,29 +312,6 @@ internal class BlobSender
         return result;
     }
 
-    private static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobData(byte[][] blobs)
-    {
-        byte[][] commitments = new byte[blobs.Length][];
-        byte[][] proofs = new byte[blobs.Length][];
-        byte[][] blobhashes = new byte[blobs.Length][];
-
-        int blobIndex = 0;
-        foreach (var blob in blobs)
-        {
-            commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-            proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
-            blobhashes[blobIndex] = new byte[32];
-
-            KzgPolynomialCommitments.KzgifyBlob(
-                blobs[blobIndex].AsSpan(),
-                commitments[blobIndex].AsSpan(),
-                proofs[blobIndex].AsSpan(),
-                blobhashes[blobIndex].AsSpan());
-            blobIndex++;
-        }
-        return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs));
-    }
-
     private async Task<Hash256?> SendTransaction(ulong chainId, ulong nonce,
         UInt256 gasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas,
         string receiver, byte[][] blobhashes, ShardBlobNetworkWrapper blobsContainer, ISigner signer)
@@ -335,7 +321,7 @@ internal class BlobSender
             Type = TxType.Blob,
             ChainId = chainId,
             Nonce = nonce,
-            GasLimit = GasCostOf.Transaction,
+            GasLimit = GasCostOf.Transaction * 10,
             GasPrice = maxPriorityFeePerGas,
             DecodedMaxFeePerGas = gasPrice,
             MaxFeePerBlobGas = maxFeePerBlobGas,
@@ -352,7 +338,9 @@ internal class BlobSender
 
         string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
+
         Console.WriteLine("Sending tx result:" + result);
+        Console.WriteLine("Blob hashes:" + string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"0x{Hex.ToHexString(bvh)}")));
 
         return result is not null ? tx.CalculateHash() : null;
     }

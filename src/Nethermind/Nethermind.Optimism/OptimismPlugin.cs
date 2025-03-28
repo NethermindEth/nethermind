@@ -239,6 +239,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -274,6 +275,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetBlobsHandlerV2(_api.TxPool),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -201,6 +200,12 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
             => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+
+
+        public bool TryGetBlobAndProofV2(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[][]? cellProofs)
+            => _blobTransactions.TryGetBlobAndProofV2(blobVersionedHash, out blob, out cellProofs);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {

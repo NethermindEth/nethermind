@@ -1,0 +1,45 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.TxPool;
+
+namespace Nethermind.Merge.Plugin.Handlers;
+
+public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2?>>
+{
+    private const int MaxRequest = 128;
+
+
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>>> HandleAsync(byte[][] request)
+    {
+        if (request.Length > MaxRequest)
+        {
+            var error = $"The number of requested blobs must not exceed {MaxRequest}";
+            return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+        }
+
+        return ResultWrapper<IEnumerable<BlobAndProofV2?>>.Success(GetBlobsAndProofsV2(request));
+    }
+
+    private IEnumerable<BlobAndProofV2?> GetBlobsAndProofsV2(byte[][] request)
+    {
+        Metrics.NumberOfRequestedBlobs += request.Length;
+
+        foreach (byte[] requestedBlobVersionedHash in request)
+        {
+            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
+            {
+                Metrics.NumberOfSentBlobs++;
+                yield return new BlobAndProofV2(blob, cellProofs);
+            }
+            else
+            {
+                yield return null;
+            }
+        }
+    }
+}
