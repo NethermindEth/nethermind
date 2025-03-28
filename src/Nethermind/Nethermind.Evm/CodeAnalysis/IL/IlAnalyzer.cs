@@ -29,12 +29,12 @@ public static class IlAnalyzer
     private static int tasksRunningCount = 0;
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
-        if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted)
+        if (Interlocked.CompareExchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted)
+            != AnalysisPhase.NotStarted)
         {
             return;
         }
 
-        codeInfo.IlInfo.AnalysisPhase = AnalysisPhase.Queued;
         _queue.Enqueue(codeInfo);
 
         if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
