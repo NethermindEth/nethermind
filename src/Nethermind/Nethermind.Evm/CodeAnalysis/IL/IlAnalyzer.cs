@@ -32,13 +32,12 @@ public static class IlAnalyzer
     private static int tasksRunningCount = 0;
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
-        if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted
+        if (Interlocked.CompareExchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted) != AnalysisPhase.NotStarted
             || codeInfo.Codehash is null)
         {
             return;
         }
 
-        codeInfo.IlInfo.AnalysisPhase = AnalysisPhase.Queued;
         _queue.Enqueue(codeInfo);
 
         if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
@@ -63,10 +62,10 @@ public static class IlAnalyzer
             try
             {
                 Analyse(worklet, config.IlEvmEnabledMode, config, logger);
-                worklet.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
+                Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
             } catch
             {
-                worklet.IlInfo.AnalysisPhase = AnalysisPhase.Failed;
+                Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
             }
         }
     }
