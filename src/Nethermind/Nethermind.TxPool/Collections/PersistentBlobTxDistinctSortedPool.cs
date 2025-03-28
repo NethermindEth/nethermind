@@ -40,7 +40,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
                 && base.InsertCore(lightBlobTx.Hash, lightBlobTx, lightBlobTx.SenderAddress))
             {
                 numberOfTxsInDb++;
-                numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
+                numberOfBlobsInDb += lightBlobTx.GetBlobCount();
             }
         }
 

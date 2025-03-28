@@ -1,5 +1,13 @@
 [
   {
+    "network": "hoodi",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
     "network": "holesky",
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
@@ -77,7 +85,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-6"
+    "agent": "g6-standard-8"
   },
   {
     "network": "world-mainnet",

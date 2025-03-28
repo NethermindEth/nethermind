@@ -25,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -71,9 +72,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
-        [Retry(3)]
-        public async Task
-            priority_should_return_correctly()
+        public async Task priority_should_return_correctly()
         {
             using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             IEnumerable<TxPriorityContract.Destination> priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
@@ -310,7 +309,7 @@ namespace Nethermind.AuRa.Test.Contract
                 );
 
                 await AddBlock(
-                    SignTransactions(ecdsa, TestItem.PrivateKeyA, State.GetNonce(TestItem.PrivateKeyA.Address),
+                    SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.PrivateKeyA.Address),
                         // overrides for some of previous block values:
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
 

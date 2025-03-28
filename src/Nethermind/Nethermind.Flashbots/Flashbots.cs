@@ -6,19 +6,17 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Flashbots.Handlers;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Consensus.Processing;
+using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Flashbots;
 
-public class Flashbots : INethermindPlugin
+public class Flashbots(IFlashbotsConfig flashbotsConfig) : INethermindPlugin
 {
     private INethermindApi _api = null!;
-
-    private IFlashbotsConfig _flashbotsConfig = null!;
 
     private IJsonRpcConfig _jsonRpcConfig = null!;
 
@@ -35,32 +33,33 @@ public class Flashbots : INethermindPlugin
             _api.LogManager
         );
 
-        ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
-            _api.HeaderValidator ?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
-            _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
-            _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
+        ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(
+            _api.HeaderValidator!,
+            _api.BlockTree,
+            _api.BlockValidator!,
             readOnlyTxProcessingEnvFactory,
-            _api.LogManager ?? throw new ArgumentNullException(nameof(_api.LogManager)),
-            _api.SpecProvider ?? throw new ArgumentNullException(nameof(_api.SpecProvider)),
-            _flashbotsConfig
+            _api.LogManager,
+            _api.SpecProvider,
+            flashbotsConfig,
+            _api.EthereumEcdsa!
         );
 
-        ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(validateSubmissionHandler);
         _api.RpcModuleProvider.RegisterBounded(flashbotsRpcModule,
-            _flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+            flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+
+        RbuilderRpcModule rbuilderRpcModule = new(_api.BlockTree, _api.SpecProvider, _api.WorldStateManager);
+        _api.RpcModuleProvider.RegisterSingle<IRbuilderRpcModule>(rbuilderRpcModule);
 
         return Task.CompletedTask;
     }
 
+    public bool Enabled => flashbotsConfig.Enabled;
+
     public Task Init(INethermindApi api)
     {
         _api = api;
-        _flashbotsConfig = api.Config<IFlashbotsConfig>();
         _jsonRpcConfig = api.Config<IJsonRpcConfig>();
-        if (_flashbotsConfig.Enabled)
-        {
-            _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Append(ModuleType.Flashbots).ToArray();
-        }
+        _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Append(ModuleType.Flashbots).ToArray();
         return Task.CompletedTask;
     }
 

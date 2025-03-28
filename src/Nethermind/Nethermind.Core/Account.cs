@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -8,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public class Account
+    public class Account : IEquatable<Account>
     {
         public static readonly Account TotallyEmpty = new();
 
@@ -82,6 +84,27 @@ namespace Nethermind.Core
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
         public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
         public bool IsContract => _codeHash is not null;
+        public bool Equals(Account? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            return Nonce == other.Nonce &&
+                Balance == other.Balance &&
+                _codeHash == other._codeHash &&
+                _storageRoot == other._storageRoot;
+        }
+        public override bool Equals(object? obj) => Equals(obj as Account);
+        public static bool operator ==(Account? left, Account? right)
+        {
+            if (left is not null)
+            {
+                return left.Equals(right);
+            }
+            return right is null;
+        }
+        public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
+        public static bool operator !=(Account? left, Account? right) => !(left == right);
 
         public Account WithChangedBalance(in UInt256 newBalance)
         {

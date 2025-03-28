@@ -16,8 +16,6 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
@@ -107,6 +105,14 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 networkConfig.ExternalIp ??= "127.0.0.1";
                 networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
                 return networkConfig;
-            });
+            })
+            .AddDecorator<IPruningConfig>((_, pruningConfig) =>
+            {
+                pruningConfig.CacheMb = 8;
+                pruningConfig.DirtyCacheMb = 4;
+                pruningConfig.DirtyNodeShardBit = 1;
+                return pruningConfig;
+            })
+            ;
     }
 }
