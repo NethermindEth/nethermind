@@ -1,0 +1,20 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Config;
+
+public interface IHistoryConfig : IConfig
+{
+    bool Enabled { get; }
+
+    // For EIP-4444 set default to 82125
+    [ConfigItem(
+        Description = "The number of epochs to retain historical blocks and receipts. Set to null for unlimited retention. Must be at least 82125.",
+        DefaultValue = "null")]
+    ulong? HistoryRetentionEpochs { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to drop pre-merge blocks and receipts.",
+        DefaultValue = "false")]
+    bool DropPreMerge { get; set; }
+}

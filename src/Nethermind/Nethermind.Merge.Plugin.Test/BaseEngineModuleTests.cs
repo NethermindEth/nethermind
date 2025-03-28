@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -149,6 +150,7 @@ public partial class BaseEngineModuleTests
                 chain.SpecProvider,
                 chain.SyncPeerPool,
                 chain.LogManager,
+                chain.HistoryPruner,
                 new BlocksConfig().SecondsPerSlot),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
@@ -262,6 +264,8 @@ public partial class BaseEngineModuleTests
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
+        public IHistoryPruner? HistoryPruner { get; set; }
+
         protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
@@ -335,6 +339,7 @@ public partial class BaseEngineModuleTests
                 50000); // by default we want to avoid cleanup payload effects in testing
 
             ExecutionRequestsProcessor ??= new ExecutionRequestsProcessor(TxProcessor);
+            HistoryPruner = new HistoryPruner(BlockTree, ReceiptStorage, SpecProvider, new HistoryConfig(), MergeConfig.SecondsPerSlot, LogManager);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
@@ -387,9 +392,9 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
+            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
             return chain;
         }
 
