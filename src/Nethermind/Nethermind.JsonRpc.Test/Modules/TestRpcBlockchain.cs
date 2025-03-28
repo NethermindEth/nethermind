@@ -209,7 +209,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SimulateTransactionProcessorFactory.Instance,
                 LimboLogs.Instance);
 
-            BlocksConfig ??= new BlocksConfig();
             ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
             BlockFinder ??= BlockTree;
