@@ -14,6 +14,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Blockchain.TestBlockchain;
 using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -85,12 +86,10 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         Assert.That(result.Data, Is.Not.Null);
     }
 
-    [TestCase(2)]
-    [TestCase(4)]
-    [TestCase(8)]
-    [TestCase(12)]
-    [TestCase(20)]
-    public async Task TestSimulate_TimestampIsComputedCorrectly(int secondsPerSlot)
+    [Combinatorial]
+    public async Task TestSimulate_TimestampIsComputedCorrectly(
+        [Values(2, 12)] int secondsPerSlot,
+        [Values(0x1, 0x2, 0x3, 0x5)] int blockNumber)
     {
         const string data = """
                               {
@@ -128,11 +127,15 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
                 SecondsPerSlot = (ulong) secondsPerSlot
             })
             .Build(testSpecProvider);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
-        var latestResult = chain.EthRpcModule.eth_getBlockByNumber(BlockParameter.Latest);
+        var blockParameter = new BlockParameter(blockNumber);
+
+        var latestResult = chain.EthRpcModule.eth_getBlockByNumber(blockParameter);
         var latestTimestamp = latestResult.Data.Timestamp;
 
-        var simulateResult = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        var simulateResult = chain.EthRpcModule.eth_simulateV1(payload, blockParameter);
         var simulateTimestamp = simulateResult.Data[0].Timestamp;
 
         (simulateTimestamp - latestTimestamp).Should().Be((UInt256)secondsPerSlot);
