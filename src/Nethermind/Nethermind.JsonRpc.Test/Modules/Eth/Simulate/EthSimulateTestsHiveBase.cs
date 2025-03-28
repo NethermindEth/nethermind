@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
@@ -94,30 +95,24 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         [Values(2, 12)] int secondsPerSlot,
         [Values(0, 1, 2, 5)] int blockNumber)
     {
-        const string data = """
+        string data = $$"""
                               {
                                 "blockStateCalls": [
                                   {
-                                    "blockOverrides": {
-                                      "baseFeePerGas": "0x9"
-                                    },
                                     "stateOverrides": {
-                                      "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045": {
+                                      "{{TestItem.AddressA}}": {
                                         "balance": "0xf00000000"
                                       }
                                     },
                                     "calls": [
                                       {
-                                        "from": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-                                        "to": "0x014d023e954bAae7F21E56ed8a5d81b12902684D",
-                                        "maxFeePerGas": "0xf",
+                                        "from": "{{TestItem.AddressA}}",
+                                        "to": "{{TestItem.AddressB}}",
                                         "value": "0x1"
                                       }
                                     ]
                                   }
-                                ],
-                                "validation": true,
-                                "traceTransfers": true
+                                ]
                               }
                             """;
         var serializer = new EthereumJsonSerializer();
