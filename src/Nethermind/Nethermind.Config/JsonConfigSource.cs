@@ -72,38 +72,38 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+            var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
-        foreach (var configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
-        {
-            var key = configItem.Name;
-            if (!itemsDict.ContainsKey(key))
+            foreach (var configItem in configItems.EnumerateObject())
             {
-                var value = configItem.Value;
-                if (value.ValueKind == JsonValueKind.Number)
+                var key = configItem.Name;
+                if (!itemsDict.ContainsKey(key))
                 {
-                    itemsDict[key] = value.GetInt64().ToString();
-                }
-                else if (value.ValueKind == JsonValueKind.True)
-                {
-                    itemsDict[key] = "true";
-                }
-                else if (value.ValueKind == JsonValueKind.False)
-                {
-                    itemsDict[key] = "false";
+                    var value = configItem.Value;
+                    if (value.ValueKind == JsonValueKind.Number)
+                    {
+                            itemsDict[key] = ParseNumber(value);
+                    }
+                    else if (value.ValueKind == JsonValueKind.True)
+                    {
+                        itemsDict[key] = "true";
+                    }
+                    else if (value.ValueKind == JsonValueKind.False)
+                    {
+                        itemsDict[key] = "false";
+                    }
+                    else
+                    {
+                        itemsDict[key] = configItem.Value.ToString();
+                    }
                 }
                 else
                 {
-                    itemsDict[key] = configItem.Value.ToString();
+                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
                 }
             }
-            else
-            {
-                throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
-            }
-        }
 
-        ApplyConfigValues(moduleName, itemsDict);
+            ApplyConfigValues(moduleName, itemsDict);
     }
 
     private readonly Dictionary<string, Dictionary<string, string>> _values = new(StringComparer.InvariantCultureIgnoreCase);
@@ -158,4 +158,23 @@ public class JsonConfigSource : IConfigSource
     {
         return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
     }
+
+    private string ParseNumber(JsonElement value)
+    {
+        try
+        {
+            return value.GetInt64().ToString();
+        }
+        catch (FormatException)
+        {
+            try
+            {
+                return value.GetDouble().ToString();
+            }
+            catch (FormatException ex)
+            {
+                throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double. error: {ex.Message}");
+            }
+        }
+}
 }
