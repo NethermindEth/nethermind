@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TieredPGO>true</TieredPGO>
+    <StartupObject>Nethermind.Benchmark.Runner.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
