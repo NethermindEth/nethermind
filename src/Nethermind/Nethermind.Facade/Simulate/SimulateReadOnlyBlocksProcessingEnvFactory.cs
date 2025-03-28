@@ -19,6 +19,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IReadOnlyBlockTree baseBlockTree,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
+    ISimulateTransactionProcessorFactory transactionProcessorFactory,
     ILogManager? logManager = null)
 {
     public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
@@ -33,6 +34,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             editableDbProvider,
             tempBlockTree,
             specProvider,
+            transactionProcessorFactory,
             logManager,
             validate);
     }

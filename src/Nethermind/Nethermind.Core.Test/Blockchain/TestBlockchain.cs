@@ -119,6 +119,7 @@ public class TestBlockchain : IDisposable
     public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
 
     public ManualTimestamper Timestamper { get; protected set; } = null!;
+    public BlocksConfig BlocksConfig { get; protected set; } = new();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
@@ -263,8 +264,6 @@ public class TestBlockchain : IDisposable
 
     protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
-        BlocksConfig blocksConfig = new();
-
         BlockProducerEnvFactory blockProducerEnvFactory = new(
             WorldStateManager,
             BlockTree,
@@ -275,7 +274,7 @@ public class TestBlockchain : IDisposable
             BlockPreprocessorStep,
             TxPool,
             transactionComparerProvider,
-            blocksConfig,
+            BlocksConfig,
             LogManager);
 
         BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
@@ -288,7 +287,7 @@ public class TestBlockchain : IDisposable
             Timestamper,
             SpecProvider,
             LogManager,
-            blocksConfig);
+            BlocksConfig);
     }
 
     protected virtual IBlockProducerRunner CreateBlockProducerRunner()

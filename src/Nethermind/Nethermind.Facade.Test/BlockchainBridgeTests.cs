@@ -88,6 +88,7 @@ public class BlockchainBridgeTests
             readOnlyBlockTree,
             new ReadOnlyDbProvider(_dbProvider, true),
             _specProvider,
+            SimulateTransactionProcessorFactory.Instance,
             LimboLogs.Instance);
 
         _blockchainBridge = new BlockchainBridge(
@@ -219,6 +220,7 @@ public class BlockchainBridgeTests
             roBlockTree,
             new ReadOnlyDbProvider(_dbProvider, true),
             _specProvider,
+            SimulateTransactionProcessorFactory.Instance,
             LimboLogs.Instance);
 
         Block head = Build.A.Block.WithNumber(headNumber).TestObject;

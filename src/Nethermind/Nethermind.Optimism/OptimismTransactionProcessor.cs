@@ -12,7 +12,7 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public sealed class OptimismTransactionProcessor(
+public class OptimismTransactionProcessor(
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
