@@ -45,6 +45,13 @@ on:
         description: Simulator build argument (e.g. fixtures URL)
         required: false
         type: string
+      parallelism:
+        description: "Parallelism"
+        required: false
+        default: "4"
+        type: number
+        min: 1
+        max: 10
       enable_buildarg:
         description: Enable buildarg flag
         required: true
@@ -95,7 +102,7 @@ jobs:
         continue-on-error: true
         working-directory: hive
         run: |
-          HIVE_ARGS="--client nethermind --sim '$TEST_SUITE' --sim.loglevel $LOG_LEVEL"
+          HIVE_ARGS="--client nethermind --sim '$TEST_SUITE' --sim.loglevel $LOG_LEVEL --sim.parallelism=${{ github.event.inputs.parallelism }}"
           
           # Add optional arguments based on conditions
           if [ -n "$LIMIT" ]; then
