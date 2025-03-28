@@ -16,9 +16,11 @@
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
+    <Project Path="Nethermind.Init\Nethermind.Init.csproj" />
     <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
