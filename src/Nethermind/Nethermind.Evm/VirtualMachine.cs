@@ -81,8 +81,8 @@ public class VirtualMachine : IVirtualMachine
         {
             IsILEvmEnabled = true,
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisQueueMaxSize = 8,
-            IlEvmAnalysisThreshold = 4,
+            IlEvmAnalysisQueueMaxSize = 4,
+            IlEvmAnalysisThreshold = 2,
             IsIlEvmAggressiveModeEnabled = true
         };
 
@@ -2592,7 +2592,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
-        CodeInfo codeInfo = new(initCode, env.ExecutingAccount);
+        CodeInfo codeInfo = new(initCode);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         ExecutionEnvironment callEnv = new

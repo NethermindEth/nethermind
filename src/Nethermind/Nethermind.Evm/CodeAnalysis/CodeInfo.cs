@@ -11,11 +11,12 @@ using IlevmMode = int;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using System.Linq;
+using Nethermind.Core.Crypto;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
     {
-        public Address? Address { get; init; }
+        public ValueHash256? Codehash { get; set; }
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
 
@@ -39,16 +40,16 @@ namespace Nethermind.Evm.CodeAnalysis
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
         public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>(), null);
 
-        public CodeInfo(byte[] code, Address source = null)
+        public CodeInfo(byte[] code, ValueHash256? codeHash = null)
         {
-            Address = source;
+            Codehash = codeHash;
             MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
-        public CodeInfo(ReadOnlyMemory<byte> code, Address source = null)
+        public CodeInfo(ReadOnlyMemory<byte> code, ValueHash256? codeHash = null)
         {
-            Address = source;
+            Codehash = codeHash;
             MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
@@ -63,7 +64,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public CodeInfo(IPrecompile precompile)
         {
-            Address = null;
+            Codehash = null;
             Precompile = precompile;
             MachineCode = Array.Empty<byte>();
             _analyzer = _emptyAnalyzer;

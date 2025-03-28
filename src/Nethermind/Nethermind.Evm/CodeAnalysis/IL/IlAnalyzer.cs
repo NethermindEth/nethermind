@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
@@ -25,11 +26,14 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
+    private static ConcurrentDictionary<ValueHash256?, PrecompiledContract> _processed = new();
+
     private static readonly ConcurrentQueue<CodeInfo> _queue = new();
     private static int tasksRunningCount = 0;
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
-        if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted)
+        if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted
+            || codeInfo.Codehash is null)
         {
             return;
         }
@@ -88,11 +92,18 @@ public static class IlAnalyzer
         switch (mode)
         {
             case ILMode.FULL_AOT_MODE:
-                if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
+                if (_processed.TryGetValue(codeInfo.Codehash, out PrecompiledContract? contractDelegate))
                 {
+                    codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     return;
+                } else
+                {
+                    if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
+                    {
+                        return;
+                    }
+                    CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
                 }
-                CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
                 break;
         }
     }
@@ -141,8 +152,9 @@ public static class IlAnalyzer
 
     internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
-        var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), codeInfo, contractMetadata, vmConfig);
+        var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig);
 
+        _processed[codeInfo.Codehash] = contractDelegate;
         codeInfo.IlInfo.PrecompiledContract = contractDelegate;
     }
 
