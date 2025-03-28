@@ -18,17 +18,16 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class UnsafePivotUpdator(
+public class UnsafeStartingSyncPivotUpdater(
     IBlockTree blockTree,
     ISyncModeSelector syncModeSelector,
     ISyncPeerPool syncPeerPool,
     ISyncConfig syncConfig,
     IBlockCacheService blockCacheService,
     IBeaconSyncStrategy beaconSyncStrategy,
-    IDb metadataDb,
     ILogManager logManager)
-    : PivotUpdator(blockTree, syncModeSelector, syncPeerPool, syncConfig,
-        blockCacheService, beaconSyncStrategy, metadataDb, logManager)
+    : StartingSyncPivotUpdater(blockTree, syncModeSelector, syncPeerPool, syncConfig,
+        blockCacheService, beaconSyncStrategy, logManager)
 {
     protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {

@@ -13,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -21,7 +20,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PivotUpdator
+public class StartingSyncPivotUpdater
 {
     private const string Pivot = "pivot";
     private readonly IBlockTree _blockTree;
@@ -30,7 +29,6 @@ public class PivotUpdator
     private readonly ISyncConfig _syncConfig;
     protected readonly IBlockCacheService _blockCacheService;
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
-    private readonly IDb _metadataDb;
     protected readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
@@ -40,13 +38,12 @@ public class PivotUpdator
     private int _updateInProgress;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
-    public PivotUpdator(IBlockTree blockTree,
+    public StartingSyncPivotUpdater(IBlockTree blockTree,
         ISyncModeSelector syncModeSelector,
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
         IBlockCacheService blockCacheService,
         IBeaconSyncStrategy beaconSyncStrategy,
-        [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -55,7 +52,6 @@ public class PivotUpdator
         _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
-        _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot; // Note: Blocktree would have set this to 0 if sync pivot is in DB
