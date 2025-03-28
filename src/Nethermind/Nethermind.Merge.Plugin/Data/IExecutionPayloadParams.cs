@@ -41,11 +41,11 @@ public class ExecutionPayloadParams(byte[][]? executionRequests = null)
             }
 
             // verification of the requests
-            byte[][] requests = ExecutionRequests;
+            byte[][]? requests = ExecutionRequests;
             int previousTypeId = -1;
             for (int i = 0; i < requests.Length; i++)
             {
-                var request = requests[i];
+                byte[]? request = requests[i];
                 if (request is null || request.Length <= 1)
                 {
                     error = "Execution request data must be longer than 1 byte";
