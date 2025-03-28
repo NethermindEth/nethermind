@@ -86,10 +86,13 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         Assert.That(result.Data, Is.Not.Null);
     }
 
+    /// <remarks>
+    /// See: https://github.com/ethereum/execution-apis/blob/e56d3208789259d0b09fa68e9d8594aa4d73c725/docs/ethsimulatev1-notes.md?plain=1#L18
+    /// </remarks>
     [Combinatorial]
-    public async Task TestSimulate_TimestampIsComputedCorrectly(
+    public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
         [Values(2, 12)] int secondsPerSlot,
-        [Values(0x1, 0x2, 0x3, 0x5)] int blockNumber)
+        [Values(0x0, 0x1, 0x2, 0x3, 0x5)] int blockNumber)
     {
         const string data = """
                               {
@@ -120,21 +123,24 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         var serializer = new EthereumJsonSerializer();
         var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
 
-        var testSpecProvider = new TestSpecProvider(London.Instance);
-        var chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain())
+        var chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
             .WithBlocksConfig(new BlocksConfig
             {
-                SecondsPerSlot = (ulong) secondsPerSlot
+                SecondsPerSlot = (ulong)secondsPerSlot
             })
-            .Build(testSpecProvider);
+            .Build(new TestSpecProvider(London.Instance));
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
-        await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
+        await chain.AddBlock(
+            BuildSimpleTransaction.WithNonce(4).TestObject,
+            BuildSimpleTransaction.WithNonce(5).TestObject);
 
         var blockParameter = new BlockParameter(blockNumber);
-        var parentResult = chain.EthRpcModule.eth_getBlockByNumber(blockParameter);
-        var simulateResult = chain.EthRpcModule.eth_simulateV1(payload, blockParameter);
+        var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;
+        var simulated = chain.EthRpcModule.eth_simulateV1(payload, blockParameter).Data[0];
 
-        (simulateResult.Data[0].Number - parentResult.Data.Number).Should().Be(1);
-        (simulateResult.Data[0].Timestamp - parentResult.Data.Timestamp).Should().Be((UInt256)secondsPerSlot);
+        simulated.ParentHash.Should().Be(parent.Hash);
+        (simulated.Number - parent.Number).Should().Be(1);
+        (simulated.Timestamp - parent.Timestamp).Should().Be((UInt256)secondsPerSlot);
     }
 }
