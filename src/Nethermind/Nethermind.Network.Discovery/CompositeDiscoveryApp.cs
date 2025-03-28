@@ -179,6 +179,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             nodeTable,
             discoveryStorage,
             discoveryConfig,
+            _networkConfig,
             _logManager
         );
 
