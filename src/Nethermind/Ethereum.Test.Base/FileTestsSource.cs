@@ -20,6 +20,29 @@ namespace Ethereum.Test.Base
             _wildcard = wildcard;
         }
 
+        public IEnumerable<EofTest> LoadEofTests()
+        {
+            try
+            {
+                if (Path.GetFileName(_fileName).StartsWith("."))
+                {
+                    return Enumerable.Empty<EofTest>();
+                }
+
+                if (_wildcard is not null && !_fileName.Contains(_wildcard))
+                {
+                    return Enumerable.Empty<EofTest>();
+                }
+
+                string json = File.ReadAllText(_fileName);
+                return JsonToEthereumTest.ConvertToEofTests(json);
+            }
+            catch (Exception e)
+            {
+                return Enumerable.Repeat(new EofTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
+            }
+        }
+
         public IEnumerable<GeneralStateTest> LoadGeneralStateTests()
         {
             try
@@ -35,7 +58,7 @@ namespace Ethereum.Test.Base
                 }
 
                 string json = File.ReadAllText(_fileName);
-                return JsonToEthereumTest.Convert(json);
+                return JsonToEthereumTest.ConvertStateTest(json);
             }
             catch (Exception e)
             {
