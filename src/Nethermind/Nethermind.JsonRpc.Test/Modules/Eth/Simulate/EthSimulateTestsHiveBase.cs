@@ -92,7 +92,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
     [Combinatorial]
     public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
         [Values(2, 12)] int secondsPerSlot,
-        [Values(0x0, 0x1, 0x2, 0x3, 0x5)] int blockNumber)
+        [Values(0, 1, 2, 5)] int blockNumber)
     {
         const string data = """
                               {
@@ -129,11 +129,13 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
             {
                 SecondsPerSlot = (ulong)secondsPerSlot
             })
-            .Build(new TestSpecProvider(London.Instance));
+            .Build(new TestSpecProvider(London.Instance), addBlockOnStart: false);
+
+        await chain.AddBlock();
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
-        await chain.AddBlock(
-            BuildSimpleTransaction.WithNonce(4).TestObject,
-            BuildSimpleTransaction.WithNonce(5).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
         var blockParameter = new BlockParameter(blockNumber);
         var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;

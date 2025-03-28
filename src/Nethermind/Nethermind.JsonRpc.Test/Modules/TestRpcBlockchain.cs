@@ -126,10 +126,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(
-                ISpecProvider? specProvider = null,
-                UInt256? initialValues = null) =>
-                (T)(await _blockchain.Build(specProvider, initialValues, true));
+            public async Task<T> Build(ISpecProvider? specProvider = null,UInt256? initialValues = null,bool addBlockOnStart = true)
+            {
+                return (T)await _blockchain.Build(specProvider, initialValues, addBlockOnStart);
+            }
         }
 
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
