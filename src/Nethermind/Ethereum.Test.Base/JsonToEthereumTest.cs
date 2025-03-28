@@ -432,7 +432,7 @@ namespace Ethereum.Test.Base
             for (var i = 0; i < 3; i++)
             {
                 int newIndex = category.IndexOf("/", startIndex);
-                if (index < 0)
+                if (newIndex < 0)
                 {
                     break;
                 }
