@@ -3,7 +3,6 @@
     <File Path="../../src/Nethermind/Directory.Build.props" />
     <File Path="../../src/Nethermind/Directory.Packages.props" />
   </Folder>
-  <Project Path="../../src/Nethermind/Ethereum.Test.Base/Ethereum.Test.Base.csproj" Id="79e0809f-a3a0-41b7-bf99-76b655efd831" />
   <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
@@ -12,7 +11,6 @@
   <Project Path="../../src/Nethermind/Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
-  <Project Path="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
@@ -39,7 +37,6 @@
   <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" Id="5aae74fe-1ba1-4d80-9b29-f759a8dcf702" />
   <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
-  <Project Path="../../src/Nethermind/Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Synchronization/Nethermind.Synchronization.csproj" />

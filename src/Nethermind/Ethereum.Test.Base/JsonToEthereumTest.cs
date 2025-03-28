@@ -15,57 +15,12 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
+using Nethermind.Specs;
 
 namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        public static IReleaseSpec ParseSpec(string network)
-        {
-            network = network.Replace("EIP150", "TangerineWhistle");
-            network = network.Replace("EIP158", "SpuriousDragon");
-            network = network.Replace("DAO", "Dao");
-            network = network.Replace("Merged", "Paris");
-            network = network.Replace("Merge", "Paris");
-            network = network.Replace("London+3540+3670", "Shanghai");
-            network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
-            network = network.Replace("GrayGlacier+3860", "Shanghai");
-            network = network.Replace("GrayGlacier+3855", "Shanghai");
-            network = network.Replace("Merge+3540+3670", "Shanghai");
-            network = network.Replace("Shanghai+3855", "Shanghai");
-            network = network.Replace("Shanghai+3860", "Shanghai");
-            network = network.Replace("GrayGlacier+1153", "Cancun");
-            network = network.Replace("Merge+1153", "Cancun");
-            network = network.Replace("Shanghai+6780", "Cancun");
-            network = network.Replace("GrayGlacier+1153", "Cancun");
-            network = network.Replace("Merge+1153", "Cancun");
-            return network switch
-            {
-                "Frontier" => Frontier.Instance,
-                "Homestead" => Homestead.Instance,
-                "TangerineWhistle" => TangerineWhistle.Instance,
-                "SpuriousDragon" => SpuriousDragon.Instance,
-                "EIP150" => TangerineWhistle.Instance,
-                "EIP158" => SpuriousDragon.Instance,
-                "Dao" => Dao.Instance,
-                "Constantinople" => Constantinople.Instance,
-                "ConstantinopleFix" => ConstantinopleFix.Instance,
-                "Byzantium" => Byzantium.Instance,
-                "Istanbul" => Istanbul.Instance,
-                "Berlin" => Berlin.Instance,
-                "London" => London.Instance,
-                "ArrowGlacier" => ArrowGlacier.Instance,
-                "GrayGlacier" => GrayGlacier.Instance,
-                "Shanghai" => Shanghai.Instance,
-                "Cancun" => Cancun.Instance,
-                "Paris" => Paris.Instance,
-                "Prague" => Prague.Instance,
-                "Osaka" => Osaka.Instance,
-                _ => throw new NotSupportedException()
-            };
-        }
-
         private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
             const string timestampPrefix = "Time";
@@ -250,7 +205,7 @@ namespace Ethereum.Test.Base
                     }
 
                     test.ForkName = postStateBySpec.Key;
-                    test.Fork = ParseSpec(postStateBySpec.Key);
+                    test.Fork = SpecNameParser.ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
                     test.CurrentCoinbase = testJson.Env.CurrentCoinbase;
                     test.CurrentDifficulty = testJson.Env.CurrentDifficulty;
@@ -348,11 +303,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = ParseSpec(networks[0]);
+                testSpec.EthereumNetwork = SpecNameParser.ParseSpec(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
+                    testSpec.EthereumNetworkAfterTransition = SpecNameParser.ParseSpec(networks[1]);
                 }
 
                 testsByName.Add(Convert(testName, testSpec));
