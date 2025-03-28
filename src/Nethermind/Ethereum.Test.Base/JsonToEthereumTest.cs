@@ -205,7 +205,7 @@ namespace Ethereum.Test.Base
                     }
 
                     test.ForkName = postStateBySpec.Key;
-                    test.Fork = SpecNameParser.ParseSpec(postStateBySpec.Key);
+                    test.Fork = SpecNameParser.Parse(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
                     test.CurrentCoinbase = testJson.Env.CurrentCoinbase;
                     test.CurrentDifficulty = testJson.Env.CurrentDifficulty;
@@ -303,11 +303,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = SpecNameParser.ParseSpec(networks[0]);
+                testSpec.EthereumNetwork = SpecNameParser.Parse(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = SpecNameParser.ParseSpec(networks[1]);
+                    testSpec.EthereumNetworkAfterTransition = SpecNameParser.Parse(networks[1]);
                 }
 
                 testsByName.Add(Convert(testName, testSpec));
