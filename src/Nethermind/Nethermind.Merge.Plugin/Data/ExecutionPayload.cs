@@ -190,15 +190,23 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>() ??
             throw new RlpException($"{nameof(Transaction)} decoder is not registered");
 
-        byte[][] txData = Transactions;
-        Transaction[] transactions = new Transaction[txData.Length];
-
-        for (int i = 0; i < transactions.Length; i++)
+        int i = 0;
+        try
         {
-            transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
-        }
+            byte[][] txData = Transactions;
+            Transaction[] transactions = new Transaction[txData.Length];
 
-        return (_transactions = transactions);
+            for (i = 0; i < transactions.Length; i++)
+            {
+                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+            }
+
+            return (_transactions = transactions);
+        }
+        catch (RlpException e)
+        {
+            throw new RlpException($"Transaction {i} is not valid", e);
+        }
     }
 
     /// <summary>
