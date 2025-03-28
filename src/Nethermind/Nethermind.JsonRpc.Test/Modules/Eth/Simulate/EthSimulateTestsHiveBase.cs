@@ -131,13 +131,10 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
         var blockParameter = new BlockParameter(blockNumber);
-
-        var latestResult = chain.EthRpcModule.eth_getBlockByNumber(blockParameter);
-        var latestTimestamp = latestResult.Data.Timestamp;
-
+        var parentResult = chain.EthRpcModule.eth_getBlockByNumber(blockParameter);
         var simulateResult = chain.EthRpcModule.eth_simulateV1(payload, blockParameter);
-        var simulateTimestamp = simulateResult.Data[0].Timestamp;
 
-        (simulateTimestamp - latestTimestamp).Should().Be((UInt256)secondsPerSlot);
+        (simulateResult.Data[0].Number - parentResult.Data.Number).Should().Be(1);
+        (simulateResult.Data[0].Timestamp - parentResult.Data.Timestamp).Should().Be((UInt256)secondsPerSlot);
     }
 }
