@@ -72,6 +72,7 @@ jobs:
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
           echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
           echo "ENABLE_BUILDARG=${{ github.event.inputs.enable_buildarg || false }}" >> $GITHUB_ENV
+          echo "PARALLELISM=${{ github.event.inputs.parallelism || '4' }}" >> $GITHUB_ENV
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
         with:
@@ -102,7 +103,7 @@ jobs:
         continue-on-error: true
         working-directory: hive
         run: |
-          HIVE_ARGS="--client nethermind --sim '$TEST_SUITE' --sim.loglevel $LOG_LEVEL --sim.parallelism=${{ github.event.inputs.parallelism }}"
+          HIVE_ARGS="--client nethermind --sim '$TEST_SUITE' --sim.loglevel $LOG_LEVEL --sim.parallelism=$PARALLELISM"
           
           # Add optional arguments based on conditions
           if [ -n "$LIMIT" ]; then
