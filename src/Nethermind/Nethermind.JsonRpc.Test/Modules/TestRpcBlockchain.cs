@@ -52,7 +52,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
-        public BlocksConfig BlocksConfig { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
 
