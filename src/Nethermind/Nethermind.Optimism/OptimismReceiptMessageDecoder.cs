@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Optimism;
 
 [Rlp.Decoder(RlpDecoderKey.Trie)]
-public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true) { }
+public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true);
 
 [Rlp.Decoder]
 public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlpStreamDecoder<TxReceipt>
