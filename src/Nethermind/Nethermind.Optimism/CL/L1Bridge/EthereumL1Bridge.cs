@@ -49,10 +49,9 @@ public class EthereumL1Bridge : IL1Bridge
 
     public async Task Run(CancellationToken token)
     {
-        _logger.Error("Starting L1Bridge");
+        if (_logger.IsInfo) _logger.Info("Starting L1Bridge");
         while (!token.IsCancellationRequested)
         {
-            // TODO: head block instead of finalized
             L1Block newHead = await GetFinalized();
             ulong newHeadNumber = newHead.Number;
 

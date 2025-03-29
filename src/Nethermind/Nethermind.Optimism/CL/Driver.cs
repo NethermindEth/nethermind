@@ -30,10 +30,11 @@ public class Driver : IDisposable
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
+        ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         _logger = logger;
         _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
-        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _executionEngineManager = executionEngineManager;
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
             _systemConfigDeriver,

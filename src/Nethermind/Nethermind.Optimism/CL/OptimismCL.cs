@@ -43,6 +43,7 @@ public class OptimismCL : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
+        ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
 
         _logger = logManager.GetClassLogger();
@@ -53,7 +54,7 @@ public class OptimismCL : IDisposable
         _decodingPipeline = new DecodingPipeline(_logger);
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _logger);
 
-        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, _logger);
         _executionEngineManager = new ExecutionEngineManager(_l2Api, _logger);
         _driver = new Driver(

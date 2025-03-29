@@ -12,8 +12,8 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public class DecodingPipeline : IDecodingPipeline
 {
-    private readonly Channel<byte[]> _inputChannel = Channel.CreateUnbounded<byte[]>();
-    private readonly Channel<BatchV1> _outputChannel = Channel.CreateUnbounded<BatchV1>();
+    private readonly Channel<byte[]> _inputChannel = Channel.CreateBounded<byte[]>(9);
+    private readonly Channel<BatchV1> _outputChannel = Channel.CreateBounded<BatchV1>(3);
     private readonly IFrameQueue _frameQueue = new FrameQueue();
     private readonly ILogger _logger;
 

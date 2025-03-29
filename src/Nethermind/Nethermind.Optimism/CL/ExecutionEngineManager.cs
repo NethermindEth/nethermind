@@ -50,8 +50,6 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
-        // TODO: We can cash unsafe blocks to save time during verification
-        // TODO: lock here
         if (_currentHead >= payloadAttributes.Number)
         {
             L2Block actualBlock = await _l2Api.GetBlockByNumber(payloadAttributes.Number);
@@ -90,6 +88,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
         if (fcuResult.PayloadStatus.Status != PayloadStatus.Valid)
         {
+            if (_logger.IsWarn) _logger.Warn($"ForkChoiceUpdated result: {fcuResult.PayloadStatus.Status}, payload number: {payloadAttributes.Number}");
             return null;
         }
 
@@ -105,9 +104,9 @@ public class ExecutionEngineManager : IExecutionEngineManager
     {
         PayloadStatusV1 npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
 
-        if (npResult.Status == PayloadStatus.Invalid)
+        if (npResult.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"Got invalid payload");
+            if (_logger.IsWarn) _logger.Warn($"NewPayloadV3 result: {npResult.Status}, payload number: {executionPayload.BlockNumber}");
             return false;
         }
         return true;
@@ -149,9 +148,9 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
         var result = await _l2Api.ForkChoiceUpdatedV3(newHeadHash, newFinalizedHash, newSafeHash);
 
-        if (result.PayloadStatus.Status == PayloadStatus.Invalid)
+        if (result.PayloadStatus.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdated({newHeadHash}, {newFinalizedHash}, {newSafeHash})");
+            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdatedV3({newHeadHash}, {newFinalizedHash}, {newSafeHash}), Result: {result.PayloadStatus.Status}");
             return false;
         }
         _currentHeadHash = newHeadHash;
