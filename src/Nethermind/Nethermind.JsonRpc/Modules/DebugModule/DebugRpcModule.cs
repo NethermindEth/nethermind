@@ -396,16 +396,16 @@ public class DebugRpcModule : IDebugRpcModule
         Transaction? transaction = _debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<string?>.Success(null);
+            return ResultWrapper<string?>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
         }
 
         try
         {
             return ResultWrapper<string?>.Success(Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return ResultWrapper<string?>.Success(null);
+            return ResultWrapper<string?>.Fail($"Error encoding transaction: {ex.Message}", ErrorCodes.InternalError);
         }
     }
 
@@ -414,16 +414,20 @@ public class DebugRpcModule : IDebugRpcModule
         TxReceipt[]? receipts = _debugBridge.GetReceiptsForBlock(blockParameter);
         if (receipts is null)
         {
+            return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+        }
+
+        if (receipts.Length == 0)
+        {
             return ResultWrapper<byte[][]>.Success([]);
         }
-
-        byte[][] result = new byte[receipts.Length][];
-        for (int i = 0; i < receipts.Length; i++)
-        {
-            result[i] = Rlp.Encode(receipts[i]).Bytes;
-        }
-
-        return ResultWrapper<byte[][]>.Success(result);
+        
+        RlpBehaviors behavior =
+            (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
+            RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
+            
+        var rlp = receipts.Select(tx => Rlp.Encode(tx, behavior).Bytes);
+        return ResultWrapper<byte[][]>.Success(rlp.ToArray());
     }
 
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter)
