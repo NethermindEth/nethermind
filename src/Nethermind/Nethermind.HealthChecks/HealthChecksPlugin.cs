@@ -212,7 +212,7 @@ namespace Nethermind.HealthChecks
                 if (!_nodeHealthService.CheckClAlive())
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn("Not receiving Fork Choices from the consensus client which are required to sync.");
+                        _logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync.");
                 }
             }
         }
