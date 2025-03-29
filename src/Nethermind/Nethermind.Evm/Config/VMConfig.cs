@@ -16,4 +16,5 @@ public class VMConfig : IVMConfig
     public int IlEvmAnalysisThreshold { get; set; } = 32;
     public bool IsIlEvmAggressiveModeEnabled { get; set; } = false;
     public int IlEvmAnalysisQueueMaxSize { get; set; } = 8;
+    public int IlEvmAnalysisMaxTasksCount { get; set; } = 8;
 }

@@ -33,5 +33,10 @@ public interface IVMConfig : IConfig
         DefaultValue = "8")]
     public int IlEvmAnalysisQueueMaxSize { get; set; }
 
+    [ConfigItem(
+        Description = "Sets Analysis max running tasks count",
+        DefaultValue = "8")]
+    public int IlEvmAnalysisMaxTasksCount { get; set; }
+
     public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;
 }

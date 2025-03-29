@@ -42,10 +42,10 @@ public static class IlAnalyzer
 
         if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
         {
-            if(tasksRunningCount < config.IlEvmAnalysisQueueMaxSize)
+            if(tasksRunningCount < config.IlEvmAnalysisMaxTasksCount)
             {
+                Interlocked.Increment(ref tasksRunningCount);
                 Task.Run(() => {
-                    Interlocked.Increment(ref tasksRunningCount);
                     AnalyzeQueue(config, logger);
                     Interlocked.Decrement(ref tasksRunningCount);
                 });
