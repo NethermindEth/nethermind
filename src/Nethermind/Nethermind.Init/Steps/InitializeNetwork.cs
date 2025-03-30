@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
@@ -95,8 +96,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
-
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
@@ -104,23 +103,6 @@ public class InitializeNetwork : IStep
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
         {
             await plugin.InitSynchronization();
-        }
-
-        _api.Pivot ??= new Pivot(_syncConfig);
-
-        if (_api.Synchronizer is null)
-        {
-            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
-                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
-
-            ContainerBuilder builder = new ContainerBuilder();
-            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
-            builder.RegisterModule(new SynchronizerModule(_syncConfig));
-            IContainer container = builder.Build();
-
-            _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
         _api.WorldStateManager!.InitializeNetwork(
@@ -203,8 +185,11 @@ public class InitializeNetwork : IStep
             throw new InvalidOperationException("Cannot initialize network without knowing own enode");
         }
 
+        ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
+
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
+        ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }
@@ -300,7 +285,6 @@ public class InitializeNetwork : IStep
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.MainBlockProcessor is null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
         if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));

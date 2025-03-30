@@ -4,14 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -21,12 +18,11 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
 
 namespace Ethereum.Test.Base
@@ -36,7 +32,6 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
-        private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
         [SetUp]
         public void Setup()
@@ -62,10 +57,11 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
-                ? GnosisSpecProvider.Instance
-                : new CustomSpecProvider(
-                    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+            test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
+
+            ISpecProvider specProvider =
+                new CustomSpecProvider(test.ChainId, test.ChainId,
+                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
 
             if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
@@ -111,7 +107,7 @@ namespace Ethereum.Test.Base
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+                test.Transaction.ChainId = test.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
                 BlockHeader parent = new(
@@ -131,7 +127,7 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
+            ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
             TransactionResult? txResult = null;
             if (txIsValid)
             {

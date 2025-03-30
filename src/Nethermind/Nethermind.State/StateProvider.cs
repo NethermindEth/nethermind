@@ -30,7 +30,7 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
-        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
@@ -62,15 +62,7 @@ namespace Nethermind.State
             };
         }
 
-        public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
-        {
-            ArgumentNullException.ThrowIfNull(visitor);
-            ArgumentNullException.ThrowIfNull(stateRoot);
-
-            _tree.Accept(visitor, stateRoot, visitingOptions);
-        }
-
-        public void Accept<TCtx>(ITreeVisitor<TCtx>? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
@@ -174,7 +166,7 @@ namespace Nethermind.State
             if (account.CodeHash.ValueHash256 != codeHash)
             {
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
-                Account changedAccount = account.WithChangedCodeHash(codeHash);
+                Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
                 PushUpdate(address, changedAccount);
             }
             else if (spec.IsEip158Enabled && !isGenesis)
@@ -416,12 +408,12 @@ namespace Nethermind.State
             }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
         {
-            Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
+            Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
         }
 
-        private readonly struct ChangeTrace
+        private struct ChangeTrace
         {
             public ChangeTrace(Account? before, Account? after)
             {
@@ -435,16 +427,20 @@ namespace Nethermind.State
                 Before = null;
             }
 
-            public Account? Before { get; }
-            public Account? After { get; }
+            public Account? Before { get; set; }
+            public Account? After { get; set; }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
             var currentPosition = _changes.Count - 1;
             if (currentPosition < 0)
             {
                 if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
+                if (commitRoots)
+                {
+                    FlushToTree();
+                }
                 return;
             }
 
@@ -587,6 +583,36 @@ namespace Nethermind.State
             {
                 ReportChanges(stateTracer, trace);
             }
+
+            if (commitRoots)
+            {
+                FlushToTree();
+            }
+        }
+
+        private void FlushToTree()
+        {
+            int writes = 0;
+            int skipped = 0;
+            foreach (var key in _blockChanges.Keys)
+            {
+                ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                if (change.Before != change.After)
+                {
+                    change.Before = change.After;
+                    _tree.Set(key, change.After);
+                    writes++;
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+
+            if (writes > 0)
+                Metrics.IncrementStateTreeWrites(writes);
+            if (skipped > 0)
+                Metrics.IncrementStateSkippedWrites(skipped);
         }
 
         private void ReportChanges(IStateTracer stateTracer, Dictionary<AddressAsKey, ChangeTrace> trace)
@@ -655,18 +681,20 @@ namespace Nethermind.State
         private Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
+            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
-                account = !_populatePreBlockCache ?
+                Account? account = !_populatePreBlockCache ?
                     GetStateReadPreWarmCache(addressAsKey) :
                     GetStatePopulatePrewarmCache(addressAsKey);
+
+                accountChanges = new(account, account);
             }
             else
             {
                 Metrics.IncrementStateTreeCacheHits();
             }
-            return account;
+            return accountChanges.After;
         }
 
         private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
@@ -698,10 +726,9 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
-            _blockCache[address] = account;
+            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
+            accountChanges.After = account;
             _needsStateRootUpdate = true;
-            Metrics.StateTreeWrites++;
-            _tree.Set(address, account);
         }
 
         private Account? GetAndAddToCache(Address address)
@@ -813,7 +840,7 @@ namespace Nethermind.State
 
         public ArrayPoolList<AddressAsKey>? ChangedAddresses()
         {
-            int count = _blockCache.Count;
+            int count = _blockChanges.Count;
             if (count == 0)
             {
                 return null;
@@ -821,7 +848,7 @@ namespace Nethermind.State
             else
             {
                 ArrayPoolList<AddressAsKey> addresses = new(count);
-                foreach (AddressAsKey address in _blockCache.Keys)
+                foreach (AddressAsKey address in _blockChanges.Keys)
                 {
                     addresses.Add(address);
                 }
@@ -829,10 +856,13 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resizeCollections = true)
+        public void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-            _blockCache.Clear();
+            if (resetBlockChanges)
+            {
+                _blockChanges.Clear();
+            }
             _intraTxCache.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
@@ -848,11 +878,6 @@ namespace Nethermind.State
             }
 
             _tree.Commit();
-        }
-
-        public static void CommitBranch()
-        {
-            // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
         // used in EthereumTests

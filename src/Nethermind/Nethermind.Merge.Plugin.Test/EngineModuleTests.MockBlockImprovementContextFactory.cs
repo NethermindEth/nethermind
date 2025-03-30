@@ -14,7 +14,7 @@ public partial class EngineModuleTests
 {
     private class MockBlockImprovementContextFactory : IBlockImprovementContextFactory
     {
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, CancellationToken _) =>
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationToken cancellationToken) =>
             new MockBlockImprovementContext(currentBestBlock, startDateTime);
     }
 

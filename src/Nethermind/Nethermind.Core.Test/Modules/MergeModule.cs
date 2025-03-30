@@ -46,12 +46,9 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
         base.Load(builder);
 
         builder
-            .AddModule(new MergeSynchronizerModule())
+            .AddModule(new MergePluginModule())
 
-            .AddSingleton<IBlockCacheService, BlockCacheService>()
-            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
-            .AddSingleton<IInvalidChainTracker, InvalidChainTracker>()
             .OnActivate<MainBlockProcessingContext>(((context, componentContext) =>
             {
                 componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
@@ -74,19 +71,11 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
 
-            // Sync related
-            .AddSingleton<BeaconSync>()
-            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
-            .AddSingleton<IBeaconPivot, BeaconPivot>()
-            .Bind<IPivot, IBeaconPivot>()
-            .Bind<IMergeSyncController, BeaconSync>()
-            .Bind<IBeaconSyncStrategy, BeaconSync>()
-
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
 
-            .AddSingleton<PivotUpdator>()
-            .ResolveOnServiceActivation<PivotUpdator, ISyncModeSelector>()
+            .AddSingleton<StartingSyncPivotUpdater>()
+            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()

@@ -18,25 +18,14 @@ namespace Nethermind.Synchronization.Blocks
         public FastSyncFeed(ISyncConfig syncConfig)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);
+            _blocksRequest = new BlocksRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;
 
         private DownloaderOptions BuildOptions()
         {
-            DownloaderOptions options = DownloaderOptions.MoveToMain;
-            if (_syncConfig.DownloadReceiptsInFastSync)
-            {
-                options |= DownloaderOptions.WithReceipts;
-            }
-
-            if (_syncConfig.DownloadBodiesInFastSync)
-            {
-                options |= DownloaderOptions.WithBodies;
-            }
-
-            return options;
+            return DownloaderOptions.Insert | DownloaderOptions.WithReceipts;
         }
 
         public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => Task.FromResult(_blocksRequest);

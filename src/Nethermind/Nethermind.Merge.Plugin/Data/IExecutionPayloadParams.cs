@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -23,16 +22,10 @@ public interface IExecutionPayloadParams
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadParams<TVersionedExecutionPayload>(
-    TVersionedExecutionPayload executionPayload,
-    byte[]?[] blobVersionedHashes,
-    Hash256? parentBeaconBlockRoot,
+public class ExecutionPayloadParams(
     byte[][]? executionRequests = null,
     byte[][]? inclusionListTransactions = null)
-    : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
-    public TVersionedExecutionPayload ExecutionPayload => executionPayload;
-
     /// <summary>
     /// Gets or sets <see cref="ExecutionRequets"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
@@ -45,10 +38,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     /// </summary>
     public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
-    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
-
-    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
     {
+        error = null;
         if (spec.RequestsEnabled)
         {
             if (ExecutionRequests is null)
@@ -58,22 +50,61 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             }
 
             // verification of the requests
-            for (int i = 0; i < ExecutionRequests.Length; i++)
+            byte[][]? requests = ExecutionRequests;
+            int previousTypeId = -1;
+            for (int i = 0; i < requests.Length; i++)
             {
-                if (ExecutionRequests[i] == null || ExecutionRequests[i].Length <= 1)
+                byte[]? request = requests[i];
+                if (request is null || request.Length <= 1)
                 {
                     error = "Execution request data must be longer than 1 byte";
                     return ValidationResult.Fail;
                 }
 
-                if (i > 0 && ExecutionRequests[i][0] <= ExecutionRequests[i - 1][0])
+                int requestTypeId = request[0];
+                if (requestTypeId <= previousTypeId)
                 {
                     error = "Execution requests must not contain duplicates and be ordered by request_type in ascending order";
                     return ValidationResult.Fail;
                 }
-            }
 
+                previousTypeId = requestTypeId;
+            }
         }
+
+        if (spec.InclusionListsEnabled)
+        {
+            if (InclusionListTransactions is null)
+            {
+                error = "Inclusion list must be set";
+                return ValidationResult.Fail;
+            }
+        }
+
+        return ValidationResult.Success;
+    }
+}
+
+public class ExecutionPayloadParams<TVersionedExecutionPayload>(
+    TVersionedExecutionPayload executionPayload,
+    byte[]?[] blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot,
+    byte[][]? executionRequests = null,
+    byte[][]? inclusionListTransactions = null)
+    : ExecutionPayloadParams(executionRequests, inclusionListTransactions), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+{
+    public TVersionedExecutionPayload ExecutionPayload => executionPayload;
+
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
+
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    {
+        ValidationResult result = ValidateInitialParams(spec, out error);
+        if (result != ValidationResult.Success)
+        {
+            return result;
+        }
+
         Transaction[]? transactions;
         try
         {
@@ -103,15 +134,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
-
-        if (spec.InclusionListsEnabled)
-        {
-            if (InclusionListTransactions is null)
-            {
-                error = "Inclusion list must be set";
-                return ValidationResult.Fail;
-            }
-        }
 
         error = null;
         return ValidationResult.Success;

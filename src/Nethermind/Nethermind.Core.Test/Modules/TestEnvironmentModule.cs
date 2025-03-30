@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using Autofac;
 using Nethermind.Blockchain;
@@ -15,8 +16,6 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
@@ -91,7 +90,13 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
                 syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
                 syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
+                syncConfig.MaxProcessingThreads = Math.Min(8, Environment.ProcessorCount);
                 return syncConfig;
+            })
+            .AddDecorator<IBlocksConfig>((_, blocksConfig) =>
+            {
+                blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
+                return blocksConfig;
             })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {
@@ -100,6 +105,14 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 networkConfig.ExternalIp ??= "127.0.0.1";
                 networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
                 return networkConfig;
-            });
+            })
+            .AddDecorator<IPruningConfig>((_, pruningConfig) =>
+            {
+                pruningConfig.CacheMb = 8;
+                pruningConfig.DirtyCacheMb = 4;
+                pruningConfig.DirtyNodeShardBit = 1;
+                return pruningConfig;
+            })
+            ;
     }
 }

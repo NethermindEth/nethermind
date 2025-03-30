@@ -24,15 +24,20 @@ public class BlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
+        UInt256 currentBlockFees,
         CancellationToken cancellationToken = default)
     {
         using var timeoutTokenSource = new CancellationTokenSource((int)timeout.TotalMilliseconds);
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutTokenSource.Token);
         CurrentBestBlock = currentBestBlock;
+        BlockFees = currentBlockFees;
         StartDateTime = startDateTime;
-        ImprovementTask = blockProducer
-            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, _cancellationTokenSource.Token)
-            .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
+
+        CancellationToken ct = _cancellationTokenSource.Token;
+        // Task.Run so doesn't block FCU response while first block is being produced
+        ImprovementTask = Task.Run(() => blockProducer
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, ct)
+            .ContinueWith(SetCurrentBestBlock, ct), ct);
     }
 
     public Task<Block?> ImprovementTask { get; }
@@ -44,14 +49,22 @@ public class BlockImprovementContext : IBlockImprovementContext
     {
         if (task.IsCompletedSuccessfully)
         {
-            if (task.Result is not null)
+            Block? block = task.Result;
+            if (block is not null)
             {
-                CurrentBestBlock = task.Result;
-                BlockFees = _feesTracer.Fees;
+                UInt256 fees = _feesTracer.Fees;
+                if (CurrentBestBlock is null ||
+                    fees > BlockFees ||
+                    (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
+                {
+                    // Only update block if block has actually improved.
+                    CurrentBestBlock = block;
+                    BlockFees = fees;
+                }
             }
         }
 
-        return task.Result;
+        return CurrentBestBlock;
     }
 
     public bool Disposed { get; private set; }

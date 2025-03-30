@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/base-sepolia.json.zst",
     "GenesisHash": "0x0dcc9e089e30b90ddfc55be9a37dd15bc551aeee999d2e2b51414c54eaf934e4",
     "BaseDbPath": "nethermind_db/base-sepolia",
-    "LogFileName": "base-sepolia.logs.txt"
+    "LogFileName": "base-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -13,8 +13,8 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 21940000,
-    "PivotHash": "0xf5c3e4cc4fcbc2302f3518805759a4c576d7834c17472e94eb4675e61d183098"
+    "PivotNumber": 23610000,
+    "PivotHash": "0xff56acc2acc21821cd1798b682af962790a2c8505f5a348bbffd665a5e40b693"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"

@@ -716,7 +716,7 @@ public partial class EngineModuleTests
         Block? head = chain.BlockTree.Head!;
 
         // make sure AddressA has enough balance to send tx
-        chain.State.GetBalance(TestItem.AddressA).Should().BeGreaterThan(UInt256.One);
+        chain.ReadOnlyState.GetBalance(TestItem.AddressA).Should().BeGreaterThan(UInt256.One);
 
         // block is an invalid block, but it is impossible to detect until we process it.
         // it is invalid because after you processs its transactions, the root of the state trie
@@ -953,7 +953,7 @@ public partial class EngineModuleTests
             result.Data.PayloadId.Should().Be(null);
             testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
             testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
-            testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
+            testChain.WorldStateManager.GlobalWorldState.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
         }
 
         async Task CanReorganizeToLastBlock(MergeTestBlockchain testChain,
@@ -985,7 +985,7 @@ public partial class EngineModuleTests
             result.Data.PayloadId.Should().Be(null);
             testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
             testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
-            testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
+            testChain.WorldStateManager.GlobalWorldState.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
         }
 
         IReadOnlyList<ExecutionPayload> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
@@ -1084,45 +1084,6 @@ public partial class EngineModuleTests
             TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
             findBlock.Transactions.Select(static t => t.Hash).Should().BeEquivalentTo(receipts.Select(static r => r.TxHash));
         }
-    }
-
-    protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
-        MergeTestBlockchain chain,
-        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
-        ulong slotLength = 12)
-    {
-        List<ExecutionPayload> blocks = new();
-        ExecutionPayload parentBlock = startingParentBlock;
-        parentBlock.TryGetBlock(out Block? block);
-        UInt256? startingTotalDifficulty = block!.IsGenesis
-            ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
-        BlockHeader parentHeader = block!.Header;
-        parentHeader.TotalDifficulty = startingTotalDifficulty +
-                                       parentHeader.Difficulty;
-        for (int i = 0; i < count; i++)
-        {
-            ExecutionPayload? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
-                parentBlock.Timestamp + slotLength,
-                random ?? TestItem.KeccakA, Address.Zero);
-            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
-            payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
-            if (setHead)
-            {
-                Hash256 newHead = getPayloadResult!.BlockHash;
-                ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
-                ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-                setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-                setHeadResponse.Data.PayloadId.Should().Be(null);
-            }
-
-            blocks.Add((getPayloadResult));
-            parentBlock = getPayloadResult;
-            parentBlock.TryGetBlock(out block!);
-            block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
-            parentHeader = block.Header;
-        }
-
-        return blocks;
     }
 
     [Test]
@@ -1231,21 +1192,6 @@ public partial class EngineModuleTests
             await rpc.engine_newPayloadV1(executionPayload);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
         return executionPayload;
-    }
-
-    protected async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
-        IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
-        ulong timestamp, Hash256 random, Address feeRecipient)
-    {
-        PayloadAttributes payloadAttributes =
-            new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
-
-        // we're using payloadService directly, because we can't use fcU for branch
-        string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
-
-        ResultWrapper<ExecutionPayload?> getPayloadResult =
-            await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
-        return getPayloadResult.Data!;
     }
 
 
@@ -1607,21 +1553,15 @@ public partial class EngineModuleTests
         Hash256 safeBlockHash,
         ulong timestamp, Hash256 random, Address feeRecipient, bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        if (waitForBlockImprovement)
-        {
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
-        }
+        Task blockImprovementWait = waitForBlockImprovement
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
         string payloadId = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
-        if (waitForBlockImprovement)
-            await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
         ResultWrapper<ExecutionPayload?> getPayloadResult =
             await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
         return getPayloadResult.Data!;

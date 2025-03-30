@@ -11,6 +11,8 @@ namespace Nethermind.Optimism;
 
 public class OptimismPayloadTxSource : ITxSource
 {
+    public bool SupportsBlobs => false;
+
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayloadAttributes)

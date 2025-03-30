@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
@@ -88,6 +89,11 @@ public partial class EngineRpcModule : IEngineRpcModule
             {
                 using IDisposable region = _gcKeeper.TryStartNoGCRegion();
                 return await _newPayloadV1Handler.HandleAsync(executionPayload);
+            }
+            catch (BlockchainException exception)
+            {
+                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR engine_newPayloadV{version} failed: {exception}");
+                return ResultWrapper<PayloadStatusV1>.Fail(exception.Message, ErrorCodes.UnknownBlockError);
             }
             catch (Exception exception)
             {

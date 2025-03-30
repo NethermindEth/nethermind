@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/tbn-sepolia.json.zst",
     "GenesisHash": "0xf1c38d92222758e1ea0c9c7ae1f7f2dfd0e3e747609f1c2d5a41ecfc5e84aba9",
     "BaseDbPath": "nethermind_db/tbn-sepolia",
-    "LogFileName": "tbn-sepolia.logs.txt"
+    "LogFileName": "tbn-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"

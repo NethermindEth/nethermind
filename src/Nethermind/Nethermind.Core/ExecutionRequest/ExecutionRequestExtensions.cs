@@ -51,7 +51,7 @@ public static class ExecutionRequestExtensions
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
+        return new Hash256(sha256.ComputeHash(concatenatedHashes.UnsafeGetInternalArray(), 0, concatenatedHashes.Count));
     }
 
 

@@ -48,7 +48,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
 
         var proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
 
-        Accept(proofCollector, RootHash, new() { ExpectAccounts = false });
+        Accept(proofCollector, RootHash, new());
 
         return proofCollector.BuildResult();
     }

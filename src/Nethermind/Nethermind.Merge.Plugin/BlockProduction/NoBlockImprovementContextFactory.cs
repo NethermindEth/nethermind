@@ -18,6 +18,7 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
+        UInt256 currentBlockFees,
         CancellationToken _ = default)
     {
         return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime);

@@ -12,41 +12,37 @@ using Nethermind.Trie;
 namespace Nethermind.Synchronization.FastSync
 {
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
-    public class StateSyncItem
+    public class StateSyncItem(
+        Hash256 hash,
+        Hash256? address,
+        TreePath path,
+        NodeDataType nodeType,
+        int level = 0,
+        uint rightness = 0)
     {
-        public StateSyncItem(Hash256 hash, Hash256? address, TreePath path, NodeDataType nodeType, int level = 0, uint rightness = 0)
-        {
-            Hash = hash;
-            Address = address;
-            Path = path;
-            NodeDataType = nodeType;
-            Level = (byte)level;
-            Rightness = rightness;
-        }
-
-        public Hash256 Hash { get; }
+        public Hash256 Hash { get; } = hash;
 
         /// <summary>
         /// Account part of the path if the item is a Storage node.
         /// It's null when the item is an Account tree node.
         /// </summary>
-        public Hash256? Address { get; }
+        public Hash256? Address { get; } = address;
 
         /// <summary>
         /// Nibbles of item path in the Account tree or a Storage tree.
         /// If item is an Account tree node then <see cref="Address"/> is null.
         /// </summary>
-        public TreePath Path { get; }
+        public TreePath Path { get; } = path;
 
-        public NodeDataType NodeDataType { get; }
+        public NodeDataType NodeDataType { get; } = nodeType;
 
-        public byte Level { get; }
+        public byte Level { get; } = (byte)level;
 
         public short ParentBranchChildIndex { get; set; } = -1;
 
         public short BranchChildIndex { get; set; } = -1;
 
-        public uint Rightness { get; }
+        public uint Rightness { get; } = rightness;
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
 

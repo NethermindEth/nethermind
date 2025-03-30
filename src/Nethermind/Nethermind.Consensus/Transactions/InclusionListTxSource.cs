@@ -19,4 +19,6 @@ public class InclusionListTxSource(ulong chainId) : ITxSource
     {
         _inclusionListTransactions = InclusionListDecoder.Decode(inclusionListTransactions, chainId);
     }
+
+    public bool SupportsBlobs => false;
 }
