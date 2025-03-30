@@ -54,7 +54,7 @@ public class InclusionListValidator(
                 continue;
             }
 
-            bool couldIncludeTx = _transactionProcessor.BuildUp(tx, new(block.Header, spec), NullTxTracer.Instance);
+            bool couldIncludeTx = _transactionProcessor.CallAndRestore(tx, new(block.Header, spec), NullTxTracer.Instance);
             if (couldIncludeTx)
             {
                 return false;
