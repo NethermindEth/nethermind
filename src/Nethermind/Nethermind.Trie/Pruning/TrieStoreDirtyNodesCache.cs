@@ -322,7 +322,7 @@ internal class TrieStoreDirtyNodesCache
         }
 
         return (totalMemory, dirtyMemory, totalNode, dirtyNode);
-        
+
         void RemoveNodeFromCache(in Key key, TrieNode node)
         {
             if (_logger.IsTrace) LogNodeRemoval(node);
