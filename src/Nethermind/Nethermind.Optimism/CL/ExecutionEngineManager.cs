@@ -104,6 +104,14 @@ public class ExecutionEngineManager : IExecutionEngineManager
     {
         PayloadStatusV1 npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
 
+        while (npResult.Status == PayloadStatus.Syncing)
+        {
+            // retry after delay
+            if (_logger.IsWarn) _logger.Warn($"Got Syncing after NewPayload. {executionPayload.BlockNumber}");
+            await Task.Delay(100);
+            npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
+        }
+
         if (npResult.Status != PayloadStatus.Valid)
         {
             if (_logger.IsWarn) _logger.Warn($"NewPayloadV3 result: {npResult.Status}, payload number: {executionPayload.BlockNumber}");

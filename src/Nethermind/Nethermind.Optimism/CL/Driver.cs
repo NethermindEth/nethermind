@@ -67,6 +67,7 @@ public class Driver : IDisposable
                 if (!valid)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
+                    break;
                 }
             }
 
