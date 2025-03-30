@@ -279,19 +279,7 @@ internal class TrieStoreDirtyNodesCache
                     {
                         if (_logger.IsTrace) LogPersistedNodeRemoval(node);
 
-                        Hash256? keccak = node.Keccak;
-                        if (keccak is null)
-                        {
-                            TreePath path2 = key.Path;
-                            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
-                            if (keccak != key.Keccak)
-                            {
-                                ThrowPersistedNodeDoesNotMatch(key, node, keccak);
-                            }
-
-                            node.Keccak = keccak;
-                        }
-
+                        Hash256? keccak = (node.Keccak ??= GenerateKeccak(key, node));
                         RemoveNodeFromCache(key, node);
                         continue;
                     }
@@ -322,6 +310,19 @@ internal class TrieStoreDirtyNodesCache
         }
 
         return (totalMemory, dirtyMemory, totalNode, dirtyNode);
+
+        Hash256 GenerateKeccak(in Key key, TrieNode node)
+        {
+            Hash256 keccak;
+            TreePath path2 = key.Path;
+            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
+            if (keccak != key.Keccak)
+            {
+                ThrowPersistedNodeDoesNotMatch(key, node, keccak);
+            }
+
+            return keccak;
+        }
 
         void RemoveNodeFromCache(in Key key, TrieNode node)
         {
