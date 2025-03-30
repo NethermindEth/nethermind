@@ -246,8 +246,8 @@ internal class TrieStoreDirtyNodesCache
     private (long totalMemory, long dirtyMemory, long totalNode, long dirtyNode) PruneCacheUnlocked(
         bool prunePersisted,
         bool forceRemovePersistedNodes,
-        ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes,
-        ConcurrentNodeWriteBatcher writeBatcher)
+        ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes,
+        ConcurrentNodeWriteBatcher? writeBatcher)
     {
         long totalMemory = 0;
         long dirtyMemory = 0;
@@ -352,11 +352,11 @@ internal class TrieStoreDirtyNodesCache
             => throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
     }
 
-    private void Delete(Key key, INodeStorage.IWriteBatch writeBatch)
+    private void Delete(Key key, ConcurrentNodeWriteBatcher? writeBatch)
     {
         Metrics.RemovedNodeCount++;
         Remove(key);
-        writeBatch.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
+        writeBatch?.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
     bool CanDelete(in Key key, Hash256? currentlyPersistingKeccak)
