@@ -781,7 +781,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         return false;
                     }
-                                       
+
                     long lastNumber = -1;
                     for (int j = 0; j < batch.Response.Count; j++)
                     {
