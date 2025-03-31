@@ -39,7 +39,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
