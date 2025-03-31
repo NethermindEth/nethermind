@@ -6,29 +6,24 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.State;
+using System;
 
 namespace Nethermind.Optimism;
 
-public class Create2DeployerContractRewriter
+public class Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, ISpecProvider specProvider, IBlockTree blockTree)
 {
-    private IOPConfigHelper _opConfigHelper;
-    private ISpecProvider _specProvider;
-    private IBlockTree _blockTree;
-
-    public Create2DeployerContractRewriter(IOPConfigHelper opConfigHelper, ISpecProvider specProvider, IBlockTree blockTree)
-    {
-        _opConfigHelper = opConfigHelper;
-        _specProvider = specProvider;
-        _blockTree = blockTree;
-    }
-
     public void RewriteContract(BlockHeader header, IWorldState worldState)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        BlockHeader? parent = _blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
-        if ((parent is null || !_opConfigHelper.IsCanyon(parent)) && _opConfigHelper.IsCanyon(header))
+        ArgumentNullException.ThrowIfNull(opSpecHelper.Create2DeployerAddress);
+
+        IReleaseSpec spec = specProvider.GetSpec(header);
+        BlockHeader? parent = blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
+
+        // A migration at the first block of Canyon unless it's genesis
+        if ((parent is null || !opSpecHelper.IsCanyon(parent)) && opSpecHelper.IsCanyon(header) && !header.IsGenesis)
         {
-            worldState.InsertCode(_opConfigHelper.Create2DeployerAddress!, _opConfigHelper.Create2DeployerCode, spec);
+            worldState.CreateAccountIfNotExists(opSpecHelper.Create2DeployerAddress, 0);
+            worldState.InsertCode(opSpecHelper.Create2DeployerAddress, opSpecHelper.Create2DeployerCode, spec);
         }
     }
 }

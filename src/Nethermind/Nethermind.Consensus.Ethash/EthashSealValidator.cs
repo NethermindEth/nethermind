@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Ethash
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             ResetValidationInterval();
         }

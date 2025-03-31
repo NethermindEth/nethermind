@@ -159,8 +159,8 @@ namespace Nethermind.Core.Test
                     Assert.That(bytes[32 - 1 - i], Is.EqualTo(before[i]));
                 }
 
-                TestContext.WriteLine(before.ToHexString());
-                TestContext.WriteLine(bytes.ToHexString());
+                TestContext.Out.WriteLine(before.ToHexString());
+                TestContext.Out.WriteLine(bytes.ToHexString());
             }
         }
 
@@ -313,7 +313,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {
-            BitArray result = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
+            _ = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
         }
 
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]
@@ -322,6 +322,54 @@ namespace Nethermind.Core.Test
             byte[] input = Bytes.FromHexString(hex);
             Bytes.ReverseInPlace(input);
             Assert.That(Bytes.FromHexString(expectedResult), Is.EqualTo(input));
+        }
+
+        [TestCase]
+        public void Can_roundtrip_utf8_hex_conversion()
+        {
+            for (var i = 0; i < 2048; i++)
+            {
+                byte[] input = new byte[i];
+                byte[] hex = new byte[i * 2];
+                TestContext.CurrentContext.Random.NextBytes(input);
+
+                Bytes.OutputBytesToByteHex(input, hex, extraNibble: false);
+
+                byte[] output = Bytes.FromUtf8HexString(hex);
+
+                Assert.That(output, Is.EqualTo(input));
+            }
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(4)]
+        [TestCase(8)]
+        [TestCase(16)]
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(512)]
+        public void Invalid_utf8_hex_conversion_fails(int length)
+        {
+            byte[] input = new byte[length];
+            byte[] hex = new byte[length * 2];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            Bytes.OutputBytesToByteHex(input, hex, extraNibble: false);
+
+            for (var i = 0; i < hex.Length; i++)
+            {
+                byte b = hex[i];
+
+                hex[i] = (byte)' ';
+                Assert.Throws<FormatException>(() => Bytes.FromUtf8HexString(hex));
+
+                hex[i] = b;
+                byte[] output = Bytes.FromUtf8HexString(hex);
+                Assert.That(output, Is.EqualTo(input));
+            }
         }
 
         public static IEnumerable OrTests
@@ -339,7 +387,7 @@ namespace Nethermind.Core.Test
                 {
                     var thisArray = GenerateRandom(length);
                     var valueArray = GenerateRandom(length);
-                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte)b).ToArray();
+                    var resultArray = thisArray.Zip(valueArray, static (b1, b2) => b1 | b2).Select(static b => (byte)b).ToArray();
                     return new TestCaseData(thisArray, valueArray, resultArray);
                 }
 

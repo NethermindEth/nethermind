@@ -14,12 +14,12 @@ public class EIP5656MCOPYTests : GeneralStateTestBase
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
     {
-        Assert.True(RunTest(test).Pass);
+        Assert.That(RunTest(test).Pass, Is.True);
     }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEIP5656-MCOPY");
+        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP5656-MCOPY");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

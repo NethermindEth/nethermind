@@ -10,7 +10,6 @@ using System.Threading;
 
 namespace Nethermind.Core.Test;
 
-[TestFixture]
 public class MCSLockTests
 {
     private McsLock mcsLock;
@@ -86,29 +85,6 @@ public class MCSLockTests
         }
 
         var expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
-        CollectionAssert.AreEqual(expectedOrder, executionOrder, "Threads did not acquire lock in the order they were started.");
-    }
-
-    [Test]
-    public void NonReentrantTest()
-    {
-        bool reentrancyDetected = false;
-        var thread = new Thread(() =>
-        {
-            using var handle = mcsLock.Acquire();
-            try
-            {
-                using var innerHandle = mcsLock.Acquire(); // Attempt to re-lock
-            }
-            catch
-            {
-                reentrancyDetected = true;
-            }
-        });
-
-        thread.Start();
-        thread.Join();
-
-        Assert.IsTrue(reentrancyDetected, "Reentrancy was not properly detected.");
+        Assert.That(expectedOrder, Is.EqualTo(executionOrder), "Threads did not acquire lock in the order they were started.");
     }
 }

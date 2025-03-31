@@ -11,10 +11,8 @@ using Nethermind.Int256;
 
 namespace Ethereum.Test.Base
 {
-    public class GeneralStateTest : IEthereumTest
+    public class GeneralStateTest : EthereumTest
     {
-        public string? Category { get; set; }
-        public string? Name { get; set; }
         public IReleaseSpec? Fork { get; set; }
         public string? ForkName { get; set; }
         public Address? CurrentCoinbase { get; set; }
@@ -28,13 +26,15 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState> Pre { get; set; }
         public Hash256? PostHash { get; set; }
         public Hash256? PostReceiptsRoot { get; set; }
-        public string? LoadFailure { get; set; }
         public Transaction? Transaction { get; set; }
         public Hash256? CurrentRandom { get; set; }
         public Hash256? CurrentBeaconRoot { get; set; }
         public Hash256? CurrentWithdrawalsRoot { get; set; }
+        public ulong? CurrentExcessBlobGas { get; set; }
         public UInt256? ParentBlobGasUsed { get; set; }
         public UInt256? ParentExcessBlobGas { get; set; }
+
+        public Hash256? RequestsHash { get; set; }
 
         public override string ToString()
         {

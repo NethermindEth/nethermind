@@ -7,8 +7,8 @@ using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
 {
@@ -19,13 +19,15 @@ namespace Nethermind.Cli.Modules
         {
             long blockNumber = NodeManager.Post<long>("eth_blockNumber").Result;
 
-            TransactionForRpc tx = new();
-            tx.Value = amountInWei;
-            tx.Gas = Transaction.BaseTxGasCost;
-            tx.GasPrice = (UInt256)Engine.JintEngine.GetValue("gasPrice").AsNumber();
-            tx.To = address;
-            tx.Nonce = (ulong)NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result;
-            tx.From = from;
+            LegacyTransactionForRpc tx = new()
+            {
+                Value = amountInWei,
+                Gas = Transaction.BaseTxGasCost,
+                GasPrice = (UInt256)Engine.JintEngine.GetValue("gasPrice").AsNumber(),
+                To = address,
+                Nonce = (ulong)NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result,
+                From = from
+            };
 
             Hash256? keccak = NodeManager.Post<Hash256>("eth_sendTransaction", tx).Result;
             return keccak?.Bytes.ToHexString();
@@ -48,6 +50,10 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("eth_call", tx, blockParameter ?? "latest").Result;
         }
+
+        [CliFunction("eth", "simulateV1")]
+        public JsValue SimulateV1(ulong version, object[] blockCalls, string? blockParameter = null, bool traceTransfers = true) =>
+            NodeManager.PostJint("eth_simulateV1", 1, blockCalls, blockParameter ?? "latest", traceTransfers).Result;
 
         [CliFunction("eth", "getBlockByHash")]
         public JsValue GetBlockByHash(string hash, bool returnFullTransactionObjects)

@@ -5,19 +5,13 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Proofs
 {
-    public class ProofTxTracer : TxTracer
+    public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
     {
-        private readonly bool _treatSystemAccountDifferently;
-
-        public ProofTxTracer(bool treatSystemAccountDifferently)
-        {
-            _treatSystemAccountDifferently = treatSystemAccountDifferently;
-        }
-
         public HashSet<Address> Accounts { get; } = new();
 
         public HashSet<StorageCell> Storages { get; } = new();
@@ -38,7 +32,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == UInt256.Zero)
+            if (treatSystemAccountDifferently && Address.SystemUser == address && before is null && after?.IsZero != false)
             {
                 return;
             }
@@ -48,7 +42,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == Array.Empty<byte>())
+            if (treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == Array.Empty<byte>())
             {
                 return;
             }
@@ -58,7 +52,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == UInt256.Zero)
+            if (treatSystemAccountDifferently && Address.SystemUser == address && before is null && after?.IsZero != false)
             {
                 return;
             }
@@ -80,27 +74,17 @@ namespace Nethermind.Evm.Tracing.Proofs
             Storages.Add(storageCell);
         }
 
-        private bool _wasSystemAccountAccessedOnceAlready;
-
         public override void ReportAccountRead(Address address)
         {
-            if (_treatSystemAccountDifferently && !_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)
-            {
-                // we want to ignore the system account the first time only
-                // TODO: I think this should only be done if the system account should be treated differently?
-                _wasSystemAccountAccessedOnceAlready = true;
-                return;
-            }
-
             Accounts.Add(address);
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             Output = output;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             Output = output;
         }

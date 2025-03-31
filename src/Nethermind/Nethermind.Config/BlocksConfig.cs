@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection.Metadata;
 using System.Text;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -24,6 +23,12 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
+        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+        public int PreWarmStateConcurrency { get; set; } = 0;
+
+        public int BlockProductionTimeoutMs { get; set; } = 4_000;
+
+        public int GenesisTimeoutMs { get; set; } = 40_000;
 
         public string ExtraData
         {
@@ -34,7 +39,7 @@ namespace Nethermind.Config
             set
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
-                if (bytes != null && bytes.Length > 32)
+                if (bytes is not null && bytes.Length > 32)
                 {
                     throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
                         ExitCodes.TooLongExtraData);
@@ -49,5 +54,9 @@ namespace Nethermind.Config
         {
             return _extraDataBytes;
         }
+
+        public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
+
+        public static string GasTokenTicker { get; set; } = "ETH";
     }
 }

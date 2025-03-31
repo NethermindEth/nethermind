@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -34,12 +35,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
+                RunImmediatelyScheduler.Instance,
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
 
             _timestamper = Substitute.For<ITimestamper>();
-            _timestamper.UtcNow.Returns(c => DateTime.UtcNow);
+            _timestamper.UtcNow.Returns(static c => DateTime.UtcNow);
             _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
         }
 

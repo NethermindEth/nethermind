@@ -10,8 +10,7 @@ cd $GITHUB_WORKSPACE/src/Nethermind/Nethermind.Cli
 
 echo "Building Nethermind CLI"
 
-for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
-do
+for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"; do
   echo "  Publishing for $rid"
 
   dotnet publish -c release -r $rid -o $output_path/$rid --sc true \

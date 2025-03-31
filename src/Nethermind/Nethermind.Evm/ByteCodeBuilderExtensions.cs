@@ -101,10 +101,6 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.SWAP1 + i - 1);
         public static Prepare DUPx(this Prepare @this, byte i)
             => @this.Op(Instruction.DUP1 + i - 1);
-        public static Prepare BEGINSUB(this Prepare @this)
-            => @this.Op(Instruction.BEGINSUB);
-        public static Prepare RETURNSUB(this Prepare @this)
-            => @this.Op(Instruction.RETURNSUB);
         public static Prepare INVALID(this Prepare @this)
             => @this.Op(Instruction.INVALID);
         #endregion
@@ -116,9 +112,6 @@ namespace Nethermind.Evm
         public static Prepare EXTCODEHASH(this Prepare @this, Address? address = null)
             => @this.PushSingle(address)
                     .Op(Instruction.EXTCODEHASH);
-        public static Prepare JUMPSUB(this Prepare @this, UInt256? pos = null)
-            => @this.PushSingle(pos)
-                    .Op(Instruction.JUMPSUB);
         public static Prepare PUSHx(this Prepare @this, byte[] args)
             => @this.PushData(args);
         public static Prepare MLOAD(this Prepare @this, UInt256? pos = null)

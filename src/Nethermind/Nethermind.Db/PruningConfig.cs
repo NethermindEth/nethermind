@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+
 namespace Nethermind.Db
 {
     public class PruningConfig : IPruningConfig
@@ -22,8 +24,9 @@ namespace Nethermind.Db
         }
 
         public PruningMode Mode { get; set; } = PruningMode.Hybrid;
-        public long CacheMb { get; set; } = 1024;
-        public long PersistenceInterval { get; set; } = 8192;
+        public long CacheMb { get; set; } = 1280;
+        public long DirtyCacheMb { get; set; } = 1024;
+        public long PersistenceInterval { get; set; } = Reorganization.PersistenceInterval;
         public long FullPruningThresholdMb { get; set; } = 256000;
         public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.Manual;
         public int FullPruningMaxDegreeOfParallelism { get; set; }
@@ -32,5 +35,8 @@ namespace Nethermind.Db
         public int FullPruningMinimumDelayHours { get; set; } = 240;
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
         public bool AvailableSpaceCheckEnabled { get; set; } = true;
+        public double TrackedPastKeyCountMemoryRatio { get; set; } = 0.1;
+        public int PruningBoundary { get; set; } = 64;
+        public int DirtyNodeShardBit { get; set; } = 8;
     }
 }

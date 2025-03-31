@@ -4,6 +4,8 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
+using Nethermind.Core.Cpu;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Steps;
@@ -25,7 +27,7 @@ public class LogHardwareInfo : IStep
 
         try
         {
-            var cpu = Cpu.RuntimeInformation.GetCpuInfo();
+            var cpu = RuntimeInformation.GetCpuInfo();
             if (cpu is not null)
             {
                 _logger.Info($"CPU: {cpu.ProcessorName} ({cpu.PhysicalCoreCount}C{cpu.LogicalCoreCount}T)");

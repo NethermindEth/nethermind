@@ -21,13 +21,13 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        private static IReleaseSpec ParseSpec(string network)
+        public static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
-            network = network.Replace("Merged", "GrayGlacier");
-            network = network.Replace("Merge", "GrayGlacier");
+            network = network.Replace("Merged", "Paris");
+            network = network.Replace("Merge", "Paris");
             network = network.Replace("London+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3860", "Shanghai");
@@ -55,9 +55,12 @@ namespace Ethereum.Test.Base
                 "Istanbul" => Istanbul.Instance,
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
+                "ArrowGlacier" => ArrowGlacier.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
+                "Paris" => Paris.Instance,
+                "Prague" => Prague.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -83,7 +86,7 @@ namespace Ethereum.Test.Base
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
         {
-            if (headerJson == null)
+            if (headerJson is null)
             {
                 throw new InvalidDataException("Header JSON was null when constructing test.");
             }
@@ -110,21 +113,11 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static Block Convert(PostStateJson postStateJson, TestBlockJson testBlockJson)
-        {
-            BlockHeader? header = Convert(testBlockJson.BlockHeader);
-            BlockHeader[] uncles = testBlockJson.UncleHeaders?.Select(Convert).ToArray()
-                                   ?? Array.Empty<BlockHeader>();
-            Transaction[] transactions = testBlockJson.Transactions?.Select(Convert).ToArray()
-                                         ?? Array.Empty<Transaction>();
-            Block block = new(header, transactions, uncles);
-            return block;
-        }
-
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
 
+            transaction.Type = transactionJson.Type;
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
             transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
@@ -149,16 +142,66 @@ namespace Ethereum.Test.Base
             else
                 transaction.AccessList = null;
 
-            if (transactionJson.MaxFeePerGas != null)
+            if (transactionJson.MaxFeePerGas is not null)
                 transaction.Type = TxType.EIP1559;
 
             if (transaction.BlobVersionedHashes?.Length > 0)
                 transaction.Type = TxType.Blob;
 
+            if (transactionJson.AuthorizationList is not null)
+            {
+                transaction.AuthorizationList =
+                    transactionJson.AuthorizationList
+                    .Select(i =>
+                    {
+                        if (i.Nonce > ulong.MaxValue)
+                        {
+                            i.Nonce = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        UInt256 s = UInt256.Zero;
+                        if (i.S.Length > 66)
+                        {
+                            i.S = "0x0";
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        else
+                        {
+                            s = UInt256.Parse(i.S);
+                        }
+                        UInt256 r = UInt256.Zero;
+                        if (i.R.Length > 66)
+                        {
+                            i.R = "0x0";
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        else
+                        {
+                            r = UInt256.Parse(i.R);
+                        }
+                        if (i.V > byte.MaxValue)
+                        {
+                            i.V = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        return new AuthorizationTuple(
+                            i.ChainId,
+                            i.Address,
+                            i.Nonce.u0,
+                            (byte)i.V,
+                            r,
+                            s);
+                    }).ToArray();
+                if (transaction.AuthorizationList.Any())
+                {
+                    transaction.Type = TxType.SetCode;
+                }
+            }
+
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
+        public static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
@@ -184,23 +227,9 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static AccountState Convert(AccountStateJson accountStateJson)
-        {
-            AccountState state = new();
-            state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
-            state.Code = accountStateJson.Code is not null ? Bytes.FromHexString(accountStateJson.Code) : Array.Empty<byte>();
-            state.Nonce = accountStateJson.Nonce is not null ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256() : 0;
-            state.Storage = accountStateJson.Storage is not null
-                ? accountStateJson.Storage.ToDictionary(
-                    p => Bytes.FromHexString(p.Key).ToUInt256(),
-                    p => Bytes.FromHexString(p.Value))
-                : new();
-            return state;
-        }
-
         public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
         {
-            if (testJson.LoadFailure != null)
+            if (testJson.LoadFailure is not null)
             {
                 return Enumerable.Repeat(new GeneralStateTest { Name = name, LoadFailure = testJson.LoadFailure }, 1);
             }
@@ -231,11 +260,12 @@ namespace Ethereum.Test.Base
                     test.CurrentRandom = testJson.Env.CurrentRandom;
                     test.CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot;
                     test.CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot;
+                    test.CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas;
                     test.ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed;
                     test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
-                    test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                    test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
                     test.Transaction = Convert(stateJson, testJson.Transaction);
 
                     blockchainTests.Add(test);
@@ -248,7 +278,7 @@ namespace Ethereum.Test.Base
 
         public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
         {
-            if (testJson.LoadFailure != null)
+            if (testJson.LoadFailure is not null)
             {
                 return new BlockchainTest { Name = name, LoadFailure = testJson.LoadFailure };
             }
@@ -259,19 +289,19 @@ namespace Ethereum.Test.Base
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionForkActivation = testJson.TransitionForkActivation;
             test.LastBlockHash = new Hash256(testJson.LastBlockHash);
-            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
+            test.GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
-            test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
-            if (half != null)
+            if (half is not null)
             {
                 test.PostStateRoot = half.PostState;
             }
             else
             {
-                test.PostState = testJson.PostState?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                test.PostState = testJson.PostState?.ToDictionary(p => p.Key, p => p.Value);
                 test.PostStateRoot = testJson.PostStateHash;
             }
 
@@ -284,6 +314,7 @@ namespace Ethereum.Test.Base
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {

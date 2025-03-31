@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -152,7 +153,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.TryAllocate(AllocationContexts.All);
 
             PeerInfo syncPeer2 = BuildPeer(true, direction: ConnectionDirection.In);
-            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.Now);
+            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.UtcNow);
 
             PeerInfo[] peers = { syncPeer, syncPeer2 };
 
@@ -162,10 +163,10 @@ namespace Nethermind.Synchronization.Test
 
             string expectedResult =
                 "== Header ==" + Environment.NewLine +
-                "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
+                "===[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
                 "--------------------------------------------------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
-                "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
-                "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
+                "   [HBRNS  ][       ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
+                "   [       ][HBRNS  ][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             string reportStr = report.MakeReportForPeers(peers, "== Header ==");
@@ -181,6 +182,7 @@ namespace Nethermind.Synchronization.Test
                     serializer,
                     statsManager,
                     syncServer,
+                    RunImmediatelyScheduler.Instance,
                     NoErrorLimboLogs.Instance)
             {
                 IsInitialized = initialized;
@@ -192,8 +194,8 @@ namespace Nethermind.Synchronization.Test
             public override string ProtocolCode { get; } = default!;
             public override int MessageIdSpaceSize { get; } = default;
             protected override TimeSpan InitTimeout { get; } = default;
-            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = delegate { };
-            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = delegate { };
+            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = static delegate { };
+            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
             public override void Init()
             {
                 throw new NotImplementedException();

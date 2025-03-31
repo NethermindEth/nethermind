@@ -32,7 +32,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             if (isLocal)

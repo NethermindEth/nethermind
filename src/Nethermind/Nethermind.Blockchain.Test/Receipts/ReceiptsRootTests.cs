@@ -28,9 +28,8 @@ namespace Nethermind.Blockchain.Test.Receipts
         [TestCaseSource(nameof(ReceiptsRootTestCases))]
         public Hash256 Should_Calculate_ReceiptsRoot(bool validateReceipts, Hash256 suggestedRoot)
         {
-
             TxReceipt[] receipts = { Build.A.Receipt.WithAllFieldsFilled.TestObject };
-            return receipts.GetReceiptsRoot(new ReleaseSpec() { ValidateReceipts = validateReceipts }, suggestedRoot);
+            return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, new ReleaseSpec() { ValidateReceipts = validateReceipts }, suggestedRoot);
         }
     }
 }

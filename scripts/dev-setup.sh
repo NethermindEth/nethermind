@@ -34,11 +34,11 @@ echo =======================================================
 
 echo -e "\033[32m";
 read -e -p "Which configuration/s (space separated) you wish to run? " -i "mainnet" config
-for cfg in $config; do cp nethermind/configs/$cfg.cfg ~; done
+for cfg in $config; do cp nethermind/configs/$cfg.json ~; done
 echo -e "\033[00m";
 
 echo =======================================================
 echo To run the node type: 
 echo 1. screen -S node
-echo 2. ./infra.sh config-name.cfg
+echo 2. ./infra.sh config-name.json
 echo =======================================================

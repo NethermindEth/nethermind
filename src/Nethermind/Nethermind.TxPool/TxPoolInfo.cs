@@ -8,11 +8,11 @@ namespace Nethermind.TxPool
 {
     public class TxPoolInfo
     {
-        public IDictionary<Address, IDictionary<ulong, Transaction>> Pending { get; }
-        public IDictionary<Address, IDictionary<ulong, Transaction>> Queued { get; }
+        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Pending { get; }
+        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Queued { get; }
 
-        public TxPoolInfo(IDictionary<Address, IDictionary<ulong, Transaction>> pending,
-            IDictionary<Address, IDictionary<ulong, Transaction>> queued)
+        public TxPoolInfo(Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pending,
+            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queued)
         {
             Pending = pending;
             Queued = queued;

@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Tracing
         /// <summary>
         /// Starts new transaction trace in a block.
         /// </summary>
-        /// <param name="tx">Transaction this trace is started for. Null if it's reward trace.</param>
+        /// <param name="tx">Transaction this trace is started for. Null if it's reward trace (only when <see cref="IsTracingRewards"/> is true).</param>
         /// <returns>Returns tracer for transaction.</returns>
         ITxTracer StartNewTxTrace(Transaction? tx);
 

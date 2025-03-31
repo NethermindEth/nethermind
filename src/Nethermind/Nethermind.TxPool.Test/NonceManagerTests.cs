@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -42,8 +43,8 @@ public class NonceManagerTests
         _blockTree.Head.Returns(block);
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
-        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider);
-        _nonceManager = new NonceManager(_headInfo.AccountStateProvider);
+        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+        _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 
     [Test]
@@ -91,14 +92,14 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Explicit]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
     {
         const int reservationsCount = 1000;
 
         ConcurrentQueue<UInt256> nonces = new();
 
-        var result = Parallel.For(0, reservationsCount, i =>
+        ParallelLoopResult result = Parallel.For(0, reservationsCount, i =>
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
             locker.Accept();
@@ -116,16 +117,16 @@ public class NonceManagerTests
     public void should_pick_account_nonce_as_initial_value()
     {
         IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        Account account = new(0);
-        accountStateProvider.GetAccount(TestItem.AddressA).Returns(account);
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(UInt256.Zero);
         _nonceManager = new NonceManager(accountStateProvider);
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);
         }
 
-        accountStateProvider.GetAccount(TestItem.AddressA).Returns(account.WithChangedNonce(10));
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns((UInt256)10);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(10);
         }

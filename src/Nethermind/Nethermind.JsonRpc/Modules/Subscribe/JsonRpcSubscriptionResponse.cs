@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -12,7 +11,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         [JsonPropertyName("method")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public new string MethodName => "eth_subscription";
+        public new string MethodName { get; set; }
 
         [JsonPropertyName("params")]
         [JsonPropertyOrder(2)]

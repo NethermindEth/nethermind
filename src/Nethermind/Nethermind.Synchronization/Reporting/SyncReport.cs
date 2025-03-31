@@ -15,8 +15,6 @@ namespace Nethermind.Synchronization.Reporting
 {
     public class SyncReport : ISyncReport
     {
-        private const int SpeedPaddingLength = 9;
-
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IPivot _pivot;
@@ -30,17 +28,36 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(5);
-
+        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(10);
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
+
+            FastBlocksHeaders = new("Old Headers", logManager);
+            FastBlocksBodies = new("Old Bodies ", logManager);
+            FastBlocksReceipts = new("Old Receipts", logManager);
+            FullSyncBlocksDownloaded = new("Downloaded", logManager);
+            BeaconHeaders = new("Beacon Headers", logManager);
+
+            BeaconHeaders.SetFormat((progress) =>
+            {
+                long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+                string skipSectionStr = progress.SkippedPerSecond != -1
+                    ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
+                    : "";
+                return $"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
+                       + $"{progress.CurrentValue,ProgressLogger.BlockPaddingLength:N0} / {numHeadersToDownload,ProgressLogger.BlockPaddingLength:N0} | " +
+                       $"queue {progress.CurrentQueued,ProgressLogger.QueuePaddingLength:N0} | " +
+                       $"current {progress.CurrentPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s  | " +
+                       skipSectionStr +
+                       $"total {progress.TotalPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s";
+            });
 
             StartTime = DateTime.UtcNow;
 
@@ -64,7 +81,8 @@ namespace Nethermind.Synchronization.Reporting
 
             if (e.Previous != e.Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
+                // Repeat of "Changing state" so only output as confirm in debug
+                if (_logger.IsDebug) _logger.Debug($"Sync mode changed from {e.Previous} to {e.Current}");
             }
         }
 
@@ -93,68 +111,21 @@ namespace Nethermind.Synchronization.Reporting
 
         private readonly ITimer _timer;
 
-        private long _fastBlocksPivotNumber;
+        public ProgressLogger FastBlocksHeaders { get; init; }
 
-        public MeasuredProgress HeadersInQueue { get; } = new();
+        public ProgressLogger FastBlocksBodies { get; init; }
 
-        public MeasuredProgress BodiesInQueue { get; } = new();
+        public ProgressLogger FastBlocksReceipts { get; init; }
 
-        public MeasuredProgress ReceiptsInQueue { get; } = new();
+        public ProgressLogger FullSyncBlocksDownloaded { get; init; }
 
-        public MeasuredProgress FastBlocksHeaders { get; } = new();
-
-        public MeasuredProgress FastBlocksBodies { get; } = new();
-
-        public MeasuredProgress FastBlocksReceipts { get; } = new();
-
-        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
-
-        public MeasuredProgress BeaconHeaders { get; } = new();
-
-        public MeasuredProgress BeaconHeadersInQueue { get; } = new();
-
-        public long FullSyncBlocksKnown { get; set; }
-
-        private static string Pad(decimal value, int length)
-        {
-            string valueString = $"{value:N0}";
-            return valueString.PadLeft(length + 3, ' ');
-        }
-
-        private static string Pad(long value, int length)
-        {
-            string valueString = $"{value:N0}";
-            return valueString.PadLeft(length, ' ');
-        }
+        public ProgressLogger BeaconHeaders { get; init; }
 
         private bool _reportedFastBlocksSummary;
-        private int _blockPaddingLength;
-        private string _paddedPivot;
-        private string _paddedAmountOfOldBodiesToDownload;
-        private string _paddedAmountOfOldReceiptsToDownload;
-        private long _amountOfBodiesToDownload;
-        private long _amountOfReceiptsToDownload;
-
-        private void SetPaddedPivots()
-        {
-            _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
-            _blockPaddingLength = _fastBlocksPivotNumber.ToString("N0").Length;
-            _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
-            long amountOfBodiesToDownload = _fastBlocksPivotNumber - _syncConfig.AncientBodiesBarrier;
-            _amountOfBodiesToDownload = amountOfBodiesToDownload;
-            _paddedAmountOfOldBodiesToDownload = $"{Pad(amountOfBodiesToDownload, $"{amountOfBodiesToDownload}".Length)}";
-            long amountOfReceiptsToDownload = _fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier;
-            _amountOfReceiptsToDownload = amountOfReceiptsToDownload;
-            _paddedAmountOfOldReceiptsToDownload = $"{Pad(_fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier, $"{amountOfReceiptsToDownload}".Length)}";
-        }
+        private uint _nodeInfoType;
 
         private void WriteSyncReport()
         {
-            if (_fastBlocksPivotNumber != _syncConfig.PivotNumberParsed)
-            {
-                SetPaddedPivots();
-            }
-
             UpdateMetrics();
 
             if (!_logger.IsInfo)
@@ -175,7 +146,14 @@ namespace Nethermind.Synchronization.Reporting
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
-                    _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                    if (_nodeInfoType++ % 2 == 0)
+                    {
+                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                    }
+                    else
+                    {
+                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | node diversity : "));
+                    }
                 }
             }
 
@@ -230,12 +208,11 @@ namespace Nethermind.Synchronization.Reporting
             if (!_logger.IsTrace) return;
 
             bool isFastSync = _syncConfig.FastSync;
-            bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
             bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
 
             StringBuilder builder = new();
-            if (isFastSync && isFastBlocks)
+            if (isFastSync)
             {
                 builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
                 if (bodiesInFastBlocks)
@@ -247,10 +224,6 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     builder.Append(" + receipts");
                 }
-            }
-            else if (isFastSync)
-            {
-                builder.Append("Sync config - fast sync without fast blocks");
             }
             else
             {
@@ -272,53 +245,45 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteNotStartedReport()
         {
-            _logger.Info($"Waiting for peers... {(DateTime.UtcNow - StartTime).Seconds}s");
+            _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
         }
 
         private void WriteFullSyncReport()
         {
-            if (FullSyncBlocksKnown == 0)
+            if (FullSyncBlocksDownloaded.TargetValue == 0)
             {
                 return;
             }
 
-            if (FullSyncBlocksKnown - FullSyncBlocksDownloaded.CurrentValue < 32)
+            if (FullSyncBlocksDownloaded.TargetValue - FullSyncBlocksDownloaded.CurrentValue < 32)
             {
                 return;
             }
 
-            _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1),8:P2}) | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)} Blk/s");
-            FullSyncBlocksDownloaded.SetMeasuringPoint();
+            FullSyncBlocksDownloaded.LogProgress();
         }
 
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
+            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders && FastBlocksHeaders.HasStarted)
             {
-                _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} ({FastBlocksHeaders.CurrentValue / (float)(_fastBlocksPivotNumber + 1),8:P2}) | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksHeaders.TotalPerSecond, SpeedPaddingLength)} Blk/s");
-                FastBlocksHeaders.SetMeasuringPoint();
+                FastBlocksHeaders.LogProgress();
             }
 
-            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
+            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies && FastBlocksBodies.HasStarted)
             {
-                _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} ({FastBlocksBodies.CurrentValue / (float)(_amountOfBodiesToDownload + 1),8:P2}) | queue {Pad(BodiesInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksBodies.TotalPerSecond, SpeedPaddingLength)} Blk/s");
-                FastBlocksBodies.SetMeasuringPoint();
+                FastBlocksBodies.LogProgress();
             }
 
-            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
+            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts && FastBlocksReceipts.HasStarted)
             {
-                _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} ({FastBlocksReceipts.CurrentValue / (float)(_amountOfReceiptsToDownload + 1),8:P2}) | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)} Blk/s");
-                FastBlocksReceipts.SetMeasuringPoint();
+                FastBlocksReceipts.LogProgress();
             }
         }
 
         private void WriteBeaconSyncReport()
         {
-            long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
-            int paddingLength = numHeadersToDownload.ToString("N0").Length;
-            _logger.Info($"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                         + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(BeaconHeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)} Blk/s");
-            BeaconHeaders.SetMeasuringPoint();
+            BeaconHeaders.LogProgress();
         }
 
         public void Dispose()

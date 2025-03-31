@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -13,48 +15,48 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 {
-    public static G1AddPrecompile Instance = new G1AddPrecompile();
+    public static readonly G1AddPrecompile Instance = new();
 
     private G1AddPrecompile()
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0c);
+    public static Address Address { get; } = Address.FromNumber(0x0b);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 600L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    [SkipLocalsInit]
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 4 * BlsParams.LenFp;
+        Metrics.BlsG1AddPrecompile++;
+
+        const int expectedInputLength = 2 * BlsConst.LenG1;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
-        (byte[], bool) result;
-
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = Pairings.BlsG1Add(inputData.Span, output);
-        if (success)
+        G1 x = new(stackalloc long[G1.Sz]);
+        G1 y = new(stackalloc long[G1.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span))
         {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
-        return result;
+        // adding to infinity point has no effect
+        if (x.IsInf())
+        {
+            return (inputData[BlsConst.LenG1..].ToArray(), true);
+        }
+
+        if (y.IsInf())
+        {
+            return (inputData[..BlsConst.LenG1].ToArray(), true);
+        }
+
+        G1 res = x.Add(y);
+        return (res.EncodeRaw(), true);
     }
 }

@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Int256;
 // ReSharper disable InconsistentNaming
 
@@ -13,7 +14,11 @@ namespace Nethermind.Blockchain
     {
         [CounterMetric]
         [Description("Total MGas processed")]
-        public static decimal Mgas { get; set; }
+        public static double Mgas { get; set; }
+
+        [GaugeMetric]
+        [Description("MGas processed per second")]
+        public static double MgasPerSec { get; set; }
 
         [CounterMetric]
         [Description("Total number of transactions processed")]
@@ -86,5 +91,20 @@ namespace Nethermind.Blockchain
         [GaugeMetric]
         [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
         public static long BadBlocksByNethermindNodes;
+
+        [GaugeMetric]
+        [Description("State root calculation time")]
+        public static double StateMerkleizationTime { get; set; }
+
+        [DetailedMetric]
+        [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 30)]
+        [Description("Histogram of block MGas per second")]
+        public static IMetricObserver BlockMGasPerSec { get; set; } = new NoopMetricObserver();
+
+        [DetailedMetric]
+        [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
+        [Description("Histogram of block prorcessing time")]
+        public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+
     }
 }

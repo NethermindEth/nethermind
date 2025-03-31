@@ -14,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -32,6 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly HeaderDecoder _headerDecoder = new();
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
 
         public ProofRpcModule(
             ITracer tracer,
@@ -64,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
-                Array.Empty<byte>())
+                [])
             {
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
@@ -82,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 transaction.GasLimit = callHeader.GasLimit;
             }
 
-            Block block = new(callHeader, new[] { transaction }, Enumerable.Empty<BlockHeader>());
+            Block block = new(callHeader, new[] { transaction }, []);
 
             ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.SystemUser);
             _tracer.Trace(block, proofBlockTracer);
@@ -100,18 +102,18 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
 
-        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
+        public ResultWrapper<TransactionForRpcWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
-                return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<TransactionForRpcWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
             }
 
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
             if (searchResult.IsError)
             {
-                return ResultWrapper<TransactionWithProof>.Fail(searchResult);
+                return ResultWrapper<TransactionForRpcWithProof>.Fail(searchResult);
             }
 
             Block block = searchResult.Object;
@@ -119,15 +121,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
 
-            TransactionWithProof txWithProof = new();
-            txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction, block.BaseFeePerGas);
+            TransactionForRpcWithProof txWithProof = new();
+            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas, _specProvider.ChainId);
             txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {
                 txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
             }
 
-            return ResultWrapper<TransactionWithProof>.Success(txWithProof);
+            return ResultWrapper<TransactionForRpcWithProof>.Success(txWithProof);
         }
 
         public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
@@ -153,12 +155,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
-            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
 
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
 
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(isEip1559Enabled, block.Header) ?? new(), logIndexStart);
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
 
@@ -205,7 +207,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
         {
-            return ReceiptTrie.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index);
+            return ReceiptTrie<TxReceipt>.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index, _receiptDecoder);
         }
     }
 }

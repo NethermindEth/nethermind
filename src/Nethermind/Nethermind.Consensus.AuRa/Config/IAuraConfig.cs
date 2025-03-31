@@ -18,7 +18,6 @@ public interface IAuraConfig : IConfig
 
     [ConfigItem(Description = "The address of the transaction priority contract to use when selecting transactions from the transaction pool.",
         DefaultValue = "null")]
-
     string TxPriorityContractAddress { get; set; }
 
     [ConfigItem(Description = "The path to the transaction priority rules file to use when selecting transactions from the transaction pool.",

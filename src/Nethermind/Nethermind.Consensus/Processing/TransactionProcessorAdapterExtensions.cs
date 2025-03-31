@@ -11,20 +11,21 @@ namespace Nethermind.Consensus.Processing;
 
 internal static class TransactionProcessorAdapterExtensions
 {
-    public static void ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
+    public static TransactionResult ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
         in BlockExecutionContext blkCtx,
         Transaction currentTx,
         BlockReceiptsTracer receiptsTracer,
         ProcessingOptions processingOptions,
         IWorldState stateProvider)
     {
-        if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
+        if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce) && currentTx.SenderAddress != Address.SystemUser)
         {
             currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
-        transactionProcessor.Execute(currentTx, in blkCtx, receiptsTracer);
+        TransactionResult result = transactionProcessor.Execute(currentTx, in blkCtx, receiptsTracer);
         receiptsTracer.EndTxTrace();
+        return result;
     }
 }

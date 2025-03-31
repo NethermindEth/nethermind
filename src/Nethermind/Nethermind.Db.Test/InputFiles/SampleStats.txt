@@ -1,0 +1,6 @@
+rocksdb.prefetch.bytes COUNT : 1
+rocksdb.prefetch.bytes.useful COUNT : 2
+rocksdb.prefetch.hits COUNT : 3
+rocksdb.db.get.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 4 SUM : 5
+rocksdb.db.write.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0
+rocksdb.subcompaction.setup.times.micros P50 : 0.000000 P95 : 0.000000 P99 : 0.000000 P100 : 0.000000 COUNT : 0 SUM : 0

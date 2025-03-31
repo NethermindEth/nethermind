@@ -8,6 +8,6 @@ namespace Nethermind.TxPool
 {
     public interface ITxValidator
     {
-        bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec);
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec);
     }
 }

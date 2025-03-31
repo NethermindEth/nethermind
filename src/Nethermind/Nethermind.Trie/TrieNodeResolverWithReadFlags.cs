@@ -9,37 +9,44 @@ namespace Nethermind.Trie;
 
 public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 {
-    private readonly ITrieStore _baseResolver;
+    private readonly ITrieNodeResolver _baseResolver;
     private readonly ReadFlags _defaultFlags;
 
-    public TrieNodeResolverWithReadFlags(ITrieStore baseResolver, ReadFlags defaultFlags)
+    public TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags)
     {
         _baseResolver = baseResolver;
         _defaultFlags = defaultFlags;
     }
 
-    public TrieNode FindCachedOrUnknown(Hash256 hash)
+    public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash)
     {
-        return _baseResolver.FindCachedOrUnknown(hash);
+        return _baseResolver.FindCachedOrUnknown(treePath, hash);
     }
 
-    public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        if (flags != ReadFlags.None)
-        {
-            return _baseResolver.TryLoadRlp(hash, flags | _defaultFlags);
-        }
-
-        return _baseResolver.TryLoadRlp(hash, _defaultFlags);
-    }
-
-    public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
-            return _baseResolver.LoadRlp(hash, flags | _defaultFlags);
+            return _baseResolver.TryLoadRlp(treePath, hash, flags | _defaultFlags);
         }
 
-        return _baseResolver.LoadRlp(hash, _defaultFlags);
+        return _baseResolver.TryLoadRlp(treePath, hash, _defaultFlags);
     }
+
+    public byte[]? LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        if (flags != ReadFlags.None)
+        {
+            return _baseResolver.LoadRlp(treePath, hash, flags | _defaultFlags);
+        }
+
+        return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
+    }
+
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address)
+    {
+        return new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
+    }
+
+    public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
 }

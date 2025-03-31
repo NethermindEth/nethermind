@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -12,85 +13,149 @@ namespace Nethermind.Db.Rocks.Config;
 public class PerTableDbConfig
 {
     private readonly string _tableName;
+    private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
     private readonly DbSettings _settings;
+    private readonly string[] _prefixes;
+    private readonly string[] _reversedPrefixes;
 
     public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
     {
         _dbConfig = dbConfig;
         _settings = dbSettings;
         _tableName = _settings.DbName;
-        if (columnName != null)
+        _columnName = columnName;
+        _prefixes = GetPrefixes();
+        _reversedPrefixes = _prefixes.Reverse().ToArray();
+
+#if DEBUG
+        EnsureConfigIsAvailable(nameof(RocksDbOptions));
+        EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+#endif
+    }
+
+    private void EnsureConfigIsAvailable(string propertyName)
+    {
+        Type type = typeof(IDbConfig);
+        foreach (var prefix in _prefixes)
         {
-            _tableName += columnName;
+            string prefixed = string.Concat(prefix, propertyName);
+            if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
+            {
+                throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
+            }
         }
     }
 
-    public bool CacheIndexAndFilterBlocks => _settings.CacheIndexAndFilterBlocks ?? ReadConfig<bool>(nameof(CacheIndexAndFilterBlocks));
+    public ulong? WriteBufferSize => ReadConfig<ulong?>(nameof(WriteBufferSize));
+    public ulong? WriteBufferNumber => ReadConfig<ulong?>(nameof(WriteBufferNumber));
 
-    public ulong BlockCacheSize => _settings.BlockCacheSize ?? ReadConfig<ulong>(nameof(BlockCacheSize));
-
-    public ulong WriteBufferSize => _settings.WriteBufferSize ?? ReadConfig<ulong>(nameof(WriteBufferSize));
-
-    public ulong WriteBufferNumber => _settings.WriteBufferNumber ?? ReadConfig<uint>(nameof(WriteBufferNumber));
-
-    public IDictionary<string, string>? AdditionalRocksDbOptions => ReadConfig<IDictionary<string, string>?>(nameof(AdditionalRocksDbOptions));
+    public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), _prefixes);
+    public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), _prefixes);
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
-    public long? MaxBytesPerSec => ReadConfig<long?>(nameof(MaxBytesPerSec));
-    public uint RecycleLogFileNum => ReadConfig<uint>(nameof(RecycleLogFileNum));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
-    public bool? UseDirectReads => ReadConfig<bool?>(nameof(UseDirectReads));
-    public bool? UseDirectIoForFlushAndCompactions => ReadConfig<bool?>(nameof(UseDirectIoForFlushAndCompactions));
-    public int? BlockSize => ReadConfig<int?>(nameof(BlockSize));
     public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
-    public bool? DisableCompression => ReadConfig<bool?>(nameof(DisableCompression));
-    public ulong? CompactionReadAhead => ReadConfig<ulong?>(nameof(CompactionReadAhead));
-    public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
-    public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
-    public int TargetFileSizeMultiplier => ReadConfig<int>(nameof(TargetFileSizeMultiplier));
+    public bool? VerifyChecksum => ReadConfig<bool?>(nameof(VerifyChecksum));
+    public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
+    public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
+    public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
+    public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
 
     private T? ReadConfig<T>(string propertyName)
     {
-        return ReadConfig<T>(_dbConfig, propertyName, GetPrefix());
+        return ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
     }
 
-    private string GetPrefix()
+    private string[] GetPrefixes()
     {
-        return _tableName.StartsWith("State") ? "StateDb" : string.Concat(_tableName, "Db");
+        if (_tableName.StartsWith("State"))
+        {
+            return ["StateDb"];
+        }
+
+        if (_columnName != null)
+        {
+            return [
+                string.Concat(_tableName, "Db"),
+                string.Concat(_tableName, _columnName, "Db"),
+            ];
+        }
+
+        return [string.Concat(_tableName, "Db")];
     }
 
-    private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string prefix)
+    private static string ReadRocksdbOptions(IDbConfig dbConfig, string propertyName, string[] prefixes)
     {
-        string prefixed = string.Concat(prefix, propertyName);
+        Type type = dbConfig.GetType();
+        PropertyInfo? propertyInfo;
 
+        string val = (string)type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)!.GetValue(dbConfig)!;
+
+        foreach (var prefix in prefixes)
+        {
+            string prefixed = string.Concat(prefix, propertyName);
+
+            propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            if (propertyInfo is not null)
+            {
+                string? valObj = (string?)propertyInfo.GetValue(dbConfig);
+                if (!string.IsNullOrEmpty(valObj))
+                {
+                    if (!valObj.EndsWith(";")) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
+                    val += valObj;
+                }
+            }
+        }
+
+        return val;
+    }
+
+    private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string[] prefixes)
+    {
         try
         {
             Type type = dbConfig.GetType();
-            PropertyInfo? propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            PropertyInfo? propertyInfo;
 
-            if (propertyInfo != null && propertyInfo.PropertyType.CanBeAssignedNull())
+            foreach (var prefix in prefixes)
             {
-                // If its nullable check if its null first
-                T? val = (T?)propertyInfo?.GetValue(dbConfig);
-                if (val != null)
-                {
-                    return val;
-                }
+                string prefixed = string.Concat(prefix, propertyName);
 
-                // Use generic one even if its available
-                propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+                propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+                if (propertyInfo is not null)
+                {
+                    if (propertyInfo.PropertyType.CanBeAssignedNull())
+                    {
+                        // If its nullable check if its null first
+                        object? valObj = propertyInfo.GetValue(dbConfig);
+                        if (valObj is not null)
+                        {
+                            T? val = (T?)valObj;
+                            if (val is not null)
+                            {
+                                return val;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // If not nullable just use it directly
+                        return (T?)propertyInfo.GetValue(dbConfig);
+                    }
+                }
             }
 
-            // if no custom db property default to generic one
-            propertyInfo ??= type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            // Use generic one even if its available
+            propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
             return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
         {
-            throw new InvalidDataException($"Unable to read {prefixed} property from DB config", e);
+            throw new InvalidDataException($"Unable to read property from DB config. Prefixes: ${prefixes}", e);
         }
     }
+
 }

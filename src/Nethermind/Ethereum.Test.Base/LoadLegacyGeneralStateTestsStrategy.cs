@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base
 {
     public class LoadLegacyGeneralStateTestsStrategy : ITestLoadStrategy
     {
-        public IEnumerable<IEthereumTest> Load(string testsDirectoryName, string wildcard = null)
+        public IEnumerable<EthereumTest> Load(string testsDirectoryName, string wildcard = null)
         {
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(testsDirectoryName))
@@ -35,10 +35,9 @@ namespace Ethereum.Test.Base
 
         private string GetLegacyGeneralStateTestsDirectory()
         {
-            char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            return currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}LegacyTests{pathSeparator}Constantinople{pathSeparator}GeneralStateTests";
+            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "GeneralStateTests");
         }
 
         private IEnumerable<GeneralStateTest> LoadTestsFromDirectory(string testDir, string wildcard)

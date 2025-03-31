@@ -3,40 +3,44 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 
-public class ReadOnlyTxProcessingEnvFactory
+public class ReadOnlyTxProcessingEnvFactory(
+    IWorldStateManager worldStateManager,
+    IReadOnlyBlockTree readOnlyBlockTree,
+    ISpecProvider specProvider,
+    ILogManager logManager) : IReadOnlyTxProcessingEnvFactory
 {
-    private readonly IWorldStateManager _worldStateManager;
-    private readonly IReadOnlyBlockTree? _readOnlyBlockTree;
-    private readonly ISpecProvider? _specProvider;
-    private readonly ILogManager? _logManager;
-
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
-        IBlockTree? blockTree,
-        ISpecProvider? specProvider,
-        ILogManager? logManager)
-        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        ILogManager logManager)
+        : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
     {
     }
 
-    public ReadOnlyTxProcessingEnvFactory(
-        IWorldStateManager worldStateManager,
-        IReadOnlyBlockTree? readOnlyBlockTree,
-        ISpecProvider? specProvider,
-        ILogManager? logManager)
+    public IReadOnlyTxProcessorSource Create()
     {
-        _worldStateManager = worldStateManager;
-        _readOnlyBlockTree = readOnlyBlockTree;
-        _specProvider = specProvider;
-        _logManager = logManager;
+        return new ReadOnlyTxProcessingEnv(
+            worldStateManager,
+            readOnlyBlockTree,
+            specProvider,
+            logManager);
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(_worldStateManager, _readOnlyBlockTree, _specProvider, _logManager);
+    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateToWarmUp)
+    {
+        return new ReadOnlyTxProcessingEnv(
+            worldStateManager,
+            readOnlyBlockTree,
+            specProvider,
+            logManager,
+            worldStateToWarmUp);
+    }
 }

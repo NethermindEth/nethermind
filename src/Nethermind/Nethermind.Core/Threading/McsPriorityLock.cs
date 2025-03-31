@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -17,15 +15,21 @@ namespace Nethermind.Core.Threading;
 /// </summary>
 public class McsPriorityLock
 {
-    private readonly int HalfCores = Math.Max(Environment.ProcessorCount / 2, 1);
+    private static readonly int HalfCores = Math.Max(Environment.ProcessorCount / 2, 1);
 
     private readonly McsLock _coreLock = new();
     private readonly McsLock[] _queuedLocks;
     private uint _queueId;
 
-    public McsPriorityLock()
+
+    public McsPriorityLock() : this(HalfCores)
     {
-        var queue = new McsLock[HalfCores];
+
+    }
+
+    public McsPriorityLock(int lowPrioritySlots)
+    {
+        var queue = new McsLock[lowPrioritySlots];
         for (var i = 0; i < queue.Length; i++)
         {
             queue[i] = new McsLock();
@@ -42,23 +46,12 @@ public class McsPriorityLock
     /// </summary>
     public McsLock.Disposable Acquire()
     {
-        // Check for reentrancy.
-        if (Thread.CurrentThread == _coreLock.currentLockHolder)
-            ThrowInvalidOperationException();
-
         var isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
         if (!isPriority)
             // If not a priority thread max of half processors can being to acquire the lock (e.g. block processing)
             return NonPriorityAcquire();
 
         return _coreLock.Acquire();
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException("Lock is not reentrant");
-        }
     }
 
     private McsLock.Disposable NonPriorityAcquire()

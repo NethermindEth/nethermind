@@ -24,6 +24,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
+using System.Collections.Generic;
 
 namespace Nethermind.Evm.Test;
 
@@ -45,19 +46,23 @@ public class TransactionProcessorTests
         _specProvider = MainnetSpecProvider.Instance;
     }
 
+    private static readonly UInt256 AccountBalance = 1.Ether();
+
     [SetUp]
     public void Setup()
     {
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        PreBlockCaches preBlockCaches = new();
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
+        _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+        CodeInfoRepository codeInfoRepository = new();
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
     [TestCase(true, true)]
@@ -67,13 +72,9 @@ public class TransactionProcessorTests
     public void Can_process_simple_transaction(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Success, Is.True);
     }
 
     [TestCase(true, true)]
@@ -90,15 +91,15 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
+        _ = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {
-            Assert.Null(tracer.TxReceipts![0].PostTransactionState);
+            Assert.That(tracer.TxReceipts![0].PostTransactionState, Is.Null);
         }
         else
         {
-            Assert.NotNull(tracer.TxReceipts![0].PostTransactionState);
+            Assert.That(tracer.TxReceipts![0].PostTransactionState, Is.Not.Null);
         }
     }
 
@@ -109,13 +110,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_intrinsic_gas(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(20000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -125,13 +122,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_missing_sender(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -141,13 +134,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_non_existing_sender_account(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -157,13 +146,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_invalid_nonce(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).WithNonce(100).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -184,14 +169,12 @@ public class TransactionProcessorTests
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
             .TestObject;
 
-        tx.Value = 1.Ether() - 3 * GasCostOf.Transaction;
+        tx.Value = AccountBalance - 3 * GasCostOf.Transaction;
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -205,14 +188,11 @@ public class TransactionProcessorTests
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
             .TestObject;
 
-        tx.Value = 1.Ether() - GasCostOf.Transaction;
+        tx.Value = AccountBalance - GasCostOf.Transaction;
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -228,11 +208,8 @@ public class TransactionProcessorTests
             .WithGasLimit(100000).TestObject;
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -242,13 +219,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_above_block_gas_limit(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -258,28 +231,28 @@ public class TransactionProcessorTests
     public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
-        CallAndRestore(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+        TransactionResult result = CallAndRestore(tx, block);
+        Assert.That(result.Success, Is.True);
     }
 
-    [TestCase]
+    [Test]
     public void Balance_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+        Transaction tx = Build.A.Transaction
+            .WithValue(AccountBalance - (UInt256)gasLimit)
+            .WithGasPrice(1)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
     }
 
-    [TestCase]
+    [Test]
     public void Account_is_not_created_on_call_and_restore()
     {
         long gasLimit = 100000;
@@ -292,18 +265,18 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
-        _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
     }
 
-    [TestCase]
+    [Test]
     public void Nonce_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
     }
 
@@ -317,7 +290,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
-        Action action = () => _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+        Action action = () => _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
         if (!systemUser)
         {
             action.Should().Throw<InsufficientBalanceException>();
@@ -329,23 +302,46 @@ public class TransactionProcessorTests
         }
     }
 
-    [Test]
-    public void Should_reject_tx_with_high_value()
+    [TestCaseSource(nameof(EstimateWithHighTxValueTestCases))]
+    public long Should_not_estimate_tx_with_high_value(UInt256 txValue)
     {
-        Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(21000)
+        long gasLimit = 100000;
+        Transaction tx = Build.A.Transaction
+            .WithValue(txValue)
+            .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
             .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        long blockNumber = _isEip155Enabled
-            ? MainnetSpecProvider.ByzantiumBlockNumber
-            : MainnetSpecProvider.ByzantiumBlockNumber - 1;
-        Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
+        EstimateGasTracer tracer = new();
+        BlocksConfig blocksConfig = new();
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        Execute(tracer, tx, block);
-
-        tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        return estimator.Estimate(tx, block.Header, tracer, 0);
     }
+
+    public static IEnumerable<TestCaseData> EstimateWithHighTxValueTestCases
+    {
+        get
+        {
+            yield return new TestCaseData((UInt256)1)
+            { TestName = "Sanity check", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance - 1)
+            { TestName = "Less than account balance", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction)
+            { TestName = "Account balance - tx cost", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction + 1)
+            { TestName = "More than (account balance - tx cost)", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance)
+            { TestName = "Exactly account balance", ExpectedResult = GasCostOf.Transaction };
+
+            yield return new TestCaseData(AccountBalance + 1)
+            { TestName = "More than account balance", ExpectedResult = 0L };
+            yield return new TestCaseData(UInt256.MaxValue)
+            { TestName = "Max value possible", ExpectedResult = 0L };
+        }
+    }
+
 
     [TestCase(562949953421312ul)]
     [TestCase(562949953421311ul)]
@@ -358,11 +354,8 @@ public class TransactionProcessorTests
 
         long blockNumber = MainnetSpecProvider.LondonBlockNumber;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
-
-        Execute(tracer, tx, block);
-
-        tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase]
@@ -375,10 +368,10 @@ public class TransactionProcessorTests
         EstimateGasTracer tracer = new();
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+        _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         tracer.GasSpent.Should().Be(21000);
-        estimator.Estimate(tx, block.Header, tracer).Should().Be(21000);
+        estimator.Estimate(tx, block.Header, tracer, 0).Should().Be(21000);
     }
 
     [TestCase]
@@ -399,24 +392,25 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
-        GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
+        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         EstimateGasTracer tracer = new();
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         IReleaseSpec releaseSpec = Berlin.Instance;
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
         tracer.GasSpent.Should().Be(54764L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
         estimate.Should().Be(75465L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -440,59 +434,58 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-
-        _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
-        GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
-        _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
         estimate.Should().Be(59307);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
 
-
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
     {
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
-        TestContext.WriteLine(tx.GasLimit);
+        TestContext.Out.WriteLine(tx.GasLimit);
 
-        GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
+        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
         string traceEnoughGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
 
-        _transactionProcessor.CallAndRestore(tx, block.Header, outputTracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
         traceEnoughGas.Should().NotContain("OutOfGas");
 
         outputTracer = new CallOutputTracer();
         tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
-        TestContext.WriteLine(tx.GasLimit);
+        TestContext.Out.WriteLine(tx.GasLimit);
 
-        gethTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+        gethTracer = new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
 
         string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-        TestContext.WriteLine(traceOutOfGas);
+        TestContext.Out.WriteLine(traceOutOfGas);
 
-        _transactionProcessor.CallAndRestore(tx, block.Header, outputTracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
 
         bool failed = traceEnoughGas.Contains("failed") || traceEnoughGas.Contains("OutOfGas");
         failed.Should().BeTrue();
     }
-
 
     [TestCase]
     public void Can_estimate_with_stipend()
@@ -508,29 +501,28 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
+        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         EstimateGasTracer tracer = new();
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
         tracer.GasSpent.Should().Be(85669L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
         estimate.Should().Be(87969L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
-
-
 
     [TestCase]
     public void Can_estimate_with_stipend_and_refund()
@@ -552,29 +544,28 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
+        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         EstimateGasTracer tracer = new();
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
         tracer.GasSpent.Should().Be(87429L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
         estimate.Should().Be(108130L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
-
-
 
     [TestCase]
     public void Can_estimate_with_single_call()
@@ -594,27 +585,26 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = Berlin.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
+        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+        _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
         tracer.GasSpent.Should().Be(54224L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
         estimate.Should().Be(54224L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
-
-
 
     [TestCase]
     public void Disables_Eip158_for_system_transactions()
@@ -631,11 +621,9 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, false, false);
-        Execute(tracer, tx, block);
+        Execute(tx, block, tracer);
         _stateProvider.AccountExists(tx.SenderAddress).Should().BeTrue();
     }
-
-
 
     [TestCase]
     public void Balance_is_changed_on_buildup_and_restored()
@@ -645,14 +633,12 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         Snapshot state = _stateProvider.TakeSnapshot();
-        _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
+        _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction);
 
         _stateProvider.Restore(state);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
+        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance);
     }
-
-
 
     [TestCase]
     public void Account_is_not_created_on_buildup_and_restore()
@@ -668,47 +654,55 @@ public class TransactionProcessorTests
 
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
         Snapshot state = _stateProvider.TakeSnapshot();
-        _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeTrue();
         _stateProvider.Restore(state);
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
     }
 
-
-
     [TestCase]
     public void Nonce_is_not_changed_on_buildup_and_restore()
     {
         long gasLimit = 100000;
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+        Transaction tx = Build.A.Transaction
+            .WithValue(AccountBalance - (UInt256)gasLimit)
+            .WithGasPrice(1)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         Snapshot state = _stateProvider.TakeSnapshot();
-        _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(1);
         _stateProvider.Restore(state);
         _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
     }
 
-
-
     [TestCase]
     public void State_changed_twice_in_buildup_should_have_correct_gas_cost()
     {
         long gasLimit = 100000;
-        Transaction tx1 = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(21000).TestObject;
-        Transaction tx2 = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithNonce(1).WithGasPrice(1).WithGasLimit(21000).TestObject;
+        Transaction tx1 = Build.A.Transaction
+            .WithValue(0).WithGasPrice(1).WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .TestObject;
+        Transaction tx2 = Build.A.Transaction
+            .WithValue(0).WithNonce(1).WithGasPrice(1).WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
 
         Snapshot state = _stateProvider.TakeSnapshot();
-        _transactionProcessor.BuildUp(tx1, block.Header, NullTxTracer.Instance);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
+        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        _transactionProcessor.BuildUp(tx1, blkCtx, NullTxTracer.Instance);
+        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction);
 
-        _transactionProcessor.BuildUp(tx2, block.Header, NullTxTracer.Instance);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 42000);
+        _transactionProcessor.BuildUp(tx2, blkCtx, NullTxTracer.Instance);
+        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction * 2);
 
         _stateProvider.Restore(state);
-        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
+        _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance);
     }
 
     private BlockReceiptsTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)
@@ -730,21 +724,31 @@ public class TransactionProcessorTests
         return tracer;
     }
 
-    private void Execute(BlockReceiptsTracer tracer, Transaction tx, Block block)
+    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(tx);
-        _transactionProcessor.Execute(tx, block.Header, tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        tracer?.StartNewBlockTrace(block);
+        tracer?.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer ?? NullTxTracer.Instance);
+        if (result)
+        {
+            tracer?.EndTxTrace();
+            tracer?.EndBlockTrace();
+        }
+
+        return result;
     }
 
-    private void CallAndRestore(BlockReceiptsTracer tracer, Transaction tx, Block block)
+    private TransactionResult CallAndRestore(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(tx);
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        tracer?.StartNewBlockTrace(block);
+        tracer?.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer ?? NullTxTracer.Instance);
+        if (result)
+        {
+            tracer?.EndTxTrace();
+            tracer?.EndBlockTrace();
+        }
+
+        return result;
     }
 }

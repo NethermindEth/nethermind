@@ -43,7 +43,7 @@ namespace Nethermind.Db.Test.Rpc
             string result = "0x0123";
             _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(Arg.Any<string>()).Returns(new JsonRpcSuccessResponse() { Result = result });
             byte[] key = new byte[1];
-            byte[] elem = _rpcDb[key];
+            _ = _rpcDb[key];
             _jsonRpcClient.Received().Post("debug_getFromDb", "Name", key.ToHexString());
             _recordDb[key].Should().BeEquivalentTo(Bytes.FromHexString(result));
         }

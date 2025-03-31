@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -12,43 +11,45 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IWorldStateManager _worldStateManager;
     private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculatorSource _rewardCalculatorSource;
-    private readonly IReceiptStorage _receiptStorage;
+    private readonly IBlockchainBridge _blockchainBridge;
+    private readonly ulong _secondsPerSlot;
+    protected readonly IBlockValidator _blockValidator;
+    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
+    protected readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly IConfigProvider _configProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogManager _logManager;
-    private readonly IBlockPreprocessorStep _recoveryStep;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly ILogManager _logManager;
+    protected readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IReadOnlyDbProvider _dbProvider;
-    private readonly IReadOnlyBlockTree _blockTree;
+    protected readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
-    private readonly ILogger _logger;
+    private readonly IWorldStateManager _worldStateManager;
 
     public DebugModuleFactory(
         IWorldStateManager worldStateManager,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge,
+        ulong secondsPerSlot,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculatorSource rewardCalculator,
@@ -57,7 +58,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore,
+        IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager)
     {
@@ -65,6 +66,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        _secondsPerSlot = secondsPerSlot;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
         _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
@@ -76,37 +79,29 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _logger = logManager.GetClassLogger();
     }
 
     public override IDebugRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txEnv = new(
-            _worldStateManager,
-            _blockTree,
-            _specProvider,
-            _logManager);
+        IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
+        OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
-        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
-        ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-            txEnv,
-            _blockValidator,
-            _recoveryStep,
-            _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
-            _receiptStorage,
-            _specProvider,
-            _logManager,
-            transactionsExecutor);
+        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
+
+        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(transactionProcessorAdapter, scope.WorldState);
+        ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
-            chainProcessingEnv.StateProvider,
+            scope.WorldState,
             _receiptStorage,
             _blockTree,
+            _badBlockStore,
             _specProvider,
             transactionProcessorAdapter,
-            _fileSystem);
+            _fileSystem,
+            txEnv);
 
         DebugBridge debugBridge = new(
             _configProvider,
@@ -119,6 +114,25 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _syncModeSelector,
             _badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
+    }
+
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
+        => new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
+
+    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
+        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
+    {
+        return new ReadOnlyChainProcessingEnv(
+            scope,
+            _blockValidator,
+            _recoveryStep,
+            _rewardCalculatorSource.Get(scope.TransactionProcessor),
+            _receiptStorage,
+            _specProvider,
+            _blockTree,
+            worldStateManager.GlobalStateReader,
+            _logManager,
+            transactionsExecutor);
     }
 }

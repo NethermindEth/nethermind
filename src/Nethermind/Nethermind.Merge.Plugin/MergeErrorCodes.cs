@@ -29,4 +29,9 @@ public static class MergeErrorCodes
     /// Number of requested entities is too large.
     /// </summary>
     public const int TooLargeRequest = -38004;
+
+    /// <summary>
+    /// Payload attributes are invalid or inconsistent.
+    /// </summary>
+    public const int UnsupportedFork = -38005;
 }

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -20,6 +19,8 @@ using Nethermind.Serialization.Json;
 
 using NSubstitute;
 
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
+
 namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IRpcModule
@@ -30,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public TestRpcModuleProvider(T module)
         {
             _jsonRpcConfig = new JsonRpcConfig();
-            _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, LimboLogs.Instance);
+            _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
 
             _provider.Register(new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(typeof(INetRpcModule).IsAssignableFrom(typeof(T)) ? (INetRpcModule)module : Substitute.For<INetRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(typeof(IEthRpcModule).IsAssignableFrom(typeof(T)) ? (IEthRpcModule)module : Substitute.For<IEthRpcModule>()), true));
@@ -52,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
                 {
-                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] { rpcModuleAttribute.ModuleType }).ToArray();
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union([rpcModuleAttribute.ModuleType]).ToArray();
                 }
             }
         }
@@ -60,9 +61,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IJsonSerializer Serializer => _provider.Serializer;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;
-        public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module) => _provider.Check(methodName, context, out module);
 
-        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => _provider.Resolve(methodName);
+        public ResolvedMethodInfo? Resolve(string methodName) => _provider.Resolve(methodName);
 
         public Task<IRpcModule> Rent(string methodName, bool readOnly) => _provider.Rent(methodName, readOnly);
 

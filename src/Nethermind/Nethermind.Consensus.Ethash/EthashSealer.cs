@@ -35,13 +35,7 @@ namespace Nethermind.Consensus.Ethash
                 }
 
                 return t.Result;
-            }, cancellationToken);
-
-            if (block is null)
-            {
-                throw new SealEngineException($"{nameof(SealBlock)} failed");
-            }
-
+            }, cancellationToken) ?? throw new SealEngineException($"{nameof(SealBlock)} failed");
             return block;
         }
 
@@ -79,9 +73,9 @@ namespace Nethermind.Consensus.Ethash
 
         private Block Mine(Block block, ulong? startNonce)
         {
-            (Hash256 MixHash, ulong Nonce) result = _ethash.Mine(block.Header, startNonce);
-            block.Header.Nonce = result.Nonce;
-            block.Header.MixHash = result.MixHash;
+            (Hash256 MixHash, ulong Nonce) = _ethash.Mine(block.Header, startNonce);
+            block.Header.Nonce = Nonce;
+            block.Header.MixHash = MixHash;
             return block;
         }
     }

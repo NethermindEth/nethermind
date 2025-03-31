@@ -80,13 +80,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     });
                 }
 
+                using (result)
+                {
+                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
+                }
 
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
             });
         }
 
-        public override string Type => SubscriptionType.Syncing;
+        public override string Type => SubscriptionType.EthSubscription.Syncing;
         public override void Dispose()
         {
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;

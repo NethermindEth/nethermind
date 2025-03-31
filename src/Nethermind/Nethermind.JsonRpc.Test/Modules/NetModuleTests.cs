@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var syncConfig = Substitute.For<ISyncConfig>();
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
-                Substitute.For<IReadOnlyKeyValueStore>(),
+                Substitute.For<IWorldStateManager>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
                 Substitute.For<IReceiptFinder>(),
@@ -57,7 +57,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncPeerPool>(),
                 Substitute.For<ISyncModeSelector>(),
                 syncConfig,
-                Substitute.For<IWitnessRepository>(),
                 Substitute.For<IGossipPolicy>(),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<ILogManager>());

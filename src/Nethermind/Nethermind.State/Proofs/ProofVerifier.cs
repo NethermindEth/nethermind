@@ -16,7 +16,7 @@ namespace Nethermind.State.Proofs
         /// Verifies one proof - address path from the bottom to the root.
         /// </summary>
         /// <returns>The Value of the bottom most proof node. For example an Account.</returns>
-        public static byte[]? VerifyOneProof(byte[][] proof, Hash256 root)
+        public static CappedArray<byte> VerifyOneProof(byte[][] proof, Hash256 root)
         {
             if (proof.Length == 0)
             {
@@ -43,9 +43,9 @@ namespace Nethermind.State.Proofs
             }
 
             TrieNode trieNode = new(NodeType.Unknown, proof.Last());
-            trieNode.ResolveNode(null);
+            trieNode.ResolveNode(null, TreePath.Empty);
 
-            return trieNode.Value.ToArray();
+            return trieNode.Value;
         }
     }
 }

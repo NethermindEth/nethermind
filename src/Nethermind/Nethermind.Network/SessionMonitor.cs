@@ -5,9 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -30,7 +30,7 @@ namespace Nethermind.Network
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
@@ -47,6 +47,7 @@ namespace Nethermind.Network
         }
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        public IEnumerable<ISession> Sessions => _sessions.Values;
 
         public void AddSession(ISession session)
         {
@@ -84,17 +85,17 @@ namespace Nethermind.Network
 
                     if (_pingTasks.Count > 0)
                     {
-                        bool[] tasks = await Task.WhenAll(_pingTasks);
+                        bool[] tasks = await Task.WhenAll<bool>(CollectionsMarshal.AsSpan(_pingTasks));
                         int tasksLength = tasks.Length;
                         if (tasksLength != 0)
                         {
-                            int successes = tasks.Count(x => x);
+                            int successes = tasks.Count(static x => x);
                             int failures = tasksLength - successes;
                             if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
-                            if (failures > tasks.Length / 3)
+                            if (failures > 4 && failures > tasks.Length / 3)
                             {
                                 decimal percentage = (decimal)failures / tasksLength;
-                                if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
+                                if (_logger.IsInfo) _logger.Info($"{failures} of {tasksLength} checked nodes did not respond to a Ping message - {percentage:P0}");
                             }
                         }
                     }
@@ -163,7 +164,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERRUR Error during ping timer stop", e);
+                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during ping timer stop", e);
             }
         }
     }

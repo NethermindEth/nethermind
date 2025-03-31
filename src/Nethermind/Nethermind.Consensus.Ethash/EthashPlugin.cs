@@ -4,31 +4,29 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashPlugin : IConsensusPlugin
+    public class EthashPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         private INethermindApi _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
-        public string Name => "Ethash";
+        public string Name => SealEngineType;
 
-        public string Description => "Ethash Consensus";
+        public string Description => $"{SealEngineType} Consensus";
 
         public string Author => "Nethermind";
+
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Ethash)
-            {
-                return Task.CompletedTask;
-            }
 
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
             setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);
@@ -46,23 +44,19 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            return Task.FromResult((IBlockProducer)null);
+            return null;
         }
 
-        public Task InitNetworkProtocol()
+        public string SealEngineType => Core.SealEngineType.Ethash;
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
-            return Task.CompletedTask;
+            return new StandardBlockProducerRunner(
+                _nethermindApi.ManualBlockProductionTrigger,
+                _nethermindApi.BlockTree,
+                blockProducer);
         }
-
-        public Task InitRpcModules()
-        {
-            return Task.CompletedTask;
-        }
-
-        public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
-
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
     }
 }

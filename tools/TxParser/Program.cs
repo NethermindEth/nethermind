@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Consensus.Validators;
 using Nethermind.Specs.Forks;
 
@@ -21,9 +20,9 @@ while (true)
         TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
         if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, SimpleConsoleLogManager.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
             Address? sender = ecdsa.RecoverAddress(tx);
-            if (sender == null)
+            if (sender is null)
             {
                 throw new InvalidDataException("Could not recover sender address");
             }

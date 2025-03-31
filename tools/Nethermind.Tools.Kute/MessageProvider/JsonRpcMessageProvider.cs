@@ -9,7 +9,6 @@ public class JsonRpcMessageProvider : IMessageProvider<JsonRpc?>
 {
     private readonly IMessageProvider<string> _provider;
 
-
     public JsonRpcMessageProvider(IMessageProvider<string> provider)
     {
         _provider = provider;

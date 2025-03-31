@@ -2,7 +2,7 @@
   "profiles": {
     "SendBlobs": {
       "commandName": "Project",
-      "commandLineArgs": "http://localhost:8545 1-8 c2b36204cdfc90550383c3d96b8f95ede48d8447d03ec1c27c07b089a6dd67c1 0x000000000000000000000000000000000000f1c1 4"
+      "commandLineArgs": "--rpcurl http://172.105.149.206:8545 --bloboptions 1 --privatekey 0x4bc391a63f2827ed88291061c3428887c83cab6c090328e68ae1738fbbedf1d8 --receiveraddress 0x3Af4A1fe34392AACbf4cDA98518860b9Ea3c8943 --maxpriorityfee 200000000000 --feemultiplier 20"
     }
   }
 }

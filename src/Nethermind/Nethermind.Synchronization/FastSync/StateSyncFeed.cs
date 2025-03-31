@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
+    public class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
         private const StateSyncBatch EmptyBatch = null;
 
@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.FastSync
             ILogManager logManager)
         {
             _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -49,18 +49,19 @@ namespace Nethermind.Synchronization.FastSync
                     return EmptyBatch!;
                 }
 
-                return await _treeSync.PrepareRequest(_currentSyncMode);
+                return await _treeSync.PrepareRequest();
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
         }
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peer = null)
         {
-            return _treeSync.HandleResponse(batch, peer);
+            using StateSyncBatch? b = batch;
+            return _treeSync.HandleResponse(b, peer);
         }
 
         public void Dispose()

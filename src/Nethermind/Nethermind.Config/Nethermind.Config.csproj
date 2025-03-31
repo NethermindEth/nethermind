@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   
   <ItemGroup>
+    <PackageReference Include="NonBlocking" />
     <PackageReference Include="System.Configuration.ConfigurationManager" />
   </ItemGroup>
   <ItemGroup>

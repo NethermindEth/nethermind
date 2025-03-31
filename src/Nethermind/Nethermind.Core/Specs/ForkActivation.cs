@@ -5,17 +5,12 @@ using System;
 
 namespace Nethermind.Core.Specs;
 
-public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<ForkActivation>
+public readonly struct ForkActivation(long blockNumber, ulong? timestamp = null)
+    : IEquatable<ForkActivation>, IComparable<ForkActivation>
 {
-    public long BlockNumber { get; }
-    public ulong? Timestamp { get; }
+    public long BlockNumber { get; } = blockNumber;
+    public ulong? Timestamp { get; } = timestamp;
     public ulong Activation => Timestamp ?? (ulong)BlockNumber;
-
-    public ForkActivation(long blockNumber, ulong? timestamp = null)
-    {
-        BlockNumber = blockNumber;
-        Timestamp = timestamp;
-    }
 
     /// <summary>
     /// Fork activation for forks past The Merge/Paris

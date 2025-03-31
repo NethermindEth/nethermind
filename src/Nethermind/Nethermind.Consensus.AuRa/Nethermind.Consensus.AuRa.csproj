@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <PackageReference Include="Nito.Collections.Deque" />
+    <PackageReference Include="BouncyCastle.Cryptography" Aliases="BouncyCastle"/>
   </ItemGroup>
 
   <ItemGroup>

@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P.Messages
         public void Serialize(IByteBuffer byteBuffer, DisconnectMessage msg)
         {
             int length = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(length);
+            byteBuffer.EnsureWritable(length, force: true);
             NettyRlpStream rlpStream = new(byteBuffer);
 
             rlpStream.StartSequence(contentLength);

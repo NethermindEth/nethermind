@@ -16,12 +16,14 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     private readonly ConsoleColor _defaultColour;
     private readonly ITestSourceLoader _testsSource;
     private readonly string? _filter;
+    private readonly ulong _chainId;
 
-    public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter)
+    public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter, ulong chainId)
     {
         _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         _defaultColour = Console.ForegroundColor;
         _filter = filter;
+        _chainId = chainId;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
@@ -35,13 +37,14 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
             Setup();
 
             Console.Write($"{test,-120} ");
-            if (test.LoadFailure != null)
+            if (test.LoadFailure is not null)
             {
                 WriteRed(test.LoadFailure);
                 testResults.Add(new EthereumTestResult(test.Name, test.LoadFailure));
             }
             else
             {
+                test.ChainId = _chainId;
                 EthereumTestResult result = await RunTest(test);
                 testResults.Add(result);
                 if (result.Pass)

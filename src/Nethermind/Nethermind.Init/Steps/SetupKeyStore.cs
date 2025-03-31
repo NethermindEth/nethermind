@@ -5,7 +5,9 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -45,8 +47,8 @@ namespace Nethermind.Init.Steps
 
                 set.Wallet = get.Config<IInitConfig>() switch
                 {
-                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
-                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
+                    { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: true } => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
+                    { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: false } => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
                     _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(get.CryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
                         get.Timestamper, get.LogManager),
                 };
@@ -58,9 +60,15 @@ namespace Nethermind.Init.Steps
                     .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
-                ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
+                IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
-                set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+                IMiningConfig miningConfig = get.Config<IMiningConfig>();
+                //Don't load the local key if an external signer is configured
+                if (string.IsNullOrEmpty(miningConfig.Signer))
+                {
+                    set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+                }
+
                 IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
                 IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
 

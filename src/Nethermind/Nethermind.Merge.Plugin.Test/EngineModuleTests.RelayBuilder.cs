@@ -48,11 +48,12 @@ public partial class EngineModuleTests
                 };
             });
 
-        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
+        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         TimeSpan timePerSlot = TimeSpan.FromSeconds(10);
+        chain.BlockImprovementContextFactory = improvementContextFactory;
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
-            improvementContextFactory,
+            chain.BlockImprovementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot);
@@ -67,14 +68,13 @@ public partial class EngineModuleTests
         boostRelay.When(b => b.SendPayload(Arg.Any<BoostExecutionPayloadV1>(), Arg.Any<CancellationToken>()))
             .Do(c => sentItem = c.Arg<BoostExecutionPayloadV1>());
 
-        ManualResetEvent wait = new(false);
-        chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
+        Task blockImprovementWait = chain.WaitForImprovedBlock();
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
 
-        await wait.WaitOneAsync(100, CancellationToken.None);
+        await blockImprovementWait;
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -82,7 +82,7 @@ public partial class EngineModuleTests
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
-        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block);
+        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block, o => o.IgnoringCyclicReferences());
         sentItem.Profit.Should().Be(0);
     }
 
@@ -140,7 +140,7 @@ public partial class EngineModuleTests
                 ExtraData = Bytes.FromHexString(expected_extraData),
                 BaseFeePerGas = expected_baseFeePerGas,
                 BlockHash = new(expected_blockHash),
-                Transactions = Array.Empty<byte[]>()
+                Transactions = []
             },
             Profit = UInt256.Parse(expected_profit.AsSpan(2), NumberStyles.HexNumber)
         };
@@ -151,11 +151,12 @@ public partial class EngineModuleTests
 
         DefaultHttpClient defaultHttpClient = new(mockHttp.ToHttpClient(), serializer, chain.LogManager, 1, 100);
         BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
-        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5000), boostRelay, chain.StateReader);
+        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5000), boostRelay, chain.StateReader);
         TimeSpan timePerSlot = TimeSpan.FromSeconds(1000);
+        chain.BlockImprovementContextFactory = improvementContextFactory;
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
-            improvementContextFactory,
+            chain.BlockImprovementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot);
@@ -163,14 +164,13 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        ManualResetEvent wait = new(false);
-        chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
+        Task blockImprovementWait = chain.WaitForImprovedBlock();
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 payloadAttributes).Result.Data
             .PayloadId!;
 
-        await wait.WaitOneAsync(100, CancellationToken.None);
+        await blockImprovementWait;
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -192,13 +192,13 @@ public partial class EngineModuleTests
         {
             IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
             boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
-                .Returns(c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
+                .Returns(static c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
 
-            improvementContextFactory = new BoostBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
+            improvementContextFactory = new BoostBlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         }
         else
         {
-            improvementContextFactory = new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5));
+            improvementContextFactory = new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5));
         }
 
         TimeSpan timePerSlot = TimeSpan.FromSeconds(10);

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -12,9 +12,9 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly bool _allowReceiptIterator;
         private readonly IBlockTree? _blockTree;
-        private readonly ConcurrentDictionary<Hash256, TxReceipt[]> _receipts = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
 
-        private readonly ConcurrentDictionary<Hash256, TxReceipt> _transactions = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
@@ -40,17 +40,10 @@ namespace Nethermind.Blockchain.Receipts
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block) => Get(block.Hash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash);
 
-        public TxReceipt[] Get(Hash256 blockHash)
-        {
-            if (_receipts.TryGetValue(blockHash, out var receipts))
-            {
-                return receipts;
-            }
-
-            return Array.Empty<TxReceipt>();
-        }
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
+            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;
         public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
@@ -69,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
@@ -93,8 +86,6 @@ namespace Nethermind.Blockchain.Receipts
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
         }
-
-        public long? LowestInsertedReceiptBlockNumber { get; set; }
 
         public long MigratedBlockNumber { get; set; }
 

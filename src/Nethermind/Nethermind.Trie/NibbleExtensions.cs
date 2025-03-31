@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -13,6 +14,8 @@ namespace Nethermind.Trie
     [DebuggerStepThrough]
     public static class Nibbles
     {
+        private const int StackAllocLengthLimit = 255;
+
         public static Nibble[] FromBytes(params byte[] bytes)
         {
             return FromBytes(bytes.AsSpan());
@@ -23,6 +26,13 @@ namespace Nethermind.Trie
             Nibble[] nibbles = new Nibble[2 * bytes.Length];
             BytesToNibbleBytes(bytes, MemoryMarshal.AsBytes(nibbles.AsSpan()));
             return nibbles;
+        }
+
+        public static byte[] BytesToNibbleBytes(ReadOnlySpan<byte> bytes)
+        {
+            byte[] output = new byte[bytes.Length * 2];
+            BytesToNibbleBytes(bytes, output);
+            return output;
         }
 
         public unsafe static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
@@ -40,7 +50,7 @@ namespace Nethermind.Trie
             if (Vector128.IsHardwareAccelerated && length > 0)
             {
                 // Cast the byte span to a span of Vector128<byte> for SIMD processing.
-                var input = MemoryMarshal.Cast<byte, Vector128<byte>>(bytes.Slice(0, length));
+                var input = MemoryMarshal.Cast<byte, Vector128<byte>>(bytes[..length]);
                 // Cast the nibble span to a reference to first element of Vector128<ushort> as input doubles.
                 ref var output = ref Unsafe.As<byte, Vector128<ushort>>(ref MemoryMarshal.GetReference(nibbles));
 
@@ -142,6 +152,36 @@ namespace Nethermind.Trie
             return bytes;
         }
 
+        public static byte[] CompactToHexEncode(byte[] compactPath)
+        {
+            if (compactPath.Length == 0)
+            {
+                return compactPath;
+            }
+            int nibblesCount = compactPath.Length * 2 + 1;
+            byte[]? array = null;
+            Span<byte> nibbles = nibblesCount < StackAllocLengthLimit
+                ? stackalloc byte[nibblesCount]
+                : array ??= ArrayPool<byte>.Shared.Rent(nibblesCount);
+
+            BytesToNibbleBytes(compactPath, nibbles[..(2 * compactPath.Length)]);
+            nibbles[^1] = 16;
+
+            if (nibbles[0] < 2)
+            {
+                nibbles = nibbles[..^1];
+            }
+
+            int chop = 2 - (nibbles[0] & 1);
+            byte[] result = nibbles[chop..].ToArray();
+            if (array is not null)
+            {
+                ArrayPool<byte>.Shared.Return(array);
+            }
+
+            return result;
+        }
+
         public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)
         {
             int oddity = nibbles.Length % 2;
@@ -160,5 +200,35 @@ namespace Nethermind.Trie
         }
 
         public static byte[] EncodePath(ReadOnlySpan<byte> input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
+
+        public static byte[] ToCompactHexEncoding(TreePath nibbles)
+        {
+            int oddity = nibbles.Length % 2;
+            byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            for (int i = 0; i < bytes.Length - 1; i++)
+            {
+                bytes[i + 1] = ToByte((byte)nibbles[2 * i + oddity], (byte)nibbles[2 * i + 1 + oddity]);
+            }
+
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(1, (byte)nibbles[0]);
+            }
+
+            return bytes;
+        }
+
+        public static byte[] EncodePath(TreePath input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
+
+        public static byte[] ToBytes(TreePath nibbles)
+        {
+            byte[] bytes = new byte[nibbles.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = ToByte((byte)nibbles[2 * i], (byte)nibbles[2 * i + 1]);
+            }
+
+            return bytes;
+        }
     }
 }

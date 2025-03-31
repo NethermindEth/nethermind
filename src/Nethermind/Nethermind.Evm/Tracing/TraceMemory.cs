@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
@@ -46,7 +45,7 @@ public readonly struct TraceMemory
     }
 
     private const int MemoryPadLimit = 1024 * 1024;
-    public ReadOnlySpan<byte> Slice(int start, int length)
+    public ReadOnlySpan<byte> Slice(int start, int length, bool limit = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
         ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
@@ -55,8 +54,11 @@ public readonly struct TraceMemory
 
         if (start + length > span.Length)
         {
-            int paddingNeeded = start + length - span.Length;
-            if (paddingNeeded > MemoryPadLimit) throw new InvalidOperationException($"reached limit for padding memory slice: {paddingNeeded}");
+            if (limit)
+            {
+                int paddingNeeded = start + length - span.Length;
+                if (paddingNeeded > MemoryPadLimit) throw new InvalidOperationException($"reached limit for padding memory slice: {paddingNeeded}");
+            }
             byte[] result = new byte[length];
             int overlap = span.Length - start;
             if (overlap > 0)

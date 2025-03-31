@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.State;
@@ -23,13 +25,9 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly AuRaNethermindApi _auraApi;
-    private readonly IAuraConfig _auraConfig;
-    private readonly DisposableStack _disposeStack;
-
+    private readonly IExecutionRequestsProcessor? _executionRequestsProcessor;
     public AuRaMergeBlockProducerEnvFactory(
         AuRaNethermindApi auraApi,
-        IAuraConfig auraConfig,
-        DisposableStack disposeStack,
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         ISpecProvider specProvider,
@@ -40,7 +38,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        ILogManager logManager) : base(
+        ILogManager logManager,
+        IExecutionRequestsProcessor? executionRequestsProcessor = null) : base(
             worldStateManager,
             blockTree,
             specProvider,
@@ -51,15 +50,15 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             txPool,
             transactionComparerProvider,
             blocksConfig,
-            logManager)
+            logManager,
+            executionRequestsProcessor)
     {
         _auraApi = auraApi;
-        _auraConfig = auraConfig;
-        _disposeStack = disposeStack;
+        _executionRequestsProcessor = executionRequestsProcessor;
     }
 
     protected override BlockProcessor CreateBlockProcessor(
-        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -67,23 +66,29 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ILogManager logManager,
         IBlocksConfig blocksConfig)
     {
-        var withdrawalContractFactory = new WithdrawalContractFactory(_auraApi.ChainSpec!.AuRa, _auraApi.AbiEncoder);
+        var withdrawalContractFactory = new WithdrawalContractFactory(
+            _auraApi.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _auraApi.AbiEncoder);
 
         return new AuRaMergeBlockProcessor(
             specProvider,
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
             logManager,
             _blockTree,
             new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager
-                    )
-                ));
+                )
+            ),
+            readOnlyTxProcessingEnv.TransactionProcessor,
+            null,
+            executionRequestsProcessor: _executionRequestsProcessor);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
@@ -93,11 +98,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
-            _worldStateManager,
-            _blockTree.AsReadOnly());
-
-        return new StartBlockProducerAuRa(_auraApi)
-            .CreateTxPoolTxSource(processingEnv, constantContractsProcessingEnv);
+        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource();
     }
 }

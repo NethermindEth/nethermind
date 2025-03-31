@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip()
         {
-            StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_empty_status()
         {
-            StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new();
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
         }
@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_with_fork_id_next_is_zero()
         {
-            StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_with_fork_id_next_is_max()
         {
-            StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             next ??= BinaryPrimitives.ReadUInt32BigEndian(Bytes.FromHexString("baddcafe"));
             StatusMessageSerializer serializer = new();
-            StatusMessage message = new();
+            using StatusMessage message = new();
             message.ForkId = new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(forkHash)), next.Value);
             serializer.Serialize(message).ToHexString().Should().EndWith(expected);
         }
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             byte[] bytes = Bytes.FromHexString(msgHex);
             StatusMessageSerializer serializer = new();
-            StatusMessage message = serializer.Deserialize(bytes);
+            using StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             serialized.Should().BeEquivalentTo(bytes);
             Assert.That(message.ProtocolVersion, Is.EqualTo(64), "ProtocolVersion");
@@ -112,7 +112,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             byte[] bytes = Bytes.FromHexString(msgHex.Replace(" ", string.Empty));
             StatusMessageSerializer serializer = new();
-            StatusMessage message = serializer.Deserialize(bytes);
+            using StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             serialized.Should().BeEquivalentTo(bytes);
             Assert.That(message.ProtocolVersion, Is.EqualTo(64), "ProtocolVersion");
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             byte[] bytes = Bytes.FromHexString("f84927808425c60144a0832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216a0955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb");
             StatusMessageSerializer serializer = new();
-            StatusMessage message = serializer.Deserialize(bytes);
+            using StatusMessage message = serializer.Deserialize(bytes);
             Assert.That(message.ProtocolVersion, Is.EqualTo(39), "ProtocolVersion");
 
             Assert.That((int)message.TotalDifficulty, Is.EqualTo(0x25c60144), "Difficulty");
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void To_string()
         {
-            StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new();
             _ = statusMessage.ToString();
         }
     }

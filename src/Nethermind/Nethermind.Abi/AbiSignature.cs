@@ -40,6 +40,6 @@ namespace Nethermind.Abi
             return _toString ??= ComputeString();
         }
 
-        public static byte[] GetAddress(ReadOnlySpan<byte> bytes) => bytes.Slice(0, 4).ToArray();
+        public static byte[] GetAddress(ReadOnlySpan<byte> bytes) => bytes[..4].ToArray();
     }
 }

@@ -8,10 +8,12 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Prometheus;
 
 namespace Nethermind.Monitoring;
@@ -52,7 +54,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
             // Legacy setting, may be overridden by ConfigureExporter.
             settings.Registry = options.Registry;
 
-            if (options.ConfigureExporter != null)
+            if (options.ConfigureExporter is not null)
                 options.ConfigureExporter(settings);
         };
     }
@@ -67,13 +69,16 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
 
     protected override Task StartServer(CancellationToken cancel)
     {
-        var s = _certificate != null ? "s" : "";
+        var s = _certificate is not null ? "s" : "";
         var hostAddress = $"http{s}://{_hostname}:{_port}";
 
         // If the caller needs to customize any of this, they can just set up their own web host and inject the middleware.
         var builder = new WebHostBuilder()
-            .UseKestrel()
-            .UseIISIntegration()
+            // Explicitly build from UseKestrelCore rather than UseKestrel to
+            // not add additional transports that we don't use e.g. msquic as that
+            // adds a lot of additional idle threads to the process.
+            .UseKestrelCore()
+            .UseKestrelHttpsConfiguration()
             .Configure(app =>
             {
                 app.UseMetricServer(_configureExporter, _url);
@@ -93,27 +98,26 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
                 }
             });
 
-        if (_certificate != null)
+        if (_certificate is not null)
         {
-            builder = builder.ConfigureServices(services =>
+            builder.ConfigureServices(services =>
             {
-                Action<ListenOptions> configureEndpoint = options =>
-                {
-                    options.UseHttps(_certificate);
-                };
-
                 services.Configure<KestrelServerOptions>(options =>
                 {
-                    options.Listen(IPAddress.Any, _port, configureEndpoint);
+                    options.Listen(
+                        IPAddress.Any,
+                        _port,
+                        listenOptions => listenOptions.UseHttps(_certificate)
+                    );
                 });
             });
         }
         else
         {
-            builder = builder.UseUrls(hostAddress);
+            builder.UseUrls(hostAddress);
         }
 
-        var webHost = builder.Build();
+        IWebHost webHost = builder.Build();
 
         // This is what changed
         // webHost.Start();

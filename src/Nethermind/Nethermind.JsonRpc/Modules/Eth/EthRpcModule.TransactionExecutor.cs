@@ -1,155 +1,135 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
+    //General executor
     public partial class EthRpcModule
     {
-        private abstract class TxExecutor<TResult>
+        // Single call executor
+        private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+            : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
-            protected readonly IBlockchainBridge _blockchainBridge;
-            private readonly IBlockFinder _blockFinder;
-            private readonly IJsonRpcConfig _rpcConfig;
+            private bool NoBaseFee { get; set; }
 
-            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+            protected override Transaction Prepare(TransactionForRpc call)
             {
-                _blockchainBridge = blockchainBridge;
-                _blockFinder = blockFinder;
-                _rpcConfig = rpcConfig;
+                var tx = call.ToTransaction();
+                tx.ChainId = _blockchainBridge.GetChainId();
+                return tx;
             }
 
-            public ResultWrapper<TResult> ExecuteTx(
-                TransactionForRpc transactionCall,
-                BlockParameter? blockParameter)
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                BlockHeader clonedHeader = header.Clone();
+                if (NoBaseFee)
                 {
-                    return ResultWrapper<TResult>.Fail(searchResult);
+                    clonedHeader.BaseFeePerGas = 0;
                 }
-
-                BlockHeader header = searchResult.Object;
-                if (!HasStateForBlock(_blockchainBridge, header))
-                {
-                    return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
-                        ErrorCodes.ResourceUnavailable);
-                }
-
-                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
-
-                using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
-                Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
                 if (tx.IsContractCreation && tx.DataLength == 0)
                 {
-                    return ResultWrapper<TResult>.Fail("Contract creation without any data provided.",
-                                               ErrorCodes.InvalidInput);
+                    return ResultWrapper<TResult>.Fail("Contract creation without any data provided.", ErrorCodes.InvalidInput);
                 }
-                return ExecuteTx(header.Clone(), tx, cancellationTokenSource.Token);
+                return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
-            protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
+            public override ResultWrapper<TResult> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null)
+            {
+                NoBaseFee = !transactionCall.ShouldSetBaseFee();
+                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
+                return base.Execute(transactionCall, blockParameter, stateOverride);
+            }
 
-            protected static ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
-                ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
+                => Execute(transactionCall, blockParameter, stateOverride);
+
+            protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
         }
 
-        private class CallTxExecutor : TxExecutor<string>
+        private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+            : TxExecutor<string>(blockchainBridge, blockFinder, rpcConfig)
         {
-            public CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-                : base(blockchainBridge, blockFinder, rpcConfig)
+            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-            }
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
-            {
-                BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
-
-                if (result.Error is null)
-                {
-                    return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
-            }
-        }
-
-        private class EstimateGasTxExecutor : TxExecutor<UInt256?>
-        {
-            public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-                : base(blockchainBridge, blockFinder, rpcConfig)
-            {
-            }
-
-            protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
-            {
-                BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
-
-                if (result.Error is null)
-                {
-                    return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
+                return result.Error is null
+                    ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
+                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
             }
         }
 
-        private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc?>
+        private class EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+            : TxExecutor<UInt256?>(blockchainBridge, blockFinder, rpcConfig)
         {
-            private readonly bool _optimize;
+            private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
 
-            public CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize)
-                : base(blockchainBridge, blockFinder, rpcConfig)
+            protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                _optimize = optimize;
-            }
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
 
-            protected override ResultWrapper<AccessListForRpc?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
-            {
-                BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
-
-                if (result.Error is null)
+                return result switch
                 {
-                    return ResultWrapper<AccessListForRpc?>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                    { Error: null } => ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent),
+                    { InputError: true } => ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.InvalidInput),
+                    _ => ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError)
+                };
             }
+        }
 
-            private static IEnumerable<AccessListItemForRpc> GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)
+        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize)
+            : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig)
+        {
+            protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                AccessList? accessList = result.AccessList ?? tx.AccessList;
-                return accessList is null ? Enumerable.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(accessList);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
+
+                var rpcAccessListResult = new AccessListResultForRpc(
+                    accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
+                    gasUsed: GetResultGas(tx, result));
+
+                return result switch
+                {
+                    { Error: null } => ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult),
+                    { InputError: true } => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput),
+                    _ => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError),
+                };
             }
 
-            private static UInt256 GetResultGas(Transaction transaction, BlockchainBridge.CallOutput result)
+            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
             {
                 long gas = result.GasSpent;
+                long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    // if we generated access list, we need to fix actual gas cost, as all storage was considered warm
-                    gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+                    var oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
                     transaction.AccessList = result.AccessList;
-                    gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+                    var newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
+                    if (gas > operationGas)
+                    {
+                        if (gas - operationGas < updatedAccessListCost) gas = operationGas + updatedAccessListCost;
+                    }
+                    else
+                    {
+                        gas += updatedAccessListCost;
+                    }
                 }
 
                 return (UInt256)gas;

@@ -20,7 +20,7 @@ internal sealed class NotSupportedTxFilter : IIncomingTxFilter
         _logger = logger;
     }
 
-    public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.SupportsBlobs)
         {

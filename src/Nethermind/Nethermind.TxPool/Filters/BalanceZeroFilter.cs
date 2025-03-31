@@ -21,9 +21,9 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            Account account = state.SenderAccount;
+            AccountStruct account = state.SenderAccount;
             UInt256 balance = account.Balance;
 
             bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;

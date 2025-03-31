@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging
 {
@@ -20,11 +21,11 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger() => new NUnitLogger(_level);
+        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(new NUnitLogger(_level));
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
 
-        public class NUnitLogger : ILogger
+        public class NUnitLogger : InterfaceLogger
         {
             private readonly LogLevel _level;
 

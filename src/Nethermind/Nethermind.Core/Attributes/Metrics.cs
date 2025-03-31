@@ -23,10 +23,37 @@ public sealed class GaugeMetricAttribute : Attribute { }
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class KeyIsLabelAttribute : Attribute
 {
-    public string LabelName { get; }
+    public string[] LabelNames { get; }
 
-    public KeyIsLabelAttribute(string labelName)
+    public KeyIsLabelAttribute(params string[] labelNames)
     {
-        LabelName = labelName;
+        LabelNames = labelNames;
     }
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class SummaryMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; set; } = [];
+
+    // Summary objective in quantile-epsilon pair
+    public double[] ObjectiveQuantile { get; set; } = [];
+    public double[] ObjectiveEpsilon { get; set; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class ExponentialPowerHistogramMetric : Attribute
+{
+    public string[] LabelNames { get; } = [];
+    public double Start { get; set; }
+    public double Factor { get; set; }
+    public int Count { get; set; }
+}
+
+/// <summary>
+/// Mark a metric as detailed
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class DetailedMetricAttribute : Attribute
+{
 }

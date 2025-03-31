@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules)
+        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
         {
             Scheme = scheme;
             Host = host;
@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc
             RpcEndpoint = rpcEndpoint;
             EnabledModules = new HashSet<string>(enabledModules, StringComparer.InvariantCultureIgnoreCase);
             IsAuthenticated = isAuthenticated;
+            MaxRequestBodySize = maxRequestBodySize;
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
@@ -57,7 +58,7 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase);
+            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase);
 
             // Check if authentication disabled for this url
             if (parts.Length == 4)
@@ -75,6 +76,7 @@ namespace Nethermind.JsonRpc
             return result;
         }
 
+        public long? MaxRequestBodySize { get; }
         public bool IsAuthenticated { get; }
         public string Scheme { get; set; }
         public string Host { get; set; }
@@ -98,7 +100,7 @@ namespace Nethermind.JsonRpc
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
                    IsAuthenticated == other.IsAuthenticated &&
-                   EnabledModules.OrderBy(t => t).SequenceEqual(other.EnabledModules.OrderBy(t => t),
+                   EnabledModules.OrderBy(static t => t).SequenceEqual(other.EnabledModules.OrderBy(static t => t),
                        StringComparer.InvariantCultureIgnoreCase);
         }
 

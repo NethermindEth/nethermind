@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.Producers
     public interface IBlockProducerInfo
     {
         IBlockProducer BlockProducer { get; }
-        IManualBlockProductionTrigger BlockProductionTrigger { get; }
+        IBlockProductionCondition Condition { get; }
         IBlockTracer BlockTracer => NullBlockTracer.Instance;
     }
 }

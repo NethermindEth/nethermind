@@ -20,6 +20,7 @@ namespace Nethermind.Core
 
         public const int RefSize = 8;
 
+        public const int ObjectHeaderMethodTable = 16;
         public const int SmallObjectOverhead = 24;
 
         public const int SmallObjectFreeDataSize = 8;

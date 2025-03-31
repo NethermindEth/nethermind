@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public bool IsPriority { get; set; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected ISession Session { get; }
+        protected internal ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
-        protected ILogger Logger { get; }
+        protected internal ILogger Logger { get; }
 
         protected abstract TimeSpan InitTimeout { get; }
 
@@ -77,32 +77,48 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        protected void Send<T>(T message) where T : P2PMessage
+        protected internal void Send<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            int size = Session.DeliverMessage(message);
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString(), size);
+            if (NetworkDiagTracer.IsEnabled)
+            {
+                string messageString = message.ToString();
+                int size = Session.DeliverMessage(message);
+                NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
+            }
+            else
+                Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()
         {
-            Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
-
-            if (firstTask != receivedInitMsgTask)
+            try
             {
-                if (Logger.IsTrace)
+                Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
+                CancellationTokenSource delayCancellation = new();
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
+
+                if (firstTask != receivedInitMsgTask)
                 {
-                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
-                }
+                    if (Logger.IsTrace)
+                    {
+                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
+                    }
 
-                Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                    Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                }
+                else
+                {
+                    delayCancellation.Cancel();
+                }
             }
-            else
+            catch (Exception e)
             {
-                delayCancellation.Cancel();
+                if (Logger.IsError)
+                {
+                    Logger.Error("Error during p2pProtocol handler timeout logic", e);
+                }
             }
         }
 

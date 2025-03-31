@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/AuRaTest.json",
+    "GenesisHash": "0xa13552e2290059c2736d101e945071a5f3768bc3338c73724184b0606eb8df1d",
+    "BaseDbPath": "nethermind_db/aura",
+    "LogFileName": "AuraTest.log"
+  },
+  "EthStats": {
+    "Name": "Nethermind AuraTest"
+  },
+  "Metrics": {
+    "NodeName": "AuraTest"
+  },
+  "Aura": {
+    "AllowAuRaPrivateChains": true
+  }
+}

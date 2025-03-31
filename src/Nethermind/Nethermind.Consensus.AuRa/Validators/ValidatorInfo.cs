@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         static ValidatorInfo()
         {
-            Rlp.Decoders[typeof(ValidatorInfo)] = new ValidatorInfoDecoder();
+            Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         public ValidatorInfo(long finalizingBlockNumber, long previousFinalizingBlockNumber, Address[] validators)

@@ -16,7 +16,7 @@ public abstract class SpecProviderBase
     private ForkActivation? _firstTimestampActivation;
     protected readonly ILogger _logger;
 
-    public SpecProviderBase(ILogger logger = null)
+    public SpecProviderBase(ILogger logger = default)
     {
         _logger = logger;
     }
@@ -33,8 +33,8 @@ public abstract class SpecProviderBase
             throw new ArgumentException($"First release specified when instantiating {GetType()} should be at genesis block (0)", $"{nameof(transitions)}");
         }
 
-        _blockTransitions = transitions.TakeWhile(t => t.Activation.Timestamp is null).ToArray();
-        _timestampTransitions = transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
+        _blockTransitions = transitions.TakeWhile(static t => t.Activation.Timestamp is null).ToArray();
+        _timestampTransitions = transitions.SkipWhile(static t => t.Activation.Timestamp is null).ToArray();
         _firstTimestampActivation = _timestampTransitions.Length != 0 ? _timestampTransitions.First().Activation : null;
         GenesisSpec = transitions.First().Spec;
     }
@@ -55,7 +55,7 @@ public abstract class SpecProviderBase
             if (_firstTimestampActivation.Value.Timestamp < activation.Timestamp
                 && _firstTimestampActivation.Value.BlockNumber > activation.BlockNumber)
             {
-                if (_logger is not null && _logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
             }
 
             if (_firstTimestampActivation.Value.Timestamp <= activation.Timestamp)

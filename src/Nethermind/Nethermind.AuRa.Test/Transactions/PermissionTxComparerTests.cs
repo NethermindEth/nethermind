@@ -33,15 +33,15 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             get
             {
-                Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
+                static Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
                     transactionSelect;
 
 
                 yield return new TestCaseData(null).SetName("All");
-                yield return new TestCaseData(Select(t => t.Where(tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To != TestItem.AddressB))).SetName("No priority");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To == TestItem.AddressB))).SetName("Only priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To != TestItem.AddressB))).SetName("No priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To == TestItem.AddressB))).SetName("Only priority");
             }
         }
 
@@ -261,7 +261,6 @@ namespace Nethermind.AuRa.Test.Transactions
             blockTree.Head.Returns(block);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             var spec = new ReleaseSpec() { IsEip1559Enabled = false };
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
@@ -269,9 +268,9 @@ namespace Nethermind.AuRa.Test.Transactions
                 .ThenBy(defaultComparer);
 
 
-            Dictionary<Address?, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
+            Dictionary<AddressAsKey, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => g.Key,
+                    g => (AddressAsKey)g.Key,
                     g => g.OrderBy(t => t,
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());

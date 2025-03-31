@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -13,19 +13,71 @@ namespace Nethermind.Config;
 
 public class ConfigProvider : IConfigProvider
 {
-    private readonly ConcurrentDictionary<Type, object> _instances = new();
 
-    private readonly List<IConfigSource> _configSource = new();
+    private readonly ConcurrentDictionary<Type, IConfig> _instances = new();
+
+    private readonly List<IConfigSource> _configSource = [];
     private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
 
-    private readonly Dictionary<Type, Type> _implementations = new();
+    private readonly Dictionary<Type, Type> _implementations = [];
+
+    public ConfigProvider()
+    {
+    }
+
+    public ConfigProvider(params IConfig[] existingConfigs)
+    {
+        foreach (IConfig existingConfig in existingConfigs)
+        {
+            Type type = existingConfig.GetType();
+            if (!type.IsInterface)
+            {
+                // Try to get the interface type of the config
+                foreach (Type @interface in type.GetInterfaces())
+                {
+                    if (@interface.Name == $"I{type.Name}")
+                    {
+                        type = @interface;
+                    }
+                }
+            }
+            _instances[type] = existingConfig;
+        }
+    }
+
+    private static IList<(Type ConfigType, Type DirectImplementation)> _configTypesCache = null!;
+    private static IList<(Type ConfigType, Type DirectImplementation)> ConfigTypesFromAssembly
+    {
+        get
+        {
+            if (_configTypesCache is not null) return _configTypesCache;
+
+            Type type = typeof(IConfig);
+            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
+            IList<(Type ConfigType, Type DirectImplementation)> types =
+                new List<(Type ConfigType, Type DirectImplementation)>();
+
+            foreach (Type @interface in interfaces)
+            {
+                Type directImplementation = @interface.GetDirectInterfaceImplementation();
+
+                if (directImplementation is not null)
+                {
+                    types.Add((@interface, directImplementation));
+                }
+            }
+
+            _configTypesCache = types;
+            return types;
+        }
+    }
 
     public T GetConfig<T>() where T : IConfig
     {
         return (T)GetConfig(typeof(T));
     }
 
-    public object GetConfig(Type configType)
+    public IConfig GetConfig(Type configType)
     {
         if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
 
@@ -53,7 +105,7 @@ public class ConfigProvider : IConfigProvider
 
         return Categories.TryGetValue(category, out object value) ? value.GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
+            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
     }
 
@@ -64,12 +116,9 @@ public class ConfigProvider : IConfigProvider
 
     public void Initialize()
     {
-        Type type = typeof(IConfig);
-        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(x => x.IsInterface);
-
-        foreach (Type @interface in interfaces)
+        foreach ((Type @interface, Type directImplementation) in ConfigTypesFromAssembly)
         {
-            Type directImplementation = @interface.GetDirectInterfaceImplementation();
+            if (_instances.ContainsKey(@interface)) continue;
 
             if (directImplementation is not null)
             {
@@ -79,7 +128,7 @@ public class ConfigProvider : IConfigProvider
                 _implementations[@interface] = directImplementation;
 
                 object config = Activator.CreateInstance(_implementations[@interface]);
-                _instances[@interface] = config!;
+                _instances[@interface] = (IConfig)config!;
 
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
@@ -114,23 +163,24 @@ public class ConfigProvider : IConfigProvider
             Initialize();
         }
 
-        HashSet<string> propertySet = _instances.Values
+        var propertySet = _instances.Values
             .SelectMany(i => i.GetType()
                 .GetProperties()
                 .Select(p => GetKey(i.GetType().Name, p.Name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
+        List<(IConfigSource Source, string Category, string Name)> incorrectSettings = [];
 
-        foreach (var source in _configSource)
+        // Skip the validation for ArgsConfigSource items as they are already validated by the CLI parser
+        foreach (IConfigSource source in _configSource.Where(s => s is not ArgsConfigSource))
         {
             var configs = source.GetConfigKeys();
 
-            foreach (var conf in configs)
+            foreach ((string category, string name) in configs)
             {
-                if (!propertySet.Contains(GetKey(conf.Category, conf.Name)))
+                if (!propertySet.Contains(GetKey(category, name)))
                 {
-                    incorrectSettings.Add((source, conf.Category, conf.Name));
+                    incorrectSettings.Add((source, category, name));
                 }
             }
         }
@@ -155,10 +205,10 @@ public class ConfigProvider : IConfigProvider
             }
             else if (!category.EndsWith("config", StringComparison.OrdinalIgnoreCase))
             {
-                category += "Config";
+                category = $"{category}Config";
             }
 
-            return category + '.' + name;
+            return $"{category}.{name}";
         }
     }
 }

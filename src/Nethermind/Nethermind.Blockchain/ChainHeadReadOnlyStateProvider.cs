@@ -8,14 +8,10 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {
-    public class ChainHeadReadOnlyStateProvider : SpecificBlockReadOnlyStateProvider
+    public class ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader)
+        : SpecificBlockReadOnlyStateProvider(stateReader)
     {
-        private readonly IBlockFinder _blockFinder;
-
-        public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader) : base(stateReader)
-        {
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        }
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
         public override Hash256 StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
     }

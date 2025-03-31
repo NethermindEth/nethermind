@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Core.Authentication;
 
 public interface IRpcAuthentication
 {
-    bool Authenticate(string token);
+    Task<bool> Authenticate(string token);
 }
 
 public class NoAuthentication : IRpcAuthentication
@@ -14,5 +16,5 @@ public class NoAuthentication : IRpcAuthentication
 
     public static NoAuthentication Instance = new();
 
-    public bool Authenticate(string _) => true;
+    public Task<bool> Authenticate(string _) => Task.FromResult(true);
 }

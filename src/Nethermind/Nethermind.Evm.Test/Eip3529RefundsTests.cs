@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -73,13 +74,13 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(Recipient, 1.Ether());
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 
             transaction.GasPrice = 20.GWei();
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
             Assert.That(tracer.Refund, Is.EqualTo(refund));
             AssertGas(tracer, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), refund));
@@ -146,7 +147,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // invoke create 2 to deploy contract
@@ -161,16 +162,17 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx0, block.Header, tracer0);
+            var blCtx = new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header));
+            _processor.Execute(tx0, blCtx, tracer0);
 
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(tx1, block.Header, tracer);
+            _processor.Execute(tx1, blCtx, tracer);
 
             tracer = CreateTracer();
-            _processor.Execute(tx2, block.Header, tracer);
+            _processor.Execute(tx2, blCtx, tracer);
 
             tracer = CreateTracer();
-            _processor.Execute(tx3, block.Header, tracer);
+            _processor.Execute(tx3, blCtx, tracer);
             long expectedRefund = eip3529Enabled ? 0 : 24000;
 
             Assert.That(tracer.Refund, Is.EqualTo(expectedRefund));

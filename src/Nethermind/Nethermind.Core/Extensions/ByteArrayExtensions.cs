@@ -34,7 +34,7 @@ namespace Nethermind.Core.Extensions
         {
             if (length == 1)
             {
-                return new[] { bytes[startIndex] };
+                return [bytes[startIndex]];
             }
 
             byte[] slice = new byte[length];
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Extensions
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             byte[] slice = new byte[length];
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Extensions
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             byte[] slice = new byte[length];
@@ -69,5 +69,6 @@ namespace Nethermind.Core.Extensions
             bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
             return slice;
         }
+
     }
 }

@@ -5,6 +5,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -46,11 +47,11 @@ namespace Nethermind.Core.Test.Builders
                 new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
             };
 
-            public static StateTree GetStateTree(ITrieStore? store)
+            public static StateTree GetStateTree(ITrieStore? store = null)
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
-                var stateTree = new StateTree(store, LimboLogs.Instance);
+                var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
 
                 FillStateTreeWithTestAccounts(stateTree);
 
@@ -65,14 +66,24 @@ namespace Nethermind.Core.Test.Builders
                 stateTree.Set(AccountsWithPaths[3].Path, AccountsWithPaths[3].Account);
                 stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account);
                 stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account);
-                stateTree.Commit(0);
+                stateTree.Commit();
             }
 
-            public static (StateTree stateTree, StorageTree storageTree) GetTrees(ITrieStore? store)
+            public static void FillStateTreeMultipleAccount(StateTree stateTree, int accountNumber)
+            {
+                for (int i = 0; i < accountNumber; i++)
+                {
+                    Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
+                    stateTree.Set(Keccak.Compute(i.ToBigEndianByteArray()), acc);
+                }
+                stateTree.Commit();
+            }
+
+            public static (StateTree stateTree, StorageTree storageTree, Hash256 accountAddr) GetTrees(ITrieStore? store)
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
-                var storageTree = new StorageTree(store, LimboLogs.Instance);
+                var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
                 storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotRlpValue, false);
                 storageTree.Set(SlotsWithPaths[1].Path, SlotsWithPaths[1].SlotRlpValue, false);
@@ -81,15 +92,40 @@ namespace Nethermind.Core.Test.Builders
                 storageTree.Set(SlotsWithPaths[4].Path, SlotsWithPaths[4].SlotRlpValue, false);
                 storageTree.Set(SlotsWithPaths[5].Path, SlotsWithPaths[5].SlotRlpValue, false);
 
-                storageTree.Commit(0);
+                storageTree.Commit();
+
+                var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+
+                var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
+                stateTree.Set(AccountAddress0, account);
+                stateTree.Commit();
+
+                return (stateTree, storageTree, AccountAddress0);
+            }
+
+            public static (StateTree stateTree, StorageTree storageTree, Hash256 accountAddr) GetTrees(ITrieStore? store, int slotNumber)
+            {
+                store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
+
+                var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
+
+                for (int i = 0; i < slotNumber; i++)
+                {
+                    storageTree.Set(
+                        Keccak.Compute(i.ToBigEndianByteArray()),
+                        Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray(),
+                        false);
+                }
+
+                storageTree.Commit();
 
                 var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
                 var stateTree = new StateTree(store, LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
-                stateTree.Commit(0);
+                stateTree.Commit();
 
-                return (stateTree, storageTree);
+                return (stateTree, storageTree, AccountAddress0);
             }
         }
     }

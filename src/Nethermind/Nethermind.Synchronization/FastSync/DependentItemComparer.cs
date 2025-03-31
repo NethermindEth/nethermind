@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_instance is null)
                 {
-                    LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
+                    LazyInitializer.EnsureInitialized(ref _instance, static () => new DependentItemComparer());
                 }
 
                 return _instance;

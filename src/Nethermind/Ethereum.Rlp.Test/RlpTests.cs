@@ -185,7 +185,7 @@ namespace Ethereum.Rlp.Test
             stopwatch.Stop();
             Console.WriteLine($"2nd: {stopwatch.ElapsedMilliseconds}");
 
-            if (block == null || perfBlock == null || block.Number != perfBlock.Number)
+            if (block is null || perfBlock is null || block.Number != perfBlock.Number)
             {
                 throw new Exception();
             }

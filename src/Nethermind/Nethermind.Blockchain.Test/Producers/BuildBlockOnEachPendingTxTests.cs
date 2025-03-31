@@ -8,24 +8,22 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Producers
-{
-    [TestFixture]
-    public class BuildBlockOnEachPendingTxTests
-    {
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void On_pending_trigger_works()
-        {
-            int triggered = 0;
-            ITxPool txPool = Substitute.For<ITxPool>();
-            BuildBlockOnEachPendingTx trigger = new(txPool);
-            trigger.TriggerBlockProduction += (s, e) => triggered++;
-            for (int i = 0; i < 2; i++)
-            {
-                txPool.NewPending += Raise.EventWith(new TxEventArgs(Build.A.Transaction.TestObject));
-            }
+namespace Nethermind.Blockchain.Test.Producers;
 
-            triggered.Should().Be(2);
+public class BuildBlockOnEachPendingTxTests
+{
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void On_pending_trigger_works()
+    {
+        int triggered = 0;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        BuildBlockOnEachPendingTx trigger = new(txPool);
+        trigger.TriggerBlockProduction += (s, e) => triggered++;
+        for (int i = 0; i < 2; i++)
+        {
+            txPool.NewPending += Raise.EventWith(new TxEventArgs(Build.A.Transaction.TestObject));
         }
+
+        triggered.Should().Be(2);
     }
 }

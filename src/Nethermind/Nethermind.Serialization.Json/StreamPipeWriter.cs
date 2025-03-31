@@ -16,15 +16,14 @@ namespace Nethermind.Serialization.Json;
 
 #nullable enable
 
-public interface ICountingBufferWriter : IBufferWriter<byte>
+public abstract class CountingWriter : PipeWriter
 {
-    public long WrittenCount { get; }
+    public long WrittenCount { get; protected set; }
 }
 
-public sealed class CountingPipeWriter : ICountingBufferWriter
+public sealed class CountingPipeWriter : CountingWriter
 {
     private readonly PipeWriter _writer;
-    public long WrittenCount { get; private set; }
 
     public CountingPipeWriter(PipeWriter writer)
     {
@@ -33,18 +32,33 @@ public sealed class CountingPipeWriter : ICountingBufferWriter
         _writer = writer;
     }
 
-    public void Advance(int count)
+    public override void Advance(int count)
     {
         _writer.Advance(count);
         WrittenCount += count;
     }
 
-    public Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
+    public override Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
 
-    public Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
+    public override Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
+
+    public override ValueTask CompleteAsync(Exception? exception = null)
+        => _writer.CompleteAsync();
+
+    public override void CancelPendingFlush()
+        => _writer.CancelPendingFlush();
+
+    public override void Complete(Exception? exception = null)
+        => _writer.Complete(exception);
+
+    public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        => _writer.FlushAsync(cancellationToken);
+
+    public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
+    public override long UnflushedBytes => _writer.UnflushedBytes;
 }
 
-public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
+public sealed class CountingStreamPipeWriter : CountingWriter
 {
     internal const int InitialSegmentPoolSize = 4; // 16K
     internal const int MaxSegmentPoolSize = 256; // 1MB
@@ -62,7 +76,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
     private CancellationTokenSource? _internalTokenSource;
     private bool _isCompleted;
-    private readonly object _lockObject = new object();
+    private readonly Lock _lockObject = new Lock();
 
     private BufferSegmentStack _bufferSegmentPool;
     private readonly bool _leaveOpen;
@@ -84,11 +98,6 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         {
             ThrowHelper.ThrowArgumentNullException_WritingStream();
         }
-        if (options is null)
-        {
-            ThrowHelper.ThrowArgumentNullException_Options();
-        }
-
         InnerStream = writingStream;
         _minimumBufferSize = options?.MinimumBufferSize ?? 4096;
         _pool = options?.Pool == MemoryPool<byte>.Shared ? null : options?.Pool;
@@ -101,7 +110,6 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
     /// Gets the inner stream that is being written to.
     /// </summary>
     public Stream InnerStream { get; }
-    public long WrittenCount { get; set; }
 
     /// <inheritdoc />
     public override void Advance(int bytes)
@@ -113,7 +121,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         _tailBytesBuffered += bytes;
         _bytesBuffered += bytes;
-        _tailMemory = _tailMemory.Slice(bytes);
+        _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
 
         if (_bytesBuffered > _minimumBufferSize)
@@ -160,7 +168,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
     private void AllocateMemory(int sizeHint)
     {
-        if (_head == null)
+        if (_head is null)
         {
             // We need to allocate memory to write since nobody has written before
             BufferSegment newSegment = AllocateSegment(sizeHint);
@@ -171,7 +179,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         }
         else
         {
-            Debug.Assert(_tail != null);
+            Debug.Assert(_tail is not null);
             int bytesLeftInBuffer = _tailMemory.Length;
 
             if (bytesLeftInBuffer == 0 || bytesLeftInBuffer < sizeHint)
@@ -263,7 +271,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         try
         {
-            FlushInternal(writeToStream: exception == null);
+            FlushInternal(writeToStream: exception is null);
         }
         finally
         {
@@ -287,7 +295,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         try
         {
-            await FlushAsyncInternal(writeToStream: exception == null, data: Memory<byte>.Empty).ConfigureAwait(false);
+            await FlushAsyncInternal(writeToStream: exception is null, data: Memory<byte>.Empty).ConfigureAwait(false);
         }
         finally
         {
@@ -336,12 +344,12 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         CancellationTokenRegistration reg = default;
         if (cancellationToken.CanBeCanceled)
         {
-            reg = cancellationToken.UnsafeRegister(state => ((CountingStreamPipeWriter)state!).Cancel(), this);
+            reg = cancellationToken.UnsafeRegister(static state => ((CountingStreamPipeWriter)state!).Cancel(), this);
         }
 
         if (_tailBytesBuffered > 0)
         {
-            Debug.Assert(_tail != null);
+            Debug.Assert(_tail is not null);
 
             // Update any buffered data
             _tail.End += _tailBytesBuffered;
@@ -354,7 +362,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
             try
             {
                 BufferSegment? segment = _head;
-                while (segment != null)
+                while (segment is not null)
                 {
                     BufferSegment returnSegment = segment;
                     segment = segment.NextSegment;
@@ -418,7 +426,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         // and flush the result.
         if (_tailBytesBuffered > 0)
         {
-            Debug.Assert(_tail != null);
+            Debug.Assert(_tail is not null);
 
             // Update any buffered data
             _tail.End += _tailBytesBuffered;
@@ -426,7 +434,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         }
 
         BufferSegment? segment = _head;
-        while (segment != null)
+        while (segment is not null)
         {
             BufferSegment returnSegment = segment;
             segment = segment.NextSegment;

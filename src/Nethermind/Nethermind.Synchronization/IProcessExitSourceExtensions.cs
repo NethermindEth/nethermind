@@ -29,9 +29,9 @@ public static class IProcessExitSourceExtensions
             {
                 if (lastExitConditionTime == DateTime.MaxValue)
                 {
-                    lastExitConditionTime = DateTime.Now;
+                    lastExitConditionTime = DateTime.UtcNow;
                 }
-                else if (DateTime.Now - lastExitConditionTime > exitConditionDuration)
+                else if (DateTime.UtcNow - lastExitConditionTime > exitConditionDuration)
                 {
                     logger.Info($"Sync finished. Exiting....");
                     exitSource.Exit(0);

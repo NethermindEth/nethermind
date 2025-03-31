@@ -27,7 +27,7 @@ namespace Nethermind.Wallet
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
         {
             _keyStore = keyStore;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (createTestAccounts)
             {

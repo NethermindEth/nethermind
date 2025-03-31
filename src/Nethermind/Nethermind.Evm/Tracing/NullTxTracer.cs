@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -22,11 +23,11 @@ public class NullTxTracer : TxTracer
     [StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         => ThrowInvalidOperationException();
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -93,7 +94,7 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
     public override void ReportBlockHash(Hash256 blockHash)
         => ThrowInvalidOperationException();
-    public override void ReportByteCode(byte[] byteCode)
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         => ThrowInvalidOperationException();
 
     public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)

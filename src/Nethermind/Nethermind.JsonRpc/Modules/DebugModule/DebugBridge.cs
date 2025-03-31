@@ -18,7 +18,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 
@@ -33,7 +32,8 @@ public class DebugBridge : IDebugBridge
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
+    private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -45,7 +45,7 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore)
+        IBadBlockStore badBlockStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -67,11 +67,12 @@ public class DebugBridge : IDebugBridge
             {DbNames.State, dbProvider.StateDb},
             {DbNames.Storage, dbProvider.StateDb},
             {DbNames.BlockInfos, blockInfosDb},
-            {DbNames.Blocks, blocksDb},
             {DbNames.Headers, headersDb},
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
         };
+
+        _blockStore = new BlockStore(blocksDb);
 
         IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)
@@ -90,8 +91,7 @@ public class DebugBridge : IDebugBridge
 
     public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
 
-    public Task<bool> MigrateReceipts(long blockNumber)
-        => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
+    public Task<bool> MigrateReceipts(long from, long to) => _receiptsMigration.Run(from, to);
 
     public void InsertReceipts(BlockParameter blockParameter, TxReceipt[] txReceipts)
     {
@@ -102,8 +102,8 @@ public class DebugBridge : IDebugBridge
         }
 
         Block block = searchResult.Object;
-        Hash256 receiptHash = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), txReceipts);
-        if (block.ReceiptsRoot != receiptHash)
+        Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(txReceipts, _specProvider.GetSpec(block.Header), block.ReceiptsRoot);
+        if (block.ReceiptsRoot != root)
         {
             throw new InvalidDataException("Receipts root mismatch");
         }
@@ -128,6 +128,8 @@ public class DebugBridge : IDebugBridge
     public Transaction? GetTransactionFromHash(Hash256 txHash)
     {
         Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
+        if (blockHash is null)
+            return null;
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
@@ -156,8 +158,6 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
-    public byte[] GetBlockRlp(Hash256 blockHash) => _dbMappings[DbNames.Blocks].Get(blockHash);
-
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
         if (parameter.BlockHash is Hash256 hash)
@@ -172,13 +172,21 @@ public class DebugBridge : IDebugBridge
         return null;
     }
 
-    public Block? GetBlock(BlockParameter param)
-        => _blockTree.FindBlock(param);
+    public byte[] GetBlockRlp(Hash256 blockHash)
+    {
+        BlockHeader? header = _blockTree.FindHeader(blockHash);
+        if (header is null) return null;
+        return _blockStore.GetRlp(header.Number, blockHash);
+    }
+
     public byte[] GetBlockRlp(long number)
     {
         Hash256 hash = _blockTree.FindHash(number);
-        return hash is null ? null : _dbMappings[DbNames.Blocks].Get(hash);
+        return hash is null ? null : _blockStore.GetRlp(number, hash);
     }
+
+    public Block? GetBlock(BlockParameter param)
+        => _blockTree.FindBlock(param);
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
@@ -195,4 +203,10 @@ public class DebugBridge : IDebugBridge
         CancellationToken cancellationToken,
         GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public IEnumerable<string> TraceBadBlockToFile(
+        Hash256 blockHash,
+        CancellationToken cancellationToken,
+        GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBadBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 }

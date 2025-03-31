@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -27,27 +29,30 @@ namespace Nethermind.Network
         public NodesLoader(
             INetworkConfig networkConfig,
             INodeStatsManager stats,
-            INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             IRlpxHost rlpxHost,
             ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         }
 
-        public List<Node> LoadInitialList()
+        public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
             List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
 
-            LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+            if (!_networkConfig.OnlyStaticPeers)
             {
-                n.IsBootnode = true;
-                if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
-            });
+                LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+                {
+                    n.IsBootnode = true;
+                    if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
+                });
+            }
 
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
@@ -55,9 +60,11 @@ namespace Nethermind.Network
                 if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
             });
 
-            return allPeers
+            IEnumerable<Node> combined = allPeers
                 .Where(p => p.Id != _rlpxHost.LocalNodeId)
-                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic).ToList();
+                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic);
+
+            return combined.ToAsyncEnumerable();
         }
 
         private void LoadPeersFromDb(List<Node> peers)
@@ -113,7 +120,6 @@ namespace Nethermind.Network
             }
         }
 
-        public event EventHandler<NodeEventArgs>? NodeAdded { add { } remove { } }
 
         public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
     }

@@ -13,21 +13,5 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public const int GetBlockBodies = 0x05;
         public const int BlockBodies = 0x06;
         public const int NewBlock = 0x07;
-
-        public static string GetDescription(int code)
-        {
-            return code switch
-            {
-                Status => nameof(Status),
-                NewBlockHashes => nameof(NewBlockHashes),
-                Transactions => nameof(Transactions),
-                GetBlockHeaders => nameof(GetBlockHeaders),
-                BlockHeaders => nameof(BlockHeaders),
-                GetBlockBodies => nameof(GetBlockBodies),
-                BlockBodies => nameof(BlockBodies),
-                NewBlock => nameof(NewBlock),
-                _ => $"Unknown({code.ToString()})"
-            };
-        }
     }
 }

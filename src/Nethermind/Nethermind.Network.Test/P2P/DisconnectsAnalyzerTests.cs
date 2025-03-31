@@ -23,7 +23,7 @@ namespace Nethermind.Network.Test.P2P
             {
                 TestLogger = new TestLogger();
                 ILogManager logManager = Substitute.For<ILogManager>();
-                logManager.GetClassLogger().Returns(TestLogger);
+                logManager.GetClassLogger().Returns(new ILogger(TestLogger));
                 DisconnectsAnalyzer = new DisconnectsAnalyzer(logManager).WithIntervalOverride(10);
             }
         }

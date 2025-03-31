@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Producers
@@ -19,7 +20,7 @@ namespace Nethermind.Consensus.Producers
             _logManager = logManager;
         }
 
-        public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) =>
+        public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
             new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager);
     }
 }

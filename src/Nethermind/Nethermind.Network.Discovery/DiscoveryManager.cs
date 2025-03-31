@@ -3,13 +3,17 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -23,8 +27,11 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
+    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; }
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
+    private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
+    private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManagerPersisted;
     private IMsgSender? _msgSender;
 
     public DiscoveryManager(
@@ -32,6 +39,7 @@ public class DiscoveryManager : IDiscoveryManager
         INodeTable? nodeTable,
         INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
+        INetworkConfig? networkConfig,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -41,6 +49,27 @@ public class DiscoveryManager : IDiscoveryManager
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _nodeLifecycleManagerFactory.DiscoveryManager = this;
         _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
+        _createNodeLifecycleManager = GetLifecycleManagerFunc(isPersisted: false);
+        _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
+
+        NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
+    }
+
+    public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
+    private Func<Hash256, Node, INodeLifecycleManager> GetLifecycleManagerFunc(bool isPersisted)
+    {
+        return (_, node) =>
+        {
+            Interlocked.Increment(ref _managersCreated);
+            INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+            manager.OnStateChanged += ManagerOnOnStateChanged;
+            if (!isPersisted)
+            {
+                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
+            }
+
+            return manager;
+        };
     }
 
     public IMsgSender MsgSender
@@ -120,18 +149,7 @@ public class DiscoveryManager : IDiscoveryManager
             return null;
         }
 
-        return _nodeLifecycleManagers.GetOrAdd(node.IdHash, _ =>
-        {
-            Interlocked.Increment(ref _managersCreated);
-            INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
-            manager.OnStateChanged += ManagerOnOnStateChanged;
-            if (!isPersisted)
-            {
-                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
-            }
-
-            return manager;
-        });
+        return _nodeLifecycleManagers.GetOrAdd(node.IdHash, isPersisted ? _createNodeLifecycleManagerPersisted : _createNodeLifecycleManager, node);
     }
 
     private void ManagerOnOnStateChanged(object? sender, NodeLifecycleState e)
@@ -158,7 +176,7 @@ public class DiscoveryManager : IDiscoveryManager
         if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMsg}");
         try
         {
-            if (_msgSender == null) return;
+            if (_msgSender is null) return;
             await _outgoingMessageRateLimiter.WaitAsync(CancellationToken.None);
             await _msgSender.SendMsg(discoveryMsg);
         }
@@ -168,7 +186,8 @@ public class DiscoveryManager : IDiscoveryManager
         }
     }
 
-    public async Task<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout)
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    public async ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout)
     {
         TaskCompletionSource<DiscoveryMsg> completionSource = GetCompletionSource(senderIdHash, (int)msgType);
         CancellationTokenSource delayCancellation = new();

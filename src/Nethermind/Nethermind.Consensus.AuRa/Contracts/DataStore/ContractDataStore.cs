@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -21,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
         private Hash256 _lastHash;
-        private readonly object _lock = new object();
+        private readonly Lock _lock = new Lock();
         private readonly ILogger _logger;
 
         protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
-using System.Text;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
@@ -19,7 +17,23 @@ namespace Nethermind.Core.Test.Json
         [TestCase(new byte[] { 1 })]
         public void Test_roundtrip(byte[]? bytes)
         {
-            TestConverter(bytes, (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
+            TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
+        }
+
+        [Test]
+        public void Test_roundtrip_large()
+        {
+            ByteArrayConverter converter = new();
+            for (var i = 0; i < 1024; i++)
+            {
+                byte[] bytes = new byte[i];
+                for (var j = 0; j < i; j++)
+                {
+                    bytes[j] = (byte)j;
+                }
+
+                TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), converter);
+            }
         }
 
         [Test]

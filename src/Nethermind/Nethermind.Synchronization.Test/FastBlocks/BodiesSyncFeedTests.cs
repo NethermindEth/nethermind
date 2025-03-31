@@ -28,6 +28,7 @@ public class BodiesSyncFeedTests
     private IBlockTree _syncingFromBlockTree = null!;
     private IBlockTree _syncingToBlockTree = null!;
     private TestMemDb _blocksDb = null!;
+    private ISyncPointers _syncPointers = null!;
     private BodiesSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
     private MemDb _metadataDb = null!;
@@ -42,6 +43,7 @@ public class BodiesSyncFeedTests
 
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
+        _syncPointers = new MemorySyncPointers();
         _syncingToBlockTree = Build.A.BlockTree()
             .WithBlocksDb(_blocksDb)
             .TestObject;
@@ -54,19 +56,20 @@ public class BodiesSyncFeedTests
 
         _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
 
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
             PivotNumber = _pivotBlock.Number.ToString(),
             AncientBodiesBarrier = 0,
-            FastBlocks = true,
             DownloadBodiesInFastSync = true,
         };
+        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            _syncPointers,
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),
@@ -98,6 +101,8 @@ public class BodiesSyncFeedTests
                 _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
 
             _feed.HandleResponse(req);
+            req.Dispose();
+
             req = (await _feed.PrepareRequest())!;
         }
 
@@ -112,13 +117,37 @@ public class BodiesSyncFeedTests
 
         await HandleAndPrepareNextRequest();
         _blocksDb.FlushCount.Should().Be(3);
+        req.Dispose();
+    }
+
+    [Test]
+    public async Task ShouldNotReDownloadExistingBlock()
+    {
+        _feed.InitializeFeed();
+
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 2)!);
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 4)!);
+
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Infos
+            .Where(static (bi) => bi is not null)
+            .Select(static (bi) => bi!.BlockNumber)
+            .Take(4)
+            .Should()
+            .BeEquivalentTo([
+                _pivotBlock.Number,
+                _pivotBlock.Number - 1,
+                // Skipped
+                _pivotBlock.Number - 3,
+                // Skipped
+                _pivotBlock.Number - 5]);
     }
 
     [Test]
     public async Task ShouldRecoverOnInsertFailure()
     {
         _feed.InitializeFeed();
-        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
 
         req.Response = new OwnedBlockBodies(req.Infos.Take(8).Select((info) =>
             _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
@@ -135,50 +164,50 @@ public class BodiesSyncFeedTests
         Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
         act.Should().Throw<Exception>();
 
-        req = (await _feed.PrepareRequest())!;
-
-        req.Infos[0]!.BlockNumber.Should().Be(95);
+        using BodiesSyncBatch req2 = (await _feed.PrepareRequest())!;
+        req2.Infos[0]!.BlockNumber.Should().Be(95);
     }
 
-    [TestCase(99, false, null, false)]
-    [TestCase(11052930, false, null, true)]
-    [TestCase(11052984, false, null, true)]
-    [TestCase(11052985, false, null, false)]
-    [TestCase(99, false, 11052984, false)]
-    [TestCase(11052930, false, 11052984, true)]
-    [TestCase(11052984, false, 11052984, true)]
-    [TestCase(11052985, false, 11052984, false)]
-    [TestCase(99, true, null, false)]
-    [TestCase(11052930, true, null, false)]
-    [TestCase(11052984, true, null, false)]
-    [TestCase(11052985, true, null, false)]
-    [TestCase(99, false, 0, false)]
-    [TestCase(11052930, false, 0, false)]
-    [TestCase(11052984, false, 0, false)]
-    [TestCase(11052985, false, 0, false)]
-    public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
-            long? lowestInsertedBlockNumber,
+    [TestCase(1, 99, false, null, false)]
+    [TestCase(1, 11051474, false, null, true)]
+    [TestCase(1, 11052984, false, null, true)]
+    [TestCase(1, 11052985, false, null, false)]
+    [TestCase(11051474, 11052984, false, null, false)]
+    [TestCase(11051474, 11051474, false, null, true)]
+    [TestCase(1, 99, false, 11052984, false)]
+    [TestCase(1, 11051474, false, 11052984, true)]
+    [TestCase(1, 11052984, false, 11052984, true)]
+    [TestCase(1, 11052985, false, 11052984, false)]
+    [TestCase(11051474, 11052984, false, 11052984, false)]
+    [TestCase(11051474, 11051474, false, 11052984, true)]
+    [TestCase(1, 99, true, null, false)]
+    [TestCase(1, 11051474, true, null, false)]
+    [TestCase(1, 11052984, true, null, false)]
+    [TestCase(1, 11052985, true, null, false)]
+    [TestCase(11051474, 11052984, true, null, false)]
+    [TestCase(11051474, 11051474, true, null, true)]
+    [TestCase(1, 99, false, 0, false)]
+    [TestCase(1, 11051474, false, 0, false)]
+    [TestCase(1, 11052984, false, 0, false)]
+    [TestCase(1, 11052985, false, 0, false)]
+    [TestCase(11051474, 11052984, false, 0, false)]
+    [TestCase(11051474, 11051474, false, 0, true)]
+    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+            long AncientBarrierInConfig,
+            long lowestInsertedBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
             bool shouldfinish)
     {
-        _syncConfig.AncientReceiptsBarrier = 0;
-        _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
-        if (previousBarrierInDb != null)
+        _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
+        _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
+        _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
+        _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
+        if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
-        _syncingToBlockTree.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
-        BodiesSyncBatch? request = await _feed.PrepareRequest();
-        if (shouldfinish)
-        {
-            request.Should().BeNull();
-            _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-        }
-        else
-        {
-            request.Should().NotBeNull();
-            _feed.CurrentState.Should().NotBe(SyncFeedState.Finished);
-        }
+        _feed.IsFinished.Should().Be(shouldfinish);
     }
 }

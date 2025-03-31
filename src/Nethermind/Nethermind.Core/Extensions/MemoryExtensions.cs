@@ -12,7 +12,7 @@ public static class MemoryExtensions
     /// <returns></returns>
     public static byte[]? AsArray(this in Memory<byte>? memory)
     {
-        if (memory == null) return null;
+        if (memory is null) return null;
 
         return memory.Value.AsArray();
     }

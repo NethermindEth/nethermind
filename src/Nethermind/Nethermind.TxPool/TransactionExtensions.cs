@@ -14,11 +14,11 @@ namespace Nethermind.TxPool
     public static class TransactionExtensions
     {
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB(); //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
-        private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(new TxDecoder());
+        private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
-        public static int GetLength(this Transaction tx)
+        public static int GetLength(this Transaction tx, bool shouldCountBlobs = true)
         {
-            return tx.GetLength(_transactionSizeCalculator);
+            return tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
         }
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => tx.MaxFeePerGas >= currentBaseFee;
@@ -91,5 +91,7 @@ namespace Nethermind.TxPool
 
         internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
+
+        public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
     }
 }

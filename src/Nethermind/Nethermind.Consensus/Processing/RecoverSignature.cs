@@ -3,11 +3,14 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -36,72 +39,142 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            if (block.Transactions.Length == 0)
+            Transaction[] txs = block.Transactions;
+            if (txs.Length == 0)
                 return;
 
-            Transaction firstTx = block.Transactions[0];
+            Transaction firstTx = txs[0];
             if (firstTx.IsSigned && firstTx.SenderAddress is not null)
                 // already recovered a sender for a signed tx in this block,
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            Parallel.ForEach(
-                block.Transactions.Where(tx => !tx.IsHashCalculated),
-                blockTransaction =>
+            ParallelUnbalancedWork.For(
+                0,
+                txs.Length,
+                ParallelUnbalancedWork.DefaultOptions,
+                txs,
+                static (i, txs) =>
+            {
+                Transaction tx = txs[i];
+                if (!tx.IsHashCalculated)
                 {
-                    blockTransaction.CalculateHashInternal();
-                });
+                    tx.CalculateHashInternal();
+                }
 
-            var releaseSpec = _specProvider.GetSpec(block.Header);
+                return txs;
+            });
+
 
             int recoverFromEcdsa = 0;
             // Don't access txPool in Parallel loop as increases contention
-            foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
+            foreach (Transaction tx in txs)
             {
-                Transaction? transaction = null;
+                if (!ShouldRecoverSignatures(tx))
+                    continue;
+
+                Transaction? poolTx = null;
                 try
                 {
-                    _txPool.TryGetPendingTransaction(blockTransaction.Hash, out transaction);
+                    _txPool.TryGetPendingTransaction(tx.Hash, out poolTx);
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"An error occured while getting pending a transaction from TxPool, Transaction: {blockTransaction}", e);
+                    if (_logger.IsError) _logger.Error($"An error occurred while getting a pending transaction from TxPool, Transaction: {tx}", e);
                 }
 
-                Address sender = transaction?.SenderAddress;
-                if (sender != null)
+                Address sender = poolTx?.SenderAddress;
+                if (sender is not null)
                 {
-                    blockTransaction.SenderAddress = sender;
+                    tx.SenderAddress = sender;
 
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender})");
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
                 }
                 else
                 {
                     recoverFromEcdsa++;
                 }
+
+                if (poolTx is not null && tx.HasAuthorizationList)
+                {
+                    for (int i = 0; i < tx.AuthorizationList.Length; i++)
+                    {
+                        if (poolTx.AuthorizationList[i].Authority is not null)
+                        {
+                            tx.AuthorizationList[i].Authority = poolTx.AuthorizationList[i].Authority;
+                        }
+                        else if (tx.AuthorizationList[i].Authority is null)
+                        {
+                            recoverFromEcdsa++;
+                        }
+                    }
+                }
             }
 
-            if (recoverFromEcdsa >= 4)
+            if (recoverFromEcdsa == 0)
+                return;
+
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            bool useSignatureChainId = !releaseSpec.ValidateChainId;
+            if (recoverFromEcdsa > 3)
             {
                 // Recover ecdsa in Parallel
-                Parallel.ForEach(
-                    block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null),
-                    blockTransaction =>
-                    {
-                        blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
-
-                        if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
-                    });
-            }
-            else if (recoverFromEcdsa > 0)
-            {
-                foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
+                ParallelUnbalancedWork.For(
+                    0,
+                    txs.Length,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (recover: this, txs, releaseSpec, useSignatureChainId),
+                    static (i, state) =>
                 {
-                    blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
+                    Transaction tx = state.txs[i];
+                    if (!ShouldRecoverSignatures(tx)) return state;
 
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                    tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
+                    state.recover.RecoverAuthorities(tx, state.releaseSpec);
+                    if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+
+                    return state;
+                });
+            }
+            else
+            {
+                foreach (Transaction tx in txs)
+                {
+                    if (!ShouldRecoverSignatures(tx)) continue;
+
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                    RecoverAuthorities(tx, releaseSpec);
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
             }
         }
+
+        private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)
+        {
+            if (!releaseSpec.IsAuthorizationListEnabled
+                || !tx.HasAuthorizationList)
+            {
+                return;
+            }
+
+            if (tx.AuthorizationList.Length > 3)
+            {
+                Parallel.ForEach(tx.AuthorizationList.Where(t => t.Authority is null), (tuple) =>
+                {
+                    tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                });
+            }
+            else
+            {
+                foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                {
+                    tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ShouldRecoverSignatures(Transaction tx)
+            => tx.IsSigned && (tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(static a => a.Authority is null)));
     }
 }

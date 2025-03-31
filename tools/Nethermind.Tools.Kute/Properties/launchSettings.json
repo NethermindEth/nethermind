@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Nethermind.Tools.Kute": {
+      "commandName": "Project",
+      "commandLineArgs": ""
+    }
+  }
+}

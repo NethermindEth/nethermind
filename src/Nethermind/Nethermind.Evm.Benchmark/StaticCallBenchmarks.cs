@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Benchmark
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-        private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
+        private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
         private WorldState _stateProvider;
 
@@ -87,7 +87,8 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
 
             Console.WriteLine(MuirGlacier.Instance);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
+            CodeInfoRepository codeInfoRepository = new();
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
 
             _environment = new ExecutionEnvironment
             (
@@ -97,11 +98,11 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(Bytecode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+                txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
                 inputData: default
             );
 
-            _evmState = new EvmState(100_000_000L, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);
+            _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
         }
 
         [Benchmark(Baseline = true)]

@@ -53,7 +53,7 @@ namespace Ethereum.Abi.Test
                 }
                 catch (IOException)
                 {
-                    TestContext.WriteLine($"Could not find test in {potentialLocation}");
+                    TestContext.Out.WriteLine($"Could not find test in {potentialLocation}");
                 }
             }
 

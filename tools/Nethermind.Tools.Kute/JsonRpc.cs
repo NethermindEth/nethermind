@@ -21,6 +21,15 @@ public abstract record JsonRpc
         public BatchJsonRpc(JsonDocument document) : base(document) { }
 
         public override string ToString() => $"{nameof(BatchJsonRpc)} {ToJsonString()}";
+
+        public IEnumerable<SingleJsonRpc?> Items()
+        {
+            foreach (var element in _document.RootElement.EnumerateArray())
+            {
+                var document = JsonSerializer.Deserialize<JsonDocument>(element);
+                yield return document is null ? null : new SingleJsonRpc(document);
+            }
+        }
     }
 
     public record SingleJsonRpc : JsonRpc

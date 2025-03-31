@@ -3,13 +3,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using NSubstitute;
 using NUnit.Framework;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
 
@@ -18,7 +20,7 @@ namespace Nethermind.Network.Test;
 public class MessageDictionaryTests
 {
     private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = new();
-    private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, GetBlockHeadersMessage, BlockHeader[]>
+    private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>
         _testMessageDictionary;
 
     [SetUp]
@@ -31,9 +33,9 @@ public class MessageDictionaryTests
     [Test]
     public void Test_SendAndReceive()
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> request = CreateRequest(111);
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
 
-        BlockHeader[] response = new[] { Build.A.BlockHeader.TestObject };
+        using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
         _testMessageDictionary.Send(request);
 
@@ -49,9 +51,9 @@ public class MessageDictionaryTests
     [Test]
     public void Test_SendAndReceive_withDifferentRequestId()
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> request = CreateRequest(111);
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
 
-        BlockHeader[] response = new[] { Build.A.BlockHeader.TestObject };
+        using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
         _testMessageDictionary.Send(request);
 
@@ -67,10 +69,10 @@ public class MessageDictionaryTests
     [Test]
     public void Test_SendAndReceive_outOfOrder()
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> requestBefore = CreateRequest(112);
-        Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> request = CreateRequest(111);
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> requestBefore = CreateRequest(112);
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
 
-        BlockHeader[] response = new[] { Build.A.BlockHeader.TestObject };
+        using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
         _testMessageDictionary.Send(requestBefore);
         _testMessageDictionary.Send(request);
@@ -94,41 +96,27 @@ public class MessageDictionaryTests
             _testMessageDictionary.Send(CreateRequest(i));
         }
 
-        _testMessageDictionary.Invoking((dictionary) => dictionary.Send(CreateRequest(33)))
+        _testMessageDictionary.Invoking(static (dictionary) => dictionary.Send(CreateRequest(33)))
             .Should()
             .Throw<InvalidOperationException>();
     }
 
     [Test]
-    public async Task Test_OldRequest_WillThrowWithTimeout()
+    public void Test_Send_MessageDisposing_OnInvalidId()
     {
-        TimeSpan timeout = TimeSpan.FromMilliseconds(100);
-        Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> request = CreateRequest(0);
-        BlockHeader[] response = new[] { Build.A.BlockHeader.TestObject };
-
-        _testMessageDictionary = new((message) => _recordedRequests.Add(message), timeout);
-
-        request.CompletionSource.Task.IsCompleted.Should().BeFalse();
-        request.CompletionSource.Task.IsFaulted.Should().BeFalse();
-
-        _testMessageDictionary.Send(request);
-
-        await Task.Delay(timeout * 2);
-
-        request.CompletionSource.Task.IsFaulted.Should().BeTrue();
-        request.CompletionSource.Task.Exception.InnerException.Should().BeOfType<TimeoutException>();
-
-        _testMessageDictionary.Invoking((dictionary) => dictionary.Handle(0, response, 100))
+        IOwnedReadOnlyList<BlockHeader> response = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
+        _testMessageDictionary.Invoking((dictionary) => dictionary.Handle(1234, response, 100))
             .Should()
             .Throw<SubprotocolException>();
+
+        response.Received().Dispose();
     }
 
-    private static Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> CreateRequest(int requestId)
+    private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, BlockHeader[]> request =
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request =
             new(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(requestId,
                 new GetBlockHeadersMessage()));
         return request;
     }
-
 }

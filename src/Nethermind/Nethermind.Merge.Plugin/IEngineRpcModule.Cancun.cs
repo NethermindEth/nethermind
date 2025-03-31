@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
@@ -14,7 +15,7 @@ public partial interface IEngineRpcModule : IRpcModule
 {
 
     [JsonRpcMethod(
-        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
@@ -30,4 +31,10 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
+
+    [JsonRpcMethod(
+        Description = "Returns requested blobs and proofs.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes);
 }

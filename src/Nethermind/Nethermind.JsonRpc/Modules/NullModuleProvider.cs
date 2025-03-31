@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Nethermind.Serialization.Json;
+
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -30,9 +30,13 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => Array.Empty<string>();
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context) => ModuleResolution.Unknown;
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
+        {
+            module = null;
+            return ModuleResolution.Unknown;
+        }
 
-        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => (null, Array.Empty<ParameterInfo>(), false);
+        public ResolvedMethodInfo Resolve(string methodName) => new();
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 

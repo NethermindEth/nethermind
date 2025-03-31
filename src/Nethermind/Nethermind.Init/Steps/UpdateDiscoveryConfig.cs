@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Network.Discovery;
 
 namespace Nethermind.Init.Steps
@@ -37,12 +38,12 @@ namespace Nethermind.Init.Steps
             {
                 if (_api.ChainSpec.Bootnodes.Length != 0)
                 {
-                    discoveryConfig.Bootnodes += "," + string.Join(",", _api.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
+                    discoveryConfig.Bootnodes += "," + string.Join(",", _api.ChainSpec.Bootnodes.Select(static bn => bn.ToString()));
                 }
             }
             else
             {
-                discoveryConfig.Bootnodes = string.Join(",", _api.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
+                discoveryConfig.Bootnodes = string.Join(",", _api.ChainSpec.Bootnodes.Select(static bn => bn.ToString()));
             }
         }
     }

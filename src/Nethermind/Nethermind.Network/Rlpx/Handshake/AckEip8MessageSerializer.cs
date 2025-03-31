@@ -28,7 +28,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             totalLength += Rlp.LengthOf(msg.Nonce);
             totalLength += Rlp.LengthOf(msg.Version);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(totalLength);
             stream.Encode(msg.EphemeralPublicKey.Bytes);

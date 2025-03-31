@@ -159,9 +159,9 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeHasNeverSyncedBefore()
+            .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_WithoutFastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastSync));
     }
 
@@ -173,7 +173,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeHasNeverSyncedBefore()
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastHeaders));
     }
 
@@ -184,7 +184,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.FastHeaders | SyncMode.FastSync)));
     }
 
@@ -195,7 +195,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
             .AndPeersAreOnlyUsefulForFastBlocks()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastHeaders));
     }
 
@@ -204,9 +204,9 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+            .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_WithoutFastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastSync));
     }
 
@@ -215,9 +215,9 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+            .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
             .AndPeersAreOnlyUsefulForFastBlocks()
-            .When_FastSync_NoSnapSync_WithoutFastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.None));
     }
 
@@ -228,7 +228,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedFastBlocksAndFastSync()
             .AndPeersAreOnlyUsefulForFastBlocks()
-            .When_FastSync_NoSnapSync_WithoutFastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.None));
     }
 
@@ -240,7 +240,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
             .AndPeersAreOnlyUsefulForFastBlocks()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(fastBlocksState.GetSyncMode()));
     }
 
@@ -251,7 +251,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedFastBlocksAndFastSync()
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.StateNodes));
     }
 
@@ -262,7 +262,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .ThisNodeFinishedFastSyncButNotFastBlocks()
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.StateNodes | SyncMode.FastHeaders)));
     }
 
@@ -272,7 +272,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .ThisNodeFinishedFastSyncButNotFastBlocks()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.StateNodes | SyncMode.FastHeaders)));
     }
@@ -285,7 +285,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full | fastBlocksState.GetSyncMode(true)));
     }
@@ -298,7 +298,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeFinishedStateSyncButNotFastBlocks(fastBlocksState)
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.Full | fastBlocksState.GetSyncMode(true))));
     }
@@ -309,7 +309,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeIsFullySynced()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndDesirablePrePivotPeerIsKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.None));
     }
@@ -336,6 +336,18 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
     }
 
+    [Test]
+    public void When_finished_state_sync_and_header_moved_forward()
+    {
+        Scenario.GoesLikeThis(_needToWaitForHeaders)
+            .WhenInBeaconSyncMode(BeaconSync.None)
+            .IfThisNodeJustFinishedStateSyncButBehindHeader(FastBlocksState.FinishedHeaders)
+            .AndGoodPeersAreKnown()
+            .WhenSnapSyncIsConfigured()
+            .WhenStateAndBestHeaderCanBeBeDifferent(6) //allow best state to be max 6 block apart from best block header
+            .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastBodies);
+    }
+
     [TestCase(FastBlocksState.None)]
     [TestCase(FastBlocksState.FinishedHeaders)]
     [TestCase(FastBlocksState.FinishedBodies)]
@@ -346,7 +358,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustStartedFullSyncProcessing(fastBlocksState)
             .AndGoodPeersAreKnown()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.Full | fastBlocksState.GetSyncMode(true))));
     }
 
@@ -402,7 +414,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfTheSyncProgressIsCorrupted()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.WaitingForBlock));
     }
@@ -413,7 +425,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.WaitingForBlock));
     }
@@ -424,7 +436,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .PeersFromDesirableBranchAreKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
     }
@@ -479,7 +491,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeHasStateThatIsFarInThePast()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.StateNodes));
     }
@@ -490,7 +502,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState.FinishedHeaders)
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndPeersMovedSlightlyForward()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.StateNodes | SyncMode.FastSync)));
     }
@@ -503,19 +515,8 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
             .AndPeersMovedSlightlyForward()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.StateNodes | SyncMode.FastSync | fastBlocksState.GetSyncMode())));
-    }
-
-    [Test]
-    public void When_state_sync_finished_but_needs_to_catch_up()
-    {
-        Scenario.GoesLikeThis(_needToWaitForHeaders)
-            .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
-            .AndGoodPeersAreKnown()
-            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.StateNodes));
     }
 
     /// <summary>
@@ -545,7 +546,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.StateNodes));
     }
@@ -557,7 +558,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
             .AndPeersMovedSlightlyForwardWithFastSyncLag()
-            .When_FastSync_NoSnapSync_FastBlocks_Configured()
+            .When_FastSync_NoSnapSync_Configured()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.Full | SyncMode.FastHeaders)));
     }
 
@@ -566,9 +567,9 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     {
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeHasNeverSyncedBefore()
+            .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
             .AndGoodPeersAreKnown()
-            .WhenSnapSyncWithoutFastBlocksIsConfigured()
+            .WhenSnapSyncIsConfigured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastSync));
     }
 
@@ -580,7 +581,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeHasNeverSyncedBefore()
             .AndGoodPeersAreKnown()
-            .WhenSnapSyncWithFastBlocksIsConfigured()
+            .WhenSnapSyncIsConfigured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastHeaders));
     }
 
@@ -591,7 +592,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeJustFinishedFastBlocksAndFastSync()
             .AndGoodPeersAreKnown()
-            .WhenSnapSyncWithFastBlocksIsConfigured()
+            .WhenSnapSyncIsConfigured()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.SnapSync));
     }
 
@@ -602,7 +603,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .WhenInBeaconSyncMode(_mode)
             .ThisNodeFinishedFastSyncButNotFastBlocks()
             .AndGoodPeersAreKnown()
-            .WhenSnapSyncWithFastBlocksIsConfigured()
+            .WhenSnapSyncIsConfigured()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.SnapSync | SyncMode.FastHeaders)));
     }
 
@@ -612,7 +613,7 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
         Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .ThisNodeFinishedFastSyncButNotFastBlocks()
-            .WhenSnapSyncWithFastBlocksIsConfigured()
+            .WhenSnapSyncIsConfigured()
             .AndGoodPeersAreKnown()
             .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetBeaconSyncExpectations(SyncMode.SnapSync | SyncMode.FastHeaders)));
     }

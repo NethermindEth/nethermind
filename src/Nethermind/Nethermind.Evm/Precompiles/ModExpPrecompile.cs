@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Precompiles
     /// </summary>
     public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
-        public static readonly ModExpPrecompile Instance = new ModExpPrecompile();
+        public static readonly ModExpPrecompile Instance = new();
 
         private ModExpPrecompile()
         {
@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
         /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip2565Enabled)
             {
@@ -79,16 +79,16 @@ namespace Nethermind.Evm.Precompiles
         {
             mpz_t result = new();
             gmp_lib.mpz_init(result);
-            ulong memorySize = ulong.Parse(data.Length.ToString());
+            ulong memorySize = (ulong)data.Length;
             using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
 
             Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
-            gmp_lib.mpz_import(result, ulong.Parse(data.Length.ToString()), 1, 1, 1, 0, memoryChunk);
+            gmp_lib.mpz_import(result, memorySize, 1, 1, 1, 0, memoryChunk);
 
             return result;
         }
 
-        private static (int, int, int) GetInputLengths(in ReadOnlyMemory<byte> inputData)
+        private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
             inputData[..Math.Min(96, inputData.Length)].Span
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Precompiles
         }
 
         [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
-        public static (ReadOnlyMemory<byte>, bool) OldRun(byte[] inputData)
+        public static (byte[], bool) OldRun(byte[] inputData)
         {
             Metrics.ModExpPrecompile++;
 

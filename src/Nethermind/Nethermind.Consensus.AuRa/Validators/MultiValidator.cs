@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -11,7 +10,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -27,6 +25,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IAuRaValidator _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;
+
+        public bool SupportsBlobs => false;
 
         public MultiValidator(
             AuRaParameters.Validator validator,
@@ -226,7 +226,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
             _currentValidator is ITxSource txSource
                 ? txSource.GetTransactions(parent, gasLimit, payloadAttributes)
-                : Enumerable.Empty<Transaction>();
+                : [];
 
         public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
 

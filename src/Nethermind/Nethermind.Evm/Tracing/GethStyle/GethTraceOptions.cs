@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
@@ -35,6 +36,9 @@ public record GethTraceOptions
 
     [JsonPropertyName("tracerConfig")]
     public JsonElement? TracerConfig { get; init; }
+
+    [JsonPropertyName("stateOverrides")]
+    public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
 }

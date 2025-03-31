@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
@@ -33,12 +31,12 @@ namespace Nethermind.Core
         bool KeyExists(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);
-            bool result = span.IsNull();
+            bool result = !span.IsNull();
             DangerousReleaseMemory(span);
             return result;
         }
 
-        void DangerousReleaseMemory(in Span<byte> span) { }
+        void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 
     public interface IWriteOnlyKeyValueStore
@@ -55,7 +53,7 @@ namespace Nethermind.Core
         /// is preferable. Unless you plan to reuse the array somehow (pool), then you'd just use span.
         /// </summary>
         public bool PreferWriteByArray => false;
-        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.ToArray(), flags);
+        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.IsNull() ? null : value.ToArray(), flags);
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
     }
 
@@ -71,8 +69,16 @@ namespace Nethermind.Core
         // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
         HintReadAhead = 2,
 
+        // Shameful hack to use different pool of readahead iterator.
+        // Its for snap serving performance. Halfpath state db is split into three section (top state, state, storage).
+        // If they use the same iterator, then during the tree traversal, when it go back up to a certain level where
+        // the section differ the iterator will need to seek back (section is physically before another section),
+        // which is a lot slower.
+        HintReadAhead2 = 4,
+        HintReadAhead3 = 8,
+
         // Used for full pruning db to skip duplicate read
-        SkipDuplicateRead = 4,
+        SkipDuplicateRead = 16,
     }
 
     [Flags]

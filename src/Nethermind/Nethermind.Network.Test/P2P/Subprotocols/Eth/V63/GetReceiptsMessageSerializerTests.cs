@@ -14,10 +14,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(Hash256[] keys)
         {
-            GetReceiptsMessage message = new(keys);
+            using GetReceiptsMessage message = new(keys.ToPooledList());
             GetReceiptsMessageSerializer serializer = new();
             var serialized = serializer.Serialize(message);
-            GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
+            using GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.That(deserialized.Hashes.Count, Is.EqualTo(keys.Length), "count");
             for (int i = 0; i < keys.Length; i++) Assert.That(deserialized.Hashes[i], Is.EqualTo(keys[i]), $"blockHashes[{i}]");
@@ -45,11 +45,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             GetReceiptsMessageSerializer serializer = new();
 
-            GetReceiptsMessage message = serializer.Deserialize(bytes1);
+            using GetReceiptsMessage message = serializer.Deserialize(bytes1);
             byte[] serialized = serializer.Serialize(message);
             Assert.That(serialized, Is.EqualTo(bytes1));
 
-            GetReceiptsMessage message2 = serializer.Deserialize(bytes2);
+            using GetReceiptsMessage message2 = serializer.Deserialize(bytes2);
             byte[] serialized2 = serializer.Serialize(message2);
             Assert.That(serialized2, Is.EqualTo(bytes2));
         }

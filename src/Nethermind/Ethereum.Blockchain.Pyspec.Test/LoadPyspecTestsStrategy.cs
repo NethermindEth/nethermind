@@ -18,15 +18,16 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
     public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
 
-    public IEnumerable<IEthereumTest> Load(string testsDir, string wildcard = null)
+    public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
     {
         string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", ArchiveVersion, ArchiveName.Split('.')[0]);
         if (!Directory.Exists(testsDirectoryName)) // Prevent redownloading the fixtures if they already exists with this version and archive name
             DownloadAndExtract(ArchiveVersion, ArchiveName, testsDirectoryName);
+        bool isStateTest = testsDir.Contains("state_tests", StringComparison.InvariantCultureIgnoreCase);
         IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
             ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard));
+        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard, isStateTest));
     }
 
     private void DownloadAndExtract(string archiveVersion, string archiveName, string testsDirectoryName)
@@ -43,9 +44,9 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
 
-    private IEnumerable<BlockchainTest> LoadTestsFromDirectory(string testDir, string wildcard)
+    private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, bool isStateTest)
     {
-        List<BlockchainTest> testsByName = new();
+        List<EthereumTest> testsByName = new();
         IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
         foreach (string testFile in testFiles)
@@ -53,17 +54,23 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             FileTestsSource fileTestsSource = new(testFile, wildcard);
             try
             {
-                IEnumerable<BlockchainTest> tests = fileTestsSource.LoadBlockchainTests();
-                foreach (BlockchainTest blockchainTest in tests)
+                IEnumerable<EthereumTest> tests = isStateTest
+                    ? fileTestsSource.LoadGeneralStateTests()
+                    : fileTestsSource.LoadBlockchainTests();
+                foreach (EthereumTest test in tests)
                 {
-                    blockchainTest.Category = testDir;
+                    test.Category = testDir;
                 }
-
                 testsByName.AddRange(tests);
             }
             catch (Exception e)
             {
-                testsByName.Add(new BlockchainTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
+                EthereumTest failedTest = isStateTest
+                    ? new GeneralStateTest()
+                    : new BlockchainTest();
+                failedTest.Name = testDir;
+                failedTest.LoadFailure = $"Failed to load: {e}";
+                testsByName.Add(failedTest);
             }
         }
 

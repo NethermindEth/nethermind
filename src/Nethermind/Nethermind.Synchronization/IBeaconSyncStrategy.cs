@@ -12,6 +12,8 @@ namespace Nethermind.Synchronization
 
         public static No BeaconSync { get; } = new();
 
+        public void AllowBeaconHeaderSync() { }
+
         public bool ShouldBeInBeaconHeaders() => false;
 
         public bool ShouldBeInBeaconModeControl() => false;
@@ -20,10 +22,12 @@ namespace Nethermind.Synchronization
         public bool MergeTransitionFinished => false;
         public long? GetTargetBlockHeight() => null;
         public Hash256? GetFinalizedHash() => null;
+        public Hash256? GetHeadBlockHash() => null;
     }
 
     public interface IBeaconSyncStrategy
     {
+        void AllowBeaconHeaderSync();
         bool ShouldBeInBeaconHeaders();
         bool ShouldBeInBeaconModeControl();
         bool IsBeaconSyncFinished(BlockHeader? blockHeader);
@@ -32,5 +36,6 @@ namespace Nethermind.Synchronization
 
         public long? GetTargetBlockHeight();
         public Hash256? GetFinalizedHash();
+        public Hash256? GetHeadBlockHash();
     }
 }

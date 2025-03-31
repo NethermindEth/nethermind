@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IBlockchainProcessor _processor;
         private readonly IWorldState _worldState;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         public OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor)
         {

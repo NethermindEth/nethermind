@@ -3,7 +3,9 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -21,10 +23,10 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly LruCache<ValueHash256, BlockHeader> _headerCache =
-        new(CacheSize, CacheSize, "headers");
+    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
+        new(CacheSize);
 
-    public HeaderStore(IDb headerDb, IDb blockNumberDb)
+    public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
     {
         _headerDb = headerDb;
         _blockNumberDb = blockNumberDb;
@@ -35,6 +37,22 @@ public class HeaderStore : IHeaderStore
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
         _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
         InsertBlockNumber(header.Hash, header.Number);
+    }
+
+    public void BulkInsert(IReadOnlyList<BlockHeader> headers)
+    {
+        using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
+        using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
+
+        Span<byte> blockNumberSpan = stackalloc byte[8];
+        foreach (var header in headers)
+        {
+            using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
+            headerWriteBatch.Set(header.Number, header.Hash, newRlp.AsSpan());
+
+            header.Number.WriteBigEndian(blockNumberSpan);
+            blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+        }
     }
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
@@ -57,7 +75,7 @@ public class HeaderStore : IHeaderStore
     public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber != null) _headerDb.Delete(blockNumber.Value, blockHash);
+        if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
@@ -73,7 +91,7 @@ public class HeaderStore : IHeaderStore
     public long? GetBlockNumber(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber != null) return blockNumber.Value;
+        if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
         return Get(blockHash)?.Number;

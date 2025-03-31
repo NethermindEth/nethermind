@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Core.Extensions;
+using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks
 {
@@ -26,6 +27,7 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
+        private IMergeConfig _mergeConfig;
 
         private ClHealthLogger _clHealthLogger;
         private FreeDiskSpaceChecker _freeDiskSpaceChecker;
@@ -51,6 +53,7 @@ namespace Nethermind.HealthChecks
         public string Author => "Nethermind";
 
         public bool MustInitialize => true;
+        public bool Enabled => true; // Always enabled
 
         public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
             () => new FreeDiskSpaceChecker(
@@ -66,6 +69,7 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
+            _mergeConfig = _api.Config<IMergeConfig>();
             _logger = api.LogManager.GetClassLogger();
 
             //will throw an exception and close app or block until enough disk space is available (LowStorageCheckAwaitOnStartup)
@@ -116,14 +120,10 @@ namespace Nethermind.HealthChecks
                 .AddInMemoryStorage();
             }
         }
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
 
         public Task InitRpcModules()
         {
-            IDriveInfo[] drives = Array.Empty<IDriveInfo>();
+            IDriveInfo[] drives = [];
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
             {
@@ -139,7 +139,7 @@ namespace Nethermind.HealthChecks
             }
 
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
-                _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
+                _api.MainProcessingContext!.BlockchainProcessor, _api.BlockProducerRunner!, _healthChecksConfig, _api.HealthHintService!,
                 _api.EthSyncingInfo!, _api.RpcCapabilitiesProvider, _api, drives, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)
@@ -149,7 +149,7 @@ namespace Nethermind.HealthChecks
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
             }
 
-            if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
+            if (_mergeConfig.Enabled)
             {
                 _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
                 _clHealthLogger.StartAsync(default);
@@ -212,7 +212,7 @@ namespace Nethermind.HealthChecks
                 if (!_nodeHealthService.CheckClAlive())
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn("No incoming messages from the consensus client that is required for sync.");
+                        _logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync.");
                 }
             }
         }

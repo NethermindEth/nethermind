@@ -143,7 +143,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)
             {
-                var receipts = _receiptFinder.Get(block) ?? Array.Empty<TxReceipt>();
+                var receipts = _receiptFinder.Get(block) ?? [];
                 if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
                 {
                     if (Validators.SequenceEqual(potentialValidators))
@@ -174,7 +174,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 // We are ignoring the signal if there are already pending validators.
                 // This replicates openethereum's behaviour which can be seen as a bug.
-                if (_currentPendingValidators == null && potentialValidators.Length > 0)
+                if (_currentPendingValidators is null && potentialValidators.Length > 0)
                 {
                     _currentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
                     if (!isProducingBlock)

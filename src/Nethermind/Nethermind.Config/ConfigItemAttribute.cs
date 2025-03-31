@@ -16,5 +16,7 @@ namespace Nethermind.Config
         public bool DisabledForCli { get; set; }
 
         public string EnvironmentVariable { get; set; }
+
+        public bool IsPortOption { get; set; }
     }
 }

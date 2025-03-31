@@ -31,7 +31,7 @@ namespace Nethermind.Wallet
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
             _timestamper = timestamper ?? Timestamper.Default;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             // maxCapacity - 100, is just an estimate here
             _unlockedAccounts = new LruCache<string, ProtectedPrivateKey>(100, nameof(ProtectedKeyStoreWallet));
         }
@@ -91,7 +91,7 @@ namespace Nethermind.Wallet
                 return _keyStore.GetKey(address, passphrase).PrivateKey;
             });
 
-        public Signature Sign(Hash256 message, Address address) => SignCore(message, address, () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
+        public Signature Sign(Hash256 message, Address address) => SignCore(message, address, static () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
 
         private Signature SignCore(Hash256 message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
         {

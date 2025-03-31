@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -30,11 +31,10 @@ namespace Nethermind.Init.Steps
                 try
                 {
                     if (logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
-                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    long startTime = Stopwatch.GetTimestamp();
                     await plugin.Init(_api);
-                    stopwatch.Stop();
                     if (logger.IsInfo)
-                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {stopwatch.ElapsedMilliseconds}ms");
+                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
                 }
                 catch (Exception e)
                 {

@@ -6,13 +6,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -115,20 +113,20 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_true_when_no_fast_block_sync_is_used()
+        public void Is_fast_block_finished_returns_true_when_no_fast_sync_is_used()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = false,
+                FastSync = false,
                 PivotNumber = "1",
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
-            Assert.True(syncProgressResolver.IsFastBlocksHeadersFinished());
-            Assert.True(syncProgressResolver.IsFastBlocksBodiesFinished());
-            Assert.True(syncProgressResolver.IsFastBlocksReceiptsFinished());
+            Assert.That(syncProgressResolver.IsFastBlocksHeadersFinished(), Is.True);
+            Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.True);
+            Assert.That(syncProgressResolver.IsFastBlocksReceiptsFinished(), Is.True);
         }
 
         [Test]
@@ -138,18 +136,17 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
                 PivotNumber = "1",
             };
+            blockTree.SyncPivot.Returns((1, Hash256.Zero));
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBodyNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
-            Assert.False(syncProgressResolver.IsFastBlocksBodiesFinished());
+            Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.False);
         }
 
         [Test]
@@ -159,17 +156,16 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
+                FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = false,
                 PivotNumber = "1",
             };
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBodyNumber.Returns(1);
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, true, syncConfig, LimboLogs.Instance);
-            Assert.True(syncProgressResolver.IsFastBlocksReceiptsFinished());
+            Assert.That(syncProgressResolver.IsFastBlocksReceiptsFinished(), Is.True);
         }
 
 

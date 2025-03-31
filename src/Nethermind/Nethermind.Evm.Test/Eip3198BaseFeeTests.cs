@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -26,7 +27,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, 0, false)]
         public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee, bool send1559Tx)
         {
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.BASEFEE)
                 .PushData(0)
@@ -47,7 +48,7 @@ namespace Nethermind.Evm.Test
             }
 
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
             if (eip3198Enabled)
             {

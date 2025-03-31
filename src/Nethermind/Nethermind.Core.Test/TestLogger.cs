@@ -7,7 +7,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.Test
 {
-    public class TestLogger : ILogger
+    public class TestLogger : InterfaceLogger
     {
         public List<string> LogList { get; set; } = new();
 

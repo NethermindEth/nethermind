@@ -7,7 +7,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Cli
 {
-    internal class CliLogger : ILogger
+    internal class CliLogger : InterfaceLogger
     {
         private readonly ICliConsole _cliConsole;
 

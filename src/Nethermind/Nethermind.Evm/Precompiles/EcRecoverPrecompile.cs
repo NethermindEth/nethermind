@@ -7,13 +7,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles
 {
     public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     {
-        public static readonly EcRecoverPrecompile Instance = new EcRecoverPrecompile();
+        public static readonly EcRecoverPrecompile Instance = new();
 
         private EcRecoverPrecompile()
         {
@@ -21,21 +20,15 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(1);
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 3000L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 
-        private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
+        private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet);
 
         private readonly byte[] _zero31 = new byte[31];
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.EcRecoverPrecompile++;
 
@@ -52,20 +45,20 @@ namespace Nethermind.Evm.Precompiles
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
             if (!Bytes.AreEqual(_zero31, vBytes[..31]))
             {
-                return (Array.Empty<byte>(), true);
+                return ([], true);
             }
 
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
-                return (Array.Empty<byte>(), true);
+                return ([], true);
             }
 
             Signature signature = new(r, s, v);
             Address recovered = _ecdsa.RecoverAddress(signature, hash);
             if (recovered is null)
             {
-                return (Array.Empty<byte>(), true);
+                return ([], true);
             }
 
             byte[] result = recovered.Bytes;

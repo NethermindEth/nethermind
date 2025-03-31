@@ -78,16 +78,20 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        public void Delete(TKey key)
+        public bool Delete(TKey key)
         {
             using var lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                return _cacheMap.Remove(key);
             }
+
+            return false;
         }
+
+        public int Count => _cacheMap.Count;
 
         private void Replace(TKey key)
         {
@@ -108,18 +112,6 @@ namespace Nethermind.Core.Caching
                 throw new InvalidOperationException(
                                     $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
             }
-        }
-
-        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
-
-        // TODO: memory size on the KeyCache will be smaller because we do not create LruCacheItems
-        public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
-        {
-            // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
-
-            const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
-            int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
-            return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
         }
     }
 }

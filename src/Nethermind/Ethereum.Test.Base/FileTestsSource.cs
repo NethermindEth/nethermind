@@ -29,7 +29,7 @@ namespace Ethereum.Test.Base
                     return Enumerable.Empty<GeneralStateTest>();
                 }
 
-                if (_wildcard != null && !_fileName.Contains(_wildcard))
+                if (_wildcard is not null && !_fileName.Contains(_wildcard))
                 {
                     return Enumerable.Empty<GeneralStateTest>();
                 }
@@ -52,7 +52,7 @@ namespace Ethereum.Test.Base
                     return Enumerable.Empty<BlockchainTest>();
                 }
 
-                if (_wildcard != null && !_fileName.Contains(_wildcard))
+                if (_wildcard is not null && !_fileName.Contains(_wildcard))
                 {
                     return Enumerable.Empty<BlockchainTest>();
                 }

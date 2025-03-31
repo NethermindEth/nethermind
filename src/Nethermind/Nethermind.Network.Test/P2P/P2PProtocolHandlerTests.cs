@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -84,10 +85,16 @@ namespace Nethermind.Network.Test.P2P
         public void On_init_sends_a_hello_message_with_capabilities()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 0));
+            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
+
+            // These are called by ProtocolsManager.
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.NodeData, 1));
+
             p2PProtocolHandler.Init();
 
-            string[] expectedCapabilities = { "eth66", "nodedata1", "wit0" };
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m => m.Capabilities.Select(c => c.ToString()).SequenceEqual(expectedCapabilities)));
         }
@@ -96,14 +103,10 @@ namespace Nethermind.Network.Test.P2P
         public void On_hello_with_no_matching_capability()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
 
-            HelloMessage message = new HelloMessage()
+            using HelloMessage message = new()
             {
-                Capabilities = new List<Capability>()
-                {
-                    new Capability(Protocol.Eth, 63)
-                },
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 63) },
                 NodeId = TestItem.PublicKeyA,
             };
 
@@ -132,12 +135,9 @@ namespace Nethermind.Network.Test.P2P
             _clientIdPattern = new Regex(pattern);
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
 
-            HelloMessage message = new HelloMessage()
+            using HelloMessage message = new()
             {
-                Capabilities = new List<Capability>()
-                {
-                    new Capability(Protocol.Eth, 63)
-                },
+                Capabilities = new ArrayPoolList<Capability>(1) { new Capability(Protocol.Eth, 63) },
                 NodeId = TestItem.PublicKeyA,
                 ClientId = clientId,
             };
@@ -184,6 +184,18 @@ namespace Nethermind.Network.Test.P2P
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             Assert.That(p2PProtocolHandler.ListenPort, Is.EqualTo(ListenPort));
+        }
+
+        [Test]
+        public void On_init_sends_a_hello_message_with_public_client_id()
+        {
+            ProductInfo.InitializePublicClientId("{name}/{version}");
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.Init();
+
+            _session.Received(1).DeliverMessage(
+                Arg.Is<HelloMessage>(m =>
+                    m.ClientId == $"{ProductInfo.Name}/v{ProductInfo.Version}"));
         }
     }
 }

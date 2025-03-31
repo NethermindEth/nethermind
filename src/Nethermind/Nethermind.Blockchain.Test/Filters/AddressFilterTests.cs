@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -74,7 +73,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_any_address_when_set_is_empty()
     {
-        HashSet<Address> addresses = new();
+        HashSet<AddressAsKey> addresses = new();
         AddressFilter filter = new AddressFilter(addresses);
 
         filter.Accepts(TestItem.AddressA).Should().BeTrue();
@@ -85,7 +84,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_any_address_when_set_is_empty_by_ref()
     {
-        HashSet<Address> addresses = new();
+        HashSet<AddressAsKey> addresses = new();
         AddressFilter filter = new AddressFilter(addresses);
 
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
@@ -99,7 +98,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_only_addresses_in_a_set()
     {
-        HashSet<Address> addresses = new()
+        HashSet<AddressAsKey> addresses = new()
         {
             TestItem.AddressA, TestItem.AddressC
         };
@@ -113,7 +112,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_only_addresses_in_a_set_by_ref()
     {
-        HashSet<Address> addresses = new()
+        HashSet<AddressAsKey> addresses = new()
         {
             TestItem.AddressA, TestItem.AddressC
         };
@@ -188,7 +187,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_empty()
     {
-        HashSet<Address> addresses = new();
+        HashSet<AddressAsKey> addresses = new();
         AddressFilter filter = new AddressFilter(addresses);
 
         filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
@@ -199,7 +198,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_empty_by_ref()
     {
-        HashSet<Address> addresses = new();
+        HashSet<AddressAsKey> addresses = new();
         AddressFilter filter = new AddressFilter(addresses);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
@@ -236,7 +235,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_using_addresses_set()
     {
-        HashSet<Address> addresses = new()
+        HashSet<AddressAsKey> addresses = new()
         {
             TestItem.AddressA, TestItem.AddressC
         };
@@ -250,7 +249,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_using_addresses_set_by_ref()
     {
-        HashSet<Address> addresses = new()
+        HashSet<AddressAsKey> addresses = new()
         {
             TestItem.AddressA, TestItem.AddressC
         };
@@ -266,7 +265,7 @@ public class AddressFilterTests
 
     private static Core.Bloom BloomFromAddress(Address address)
     {
-        LogEntry entry = new LogEntry(address, new byte[] { }, new Hash256[] { });
+        LogEntry entry = new LogEntry(address, [], []);
         Core.Bloom bloom = new Core.Bloom(new[] { entry });
 
         return bloom;

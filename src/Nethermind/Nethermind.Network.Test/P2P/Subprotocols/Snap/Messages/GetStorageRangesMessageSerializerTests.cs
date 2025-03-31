@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -21,10 +22,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetStorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                StoragetRange = new()
+                StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = TestItem.Keccaks.Select(k => new PathWithAccount(k, null)).ToArray(),
+                    Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, null)).ToPooledList(TestItem.Keccaks.Length),
                     StartingHash = new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
                     LimitHash = new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
                 },
@@ -42,10 +43,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetStorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                StoragetRange = new()
+                StorageRange = new()
                 {
                     RootHash = Keccak.OfAnEmptyString,
-                    Accounts = Array.Empty<PathWithAccount>(),
+                    Accounts = ArrayPoolList<PathWithAccount>.Empty(),
                     StartingHash = new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
                     LimitHash = new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
                 },

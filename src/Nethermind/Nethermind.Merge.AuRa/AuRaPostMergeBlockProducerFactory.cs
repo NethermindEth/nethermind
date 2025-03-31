@@ -3,7 +3,6 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -33,7 +32,6 @@ namespace Nethermind.Merge.AuRa
 
         public override PostMergeBlockProducer Create(
             BlockProducerEnv producerEnv,
-            IBlockProductionTrigger blockProductionTrigger,
             ITxSource? txSource = null)
         {
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =
@@ -43,7 +41,6 @@ namespace Nethermind.Merge.AuRa
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
-                blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
                 _gasLimitCalculator ?? targetAdjustedGasLimitCalculator,
                 _sealEngine,

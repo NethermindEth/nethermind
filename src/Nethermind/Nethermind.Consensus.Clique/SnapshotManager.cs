@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -14,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Clique
         public Address GetBlockSealer(BlockHeader header)
         {
             if (header.Author is not null) return header.Author;
-            if (header.Number == UInt256.Zero) return Address.Zero;
+            if (header.Number == 0) return Address.Zero;
             if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
 
             int extraSeal = 65;
@@ -75,17 +75,22 @@ namespace Nethermind.Consensus.Clique
 
         public static Hash256 CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
-            int extraSeal = 65;
-            int shortExtraLength = blockHeader.ExtraData.Length - extraSeal;
             byte[] fullExtraData = blockHeader.ExtraData;
-            byte[] shortExtraData = blockHeader.ExtraData.Slice(0, shortExtraLength);
+            byte[] shortExtraData = SliceExtraSealFromExtraData(blockHeader.ExtraData);
             blockHeader.ExtraData = shortExtraData;
             Hash256 sigHash = blockHeader.CalculateHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
         }
 
-        private readonly object _snapshotCreationLock = new();
+        public static byte[] SliceExtraSealFromExtraData(byte[] extraData)
+        {
+            if (extraData.Length < Clique.ExtraSealLength)
+                throw new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
+            return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
+        }
+
+        private readonly Lock _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 
@@ -161,7 +166,7 @@ namespace Nethermind.Consensus.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.TryGetValue(s.Key, out string value) ? value : s.Key.ToString())))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
                     }
                 }
 

@@ -8,8 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -30,12 +30,10 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
-        public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
-
-        public long? LowestInsertedBodyNumber
+        public BlockHeader? LowestInsertedHeader
         {
-            get => _wrapped.LowestInsertedBodyNumber;
-            set => _wrapped.LowestInsertedBodyNumber = value;
+            get => _wrapped.LowestInsertedHeader;
+            set { }
         }
 
         public long? BestPersistedState
@@ -67,6 +65,10 @@ namespace Nethermind.Blockchain
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
         public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
+        public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None) =>
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
@@ -94,6 +96,8 @@ namespace Nethermind.Blockchain
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
+        public bool HasBlock(long blockNumber, Hash256 blockHash) => _wrapped.HasBlock(blockNumber, blockHash);
+
         public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
@@ -103,15 +107,13 @@ namespace Nethermind.Blockchain
 
         public Hash256 FindHash(long blockNumber) => _wrapped.FindHash(blockNumber);
 
-        public BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
-
-        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) => _wrapped.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
         public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
-        public bool IsMainChain(Hash256 blockHash) => _wrapped.IsMainChain(blockHash);
+        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => _wrapped.IsMainChain(blockHash, throwOnMissingHash);
 
         public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 
@@ -192,6 +194,13 @@ namespace Nethermind.Blockchain
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
         public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot
+        {
+            get => _wrapped.SyncPivot;
+            set
+            {
+            }
+        }
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 

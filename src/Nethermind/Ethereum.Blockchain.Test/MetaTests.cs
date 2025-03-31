@@ -22,6 +22,7 @@ namespace Ethereum.Blockchain.Test
             "ref",
             "TestFiles",
             "Blockhash",
+            "stEIP2537", // ToDo Remove this after updating tests
             "Data"
         };
 
@@ -37,7 +38,7 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory).Replace("-", "");
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if (type == null && !excludesDirectories.Contains(directory))
+                if (type is null && !excludesDirectories.Contains(directory))
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {

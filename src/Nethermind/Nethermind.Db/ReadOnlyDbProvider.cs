@@ -66,5 +66,10 @@ namespace Nethermind.Db
         {
             _wrappedProvider.RegisterColumnDb(dbName, db);
         }
+
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
+        {
+            return _wrappedProvider.GetAllDbMeta();
+        }
     }
 }

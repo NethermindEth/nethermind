@@ -5,7 +5,9 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Int256;
@@ -148,7 +150,7 @@ namespace Nethermind.Store.Test
 
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
-            reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
         }
 
         private Task StartTask(StateReader reader, Hash256 stateRoot, UInt256 value)
@@ -171,7 +173,7 @@ namespace Nethermind.Store.Test
                 {
                     for (int i = 0; i < 1000; i++)
                     {
-                        byte[] result = reader.GetStorage(stateRoot, storageCell.Address, storageCell.Index);
+                        byte[] result = reader.GetStorage(stateRoot, storageCell.Address, storageCell.Index).ToArray();
                         result.Should().BeEquivalentTo(value);
                     }
                 });
@@ -203,7 +205,7 @@ namespace Nethermind.Store.Test
             StateReader reader = new(
                 new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
 
-            var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index);
+            var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(initialValue);
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
@@ -225,11 +227,134 @@ namespace Nethermind.Store.Test
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/
 
-            retrieved =
-                reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index);
+            retrieved = reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
+        }
+
+
+        [Test]
+        public void Can_collect_stats()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState provider = new(trieStore, new MemDb(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree(0);
+
+            StateReader stateReader = new StateReader(trieStore.AsReadOnly(), new MemDb(), Logger);
+            var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
+            stats.AccountCount.Should().Be(1);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasCode_ReturnsTrue()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.True);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = new byte[20];
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.True);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.False);
         }
     }
 }

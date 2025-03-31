@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+extern alias BouncyCastle;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,7 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Org.BouncyCastle.Crypto;
+using BouncyCastle::Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -26,16 +27,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IEciesCipher _eciesCipher;
         private readonly ISigner _signer;
-        private readonly ProtectedPrivateKey _previousCryptoKey;
+        private readonly IProtectedPrivateKey _previousCryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
         private readonly ILogger _logger;
+
+        public bool SupportsBlobs => false;
 
         public RandomContractTxSource(
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ISigner signer,
-            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
+            IProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {

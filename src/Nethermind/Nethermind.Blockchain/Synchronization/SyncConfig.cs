@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
 using Nethermind.Config;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -13,10 +13,9 @@ namespace Nethermind.Blockchain.Synchronization
         private bool _fastSync;
 
         public static ISyncConfig Default { get; } = new SyncConfig();
-        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig { FastSync = false, FastBlocks = false };
+        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig { FastSync = false };
         public static ISyncConfig WithFastSync { get; } = new SyncConfig { FastSync = true };
-        public static ISyncConfig WithFastBlocks { get; } = new SyncConfig { FastSync = true, FastBlocks = true };
-        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, FastBlocks = false, BlockGossipEnabled = false };
+        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, BlockGossipEnabled = false };
 
         public bool NetworkingEnabled { get; set; } = true;
 
@@ -27,7 +26,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
-        public bool FastBlocks { get; set; }
+        bool ISyncConfig.FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
@@ -50,7 +49,6 @@ namespace Nethermind.Blockchain.Synchronization
             set => _pivotHash = value;
         }
         public int MaxAttemptsToUpdatePivot { get; set; } = int.MaxValue;
-        public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;
@@ -66,7 +64,25 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
+        public bool? SnapServingEnabled { get; set; } = null;
+        public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
+        public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
+        public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
+        public bool NeedToWaitForHeader { get; set; }
+        public bool VerifyTrieOnStateSyncFinished { get; set; }
         public bool TrieHealing { get; set; } = true;
+        public int StateMaxDistanceFromHead { get; set; } = 128;
+        public int StateMinDistanceFromHead { get; set; } = 32;
+        public bool GCOnFeedFinished { get; set; } = true;
+        /// <summary>
+        /// Additional delay in blocks between best suggested header and synced state to allow faster state switching for PoW chains
+        /// with higher block processing frequency. Effectively this is the max allowed difference between best header (used as sync
+        /// pivot) and synced state block, to assume that state is synced and node can start processing blocks
+        /// </summary>
+        public int HeaderStateDistance { get; set; } = 0;
+
+        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
+        public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
 
         public override string ToString()
         {

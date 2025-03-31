@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
+using Nethermind.Core.Buffers;
 
 #nullable enable
 
@@ -60,12 +59,10 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
                 return;
             }
 
-            byte[] array = ArrayPool<byte>.Shared.Rent(size);
+            using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
 
             buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
             ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);
-
-            ArrayPool<byte>.Shared.Return(array);
         }
         else
         {

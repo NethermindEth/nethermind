@@ -8,9 +8,9 @@ namespace Ethereum.Test.Base
 {
     public class AccountState
     {
-        public byte[] Code { get; set; }
+        public byte[] Code { get; set; } = [];
         public UInt256 Balance { get; set; }
         public UInt256 Nonce { get; set; }
-        public Dictionary<UInt256, byte[]> Storage { get; set; }
+        public Dictionary<UInt256, byte[]> Storage { get; set; } = new();
     }
 }

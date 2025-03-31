@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
@@ -58,6 +59,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool IsTracingState => InnerTracer.IsTracingState;
 
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
+
+    public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
@@ -185,20 +188,23 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => InnerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-        => InnerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+        => InnerTracer.StartOperation(pc, opcode, gas, env);
 
     public void ReportOperationError(EvmExceptionType error)
         => InnerTracer.ReportOperationError(error);
 
     public void ReportOperationRemainingGas(long gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
+
+    public void ReportLog(LogEntry log)
+        => InnerTracer.ReportLog(log);
 
     public void SetOperationStack(TraceStack stack)
         => InnerTracer.SetOperationStack(stack);
@@ -233,13 +239,16 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportActionError(EvmExceptionType evmExceptionType)
         => InnerTracer.ReportActionError(evmExceptionType);
 
+    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+        => InnerTracer.ReportActionRevert(gas, output);
+
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
     public void ReportBlockHash(Hash256 blockHash)
         => InnerTracer.ReportBlockHash(blockHash);
 
-    public void ReportByteCode(byte[] byteCode)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         => InnerTracer.ReportByteCode(byteCode);
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)

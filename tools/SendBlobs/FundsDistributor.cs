@@ -83,7 +83,7 @@ internal class FundsDistributor
 
         List<string> txHash = new List<string>();
 
-        TxDecoder txDecoder = new();
+        TxDecoder txDecoder = TxDecoder.Instance;
         StreamWriter? keyWriter = null;
 
         if (!string.IsNullOrWhiteSpace(_keyFilePath))
@@ -119,10 +119,10 @@ internal class FundsDistributor
                     .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
                 string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-                if (result != null)
+                if (result is not null)
                     txHash.Add(result);
 
-                if (keyWriter != null)
+                if (keyWriter is not null)
                     keyWriter.WriteLine(key.ToString());
 
                 nonce++;
@@ -141,13 +141,13 @@ internal class FundsDistributor
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
     public async Task<IEnumerable<string>> ReclaimFunds(Address beneficiary, UInt256 maxFee, UInt256 maxPriorityFee)
     {
-        IEnumerable<Signer> privateSigners =
-            File.ReadAllLines(_keyFilePath)
-            .Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
+        IEnumerable<Signer> privateSigners = _keyFilePath is null
+            ? []
+            : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
         ILogger log = _logManager.GetClassLogger();
         List<string> txHashes = new List<string>();
-        TxDecoder txDecoder = new();
+        TxDecoder txDecoder = TxDecoder.Instance;
 
         foreach (var signer in privateSigners)
         {
@@ -194,7 +194,7 @@ internal class FundsDistributor
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
             string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-            if (result != null)
+            if (result is not null)
                 txHashes.Add(result);
         }
         return txHashes;

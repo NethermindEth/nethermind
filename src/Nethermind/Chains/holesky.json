@@ -35,10 +35,24 @@
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
+    "beaconChainGenesisTimestamp": "0x65156994",
     "eip3651TransitionTimestamp": "0x6516eac0",
     "eip3855TransitionTimestamp": "0x6516eac0",
     "eip3860TransitionTimestamp": "0x6516eac0",
     "eip4895TransitionTimestamp": "0x6516eac0",
+    "eip1153TransitionTimestamp": "0x65C36AC0",
+    "eip4788TransitionTimestamp": "0x65C36AC0",
+    "eip4844TransitionTimestamp": "0x65C36AC0",
+    "eip5656TransitionTimestamp": "0x65C36AC0",
+    "eip6780TransitionTimestamp": "0x65C36AC0",
+    "eip2537TransitionTimestamp": "0x67BCEAC0",
+    "eip2935TransitionTimestamp": "0x67BCEAC0",
+    "eip6110TransitionTimestamp": "0x67BCEAC0",
+    "eip7002TransitionTimestamp": "0x67BCEAC0",
+    "eip7251TransitionTimestamp": "0x67BCEAC0",
+    "eip7623TransitionTimestamp": "0x67BCEAC0",
+    "eip7702TransitionTimestamp": "0x67BCEAC0",
+    "depositContractAddress": "0x4242424242424242424242424242424242424242",
     "terminalTotalDifficulty": "0x0",
     "gasLimitBoundDivisor": "0x400",
     "maxCodeSize": "0x6000",
@@ -46,7 +60,19 @@
     "maximumExtraDataSize": "0xffff",
     "minGasLimit": "0x1388",
     "registrar": "0x0000000000000000000000000000000000000000",
-    "MergeForkIdTransition": "0x0"
+    "MergeForkIdTransition": "0x0",
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": "0x32f0ed"
+      },
+      "prague": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction":  "0x4c6964"
+      }
+    }
   },
   "genesis": {
     "seal": {

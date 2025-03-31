@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
                 foreach (var filterLog in filterLogs)
                 {
-                    JsonRpcResult result = CreateSubscriptionMessage(filterLog);
+                    using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                     await JsonRpcDuplexClient.SendJsonRpcResult(result);
                     if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
                 }
@@ -108,7 +108,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                             {
                                 yield return new FilterLog(
                                     logIndex,
-                                    j,
                                     receipt,
                                     receiptLog,
                                     removed);
@@ -125,7 +124,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        public override string Type => SubscriptionType.Logs;
+        public override string Type => SubscriptionType.EthSubscription.Logs;
         public override void Dispose()
         {
             _receiptCanonicalityMonitor.ReceiptsInserted -= OnReceiptsInserted;

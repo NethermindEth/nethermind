@@ -25,7 +25,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             bool nonceGapsAllowed = isLocal || !_txs.IsFull();
@@ -48,9 +48,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 }
 
-                return !isLocal ?
-                    AcceptTxResult.NonceGap :
-                    AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                return AcceptTxResult.NonceGap;
             }
 
             return AcceptTxResult.Accepted;

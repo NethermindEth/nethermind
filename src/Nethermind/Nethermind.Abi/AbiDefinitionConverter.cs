@@ -65,17 +65,17 @@ public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
             {
                 case AbiDescriptionType.Event:
                     AbiEventDescription? eventDescription = definitionToken.Deserialize<AbiEventDescription>(op);
-                    if (eventDescription != null)
+                    if (eventDescription is not null)
                         value.Add(eventDescription);
                     break;
                 case AbiDescriptionType.Error:
                     AbiErrorDescription? errorDescription = definitionToken.Deserialize<AbiErrorDescription>(op);
-                    if (errorDescription != null)
+                    if (errorDescription is not null)
                         value.Add(errorDescription);
                     break;
                 default:
                     AbiFunctionDescription? functionDescription = definitionToken.Deserialize<AbiFunctionDescription>(op);
-                    if (functionDescription != null)
+                    if (functionDescription is not null)
                         value.Add(functionDescription);
                     break;
             }

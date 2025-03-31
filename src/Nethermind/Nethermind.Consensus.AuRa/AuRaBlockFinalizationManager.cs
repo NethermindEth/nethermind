@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly ILogger _logger;
-        private readonly IBlockProcessor _blockProcessor;
+        private IBlockProcessor _blockProcessor;
         private readonly IValidatorStore _validatorStore;
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly long _twoThirdsMajorityTransition;
@@ -34,7 +34,6 @@ namespace Nethermind.Consensus.AuRa
         public AuRaBlockFinalizationManager(
             IBlockTree blockTree,
             IChainLevelInfoRepository chainLevelInfoRepository,
-            IBlockProcessor blockProcessor,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
@@ -43,14 +42,19 @@ namespace Nethermind.Consensus.AuRa
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
-            _blockProcessor.BlocksProcessing += OnBlocksProcessing;
             Initialize();
         }
+
+        public void SetMainBlockProcessor(IBlockProcessor blockProcessor)
+        {
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _blockProcessor.BlockProcessed += OnBlockProcessed;
+            _blockProcessor.BlocksProcessing += OnBlocksProcessing;
+        }
+
 
         private void Initialize()
         {
@@ -86,23 +90,21 @@ namespace Nethermind.Consensus.AuRa
             BlockHeader header = e.Blocks[0].Header;
             if (_blockTree.WasProcessed(header.Number, header.Hash))
             {
-                using (var batch = _chainLevelInfoRepository.StartBatch())
+                using var batch = _chainLevelInfoRepository.StartBatch();
+                // need to un-finalize blocks
+                var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
+                for (int i = 1; i < minSealersForFinalization; i++)
                 {
-                    // need to un-finalize blocks
-                    var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
-                    for (int i = 1; i < minSealersForFinalization; i++)
+                    header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (header is not null)
                     {
-                        header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header is not null)
-                        {
-                            UnFinalizeBlock(header, batch);
-                        }
+                        UnFinalizeBlock(header, batch);
                     }
+                }
 
-                    for (int i = 0; i < e.Blocks.Count; i++)
-                    {
-                        UnFinalizeBlock(e.Blocks[i].Header, batch);
-                    }
+                for (int i = 0; i < e.Blocks.Count; i++)
+                {
+                    UnFinalizeBlock(e.Blocks[i].Header, batch);
                 }
             }
         }
@@ -120,7 +122,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 if (_logger.IsTrace) _logger.Trace(finalizedBlocks.Count == 1
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
-                        : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
+                        : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(static b => b.Hash))}].");
 
                 LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));

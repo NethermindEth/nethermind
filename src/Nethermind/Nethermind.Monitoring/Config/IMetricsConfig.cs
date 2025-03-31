@@ -8,10 +8,10 @@ namespace Nethermind.Monitoring.Config;
 [ConfigCategory(Description = "Configuration of the metrics provided by a Nethermind node for both, the Prometheus and the dotnet-counters.")]
 public interface IMetricsConfig : IConfig
 {
-    [ConfigItem(Description = "The ip at which to expose Prometheus metrics.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The IP address to expose Prometheus metrics at. The value of `+` means listening on all available hostnames. Setting this to `localhost` prevents remote access.", DefaultValue = "+")]
     string ExposeHost { get; }
 
-    [ConfigItem(Description = "The port to expose Prometheus metrics at.", DefaultValue = "null")]
+    [ConfigItem(Description = "The port to expose Prometheus metrics at.")]
     int? ExposePort { get; }
 
     [ConfigItem(Description = "Whether to publish various metrics to Prometheus Pushgateway at a given interval.", DefaultValue = "false")]
@@ -20,15 +20,24 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "Whether to publish metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
     bool CountersEnabled { get; }
 
-    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.", DefaultValue = "")]
+    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.")]
     string PushGatewayUrl { get; }
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }
 
-    [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "\"Nethermind\"")]
+    [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "Nethermind")]
     string NodeName { get; }
 
     [ConfigItem(Description = "Whether to publish database size metrics.", DefaultValue = "true")]
     bool EnableDbSizeMetrics { get; }
+
+    [ConfigItem(Description = "The Prometheus metrics group name.", DefaultValue = "nethermind")]
+    string MonitoringGroup { get; }
+
+    [ConfigItem(Description = "The Prometheus metrics job name.", DefaultValue = "nethermind")]
+    string MonitoringJob { get; }
+
+    [ConfigItem(Description = "Enable detailed metric", DefaultValue = "nethermind")]
+    bool EnableDetailedMetric { get; }
 }

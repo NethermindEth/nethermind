@@ -111,10 +111,16 @@ namespace Nethermind.Core.Resettables
         public ICollection<TKey> Keys => _wrapped.Keys;
         public ICollection<TValue> Values => _wrapped.Values;
 
-        public void Reset()
+        public void Reset(bool resizeCollections = true)
         {
             if (_wrapped.Count == 0)
             {
+                return;
+            }
+
+            if (!resizeCollections)
+            {
+                _wrapped.Clear();
                 return;
             }
 

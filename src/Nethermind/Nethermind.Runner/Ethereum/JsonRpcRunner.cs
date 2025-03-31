@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -16,17 +15,17 @@ using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
 using Nethermind.Sockets;
-using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Runner.Ethereum
 {
     public class JsonRpcRunner
     {
-        private readonly ILogger _logger;
+        private readonly Nethermind.Logging.ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogManager _logManager;
@@ -59,13 +58,19 @@ namespace Nethermind.Runner.Ethereum
             _api = api;
         }
 
-        public Task Start(CancellationToken cancellationToken)
+        public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
-            var webHost = WebHost.CreateDefaultBuilder()
+            IWebHost webHost = new WebHostBuilder()
+                // Explicitly build from UseKestrelCore rather than UseKestrel to
+                // not add additional transports that we don't use e.g. msquic as that
+                // adds a lot of additional idle threads to the process.
+                .UseKestrelCore()
+                .UseKestrelHttpsConfiguration()
                 .ConfigureServices(s =>
                 {
+                    s.AddRouting();
                     s.AddSingleton(_configurationProvider);
                     s.AddSingleton(_jsonRpcProcessor);
                     s.AddSingleton(_jsonRpcUrlCollection);
@@ -74,7 +79,7 @@ namespace Nethermind.Runner.Ethereum
                     foreach (var plugin in _api.Plugins.OfType<INethermindServicesPlugin>())
                     {
                         plugin.AddServices(s);
-                    };
+                    }
                 })
                 .UseStartup<Startup>()
                 .UseUrls(urls)
@@ -95,11 +100,11 @@ namespace Nethermind.Runner.Ethereum
 
             if (!cancellationToken.IsCancellationRequested)
             {
-                _webHost.Start();
+                await NetworkHelper.HandlePortTakenError(
+                    () => _webHost.StartAsync(cancellationToken), urls
+                );
                 if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
             }
-
-            return Task.CompletedTask;
         }
 
         public async Task StopAsync()

@@ -5,9 +5,9 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -15,12 +15,13 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Find;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
     public class InitializeBlockTree : IStep
     {
         private readonly IBasicApi _get;
@@ -52,7 +53,7 @@ namespace Nethermind.Init.Steps
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
-            IBlockStore badBlockStore = _set.BadBlocksStore = new BlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored);
+            IBadBlockStore badBlockStore = _set.BadBlocksStore = new BadBlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored ?? 100);
 
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,
@@ -80,7 +81,7 @@ namespace Nethermind.Init.Steps
 
             IReceiptConfig receiptConfig = _set.Config<IReceiptConfig>();
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider, !receiptConfig.CompactReceiptStore);
-            IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
+            IReceiptStorage receiptStorage = _set.ReceiptStorage = receiptConfig.StoreReceipts
                 ? new PersistentReceiptStorage(
                     _get.DbProvider.ReceiptsDb,
                     _get.SpecProvider!,
@@ -104,7 +105,7 @@ namespace Nethermind.Init.Steps
 
             _set.LogFinder = logFinder;
 
-            if (initConfig.ExitOnBlockNumber != null)
+            if (initConfig.ExitOnBlockNumber is not null)
             {
                 new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
