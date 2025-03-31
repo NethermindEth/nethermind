@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -23,7 +22,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
     /// </summary>
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.Osaka);
+        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.Fork7805);
 
     public Task<ResultWrapper<string?>> engine_updatePayloadWithInclusionListV1(string payloadId, byte[][] inclusionListTransactions)
         => _updatePayloadWithInclusionListHandler.Handle((payloadId, inclusionListTransactions));

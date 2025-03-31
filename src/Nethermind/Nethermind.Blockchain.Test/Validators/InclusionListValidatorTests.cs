@@ -27,7 +27,7 @@ public class InclusionListValidatorTests
     public void Setup()
     {
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
-        _specProvider = new CustomSpecProvider(((ForkActivation)0, Osaka.Instance));
+        _specProvider = new CustomSpecProvider(((ForkActivation)0, Fork7805.Instance));
         _inclusionListValidator = new InclusionListValidator(
             _specProvider,
             _transactionProcessor);

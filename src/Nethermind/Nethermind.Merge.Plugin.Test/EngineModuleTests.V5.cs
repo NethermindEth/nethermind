@@ -33,7 +33,7 @@ public partial class EngineModuleTests
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockchain(Osaka.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+            await CreateBlockchain(Fork7805.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 expectedBlockHash = new(blockHash);
@@ -109,7 +109,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Can_get_inclusion_list_V5()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         Transaction tx1 = Build.A.Transaction
@@ -152,7 +152,7 @@ public partial class EngineModuleTests
         string blockHash,
         string stateRoot)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 prevRandao = Keccak.Zero;
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -218,7 +218,7 @@ public partial class EngineModuleTests
         string blockFees,
         string gasUsed)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         Transaction tx = Build.A.Transaction
@@ -280,7 +280,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Can_force_rebuild_payload()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
         var payloadPreparationService = chain.PayloadPreparationService!;
 
         // Count calls to BlockImproved event
