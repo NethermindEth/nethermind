@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Processing
             if (data is null || data.Length == 0)
             {
                 // If no extra data just show GasBeneficiary address
-                return $"Address: {(block.Header.GasBeneficiary?.ToString() ?? "0x")}";
+                return $"Address: {(block.Header.GasBeneficiary?.ToShortString() ?? "0x")}";
             }
 
             // Ideally we'd prefer to show text; so convert invalid unicode

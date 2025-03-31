@@ -64,7 +64,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-
         public async Task Start(CancellationToken cancellationToken)
         {
             UpdateState(Feed.CurrentState);
@@ -83,6 +82,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task DispatchLoop(CancellationToken cancellationToken)
         {
+            bool wasCancelTriggered = false;
             while (true)
             {
                 try
@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             continue;
                         }
 
-                        SyncPeerAllocation allocation = await Allocate(request);
+                        SyncPeerAllocation allocation = await Allocate(request, cancellationToken);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
                         if (allocatedPeer is not null)
@@ -165,6 +165,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 catch (OperationCanceledException)
                 {
+                    if (wasCancelTriggered)
+                        throw new InvalidOperationException($"{Feed} did not switch to finished after `Feed.Finish` on cancel");
+                    wasCancelTriggered = true;
                     Feed.Finish();
                 }
             }
@@ -243,9 +246,9 @@ namespace Nethermind.Synchronization.ParallelSync
             SyncPeerPool.Free(allocation);
         }
 
-        protected async Task<SyncPeerAllocation> Allocate(T request)
+        protected async Task<SyncPeerAllocation> Allocate(T request, CancellationToken cancellationToken)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
             Downloader.OnAllocate(allocation);
             return allocation;
         }
@@ -306,22 +309,21 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
             if (Interlocked.CompareExchange(ref _disposed, true, false))
             {
-                return ValueTask.CompletedTask;
+                return;
             }
 
-            _cancellationTokenSource.Cancel();
-            _cancellationTokenSource.Dispose();
+            await _cancellationTokenSource.CancelAsync();
             _activeTasks.Signal();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
             {
                 if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");
             }
+            _cancellationTokenSource.Dispose();
             _concurrentProcessingSemaphore.Dispose();
-            return ValueTask.CompletedTask;
         }
     }
 }

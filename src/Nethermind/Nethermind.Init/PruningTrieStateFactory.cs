@@ -8,9 +8,11 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -115,11 +117,18 @@ public class PruningTrieStateFactory(
                 if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
             }
 
+            if (pruningConfig.CacheMb <= pruningConfig.DirtyCacheMb)
+            {
+                throw new InvalidConfigurationException("Dirty pruning cache size must be less than persisted pruning cache size.", -1);
+            }
+
             pruningStrategy = Prune
-                .WhenCacheReaches(pruningConfig.CacheMb.MB())
+                .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
+                .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
                 // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
                 // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
                 .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
+                .WithDirtyNodeShardCount(pruningConfig.DirtyNodeShardBit)
                 .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
@@ -130,17 +139,11 @@ public class PruningTrieStateFactory(
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
-        TrieStore trieStore = syncConfig.TrieHealing
-            ? new HealingTrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                logManager)
-            : new TrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                logManager);
+        TrieStore trieStore = new TrieStore(
+            mainNodeStorage,
+            pruningStrategy,
+            persistenceStrategy,
+            logManager);
 
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;
@@ -177,7 +180,8 @@ public class PruningTrieStateFactory(
             worldState,
             trieStore,
             dbProvider,
-            logManager);
+            logManager,
+            new LastNStateRootTracker(blockTree, 128));
 
         // NOTE: Don't forget this! Very important!
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);

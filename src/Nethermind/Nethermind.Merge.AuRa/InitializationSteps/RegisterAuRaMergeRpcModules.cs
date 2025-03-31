@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
@@ -20,7 +21,7 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps;
 
-public class RegisterAuRaMergeRpcModules(AuRaNethermindApi api) : RegisterAuRaRpcModules(api)
+public class RegisterAuRaMergeRpcModules(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : RegisterAuRaRpcModules(api, poSSwitcher)
 {
     protected override IAuRaBlockProcessorFactory CreateFactory()
     {

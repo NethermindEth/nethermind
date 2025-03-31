@@ -98,12 +98,12 @@ public class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
         ObjectDisposedException.ThrowIf(_socket is null, _socket);
     }
 
-    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer)
+    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
         ReceiveResult? result = null;
         if (_socket.State == WebSocketState.Open)
         {
-            Task<WebSocketReceiveResult> resultTask = _socket.ReceiveAsync(buffer, CancellationToken.None);
+            Task<WebSocketReceiveResult> resultTask = _socket.ReceiveAsync(buffer, cancellationToken);
 
             await resultTask.ContinueWith(t =>
             {

@@ -21,7 +21,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -35,9 +34,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
@@ -46,8 +42,10 @@ using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Era1;
 using Nethermind.Facade.Find;
-using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -55,70 +53,17 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static NethermindApi ContextWithMocks()
         {
-            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec { Parameters = new ChainParameters(), })
-            {
-                Enode = Substitute.For<IEnode>(),
-                TxPool = Substitute.For<ITxPool>(),
-                Wallet = Substitute.For<IWallet>(),
-                BlockTree = Substitute.For<IBlockTree>(),
-                DbProvider = TestMemDbProvider.Init(),
-                PeerManager = Substitute.For<IPeerManager>(),
-                PeerPool = Substitute.For<IPeerPool>(),
-                SpecProvider = Substitute.For<ISpecProvider>(),
-                EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),
-                MainBlockProcessor = Substitute.For<IBlockProcessor>(),
-                ReceiptStorage = Substitute.For<IReceiptStorage>(),
-                ReceiptFinder = Substitute.For<IReceiptFinder>(),
-                BlockValidator = Substitute.For<IBlockValidator>(),
-                RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>(),
-                TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>(),
-                StaticNodesManager = Substitute.For<IStaticNodesManager>(),
-                BloomStorage = Substitute.For<IBloomStorage>(),
-                Sealer = Substitute.For<ISealer>(),
-                BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
-                BlockProducer = Substitute.For<IBlockProducer>(),
-                DiscoveryApp = Substitute.For<IDiscoveryApp>(),
-                EngineSigner = Substitute.For<ISigner>(),
-                FileSystem = Substitute.For<IFileSystem>(),
-                FilterManager = Substitute.For<IFilterManager>(),
-                FilterStore = Substitute.For<IFilterStore>(),
-                GrpcServer = Substitute.For<IGrpcServer>(),
-                HeaderValidator = Substitute.For<IHeaderValidator>(),
-                IpResolver = Substitute.For<IIPResolver>(),
-                KeyStore = Substitute.For<IKeyStore>(),
-                LogFinder = Substitute.For<ILogFinder>(),
-                MonitoringService = Substitute.For<IMonitoringService>(),
-                ProtocolsManager = Substitute.For<IProtocolsManager>(),
-                ProtocolValidator = Substitute.For<IProtocolValidator>(),
-                RlpxPeer = Substitute.For<IRlpxHost>(),
-                SealValidator = Substitute.For<ISealValidator>(),
-                SessionMonitor = Substitute.For<ISessionMonitor>(),
-                StateReader = Substitute.For<IStateReader>(),
-                VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>(),
-                MainNodeStorage = Substitute.For<INodeStorage>(),
-                TransactionProcessor = Substitute.For<ITransactionProcessor>(),
-                TxSender = Substitute.For<ITxSender>(),
-                BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
-                EngineSignerStore = Substitute.For<ISignerStore>(),
-                NodeStatsManager = Substitute.For<INodeStatsManager>(),
-                RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
-                WebSocketsManager = Substitute.For<IWebSocketsManager>(),
-                ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
-                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
-                TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
-                GasPriceOracle = Substitute.For<IGasPriceOracle>(),
-                EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
-                HealthHintService = Substitute.For<IHealthHintService>(),
-                TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
-                UnclesValidator = Substitute.For<IUnclesValidator>(),
-                BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
-                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
-                ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                BadBlocksStore = Substitute.For<IBadBlockStore>(),
-                ProcessExit = Substitute.For<IProcessExitSource>(),
-
-                ApiWithNetworkServiceContainer = new ContainerBuilder()
+            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+                Substitute.For<IConfigProvider>(),
+                Substitute.For<IJsonSerializer>(),
+                LimboLogs.Instance,
+                new ChainSpec { Parameters = new ChainParameters(), },
+                Substitute.For<ISpecProvider>(),
+                [],
+                Substitute.For<IProcessExitSource>(),
+                new ContainerBuilder()
+                    .AddSingleton(Substitute.For<IPoSSwitcher>())
+                    .AddSingleton(Substitute.For<IAdminEraService>())
                     .AddSingleton(Substitute.For<ISyncModeSelector>())
                     .AddSingleton(Substitute.For<ISyncProgressResolver>())
                     .AddSingleton(Substitute.For<ISyncPointers>())
@@ -126,12 +71,76 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
                     .AddSingleton(Substitute.For<ISyncServer>())
-                    .Build(),
-            };
+                    .Build()
+            );
 
+            var api = new NethermindApi(apiDependencies);
+            MockOutNethermindApi(api);
             api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
+        }
+
+        public static void MockOutNethermindApi(NethermindApi api)
+        {
+            api.Enode = Substitute.For<IEnode>();
+            api.TxPool = Substitute.For<ITxPool>();
+            api.Wallet = Substitute.For<IWallet>();
+            api.BlockTree = Substitute.For<IBlockTree>();
+            api.DbProvider = TestMemDbProvider.Init();
+            api.PeerManager = Substitute.For<IPeerManager>();
+            api.PeerPool = Substitute.For<IPeerPool>();
+            api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
+            api.ReceiptStorage = Substitute.For<IReceiptStorage>();
+            api.ReceiptFinder = Substitute.For<IReceiptFinder>();
+            api.BlockValidator = Substitute.For<IBlockValidator>();
+            api.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
+            api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
+            api.StaticNodesManager = Substitute.For<IStaticNodesManager>();
+            api.TrustedNodesManager = Substitute.For<ITrustedNodesManager>();
+            api.BloomStorage = Substitute.For<IBloomStorage>();
+            api.Sealer = Substitute.For<ISealer>();
+            api.BlockProducer = Substitute.For<IBlockProducer>();
+            api.DiscoveryApp = Substitute.For<IDiscoveryApp>();
+            api.EngineSigner = Substitute.For<ISigner>();
+            api.FileSystem = Substitute.For<IFileSystem>();
+            api.FilterManager = Substitute.For<IFilterManager>();
+            api.FilterStore = Substitute.For<IFilterStore>();
+            api.GrpcServer = Substitute.For<IGrpcServer>();
+            api.HeaderValidator = Substitute.For<IHeaderValidator>();
+            api.IpResolver = Substitute.For<IIPResolver>();
+            api.KeyStore = Substitute.For<IKeyStore>();
+            api.LogFinder = Substitute.For<ILogFinder>();
+            api.MonitoringService = Substitute.For<IMonitoringService>();
+            api.ProtocolsManager = Substitute.For<IProtocolsManager>();
+            api.ProtocolValidator = Substitute.For<IProtocolValidator>();
+            api.RlpxPeer = Substitute.For<IRlpxHost>();
+            api.SealValidator = Substitute.For<ISealValidator>();
+            api.SessionMonitor = Substitute.For<ISessionMonitor>();
+            api.StateReader = Substitute.For<IStateReader>();
+            api.VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>();
+            api.MainNodeStorage = Substitute.For<INodeStorage>();
+            api.MainProcessingContext = Substitute.For<IMainProcessingContext>();
+            api.TxSender = Substitute.For<ITxSender>();
+            api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            api.EngineSignerStore = Substitute.For<ISignerStore>();
+            api.NodeStatsManager = Substitute.For<INodeStatsManager>();
+            api.RpcModuleProvider = Substitute.For<IRpcModuleProvider>();
+            api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
+            api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
+            api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
+            api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
+            api.EthSyncingInfo = Substitute.For<IEthSyncingInfo>();
+            api.HealthHintService = Substitute.For<IHealthHintService>();
+            api.TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId);
+            api.UnclesValidator = Substitute.For<IUnclesValidator>();
+            api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
+            api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
+            api.BadBlocksStore = Substitute.For<IBadBlockStore>();
+
+            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
+            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
         }
     }
 }

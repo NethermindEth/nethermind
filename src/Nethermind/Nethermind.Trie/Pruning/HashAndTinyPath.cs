@@ -10,15 +10,10 @@ namespace Nethermind.Trie.Pruning;
 [StructLayout(LayoutKind.Auto)]
 internal readonly struct HashAndTinyPath : IEquatable<HashAndTinyPath>
 {
-    public readonly ValueHash256 addr;
+    public readonly Hash256? addr;
     public readonly TinyTreePath path;
 
     public HashAndTinyPath(Hash256? hash, in TinyTreePath path)
-    {
-        addr = hash ?? default;
-        this.path = path;
-    }
-    public HashAndTinyPath(in ValueHash256 hash, in TinyTreePath path)
     {
         addr = hash;
         this.path = path;
@@ -28,7 +23,7 @@ internal readonly struct HashAndTinyPath : IEquatable<HashAndTinyPath>
     public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
     public override int GetHashCode()
     {
-        var addressHash = addr != default ? addr.GetHashCode() : 1;
+        int addressHash = addr?.GetHashCode() ?? 0x55555555;
         return path.GetHashCode() ^ addressHash;
     }
 }

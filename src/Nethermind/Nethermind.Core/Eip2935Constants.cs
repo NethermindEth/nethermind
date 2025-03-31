@@ -11,7 +11,7 @@ public static class Eip2935Constants
     /// <summary>
     /// The <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>
-    public static readonly Address BlockHashHistoryAddress = new("0x0f792be4b0c0cb4dae440ef133e90c0ecd48cccc");
+    public static readonly Address BlockHashHistoryAddress = new("0x0000F90827F1C53a10cb7A02335B175320002935");
 
     /// <summary>
     /// The <c>HISTORY_SERVE_WINDOW</c> parameter.

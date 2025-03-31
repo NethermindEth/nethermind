@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Processing
             ISpecProvider specProvider,
             ILogManager logManager,
             IWorldState worldStateToWarmUp
-            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager)
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager)
         {
         }
 

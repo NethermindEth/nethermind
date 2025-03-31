@@ -16,8 +16,11 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The pruning mode.", DefaultValue = "Hybrid")]
     PruningMode Mode { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "1024")]
+    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1280")]
     long CacheMb { get; set; }
+
+    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1024")]
+    long DirtyCacheMb { get; set; }
 
     [ConfigItem(
         Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
@@ -76,4 +79,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
+    int DirtyNodeShardBit { get; set; }
 }

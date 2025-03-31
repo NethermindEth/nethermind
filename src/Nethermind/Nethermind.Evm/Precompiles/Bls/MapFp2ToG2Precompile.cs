@@ -28,7 +28,7 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsMapFp2ToG2Precompile++;
 
@@ -38,12 +38,18 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
             return IPrecompile.Failure;
         }
 
-        G2 res = new G2(stackalloc long[G2.Sz]);
-        if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]) || !BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]))
+        G2 res = new(stackalloc long[G2.Sz]);
+        if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]) ||
+            !BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]))
         {
             return IPrecompile.Failure;
         }
-        res.MapTo(inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span, inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span);
+
+        // map field point to G2
+        ReadOnlySpan<byte> fp0 = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
+        ReadOnlySpan<byte> fp1 = inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span;
+        res.MapTo(fp0, fp1);
+
         return (res.EncodeRaw(), true);
     }
 }

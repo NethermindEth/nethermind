@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -14,12 +13,11 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Test;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
-
-using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 class ShutterTestsCommon
@@ -63,7 +61,7 @@ class ShutterTestsCommon
         );
     }
 
-    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
+    public static ShutterApiSimulator InitApi(Random rnd, BaseEngineModuleTests.MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
         => new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,

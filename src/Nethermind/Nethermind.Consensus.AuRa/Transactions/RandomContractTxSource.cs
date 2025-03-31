@@ -32,6 +32,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ICryptoRandom _random;
         private readonly ILogger _logger;
 
+        public bool SupportsBlobs => false;
+
         public RandomContractTxSource(
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,

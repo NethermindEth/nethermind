@@ -52,6 +52,9 @@ namespace Nethermind.Core
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
+        private long _spentGas;
+        [JsonIgnore]
+        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public Memory<byte>? Data { get; set; }
@@ -197,7 +200,9 @@ namespace Nethermind.Core
         /// </summary>
         public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this, shouldCountBlobs);
+            return shouldCountBlobs
+              ? _size ??= sizeCalculator.GetLength(this, true)
+              : sizeCalculator.GetLength(this, false);
         }
 
         public string ToShortString()
