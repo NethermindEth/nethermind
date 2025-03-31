@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -93,7 +95,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
                 : Rlp.LengthOf(item.PostTransactionState);
         }
 
-        if (item.TxType == TxType.DepositTx && item is OptimismTxReceipt opItem)
+        if (item.IsOptimismTxReceipt(out var opItem))
         {
             if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
@@ -173,7 +175,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
             rlpStream.Encode(item.Logs[i]);
         }
 
-        if (item.TxType == TxType.DepositTx && item is OptimismTxReceipt opItem)
+        if (item.IsOptimismTxReceipt(out var opItem))
         {
             if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
@@ -190,5 +192,26 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
     TxReceipt IRlpStreamDecoder<TxReceipt>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         return Decode(rlpStream, rlpBehaviors);
+    }
+}
+
+internal static class TxReceiptExt
+{
+    internal static bool IsOptimismTxReceipt(this TxReceipt item, [NotNullWhen(true)] out OptimismTxReceipt? opItem)
+    {
+        opItem = null;
+
+        if (item.TxType != TxType.DepositTx)
+        {
+            return false;
+        }
+
+        if (item is not OptimismTxReceipt casted)
+        {
+            throw new InvalidCastException($"{nameof(TxReceipt)} of type {item.TxType} is not an instance of {nameof(OptimismTxReceipt)}");
+        }
+
+        opItem = casted;
+        return true;
     }
 }
