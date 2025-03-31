@@ -53,7 +53,8 @@ public class TransactionProcessorTests
     {
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        PreBlockCaches preBlockCaches = new();
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -235,7 +236,7 @@ public class TransactionProcessorTests
         Assert.That(result.Success, Is.True);
     }
 
-    [TestCase]
+    [Test]
     public void Balance_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
@@ -251,7 +252,7 @@ public class TransactionProcessorTests
         _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
     }
 
-    [TestCase]
+    [Test]
     public void Account_is_not_created_on_call_and_restore()
     {
         long gasLimit = 100000;
@@ -268,7 +269,7 @@ public class TransactionProcessorTests
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
     }
 
-    [TestCase]
+    [Test]
     public void Nonce_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
