@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -14,6 +15,8 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -101,6 +104,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                     StartDateTime = startDateTime,
                     CurrentBestBlock = currentBestBlock,
                     CurrrentBestBlockFees = currentBlockFees,
+                    BuildCount = 1,
                     CancellationTokenSource = cancellationTokenSource
                 };
                 return store;
@@ -124,6 +128,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                 }
               
                 store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource.Token);
+                store.BuildCount++;
                 currentContext.Dispose();
                 return store;
             });
@@ -272,9 +277,13 @@ public class PayloadPreparationService : IPayloadPreparationService
     {
         if (_payloadStorage.TryGetValue(payloadId, out PayloadStore store))
         {
-            ImproveBlock(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrrentBestBlockFees);
+            ImproveBlock(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrrentBestBlockFees, true);
         }
     }
+
+    // for testing
+    internal PayloadStore? GetPayloadStore(string payloadId)
+        => _payloadStorage.TryGetValue(payloadId, out PayloadStore store) ? store : null;
 }
 
 public struct PayloadStore
@@ -286,5 +295,6 @@ public struct PayloadStore
     public DateTimeOffset StartDateTime;
     public Block CurrentBestBlock;
     public UInt256 CurrrentBestBlockFees;
+    public uint BuildCount;
     public CancellationTokenSource CancellationTokenSource;
 }

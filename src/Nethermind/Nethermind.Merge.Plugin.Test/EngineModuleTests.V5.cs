@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -281,12 +282,7 @@ public partial class EngineModuleTests
     public async Task Can_force_rebuild_payload()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
-        var payloadPreparationService = chain.PayloadPreparationService!;
-
-        // Count calls to BlockImproved event
-        int blockImprovedCount = 0;
-        // todo: fix
-        // payloadPreparationService.BlockImproved += (sender, args) => blockImprovedCount++;
+        var payloadPreparationService = (PayloadPreparationService)chain.PayloadPreparationService!;
 
         BlockHeader parentHeader = chain.BlockTree.Head!.Header;
         PayloadAttributes payloadAttributes = new()
@@ -299,21 +295,21 @@ public partial class EngineModuleTests
         };
 
         string payloadId = payloadPreparationService.StartPreparingPayload(parentHeader, payloadAttributes)!;
-        var initialContext = await payloadPreparationService.GetPayload(payloadId);
+        var payloadStore = payloadPreparationService.GetPayloadStore(payloadId);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(initialContext, Is.Not.Null, "Initial payload context should not be null");
-            Assert.That(blockImprovedCount, Is.EqualTo(1));
+            Assert.That(payloadStore, Is.Not.Null, "Initial payload context should not be null");
+            Assert.That(payloadStore!.Value.BuildCount, Is.EqualTo(1));
         }
 
         payloadPreparationService.ForceRebuildPayload(payloadId);
-        var afterRebuildContext = await payloadPreparationService.GetPayload(payloadId);
+        payloadStore = payloadPreparationService.GetPayloadStore(payloadId);
 
         Assert.Multiple(() =>
         {
-            Assert.That(afterRebuildContext, Is.Not.Null, "Should be able to get the payload after rebuilding");
-            Assert.That(blockImprovedCount, Is.EqualTo(2), "Block improvement should be triggered after forcing rebuild");
+            Assert.That(payloadStore, Is.Not.Null, "Should be able to get the payload after rebuilding");
+            Assert.That(payloadStore!.Value.BuildCount, Is.EqualTo(2), "Block improvement should be triggered after forcing rebuild");
         });
     }
 
