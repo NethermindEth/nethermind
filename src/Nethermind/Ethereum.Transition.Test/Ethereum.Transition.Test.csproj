@@ -4,7 +4,7 @@
     <EnableNUnitRunner>true</EnableNUnitRunner>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-  
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="NUnit" />
@@ -15,7 +15,7 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\tests\BlockchainTests\TransitionTests\**\*.*">
+    <Content Include="..\..\tests\LegacyTests\Cancun\BlockchainTests\TransitionTests\**\*.*">
       <Link>Tests\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
