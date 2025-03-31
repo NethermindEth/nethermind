@@ -3,7 +3,6 @@
 
 using System;
 using System.Net.Http;
-using System.Runtime.CompilerServices;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
@@ -13,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;

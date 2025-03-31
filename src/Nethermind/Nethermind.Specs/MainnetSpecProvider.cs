@@ -26,11 +26,10 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
-    // todo: set this timestamp
-    public const ulong Fork7805BlockTimestamp = ulong.MaxValue - 3;
     //TODO correct this timestamp!
     public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
-    public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
+    public const ulong Fork7805BlockTimestamp = ulong.MaxValue - 1;
+    // public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
@@ -50,8 +49,8 @@ public class MainnetSpecProvider : ISpecProvider
             { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
-            // { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            { Timestamp: < Fork7805BlockTimestamp } => Cancun.Instance,
+            { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
+            { Timestamp: < Fork7805BlockTimestamp } => Prague.Instance,
             _ => Fork7805.Instance
         };
 
@@ -75,7 +74,8 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
-    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
+    // public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
+    public static ForkActivation Fork7805Activation { get; } = (ParisBlockNumber + 4, Fork7805BlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
@@ -93,6 +93,7 @@ public class MainnetSpecProvider : ISpecProvider
         ShanghaiActivation,
         CancunActivation,
         PragueActivation,
+        Fork7805Activation
         //OsakaActivation
     };
 
