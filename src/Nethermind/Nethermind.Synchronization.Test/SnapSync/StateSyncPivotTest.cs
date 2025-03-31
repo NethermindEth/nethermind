@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
@@ -38,6 +39,7 @@ public class StateSyncPivotTest
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,
             }, LimboLogs.Instance);
+        blockTree.SyncPivot = (syncPivot, Keccak.Zero);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(originalBestSuggested).TestObject);
         stateSyncPivot.GetPivotHeader().Should().NotBeNull();

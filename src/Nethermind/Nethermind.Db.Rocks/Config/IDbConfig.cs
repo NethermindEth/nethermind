@@ -32,6 +32,7 @@ public interface IDbConfig : IConfig
     bool? VerifyChecksum { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
+    bool FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -92,6 +93,10 @@ public interface IDbConfig : IConfig
     double StateDbCompressibilityHint { get; set; }
     string StateDbRocksDbOptions { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }
+
+
+    string L1OriginDbRocksDbOptions { get; set; }
+    string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
     string? LogIndexStorageDbRocksDbOptions { get; set; }
     string? LogIndexStorageDbAdditionalRocksDbOptions { get; set; }

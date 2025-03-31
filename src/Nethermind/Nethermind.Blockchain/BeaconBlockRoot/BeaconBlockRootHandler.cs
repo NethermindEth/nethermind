@@ -17,10 +17,12 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
     private const long GasLimit = 30_000_000L;
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
-        => BeaconRootsAccessList(block, spec).accessList;
+        => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
 
-    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
+    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = false)
     {
+        const int HistoryBufferLength = 8191;
+
         BlockHeader? header = block.Header;
         bool canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
                                   && !header.IsGenesis
@@ -40,7 +42,14 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
         if (includeStorageCells)
         {
-            builder.AddStorage(block.Timestamp % 8191);
+            // https://eips.ethereum.org/EIPS/eip-4788
+            // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH to be header.timestamp
+            ulong slotIndex = header.Timestamp % HistoryBufferLength;
+            UInt256 slot256 = slotIndex;
+            builder.AddStorage(in slot256);
+            // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH + HISTORY_BUFFER_LENGTH to be calldata[0:32]
+            slot256 = slotIndex + HistoryBufferLength;
+            builder.AddStorage(in slot256);
         }
 
         return (eip4788ContractAddress, builder.Build());

@@ -81,6 +81,7 @@ public class DbConfig : IDbConfig
     public bool? VerifyChecksum { get; set; } = true;
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
+    public bool FlushOnExit { get; set; } = true;
 
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -234,6 +235,10 @@ public class DbConfig : IDbConfig
 
         "";
     public string? StateDbAdditionalRocksDbOptions { get; set; }
+
+    public string L1OriginDbRocksDbOptions { get; set; } = "";
+
+    public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
     // TODO: cleanup & optimize settings
     public string? LogIndexStorageDbRocksDbOptions { get; set; } =

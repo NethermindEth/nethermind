@@ -61,11 +61,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     private long _maxThisDbSize;
 
-    protected IntPtr? _rowCache = null;
+    private IntPtr? _rowCache = null;
 
     private readonly DbSettings _settings;
 
-    protected readonly PerTableDbConfig _perTableDbConfig;
+    private readonly PerTableDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -490,7 +490,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 _logger.Debug(
                     $"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000} MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000} MB + {blockCacheSize / 1000 / 1000} MB)");
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
-            ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000} MB".PadLeft(8));
         }
 
         #endregion
@@ -1415,7 +1414,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             dbMetricsUpdater.Dispose();
         }
 
-        InnerFlush(false);
+        if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);
@@ -1700,6 +1699,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         private readonly ColumnFamilyHandle? _cf;
         private readonly ReadOptions? _readOptions;
         private readonly Timer _timer;
+        private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
@@ -1715,6 +1715,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         private void OnTimer(object? state)
         {
+            if (_isDisposed) return;
             _readaheadIterators.ClearIterators();
             _readaheadIterators2.ClearIterators();
             _readaheadIterators3.ClearIterators();
@@ -1722,6 +1723,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
             _timer.Dispose();
             _readaheadIterators.DisposeAll();
             _readaheadIterators2.DisposeAll();
@@ -1798,7 +1801,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             public void ClearIterators()
             {
                 if (_disposed) return;
-
+                if (Values is null) return;
                 foreach (IteratorHolder iterator in Values)
                 {
                     iterator.Dispose();

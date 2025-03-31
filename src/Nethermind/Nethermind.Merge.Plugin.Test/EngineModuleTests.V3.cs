@@ -280,7 +280,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
-        RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
@@ -885,14 +885,11 @@ public partial class EngineModuleTests
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
-        using SemaphoreSlim blockImprovementLock = new(0);
-        EventHandler<BlockEventArgs> onBlockImprovedHandler = (_, _) => blockImprovementLock.Release(1);
-        chain.PayloadPreparationService!.BlockImproved += onBlockImprovedHandler;
+        Task blockImprovementWait = chain.WaitForImprovedBlock();
 
         string payloadId = (await rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes)).Data.PayloadId!;
 
-        await blockImprovementLock.WaitAsync(10000);
-        chain.PayloadPreparationService!.BlockImproved -= onBlockImprovedHandler;
+        await blockImprovementWait;
 
         ResultWrapper<GetPayloadV3Result?> payloadResult = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
         Assert.That(payloadResult.Result, Is.EqualTo(Result.Success));
@@ -914,9 +911,9 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
         Transaction[] txs = [];
 
-        using SemaphoreSlim blockImprovementLock = new(0);
-        EventHandler<BlockEventArgs> onBlockImprovedHandler = (_, _) => blockImprovementLock.Release(1);
-        chain.PayloadPreparationService!.BlockImproved += onBlockImprovedHandler;
+        Task blockImprovementWait = transactionCount != 0
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
 
@@ -941,11 +938,7 @@ public partial class EngineModuleTests
             ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId
             : rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId;
 
-        if (transactionCount is not 0)
-        {
-            await blockImprovementLock.WaitAsync(10000);
-        }
-        chain.PayloadPreparationService!.BlockImproved -= onBlockImprovedHandler;
+        await blockImprovementWait;
 
         return (rpcModule, payloadId, txs, chain);
     }
