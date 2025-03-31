@@ -93,7 +93,8 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, bool force = false)
         => _payloadStorage.AddOrUpdate(payloadId,
-            id => {
+            id =>
+            {
                 CancellationTokenSource cancellationTokenSource = new();
                 PayloadStore store = new()
                 {
@@ -126,7 +127,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                         return store;
                     }
                 }
-              
+
                 store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource.Token);
                 store.BuildCount++;
                 currentContext.Dispose();
