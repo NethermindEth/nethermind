@@ -803,7 +803,8 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                     }
                     HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                    _dependencies.TryAdd(dependentBatch);
+                    //Simply ignore the batch if it has been added by another thread
+                    _dependencies.TryAdd(header.Number, dependentBatch);
                     MarkDirty();
                     if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
                     // but we cannot do anything with it yet
