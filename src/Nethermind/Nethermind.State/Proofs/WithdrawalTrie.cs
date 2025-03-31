@@ -18,7 +18,7 @@ public class WithdrawalTrie : PatriciaTrie<Withdrawal>
     /// <inheritdoc/>
     /// <param name="withdrawals">The withdrawals to build the trie of.</param>
     public WithdrawalTrie(ReadOnlySpan<Withdrawal> withdrawals, bool canBuildProof = false)
-        : base(withdrawals, canBuildProof) {}
+        : base(withdrawals, canBuildProof) { }
 
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
