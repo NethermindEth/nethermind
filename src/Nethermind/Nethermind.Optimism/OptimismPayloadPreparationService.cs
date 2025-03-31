@@ -27,7 +27,6 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
-        ulong chainId,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
         TimeSpan? improvementDelay = null)
         : base(
@@ -36,7 +35,6 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             timerFactory,
             logManager,
             timePerSlot,
-            chainId,
             slotsPerOldPayloadCleanup,
             improvementDelay)
     {

@@ -78,8 +78,7 @@ public class OptimismPayloadPreparationServiceTests
             blockImprovementContextFactory: NoBlockImprovementContextFactory.Instance,
             timePerSlot: TimeSpan.FromSeconds(1),
             timerFactory: Substitute.For<ITimerFactory>(),
-            logManager: TestLogManager.Instance,
-            chainId: specProvider.ChainId
+            logManager: TestLogManager.Instance
         );
 
         testCase.Attributes.PrevRandao = Hash256.Zero;

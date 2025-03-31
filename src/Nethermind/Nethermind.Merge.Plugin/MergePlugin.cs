@@ -309,8 +309,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 improvementContextFactory,
                 _api.TimerFactory,
                 _api.LogManager,
-                TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot),
-                _api.SpecProvider.ChainId);
+                TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 

@@ -11,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -42,7 +41,6 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
-    private readonly IEthereumEcdsa _ecdsa;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, PayloadStore> _payloadStorage = new();
@@ -53,14 +51,12 @@ public class PayloadPreparationService : IPayloadPreparationService
         ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
-        ulong chainId,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
         TimeSpan? improvementDelay = null)
     {
         _blockProducer = blockProducer;
         _blockImprovementContextFactory = blockImprovementContextFactory;
         _timePerSlot = timePerSlot;
-        _ecdsa = new EthereumEcdsa(chainId);
         TimeSpan timeout = timePerSlot;
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
