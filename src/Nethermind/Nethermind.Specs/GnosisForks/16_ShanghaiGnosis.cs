@@ -7,19 +7,19 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.GnosisForks;
 
-public class LondonGnosis : London
+public class ShanghaiGnosis : Shanghai
 {
     private static IReleaseSpec? _instance;
 
-    private LondonGnosis()
+    private ShanghaiGnosis()
     {
         ToGnosisFork(this);
     }
 
-    public static void ToGnosisFork(London spec)
+    public static void ToGnosisFork(Shanghai spec)
     {
-        spec.FeeCollector = GnosisSpecProvider.FeeCollector;
+        LondonGnosis.ToGnosisFork(spec);
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new LondonGnosis());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new ShanghaiGnosis());
 }
