@@ -254,9 +254,14 @@ namespace Nethermind.Serialization.Rlp
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
+            return Decode<T>(rlpStream, rlpDecoder, rlpBehaviors);
+        }
+        public static T Decode<T>(RlpStream rlpStream, IRlpStreamDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            ArgumentNullException.ThrowIfNull(rlpDecoder, nameof(rlpDecoder));
             bool shouldCheckStream = rlpStream.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
             int length = rlpStream.Length;
-            T? result = rlpDecoder is not null ? rlpDecoder.Decode(rlpStream, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            T? result = rlpDecoder.Decode(rlpStream, rlpBehaviors);
             if (shouldCheckStream)
                 rlpStream.Check(length);
             return result;
