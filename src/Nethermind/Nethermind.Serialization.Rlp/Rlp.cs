@@ -466,16 +466,13 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                // For length >= 56, we need to encode the length itself (Big-Endian) and prepend a prefix
-                Span<byte> lengthBuffer = stackalloc byte[4]; // Enough for 32-bit lengths
-                int lengthOfLength = SerializeLength(length, lengthBuffer);
+                int lengthOfLength = LengthOfLength(length);
                 // Total size = 1 prefix byte + lengthOfLength + data length
                 int totalSize = 1 + lengthOfLength + length;
                 byte[] rlpResult = GC.AllocateUninitializedArray<byte>(totalSize);
                 // Prefix: 0xb7 (183) + number of bytes in length
                 rlpResult[0] = (byte)(0xb7 + lengthOfLength);
-                // Then copy length bytes
-                lengthBuffer[..lengthOfLength].CopyTo(rlpResult.AsSpan(1));
+                SerializeLength(length, rlpResult.AsSpan(1, lengthOfLength));
                 // Finally copy the actual input
                 input.CopyTo(rlpResult.AsSpan(1 + lengthOfLength));
                 return new Rlp(rlpResult);
@@ -573,7 +570,6 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += sequence[i].Length;
             }
 
-            Span<byte> lengthBuffer = stackalloc byte[4];
             int lengthOfLength = 0;
             byte prefix;
 
@@ -584,8 +580,8 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                lengthOfLength = LengthOfLength(contentLength);
                 // Multi-byte prefix: 0xf7 + lengthOfLength
-                lengthOfLength = SerializeLength(contentLength, lengthBuffer);
                 prefix = (byte)(0xf7 + lengthOfLength);
             }
 
@@ -598,7 +594,7 @@ namespace Nethermind.Serialization.Rlp
             int offset = 1;
             if (lengthOfLength > 0)
             {
-                lengthBuffer[..lengthOfLength].CopyTo(allBytes.AsSpan(offset));
+                SerializeLength(contentLength, allBytes.AsSpan(offset, lengthOfLength));
                 offset += lengthOfLength;
             }
 
