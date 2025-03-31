@@ -43,7 +43,6 @@ public sealed class SimulateOptimismTransactionProcessor(
     }
 }
 
-
 public sealed class SimulateOptimismTransactionProcessorFactory(
     IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper
