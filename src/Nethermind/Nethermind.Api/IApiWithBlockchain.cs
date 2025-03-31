@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -18,7 +17,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Era1;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
@@ -46,10 +44,6 @@ namespace Nethermind.Api
         IHeaderValidator? HeaderValidator { get; set; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        /// <summary>
-        /// PoS switcher for The Merge
-        /// </summary>
-        IPoSSwitcher PoSSwitcher { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
@@ -79,8 +73,6 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IGasLimitCalculator? GasLimitCalculator { get; set; }
-
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
 
@@ -92,15 +84,5 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
-
-        [SkipServiceCollection]
-        IAdminEraService AdminEraService { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromApiWithStores(builder)
-                .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(MainNodeStorage!);
-        }
     }
 }

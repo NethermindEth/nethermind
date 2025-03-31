@@ -79,4 +79,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
+    int DirtyNodeShardBit { get; set; }
 }

@@ -110,6 +110,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             {
                 pruningConfig.CacheMb = 8;
                 pruningConfig.DirtyCacheMb = 4;
+                pruningConfig.DirtyNodeShardBit = 1;
                 return pruningConfig;
             })
             ;

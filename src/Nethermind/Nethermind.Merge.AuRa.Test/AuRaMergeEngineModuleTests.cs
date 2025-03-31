@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
@@ -124,21 +126,30 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {
-            _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
-                    new ChainSpec
-                    {
-                        EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
-                            new AuRaChainSpecEngineParameters
-                            {
-                                WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                            }),
-                        Parameters = new()
-                    })
+            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+                new ConfigProvider(),
+                new EthereumJsonSerializer(),
+                LogManager,
+                new ChainSpec
+                {
+                    EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                        new AuRaChainSpecEngineParameters
+                        {
+                            WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                        }),
+                    Parameters = new()
+                },
+                SpecProvider,
+                [],
+                Substitute.For<IProcessExitSource>(),
+                Substitute.For<IContainer>()
+            );
+
+            _api = new(apiDependencies)
             {
                 BlockTree = BlockTree,
                 DbProvider = DbProvider,
                 WorldStateManager = WorldStateManager,
-                SpecProvider = SpecProvider,
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
             };
@@ -207,7 +218,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                CreateBlockImprovementContextFactory(PostMergeBlockProducer),
+                StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(CreateBlockImprovementContextFactory(PostMergeBlockProducer)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),

@@ -352,15 +352,9 @@ public partial class EngineModuleTests
         Withdrawal[]? withdrawals,
         bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
-
-        if (waitForBlockImprovement)
-        {
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
-        }
+        Task blockImprovementWait = waitForBlockImprovement
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
         PayloadAttributes payloadAttributes = new PayloadAttributes
@@ -375,8 +369,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result;
         string? payloadId = result.Data.PayloadId;
 
-        if (waitForBlockImprovement)
-            await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
 
         ResultWrapper<GetPayloadV4Result?> getPayloadResult =
             await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));

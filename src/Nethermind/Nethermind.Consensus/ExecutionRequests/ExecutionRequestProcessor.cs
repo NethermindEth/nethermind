@@ -54,7 +54,21 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
     }
 
-    public void ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled || block.IsGenesis)
+            return;
+
+        using ArrayPoolList<byte[]> requests = new(3);
+
+        ProcessDeposits(receipts, spec, requests);
+        ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
+        ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
+        block.ExecutionRequests = requests.ToArray();
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+    }
+
+    private void ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
     {
         if (!spec.DepositsEnabled)
             return;
@@ -137,19 +151,5 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         buffer[0] = isWithdrawalRequests ? (byte)ExecutionRequestType.WithdrawalRequest : (byte)ExecutionRequestType.ConsolidationRequest;
         tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.Slice(1));
         requests.Add(buffer.ToArray());
-    }
-
-    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
-    {
-        if (!spec.RequestsEnabled)
-            return;
-
-        using ArrayPoolList<byte[]> requests = new(3);
-
-        ProcessDeposits(receipts, spec, requests);
-        ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
-        ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
-        block.ExecutionRequests = requests.ToArray();
-        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 }

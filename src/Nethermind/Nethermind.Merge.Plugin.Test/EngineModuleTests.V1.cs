@@ -1553,21 +1553,15 @@ public partial class EngineModuleTests
         Hash256 safeBlockHash,
         ulong timestamp, Hash256 random, Address feeRecipient, bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        if (waitForBlockImprovement)
-        {
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
-        }
+        Task blockImprovementWait = waitForBlockImprovement
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
         string payloadId = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
-        if (waitForBlockImprovement)
-            await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
         ResultWrapper<ExecutionPayload?> getPayloadResult =
             await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
         return getPayloadResult.Data!;

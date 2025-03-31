@@ -1095,7 +1095,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"Invalid\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"Invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
 
     [Test]
