@@ -39,6 +39,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -117,10 +118,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             _additionalTxSource = additionalTxSource;
         }
 
-        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
         {
             if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
-            return base.Build(specProvider, initialValues, addBlockOnStart);
+            return base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
         }
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
