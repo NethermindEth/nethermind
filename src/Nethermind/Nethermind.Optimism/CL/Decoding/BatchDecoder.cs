@@ -5,89 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-// TODO: maybe we should avoid using Rlp library at all?
-// TODO: Split into singular and span decoders
 public static class BatchDecoder
 {
-    public static BatchV0 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        // TODO: not tested, do we need this?
-        // TODO: proper error handling
-        byte versionByte = decoderContext.ReadByte(); // This should be done outside
-        if (versionByte != 0)
-        {
-            throw new FormatException("Invalid batch version.");
-        }
-        int length = decoderContext.ReadSequenceLength();
-        int batchCheck = length + decoderContext.Position;
-        Hash256? parentHash = decoderContext.DecodeKeccak();
-        ArgumentNullException.ThrowIfNull(parentHash);
-        ulong epochNumber = decoderContext.DecodeULong();
-        Hash256? epochHash = decoderContext.DecodeKeccak();
-        ArgumentNullException.ThrowIfNull(epochHash);
-        ulong timestamp = decoderContext.DecodeULong();
-        int transactionListLenght = decoderContext.ReadSequenceLength();
-        List<byte[]> transactionList = new();
-        while (decoderContext.Position < transactionListLenght)
-        {
-            transactionList.Add(decoderContext.DecodeByteArray());
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(batchCheck);
-        }
-
-        return new()
-        {
-            ParentHash = parentHash,
-            EpochNumber = epochNumber,
-            EpochHash = epochHash,
-            Timestamp = timestamp,
-            Transactions = transactionList.ToArray()
-        };
-    }
-
-    public static BatchV0 Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        // TODO: implement singular batch
-
-        int length = rlpStream.ReadSequenceLength();
-        int batchCheck = length + rlpStream.Position;
-        Hash256? parentHash = rlpStream.DecodeKeccak();
-        ArgumentNullException.ThrowIfNull(parentHash);
-        ulong epochNumber = rlpStream.DecodeULong();
-        Hash256? epochHash = rlpStream.DecodeKeccak();
-        ArgumentNullException.ThrowIfNull(epochHash);
-        ulong timestamp = rlpStream.DecodeULong();
-        int transactionListLenght = rlpStream.ReadSequenceLength();
-        List<byte[]> transactionList = new();
-        while (rlpStream.Position < transactionListLenght)
-        {
-            transactionList.Add(rlpStream.DecodeByteArray());
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(batchCheck);
-        }
-
-        return new()
-        {
-            ParentHash = parentHash,
-            EpochNumber = epochNumber,
-            EpochHash = epochHash,
-            Timestamp = timestamp,
-            Transactions = transactionList.ToArray()
-        };
-    }
-
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
         var parser = new BinaryMemoryReader(source);
