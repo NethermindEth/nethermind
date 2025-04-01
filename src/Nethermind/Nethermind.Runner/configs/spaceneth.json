@@ -53,5 +53,8 @@
   },
   "Metrics": {
     "NodeName": "Spaceneth"
+  },
+  "Merge": {
+    "Enabled": false
   }
 }

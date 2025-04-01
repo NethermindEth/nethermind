@@ -39,6 +39,7 @@ public class InitializeBlockchainOptimism(
     {
         api.SpecHelper = new(_chainSpecParameters);
         api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
+        api.SimulateTransactionProcessorFactory = new SimulateOptimismTransactionProcessorFactory(api.L1CostHelper, api.SpecHelper);
 
         await base.InitBlockchain();
 

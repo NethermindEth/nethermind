@@ -187,7 +187,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ulong lastKnown = (ulong)latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
+            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
