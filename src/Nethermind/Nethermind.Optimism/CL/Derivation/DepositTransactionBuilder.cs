@@ -167,49 +167,6 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
 
         throw new ArgumentException($"Unknown log event version: {version}");
     }
-
-    public Transaction[] BuildUpgradeTransactions()
-    {
-        return [];
-    }
-
-    public List<Transaction> BuildForceIncludeTransactions(UInt64 sequenceNumber, BlockForRpc block)
-    {
-        static Hash256 ComputeSourceHash(UInt64 sequenceNumber, Hash256 l1BlockHash)
-        {
-            Span<byte> buffer = stackalloc byte[32 * 2];
-            Span<byte> span = buffer;
-
-            l1BlockHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
-            span.TakeAndMove(32 - 8); // skip 24 bytes
-            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), sequenceNumber);
-            var depositIdHash = Keccak.Compute(buffer);
-
-            buffer.Clear();
-            span = buffer;
-
-            span.TakeAndMove(32 - 8); // skip 24 bytes
-            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), (ulong)DepositEvent.SourceDomain.AfterForceInclude);
-            depositIdHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
-
-            return Keccak.Compute(buffer);
-        }
-
-        var sourceHash = ComputeSourceHash(sequenceNumber, block.Hash);
-        var transaction = new Transaction
-        {
-            Type = TxType.DepositTx,
-            SourceHash = sourceHash,
-            SenderAddress = engineParameters.SystemTransactionSender,
-            To = engineParameters.SystemTransactionTo,
-            Value = 0,
-            GasLimit = (long)_L1BlockInfo.DepositsCompleteGas,
-            IsOPSystemTransaction = false,
-            Data = _L1BlockInfo.DepositsCompleteBytes4
-        };
-
-        return [transaction];
-    }
 }
 
 public readonly ref struct DepositLogEventV0

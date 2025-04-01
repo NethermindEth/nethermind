@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 

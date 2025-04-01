@@ -719,35 +719,4 @@ public class DepositTransactionBuilderTest
         depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
         depositTransactions[1].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data?.ToArray());
     }
-
-    [Test]
-    public void DeriveForceInclude_ValidTransaction()
-    {
-        var block = new BlockForRpc
-        {
-            Hash = SomeHash,
-        };
-        UInt64 sequenceNumber = 1;
-
-        CLChainSpecEngineParameters parameters = new();
-
-        Transaction expected = Build.A.Transaction
-            .WithType(TxType.DepositTx)
-            .WithData([.. _L1BlockInfo.DepositsCompleteBytes4])
-            .WithGasLimit((long)_L1BlockInfo.DepositsCompleteGas)
-            .WithIsOPSystemTransaction(false)
-            .WithValue(0)
-            .WithSenderAddress(_engineParameters.SystemTransactionSender)
-            .WithTo(_engineParameters.SystemTransactionTo)
-            .WithSourceHash(new Hash256("0x8333470612313bc4af4bd0af552a34e4470f7cb1c725e81ef09149129f531914"))
-            .WithGasPrice(0)
-            .WithMaxPriorityFeePerGas(0)
-            .TestObject;
-
-        List<Transaction> txs = _builder.BuildForceIncludeTransactions(sequenceNumber, block);
-
-        txs.Count.Should().Be(1);
-        txs[0].Should().BeEquivalentTo(expected, config => config.Excluding(x => x.Data));
-        txs[0].Data?.ToArray().Should().BeEquivalentTo(expected.Data?.ToArray());
-    }
 }
