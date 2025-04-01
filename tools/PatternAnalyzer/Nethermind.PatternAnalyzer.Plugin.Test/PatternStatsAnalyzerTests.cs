@@ -6,23 +6,23 @@ using NUnit.Framework;
 namespace Nethermind.PatternAnalyzer.Plugin.Test;
 
 [TestFixture]
-public class StatsAnalyzerTests
+public class PatternStatsAnalyzerTests
 {
     [SetUp]
     public void SetUp()
     {
         var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
-        _statsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
+        _patternStatsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
         var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
-        _statsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
+        _patternStatsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
             .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
     }
 
-    private StatsAnalyzer _statsAnalyzer;
-    private StatsAnalyzer _statsAnalyzerIgnore;
+    private PatternStatsAnalyzer _patternStatsAnalyzer;
+    private PatternStatsAnalyzer _patternStatsAnalyzerIgnore;
     private HashSet<Instruction> _ignoreSet = new() { Instruction.JUMPDEST, Instruction.JUMP };
 
     public static IEnumerable<TestCaseData> StatsTestCases
@@ -197,9 +197,9 @@ public class StatsAnalyzerTests
             counts[ngram.Ulong0] = (ulong)expected.count;
         }
 
-        _statsAnalyzer.Add(executionOpCodes);
+        _patternStatsAnalyzer.Add(executionOpCodes);
 
-        foreach (var stat in _statsAnalyzer.Stats)
+        foreach (var stat in _patternStatsAnalyzer.Stats)
         {
             var ulong0 = stat.Ngram.Ulong0;
             Assert.That(counts[ulong0] == stat.Count);

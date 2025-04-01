@@ -3,9 +3,9 @@
 
 using System.Text.Json.Serialization;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer.Pattern;
 
-[JsonConverter(typeof(OpcodeStatsTraceConvertor))]
+[JsonConverter(typeof(PatternStatsTraceConvertor))]
 public class PatternAnalyzerTxTrace
 {
     [JsonPropertyName("initialBlockNumber")]

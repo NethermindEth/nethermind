@@ -1,11 +1,10 @@
 using Nethermind.Core.Resettables;
-using Nethermind.Evm;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-public sealed class StatsProcessingQueue(
-    DisposableResettableList<Instruction> buffer,
-    StatsAnalyzer statsAnalyzer,
+public sealed class StatsProcessingQueue<T>(
+    DisposableResettableList<T> buffer,
+    StatsAnalyzer<T> statsAnalyzer,
     CancellationToken ct)
     : IDisposable
 {
@@ -17,7 +16,7 @@ public sealed class StatsProcessingQueue(
         GC.SuppressFinalize(this);
     }
 
-    public void Enqueue(Instruction item)
+    public void Enqueue(T item)
     {
         buffer.Add(item);
     }

@@ -33,7 +33,7 @@ public interface IPatternAnalyzerConfig : IConfig
 
     [ConfigItem(
         Description = "Sets the sort order of the stats produced",
-        DefaultValue = "unordered")]
+        DefaultValue = "ascending")]
     string Sort { get; set; }
 
     [ConfigItem(Description = "Sets the size of the queue used to gather instructions per block")]

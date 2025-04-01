@@ -2,31 +2,28 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer.Pattern;
 
 public sealed class PatternAnalyzerTxTracer : TxTracer
 {
     private readonly DisposableResettableList<Instruction> _buffer;
     private readonly CancellationToken _ct;
     private readonly HashSet<Instruction> _ignoreSet;
+    private readonly PatternStatsAnalyzer _patternStatsAnalyzer;
     private readonly SortOrder _sort;
-    private readonly StatsAnalyzer _statsAnalyzer;
-    private McsLock _processingLock;
-    private StatsProcessingQueue? _queue;
+    private StatsProcessingQueue<Instruction>? _queue;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
-        int size, McsLock processingLock, StatsAnalyzer statsAnalyzer, SortOrder sort, CancellationToken ct)
+        PatternStatsAnalyzer patternStatsAnalyzer, SortOrder sort, CancellationToken ct)
     {
         _ignoreSet = ignoreSet;
-        _statsAnalyzer = statsAnalyzer;
-        _processingLock = processingLock;
+        _patternStatsAnalyzer = patternStatsAnalyzer;
         _buffer = buffer;
-        _queue = new StatsProcessingQueue(buffer, (StatsAnalyzer)statsAnalyzer, ct);
+        _queue = new StatsProcessingQueue<Instruction>(buffer, (PatternStatsAnalyzer)patternStatsAnalyzer, ct);
         _ct = ct;
         _sort = sort;
         IsTracingInstructions = true;
@@ -43,7 +40,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new StatsProcessingQueue(_buffer, _statsAnalyzer, _ct);
+            _queue = new StatsProcessingQueue<Instruction>(_buffer, _patternStatsAnalyzer, _ct);
             q?.Dispose();
         }
     }
@@ -52,12 +49,12 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
     {
         DisposeQueue();
         PatternAnalyzerTxTrace trace = new();
-        trace.Confidence = _statsAnalyzer.Confidence;
-        trace.ErrorPerItem = _statsAnalyzer.Error;
-        var stats = _statsAnalyzer.Stats;
-        if (_sort == SortOrder.Ascending) stats = _statsAnalyzer.StatsAscending;
+        trace.Confidence = _patternStatsAnalyzer.Confidence;
+        trace.ErrorPerItem = _patternStatsAnalyzer.Error;
+        var stats = _patternStatsAnalyzer.Stats;
+        if (_sort == SortOrder.Ascending) stats = _patternStatsAnalyzer.StatsAscending;
 
-        foreach (var stat in _statsAnalyzer.Stats)
+        foreach (var stat in _patternStatsAnalyzer.Stats)
         {
             var entry = new PatternAnalyzerTraceEntry
             {

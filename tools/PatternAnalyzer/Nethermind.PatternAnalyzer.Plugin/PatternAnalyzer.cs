@@ -3,13 +3,19 @@
 
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core;
+using Nethermind.Core.Resettables;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 using Nethermind.PatternAnalyzer.Plugin.Tracer;
+using Nethermind.PatternAnalyzer.Plugin.Tracer.Call;
+using Nethermind.PatternAnalyzer.Plugin.Tracer.Pattern;
 
 namespace Nethermind.PatternAnalyzer.Plugin;
 
-public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INethermindPlugin
+public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig, ICallAnalyzerConfig callAnalyzerConfig)
+    : INethermindPlugin
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private INethermindApi _api = null!;
@@ -19,7 +25,7 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
 
-    public bool Enabled => patternAnalyzerConfig.Enabled;
+    public bool Enabled => patternAnalyzerConfig.Enabled || callAnalyzerConfig.Enabled;
 
     public Task Init(INethermindApi nethermindApi)
     {
@@ -35,15 +41,17 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
         {
             if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
 
-            // Setup tracing
-            var analyzer = new StatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
-            PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(patternAnalyzerConfig.ProcessingQueueSize,
-                patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),
-                _api.FileSystem, _logger,
-                patternAnalyzerConfig.WriteFrequency, ProcessingModeParser.Parse(patternAnalyzerConfig.ProcessingMode),
-                SortOrderParser.Parse(patternAnalyzerConfig.Sort),
-                patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
-            _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
+            if (patternAnalyzerConfig.Enabled) SetupPatternAnalyzer();
+            if (callAnalyzerConfig.Enabled) SetupCallAnalyzer();
+            //// Setup tracing
+            //var analyzer = new PatternStatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
+            //PatternAnalyzerFileTracer patternAnalyzerFileTracer = (new(), patternAnalyzerConfig.ProcessingQueueSize,
+            //    patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),
+            //    _api.FileSystem, _logger,
+            //    patternAnalyzerConfig.WriteFrequency, ProcessingModeParser.Parse(patternAnalyzerConfig.ProcessingMode),
+            //    SortOrderParser.Parse(patternAnalyzerConfig.Sort),
+            //    patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
+            //_api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
         }
 
         return Task.CompletedTask;
@@ -54,5 +62,37 @@ public class PatternAnalyzer(IPatternAnalyzerConfig patternAnalyzerConfig) : INe
         _cancellationTokenSource.Cancel();
         _cancellationTokenSource.Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    private void SetupCallAnalyzer()
+    {
+        if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
+
+        // Setup tracing
+        var analyzer = new CallStatsAnalyzer(callAnalyzerConfig.TopN);
+        CallAnalyzerFileTracer callAnalyzerFileTracer = new(new DisposableResettableList<Address>(),
+            callAnalyzerConfig.ProcessingQueueSize,
+            analyzer,
+            _api.FileSystem, _logger,
+            callAnalyzerConfig.WriteFrequency, ProcessingModeParser.Parse(callAnalyzerConfig.ProcessingMode),
+            SortOrderParser.Parse(callAnalyzerConfig.Sort),
+            callAnalyzerConfig.File!, _cancellationTokenSource.Token);
+        _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(callAnalyzerFileTracer);
+    }
+
+    private void SetupPatternAnalyzer()
+    {
+        if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
+
+        // Setup tracing
+        var analyzer = new PatternStatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
+        PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(new DisposableResettableList<Instruction>(),
+            patternAnalyzerConfig.ProcessingQueueSize,
+            patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),
+            _api.FileSystem, _logger,
+            patternAnalyzerConfig.WriteFrequency, ProcessingModeParser.Parse(patternAnalyzerConfig.ProcessingMode),
+            SortOrderParser.Parse(patternAnalyzerConfig.Sort),
+            patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
+        _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
     }
 }

@@ -1,9 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer.Pattern;
 
-public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
+public class PatternStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
 {
     public override PatternAnalyzerTxTrace Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)

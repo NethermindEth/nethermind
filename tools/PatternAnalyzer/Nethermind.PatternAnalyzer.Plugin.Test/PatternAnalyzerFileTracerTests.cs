@@ -4,12 +4,14 @@
 using System.Collections.Generic;
 using System.IO.Abstractions.TestingHelpers;
 using System.Threading;
+using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 using Nethermind.PatternAnalyzer.Plugin.Tracer;
+using Nethermind.PatternAnalyzer.Plugin.Tracer.Pattern;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -20,9 +22,9 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
 {
     private MockFileSystem _fileSystem;
     private ILogger _logger;
-    private StatsAnalyzer _statsAnalyzer;
+    private PatternStatsAnalyzer _patternStatsAnalyzer;
     private PatternAnalyzerFileTracer _tracer;
-    private StatsAnalyzer _statsAnalyzerIgnore;
+    private PatternStatsAnalyzer _patternStatsAnalyzerIgnore;
     private PatternAnalyzerFileTracer _tracerIgnore;
     private string _testFileName;
     private string _testIgnoreFileName;
@@ -43,16 +45,19 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         _logger = logManager.GetClassLogger();
 
         var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
-        _statsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
+        _patternStatsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
         var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
-        _statsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
+        _patternStatsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
+            .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
 
-        _tracer = new PatternAnalyzerFileTracer(1, 100, _statsAnalyzer, new HashSet<Instruction>(), _fileSystem,
+        _tracer = new PatternAnalyzerFileTracer(new DisposableResettableList<Instruction>(), 1, 100,
+            _patternStatsAnalyzer, new HashSet<Instruction>(), _fileSystem,
             _logger, 1, ProcessingMode.Sequential, SortOrder.Descending, _testFileName, CancellationToken.None);
-        _tracerIgnore = new PatternAnalyzerFileTracer(1, 100, _statsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
+        _tracerIgnore = new PatternAnalyzerFileTracer(new DisposableResettableList<Instruction>(), 1, 100,
+            _patternStatsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
             ProcessingMode.Sequential,
             SortOrder.Descending, _testIgnoreFileName, CancellationToken.None);
     }
@@ -217,6 +222,5 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             }, // error doubles as N doubles
             """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":1.338,"confidence":0.9375,"stats":[{"pattern":"JUMPDEST PUSH1","bytes":[91,96],"count":20},{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":11},{"pattern":"SSTORE JUMPDEST","bytes":[85,91],"count":10},{"pattern":"PUSH1 SSTORE JUMPDEST","bytes":[96,85,91],"count":10},{"pattern":"JUMPDEST PUSH1 SSTORE JUMPDEST","bytes":[91,96,85,91],"count":10},{"pattern":"SSTORE JUMPDEST PUSH1","bytes":[85,91,96],"count":10},{"pattern":"PUSH1 SSTORE JUMPDEST PUSH1","bytes":[96,85,91,96],"count":10},{"pattern":"PUSH1 SSTORE JUMPDEST PUSH1 PUSH1 SLOAD","bytes":[96,85,91,96,96,84],"count":10},{"pattern":"JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1 PUSH1 SLOAD","bytes":[91,96,85,91,96,96,84],"count":10},{"pattern":"SLOAD SUB","bytes":[84,3],"count":10},{"pattern":"PUSH1 SLOAD SUB","bytes":[96,84,3],"count":10},{"pattern":"PUSH1 PUSH1 SLOAD SUB","bytes":[96,96,84,3],"count":10},{"pattern":"JUMPDEST PUSH1 PUSH1 SLOAD SUB","bytes":[91,96,96,84,3],"count":10},{"pattern":"SSTORE JUMPDEST PUSH1 PUSH1 SLOAD SUB","bytes":[85,91,96,96,84,3],"count":10},{"pattern":"PUSH1 SSTORE JUMPDEST PUSH1 PUSH1 SLOAD SUB","bytes":[96,85,91,96,96,84,3],"count":10},{"pattern":"SUB DUP1","bytes":[3,128],"count":10},{"pattern":"SLOAD SUB DUP1","bytes":[84,3,128],"count":10},{"pattern":"PUSH1 SLOAD SUB DUP1","bytes":[96,84,3,128],"count":10},{"pattern":"PUSH1 PUSH1 SLOAD SUB DUP1","bytes":[96,96,84,3,128],"count":10},{"pattern":"JUMPDEST PUSH1 PUSH1 SLOAD SUB DUP1","bytes":[91,96,96,84,3,128],"count":10},{"pattern":"SSTORE JUMPDEST PUSH1 PUSH1 SLOAD SUB DUP1","bytes":[85,91,96,96,84,3,128],"count":10},{"pattern":"DUP1 PUSH1","bytes":[128,96],"count":10},{"pattern":"SUB DUP1 PUSH1","bytes":[3,128,96],"count":10},{"pattern":"SLOAD SUB DUP1 PUSH1","bytes":[84,3,128,96],"count":10},{"pattern":"PUSH1 SLOAD SUB DUP1 PUSH1","bytes":[96,84,3,128,96],"count":10},{"pattern":"PUSH1 PUSH1 SLOAD SUB DUP1 PUSH1","bytes":[96,96,84,3,128,96],"count":10},{"pattern":"JUMPDEST PUSH1 PUSH1 SLOAD SUB DUP1 PUSH1","bytes":[91,96,96,84,3,128,96],"count":10},{"pattern":"PUSH1 JUMPI","bytes":[96,87],"count":10},{"pattern":"DUP1 PUSH1 JUMPI","bytes":[128,96,87],"count":10},{"pattern":"SUB DUP1 PUSH1 JUMPI","bytes":[3,128,96,87],"count":10},{"pattern":"SLOAD SUB DUP1 PUSH1 JUMPI","bytes":[84,3,128,96,87],"count":10},{"pattern":"PUSH1 SLOAD SUB DUP1 PUSH1 JUMPI","bytes":[96,84,3,128,96,87],"count":10},{"pattern":"PUSH1 PUSH1 SLOAD SUB DUP1 PUSH1 JUMPI","bytes":[96,96,84,3,128,96,87],"count":10},{"pattern":"JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1","bytes":[91,96,85,91,96],"count":10},{"pattern":"PUSH1 SSTORE","bytes":[96,85],"count":10},{"pattern":"JUMPDEST PUSH1 PUSH1","bytes":[91,96,96],"count":10},{"pattern":"SSTORE JUMPDEST PUSH1 PUSH1","bytes":[85,91,96,96],"count":10},{"pattern":"PUSH1 SSTORE JUMPDEST PUSH1 PUSH1","bytes":[96,85,91,96,96],"count":10},{"pattern":"JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1 PUSH1","bytes":[91,96,85,91,96,96],"count":10},{"pattern":"JUMPDEST PUSH1 SSTORE","bytes":[91,96,85],"count":10},{"pattern":"PUSH1 SLOAD","bytes":[96,84],"count":10},{"pattern":"PUSH1 PUSH1 SLOAD","bytes":[96,96,84],"count":10},{"pattern":"JUMPDEST PUSH1 PUSH1 SLOAD","bytes":[91,96,96,84],"count":10},{"pattern":"SSTORE JUMPDEST PUSH1 PUSH1 SLOAD","bytes":[85,91,96,96,84],"count":10},{"pattern":"JUMPI JUMPDEST","bytes":[87,91],"count":9},{"pattern":"SUB DUP1 PUSH1 JUMPI JUMPDEST","bytes":[3,128,96,87,91],"count":9},{"pattern":"PUSH1 JUMPI JUMPDEST PUSH1","bytes":[96,87,91,96],"count":9},{"pattern":"JUMPI JUMPDEST PUSH1 SSTORE","bytes":[87,91,96,85],"count":9},{"pattern":"JUMPI JUMPDEST PUSH1 SSTORE JUMPDEST","bytes":[87,91,96,85,91],"count":9},{"pattern":"PUSH1 JUMPI JUMPDEST","bytes":[96,87,91],"count":9},{"pattern":"DUP1 PUSH1 JUMPI JUMPDEST","bytes":[128,96,87,91],"count":9},{"pattern":"SLOAD SUB DUP1 PUSH1 JUMPI JUMPDEST","bytes":[84,3,128,96,87,91],"count":9},{"pattern":"PUSH1 SLOAD SUB DUP1 PUSH1 JUMPI JUMPDEST","bytes":[96,84,3,128,96,87,91],"count":9},{"pattern":"JUMPI JUMPDEST PUSH1","bytes":[87,91,96],"count":9},{"pattern":"DUP1 PUSH1 JUMPI JUMPDEST PUSH1","bytes":[128,96,87,91,96],"count":9},{"pattern":"SUB DUP1 PUSH1 JUMPI JUMPDEST PUSH1","bytes":[3,128,96,87,91,96],"count":9},{"pattern":"SLOAD SUB DUP1 PUSH1 JUMPI JUMPDEST PUSH1","bytes":[84,3,128,96,87,91,96],"count":9},{"pattern":"PUSH1 JUMPI JUMPDEST PUSH1 SSTORE","bytes":[96,87,91,96,85],"count":9},{"pattern":"DUP1 PUSH1 JUMPI JUMPDEST PUSH1 SSTORE","bytes":[128,96,87,91,96,85],"count":9},{"pattern":"SUB DUP1 PUSH1 JUMPI JUMPDEST PUSH1 SSTORE","bytes":[3,128,96,87,91,96,85],"count":9},{"pattern":"PUSH1 JUMPI JUMPDEST PUSH1 SSTORE JUMPDEST","bytes":[96,87,91,96,85,91],"count":9},{"pattern":"DUP1 PUSH1 JUMPI JUMPDEST PUSH1 SSTORE JUMPDEST","bytes":[128,96,87,91,96,85,91],"count":9},{"pattern":"JUMPI JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1","bytes":[87,91,96,85,91,96],"count":9},{"pattern":"JUMPI JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1 PUSH1","bytes":[87,91,96,85,91,96,96],"count":9},{"pattern":"PUSH1 JUMPI JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1","bytes":[96,87,91,96,85,91,96],"count":9},{"pattern":"PUSH1 JUMPDEST","bytes":[96,91],"count":1},{"pattern":"PUSH1 JUMPDEST PUSH1 SSTORE","bytes":[96,91,96,85],"count":1},{"pattern":"PUSH1 JUMPDEST PUSH1","bytes":[96,91,96],"count":1},{"pattern":"PUSH1 JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1","bytes":[96,91,96,85,91,96],"count":1},{"pattern":"PUSH1 JUMPDEST PUSH1 SSTORE JUMPDEST PUSH1 PUSH1","bytes":[96,91,96,85,91,96,96],"count":1},{"pattern":"PUSH1 JUMPI PUSH1 PUSH1 ADD","bytes":[96,87,96,96,1],"count":1},{"pattern":"PUSH1 JUMPDEST PUSH1 SSTORE JUMPDEST","bytes":[96,91,96,85,91],"count":1},{"pattern":"JUMPI PUSH1","bytes":[87,96],"count":1},{"pattern":"DUP1 PUSH1 JUMPI PUSH1","bytes":[128,96,87,96],"count":1},{"pattern":"JUMPI PUSH1 PUSH1","bytes":[87,96,96],"count":1},{"pattern":"SLOAD SUB DUP1 PUSH1 JUMPI PUSH1 PUSH1","bytes":[84,3,128,96,87,96,96],"count":1},{"pattern":"DUP1 PUSH1 JUMPI PUSH1 PUSH1 ADD","bytes":[128,96,87,96,96,1],"count":1},{"pattern":"PUSH1 ADD POP","bytes":[96,1,80],"count":1},{"pattern":"DUP1 PUSH1 JUMPI PUSH1 PUSH1 ADD POP","bytes":[128,96,87,96,96,1,80],"count":1},{"pattern":"PUSH1 JUMPI PUSH1","bytes":[96,87,96],"count":1},{"pattern":"SUB DUP1 PUSH1 JUMPI PUSH1","bytes":[3,128,96,87,96],"count":1},{"pattern":"SLOAD SUB DUP1 PUSH1 JUMPI PUSH1","bytes":[84,3,128,96,87,96],"count":1},{"pattern":"PUSH1 SLOAD SUB DUP1 PUSH1 JUMPI PUSH1","bytes":[96,84,3,128,96,87,96],"count":1},{"pattern":"PUSH1 JUMPI PUSH1 PUSH1","bytes":[96,87,96,96],"count":1},{"pattern":"DUP1 PUSH1 JUMPI PUSH1 PUSH1","bytes":[128,96,87,96,96],"count":1},{"pattern":"SUB DUP1 PUSH1 JUMPI PUSH1 PUSH1","bytes":[3,128,96,87,96,96],"count":1},{"pattern":"PUSH1 ADD","bytes":[96,1],"count":1},{"pattern":"PUSH1 PUSH1 ADD","bytes":[96,96,1],"count":1},{"pattern":"JUMPI PUSH1 PUSH1 ADD","bytes":[87,96,96,1],"count":1},{"pattern":"SUB DUP1 PUSH1 JUMPI PUSH1 PUSH1 ADD","bytes":[3,128,96,87,96,96,1],"count":1},{"pattern":"ADD POP","bytes":[1,80],"count":1},{"pattern":"PUSH1 PUSH1 ADD POP","bytes":[96,96,1,80],"count":1},{"pattern":"JUMPI PUSH1 PUSH1 ADD POP","bytes":[87,96,96,1,80],"count":1},{"pattern":"PUSH1 JUMPI PUSH1 PUSH1 ADD POP","bytes":[96,87,96,96,1,80],"count":1}]}"""
         );
-
     }
 }

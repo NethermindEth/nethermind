@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Tracer;
+namespace Nethermind.PatternAnalyzer.Plugin.Tracer.Pattern;
 
 public class PatternAnalyzerTraceEntry
 {
