@@ -13,11 +13,9 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 // TODO: maybe we should avoid using Rlp library at all?
 // TODO: Split into singular and span decoders
-public class BatchDecoder
+public static class BatchDecoder
 {
-    public static readonly BatchDecoder Instance = new();
-
-    public BatchV0 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public static BatchV0 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // TODO: not tested, do we need this?
         // TODO: proper error handling
@@ -56,7 +54,7 @@ public class BatchDecoder
         };
     }
 
-    public BatchV0 Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public static BatchV0 Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // TODO: implement singular batch
 
