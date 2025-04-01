@@ -65,14 +65,10 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     }
 
     public void Cache(Block block)
-    {
-        Insert(block);
-    }
+        => Insert(block);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
-    {
-        return _blockNumDict.ContainsKey(blockNumber);
-    }
+        => _blockNumDict.ContainsKey(blockNumber);
 
     public IEnumerable<Block> GetBlocksOlderThan(ulong timestamp)
     {

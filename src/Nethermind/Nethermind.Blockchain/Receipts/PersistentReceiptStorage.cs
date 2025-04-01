@@ -47,8 +47,7 @@ namespace Nethermind.Blockchain.Receipts
             IBlockTree blockTree,
             IBlockStore blockStore,
             IReceiptConfig receiptConfig,
-            ReceiptArrayStorageDecoder? storageDecoder = null
-        )
+            ReceiptArrayStorageDecoder? storageDecoder = null)
         {
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
