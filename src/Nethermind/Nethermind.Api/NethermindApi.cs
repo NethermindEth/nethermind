@@ -91,6 +91,7 @@ namespace Nethermind.Api
                     readOnlyTree,
                     DbProvider!,
                     SpecProvider!,
+                    SimulateTransactionProcessorFactory,
                     LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
@@ -248,5 +249,6 @@ namespace Nethermind.Api
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
 
         public IContainer? ApiWithNetworkServiceContainer { get; set; }
+        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory { get; set; } = Nethermind.Facade.Simulate.SimulateTransactionProcessorFactory.Instance;
     }
 }
