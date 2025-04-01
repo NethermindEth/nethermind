@@ -97,7 +97,7 @@ public class BatchDecoder
         var parser = new BinaryMemoryReader(source);
         while (parser.HasRemainder)
         {
-            byte type = parser.TakeByte();
+            var type = parser.TakeByte();
             if (type != 1)
             {
                 throw new NotSupportedException($"Only span batches are supported. Got type {type}");
@@ -111,48 +111,53 @@ public class BatchDecoder
     /// </remarks>
     private static BatchV1 DecodeSpanBatch(BinaryMemoryReader reader)
     {
-        ulong relTimestamp = reader.Read(Protobuf.DecodeULong);
-        ulong l1OriginNum = reader.Read(Protobuf.DecodeULong);
-        ReadOnlyMemory<byte> parentCheck = reader.Take(20);
-        ReadOnlyMemory<byte> l1OriginCheck = reader.Take(20);
+        var relTimestamp = reader.Read(Protobuf.DecodeULong);
+        var l1OriginNum = reader.Read(Protobuf.DecodeULong);
+        var parentCheck = reader.Take(20);
+        var l1OriginCheck = reader.Take(20);
+
         // payload
         // TODO: `blockCount`: This is at least 1, empty span batches are invalid.
-        ulong blockCount = reader.Read(Protobuf.DecodeULong);
-        BigInteger originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
+        var blockCount = reader.Read(Protobuf.DecodeULong);
+        var originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
 
-        ulong[] blockTransactionCounts = new ulong[blockCount]; // Diff `[0] == 11` instead of `[0] == 1`
+        var blockTransactionCounts = new ulong[blockCount];
         ulong totalTxCount = 0;
-        for (int i = 0; i < (int)blockCount; ++i)
+        for (var i = 0; i < (int)blockCount; ++i)
         {
             blockTransactionCounts[i] = reader.Read(Protobuf.DecodeULong);
             totalTxCount += blockTransactionCounts[i];
         }
+        // TODO:
+        // `totalTxCount` in BatchV1 cannot be greater than MaxSpanBatchElementCount (`10_000_000`).
+        // MaxSpanBatchElementCount is the maximum number of blocks, transactions in total, or transaction per block allowed in a BatchV1.
 
-        // txs
+        // Txs
 
-        BigInteger contractCreationBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
-        BigInteger yParityBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
+        var contractCreationBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
+        var yParityBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
 
         // Signatures
-        (UInt256 R, UInt256 S)[] signatures = new (UInt256 R, UInt256 S)[totalTxCount];
-        for (int i = 0; i < (int)totalTxCount; ++i)
+        var signatures = new (UInt256 R, UInt256 S)[totalTxCount];
+        for (var i = 0; i < (int)totalTxCount; ++i)
         {
-            signatures[i] = (new(reader.Take(32).Span, true), new(reader.Take(32).Span, true));
+            signatures[i] = (
+                R: new UInt256(reader.Take(32).Span, true),
+                S: new UInt256(reader.Take(32).Span, true));
         }
 
-        int contractCreationCnt = (int)BigInteger.PopCount(contractCreationBits);
+        var contractCreationCnt = (int)BigInteger.PopCount(contractCreationBits);
 
-        Address[] tos = new Address[(int)totalTxCount - contractCreationCnt];
-        for (int i = 0; i < (int)totalTxCount - contractCreationCnt; ++i)
+        var tos = new Address[(int)totalTxCount - contractCreationCnt];
+        for (var i = 0; i < (int)totalTxCount - contractCreationCnt; ++i)
         {
-            tos[i] = new(reader.Take(Address.Size).Span);
+            tos[i] = new Address(reader.Take(Address.Size).Span);
         }
 
-
-        List<ReadOnlyMemory<byte>> datas = new((int)totalTxCount);
-        List<TxType> types = new((int)totalTxCount);
+        var datas = new ReadOnlyMemory<byte>[(int)totalTxCount];
+        var types = new TxType[(int)totalTxCount];
         ulong legacyTxCnt = 0;
-        for (int i = 0; i < (int)totalTxCount; ++i)
+        for (var i = 0; i < (int)totalTxCount; ++i)
         {
             (datas[i], types[i]) = reader.Read(TxParser.Data);
             if (types[i] == TxType.Legacy)
@@ -161,19 +166,19 @@ public class BatchDecoder
             }
         }
 
-        List<ulong> nonces = new((int)totalTxCount);
-        for (int i = 0; i < (int)totalTxCount; ++i)
+        var nonces = new ulong[(int)totalTxCount];
+        for (var i = 0; i < (int)totalTxCount; ++i)
         {
             nonces[i] = reader.Read(Protobuf.DecodeULong);
         }
 
-        List<ulong> gases = new((int)totalTxCount);
-        for (int i = 0; i < (int)totalTxCount; ++i)
+        var gases = new ulong[(int)totalTxCount];
+        for (var i = 0; i < (int)totalTxCount; ++i)
         {
             gases[i] = reader.Read(Protobuf.DecodeULong);
         }
 
-        BigInteger protectedBits = reader.Read(Protobuf.DecodeBitList, legacyTxCnt);
+        var protectedBits = reader.Read(Protobuf.DecodeBitList, legacyTxCnt);
 
         return new BatchV1
         {
@@ -184,7 +189,7 @@ public class BatchDecoder
             BlockCount = blockCount,
             OriginBits = originBits,
             BlockTxCounts = blockTransactionCounts,
-            Txs = new()
+            Txs = new BatchV1.Transactions
             {
                 ContractCreationBits = contractCreationBits,
                 YParityBits = yParityBits,
@@ -194,7 +199,6 @@ public class BatchDecoder
                 Nonces = nonces,
                 Gases = gases,
                 ProtectedBits = protectedBits,
-
                 Types = types
             }
         };

@@ -33,10 +33,10 @@ public class BatchV1
         public required IReadOnlyList<(UInt256 R, UInt256 S)> Signatures;
         public required IReadOnlyList<Address> Tos;
         public required IReadOnlyList<ReadOnlyMemory<byte>> Datas;
+        public required IReadOnlyList<TxType> Types;
         public required IReadOnlyList<ulong> Nonces;
         public required IReadOnlyList<ulong> Gases;
         public required BigInteger ProtectedBits;
-        public required IReadOnlyList<TxType> Types;
     }
 
     public IEnumerable<SingularBatch> ToSingularBatches(ulong chainId, ulong genesisTimestamp, ulong blockTime)
