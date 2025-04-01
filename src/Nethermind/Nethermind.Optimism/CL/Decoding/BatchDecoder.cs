@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -196,10 +195,11 @@ public class BatchDecoder
                 Signatures = signatures,
                 Tos = tos,
                 Datas = datas,
+                Types = types,
+                TotalLegacyTxCount = legacyTxCnt,
                 Nonces = nonces,
                 Gases = gases,
                 ProtectedBits = protectedBits,
-                Types = types
             }
         };
     }

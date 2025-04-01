@@ -15,7 +15,7 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class BatchV1
+public sealed class BatchV1
 {
     public required ulong RelTimestamp;
     public required ulong L1OriginNum;
@@ -26,14 +26,15 @@ public class BatchV1
     public required IReadOnlyList<ulong> BlockTxCounts;
     public required Transactions Txs;
 
-    public class Transactions
+    public sealed class Transactions
     {
         public required BigInteger ContractCreationBits;
         public required BigInteger YParityBits;
-        public required IReadOnlyList<(UInt256 R, UInt256 S)> Signatures;
+        public required IReadOnlyList<(UInt256 R, UInt256 S)> Signatures; // TODO: Do we want to use `Nethermind.Core.Crypto.Signature`?
         public required IReadOnlyList<Address> Tos;
         public required IReadOnlyList<ReadOnlyMemory<byte>> Datas;
         public required IReadOnlyList<TxType> Types;
+        public required ulong TotalLegacyTxCount;
         public required IReadOnlyList<ulong> Nonces;
         public required IReadOnlyList<ulong> Gases;
         public required BigInteger ProtectedBits;
