@@ -36,10 +36,10 @@ public static class FrameDecoder
 /// </remarks>
 public readonly struct Frame : IEquatable<Frame>
 {
-    public readonly UInt128 ChannelId { get; init; }
-    public readonly UInt16 FrameNumber { get; init; }
-    public readonly byte[] FrameData { get; init; }
-    public readonly bool IsLast { get; init; }
+    public UInt128 ChannelId { get; init; }
+    public UInt16 FrameNumber { get; init; }
+    public byte[] FrameData { get; init; }
+    public bool IsLast { get; init; }
 
     public int Size
     {
