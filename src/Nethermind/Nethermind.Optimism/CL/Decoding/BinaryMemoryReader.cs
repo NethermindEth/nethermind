@@ -17,8 +17,6 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
 {
     private int _offset;
 
-    public ReadOnlyMemory<byte> View() => memory;
-
     public ReadOnlyMemory<byte> Peek(int bytes)
     {
         return memory[_offset..(_offset + bytes)];
