@@ -52,7 +52,7 @@ public class BatchV1
             txIdx += BlockTxCounts[i];
             batch.Transactions = userTransactions
                 .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-                .ToArray().ToArray();
+                .ToArray();
             yield return batch;
         }
     }
