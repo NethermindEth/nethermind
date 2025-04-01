@@ -90,7 +90,6 @@ public class BatchDecoder
         };
     }
 
-    // TODO: Add decoding tests
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
         var parser = new BinaryMemoryReader(source);
