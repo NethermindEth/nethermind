@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="Nethermind.PatternAnalyzer.Plugin/Nethermind.PatternAnalyzer.Plugin.csproj"/>
-  <Project Path="Nethermind.PatternAnalyzer.Plugin.Test/Nethermind.PatternAnalyzer.Plugin.Test.csproj"/>
-</Solution>
