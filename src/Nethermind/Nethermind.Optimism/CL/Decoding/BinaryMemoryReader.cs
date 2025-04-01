@@ -67,6 +67,7 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
     {
         bool success = parser(memory[_offset..].Span, out TResult result);
         if (!success) throw new FormatException();
+
         _offset += bytes;
         return result;
     }
@@ -85,6 +86,8 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
     {
         (TResult result, int read) = parser(memory[_offset..].Span, arg);
         if (read < 0) throw new FormatException();
+
+        _offset += read;
         return result;
     }
 }
