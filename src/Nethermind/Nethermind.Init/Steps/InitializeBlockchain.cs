@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -57,6 +58,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
+            IHistoryConfig historyConfig = getApi.Config<IHistoryConfig>();
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
 
@@ -160,6 +162,19 @@ namespace Nethermind.Init.Steps
                 );
                 setApi.CensorshipDetector = censorshipDetector;
                 _api.DisposeStack.Push(censorshipDetector);
+            }
+
+            if (historyConfig.Enabled)
+            {
+                HistoryPruner historyPruner = new(
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.SpecProvider!,
+                    historyConfig,
+                    blocksConfig.SecondsPerSlot,
+                    _api.LogManager);
+                historyPruner.CheckConfig();
+                setApi.HistoryPruner = historyPruner;
             }
 
             return Task.CompletedTask;

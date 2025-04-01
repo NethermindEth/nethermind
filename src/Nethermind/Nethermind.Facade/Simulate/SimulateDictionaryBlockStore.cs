@@ -69,4 +69,16 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
         => _blockNumDict.ContainsKey(blockNumber);
+
+    public IEnumerable<Block> GetBlocksOlderThan(ulong timestamp)
+    {
+        foreach (KeyValuePair<long, Block> kv in _blockNumDict)
+        {
+            if (kv.Value.Timestamp >= timestamp)
+            {
+                continue;
+            }
+            yield return kv.Value;
+        }
+    }
 }

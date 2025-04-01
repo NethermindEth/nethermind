@@ -187,6 +187,8 @@ namespace Nethermind.Blockchain
 
         void RecalculateTreeLevels();
 
+        IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken);
+
         /// <summary>
         /// Sync pivot is mainly concerned with old blocks and receipts.
         /// After sync pivot, blocks and headers should be continuous.
