@@ -17,6 +17,8 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
 {
     private int _offset;
 
+    public ReadOnlyMemory<byte> View() => memory;
+
     public ReadOnlyMemory<byte> Peek(int bytes)
     {
         return memory[_offset..(_offset + bytes)];
@@ -97,17 +99,15 @@ public static class TxParser
     public static (ReadOnlyMemory<byte>, TxType) Data(BinaryMemoryReader reader)
     {
         byte firstByte = reader.PeekByte();
-        byte type;
+        TxType type;
         if (firstByte <= 0x7F)
         {
-            // Tx with type
-            type = firstByte;
+            type = (TxType)firstByte;
             reader.Skip(1);
         }
         else
         {
-            // Legacy tx
-            type = 0;
+            type = TxType.Legacy;
         }
 
         Rlp.ValueDecoderContext decoder = new(reader.Remainder.Span);
@@ -117,7 +117,7 @@ public static class TxParser
         }
 
         int n = decoder.PeekNextRlpLength();
-        return (reader.Take(n), (TxType)type);
+        return (reader.Take(n), type);
     }
 }
 
