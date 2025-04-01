@@ -52,31 +52,6 @@ public readonly struct Frame : IEquatable<Frame>
         }
     }
 
-    public bool Equals(Frame other)
-    {
-        return ChannelId.Equals(other.ChannelId) && FrameNumber == other.FrameNumber && FrameData.SequenceEqual(other.FrameData) && IsLast == other.IsLast;
-    }
-
-    public override bool Equals(object? obj)
-    {
-        return obj is Frame other && Equals(other);
-    }
-
-    public static bool operator ==(Frame left, Frame right)
-    {
-        return left.Equals(right);
-    }
-
-    public static bool operator !=(Frame left, Frame right)
-    {
-        return !(left == right);
-    }
-
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(ChannelId, FrameNumber, FrameData, IsLast);
-    }
-
     public static int FromBytes(ReadOnlySpan<byte> buffer, out Frame frame)
     {
         unsafe
@@ -118,4 +93,18 @@ public readonly struct Frame : IEquatable<Frame>
 
         return initialLength - span.Length;
     }
+
+    public bool Equals(Frame other) =>
+        ChannelId.Equals(other.ChannelId) &&
+        FrameNumber == other.FrameNumber &&
+        FrameData.SequenceEqual(other.FrameData) &&
+        IsLast == other.IsLast;
+
+    public override bool Equals(object? obj) => obj is Frame other && Equals(other);
+
+    public static bool operator ==(Frame left, Frame right) => left.Equals(right);
+
+    public static bool operator !=(Frame left, Frame right) => !(left == right);
+
+    public override int GetHashCode() => HashCode.Combine(ChannelId, FrameNumber, FrameData, IsLast);
 }
