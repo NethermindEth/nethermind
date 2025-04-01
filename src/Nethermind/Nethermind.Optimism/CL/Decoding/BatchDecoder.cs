@@ -12,8 +12,6 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-// TODO: maybe we should avoid using Rlp library at all?
-// TODO: Split into singular and span decoders
 public class BatchDecoder
 {
     public static readonly BatchDecoder Instance = new();
@@ -22,10 +20,8 @@ public class BatchDecoder
 
     // Decodes protobuf encoded ulong
     // Returns the number and number of bytes read
-    // TODO: maybe we should use standard library for that?
     private ulong DecodeULong(ref ReadOnlySpan<byte> data)
     {
-        // TODO: handle errors
         ulong x = 0;
         int s = 0;
         for (int i = 0; i <= ULongMaxLength; i++)
@@ -162,7 +158,6 @@ public class BatchDecoder
         ulong legacyTxCnt = 0;
         for (int i = 0; i < (int)totalTxCount; ++i)
         {
-            // TODO: a lot of allocations here
             (datas[i], types[i]) = DecodeTxData(ref data);
             if (types[i] == TxType.Legacy)
             {

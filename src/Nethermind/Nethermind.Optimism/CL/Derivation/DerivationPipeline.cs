@@ -77,7 +77,7 @@ public class DerivationPipeline(
             throw;
         }
 
-        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}, Number of payload attributes: {result.Count}");
         return result.ToArray();
     }
 

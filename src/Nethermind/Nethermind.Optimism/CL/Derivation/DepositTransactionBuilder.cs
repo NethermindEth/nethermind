@@ -29,13 +29,10 @@ public static class DepositEvent
     }
 }
 
-// TODO: Find where to put these constants
 public static class _L1BlockInfo
 {
     public static readonly string DepositsCompleteSignature = "depositsComplete()";
     public static readonly byte[] DepositsCompleteBytes4 = Keccak.Compute(DepositsCompleteSignature).Bytes[..4].ToArray();
-    public static readonly Address DepositerAddress = new("0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001");
-    public static readonly Address BlockAddress = new("0x4200000000000000000000000000000000000015");
     // `DepositsCompleteGas` allocates 21k gas for intrinsic tx costs, and
     // an additional 15k to ensure that the `DepositsComplete` call does not run out of gas.
     public static readonly UInt64 DepositsCompleteGas = 21_000 + 15_000;
@@ -48,7 +45,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     public Transaction BuildL1InfoTransaction(L1BlockInfo blockInfo)
     {
         byte[] data = new byte[SystemTxDataLengthEcotone];
-        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(), 1141530144); // TODO method id
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(), L1BlockInfoBuilder.L1InfoTransactionMethodId);
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(4), blockInfo.BaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(8), blockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(12), blockInfo.SequenceNumber);
@@ -173,7 +170,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
 
     public Transaction[] BuildUpgradeTransactions()
     {
-        return []; // TODO implement
+        return [];
     }
 
     public List<Transaction> BuildForceIncludeTransactions(UInt64 sequenceNumber, BlockForRpc block)
@@ -203,10 +200,10 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         {
             Type = TxType.DepositTx,
             SourceHash = sourceHash,
-            SenderAddress = _L1BlockInfo.DepositerAddress,
-            To = _L1BlockInfo.BlockAddress,
+            SenderAddress = engineParameters.SystemTransactionSender,
+            To = engineParameters.SystemTransactionTo,
             Value = 0,
-            GasLimit = (long)_L1BlockInfo.DepositsCompleteGas, // WARNING: Dangerous cast
+            GasLimit = (long)_L1BlockInfo.DepositsCompleteGas,
             IsOPSystemTransaction = false,
             Data = _L1BlockInfo.DepositsCompleteBytes4
         };

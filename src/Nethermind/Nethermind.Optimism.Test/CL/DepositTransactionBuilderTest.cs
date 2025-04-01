@@ -27,12 +27,13 @@ public class DepositTransactionBuilderTest
     private static readonly Address SomeAddressC = TestItem.AddressD;
     private static readonly Address SomeAddressD = TestItem.AddressE;
 
+    private readonly CLChainSpecEngineParameters _engineParameters;
     private readonly DepositTransactionBuilder _builder;
 
     public DepositTransactionBuilderTest()
     {
-        var parameters = new CLChainSpecEngineParameters { OptimismPortalProxy = DepositAddress };
-        _builder = new DepositTransactionBuilder(TestBlockchainIds.ChainId, parameters);
+        _engineParameters = new CLChainSpecEngineParameters { OptimismPortalProxy = DepositAddress };
+        _builder = new DepositTransactionBuilder(TestBlockchainIds.ChainId, _engineParameters);
     }
 
     [Test]
@@ -728,14 +729,16 @@ public class DepositTransactionBuilderTest
         };
         UInt64 sequenceNumber = 1;
 
+        CLChainSpecEngineParameters parameters = new();
+
         Transaction expected = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithData([.. _L1BlockInfo.DepositsCompleteBytes4])
-            .WithGasLimit((long)_L1BlockInfo.DepositsCompleteGas) // WARNING: Dangerous cast
+            .WithGasLimit((long)_L1BlockInfo.DepositsCompleteGas)
             .WithIsOPSystemTransaction(false)
             .WithValue(0)
-            .WithSenderAddress(_L1BlockInfo.DepositerAddress)
-            .WithTo(_L1BlockInfo.BlockAddress)
+            .WithSenderAddress(_engineParameters.SystemTransactionSender)
+            .WithTo(_engineParameters.SystemTransactionTo)
             .WithSourceHash(new Hash256("0x8333470612313bc4af4bd0af552a34e4470f7cb1c725e81ef09149129f531914"))
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)

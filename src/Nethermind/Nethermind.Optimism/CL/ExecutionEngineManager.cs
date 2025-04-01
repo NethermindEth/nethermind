@@ -52,6 +52,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
     {
         if (_currentHead >= payloadAttributes.Number)
         {
+            if (_logger.IsInfo) _logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
             L2Block actualBlock = await _l2Api.GetBlockByNumber(payloadAttributes.Number);
             if (_derivedBlocksVerifier.ComparePayloadAttributes(
                     actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
@@ -63,6 +64,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return false;
         }
 
+        if (_logger.IsInfo) _logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
         ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
         if (executionPayload is null)
         {
