@@ -46,7 +46,7 @@ This consists of primarily of the stats analyzer and instruction buffer to queue
 
 **Relevant config parameters**:
 
-- **InstructionsQueueSize**: Sets the size of the queue used to gather instructions per write frequency.
+- (not used, to remove) **InstructionsQueueSize**: Sets the size of the queue used to gather instructions per write frequency.
 
 ## Tracer
 
