@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using System.Collections.Generic;
-using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Producers;
 

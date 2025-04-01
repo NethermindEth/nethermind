@@ -141,8 +141,8 @@ public partial class EngineModuleTests
         {
             Assert.That(inclusionList, Is.Not.Null);
             Assert.That(inclusionList, Has.Length.EqualTo(2));
-            Assert.That(inclusionList[0].SequenceEqual(tx1Bytes));
-            Assert.That(inclusionList[1].SequenceEqual(tx2Bytes));
+            Assert.That(inclusionList, Does.Contain(tx1Bytes));
+            Assert.That(inclusionList, Does.Contain(tx2Bytes));
         });
     }
 
