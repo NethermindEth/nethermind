@@ -13,15 +13,15 @@ public static class BatchDecoder
 {
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
-        var parser = new BinaryMemoryReader(source);
-        while (parser.HasRemainder)
+        var reader = new BinaryMemoryReader(source);
+        while (reader.HasRemainder)
         {
-            var type = parser.TakeByte();
+            var type = reader.TakeByte();
             if (type != 1)
             {
                 throw new NotSupportedException($"Only span batches are supported. Got type {type}");
             }
-            yield return parser.Read(DecodeSpanBatch);
+            yield return reader.Read(DecodeSpanBatch);
         }
     }
 
