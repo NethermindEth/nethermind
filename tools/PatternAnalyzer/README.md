@@ -1,4 +1,4 @@
-# Pattern Analyzer Plugin
+# Stats Analyzer Plugin
 
 The plugin serves JSON traces of the stats of top patterns of **2-7 opcodes** observed by the EVM during execution.
 
@@ -6,7 +6,7 @@ The plugin serves JSON traces of the stats of top patterns of **2-7 opcodes** ob
 
 - **Enabled**: The ability to enable or disable the plugin.
 
-## Analyzer
+## Pattern Analyzer
 
 The Analyzer primarily consists of the **StatsAnalyzer**, **CMSKetch**, **NGram** and **StatsProcessingQueue**.
 
@@ -63,3 +63,22 @@ The plugin hosts a set of tracing components of which help serve the traces to a
 - **ProcessingQueueSize**: Sets the number of tasks that can be queued when tracing & dumping stats in background
 - **ProcessingMode**: Can be set to either sequential or bulk. This strategy is triggered when the queue is full and the tracer decides to either clear the processing debt one task at a time or in bulk.
 - **Sort**: can be unordered, ascending and descending.
+
+
+## Call Analyzer
+
+Gives stats on the most frequent address that were called (STATICCALL,
+DELEGATECALL, CALLCODE, CALL),  excludes precompiles.
+
+```JSON
+{"initialBlockNumber":70805,"currentBlockNumber":1636994,"stats":[{"address":"0xedda782791e195b660d6fcf38e63eda268634ff7","count":26},{"address":"0x45e1022953a9406cd46f4aeff12ee2530c6aae20","count":38},{"address":"0x5c210ef41cd1a72de73bf76ec39637bb0d3d7bee","count":64},{"address":"0x23317519a16b4387ac9096679672ebfc1368ad5e","count":65},{"address":"0x7a1bac17ccc5b313516c5e16fb24f7659aa5ebed","count":114},{"address":"0xb227f007804c16546bd054dfed2e7a1fd5437678","count":118},{"address":"0xa385fd5fd33e41a8cab51de119825876d04e23d5","count":156},{"address":"0x6085268ab3e3b414a08762b671dc38243b29621c","count":170},{"address":"0xe6626372f2dd20467db08ec1f2f0e7c6c4e9bbcd","count":176},{"address":"0x83b91c103e0e8760b57bbc3265afbbc5585d8393","count":176},{"address":"0x995b96ea23cdbe69e3c3ebca351b500db09a70ca","count":225},{"address":"0xa567c273df3154c86ebcd4bda09cdde60a29ec5e","count":264},{"address":"0xa293d1072d01fb9330c79bbebc4ccff5becd1f48","count":401},{"address":"0x464e1e4a69f6d497b24fd0a084dc401e31092b97","count":1621},{"address":"0xb4c4a493ab6356497713a78ffa6c60fb53517c63","count":1670},{"address":"0x40296c73ac768f962c20558d19b1e2371e3a1a45","count":1670},{"address":"0x76aa17dcda9e8529149e76e9ffae4ad1c4ad701b","count":1735},{"address":"0x1f1df9f7fc939e71819f766978d8f900b816761b","count":1735}]}
+```
+
+**Relevant config parameters**:
+
+- **File**: Configurable file location for dumping the stats
+- **WriteFrequency**: Users can define the frequency (in blocks) for writing stats to disk.
+- **ProcessingQueueSize**: Sets the number of tasks that can be queued when tracing & dumping stats in background
+- **ProcessingMode**: Can be set to either sequential or bulk. This strategy is triggered when the queue is full and the tracer decides to either clear the processing debt one task at a time or in bulk.
+- **Sort**: can be unordered, ascending and descending.
+- **TopN**: The number of top addresses to track .
