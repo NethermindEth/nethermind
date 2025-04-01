@@ -126,7 +126,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
         Hash256 headBlockHash, Hash256 finalizedBlockHash, Hash256 safeBlockHash,
         ulong head, ulong finalized, ulong safe)
     {
-        ulong newFinalized  = _currentFinalizedHead;
+        ulong newFinalized = _currentFinalizedHead;
         Hash256 newFinalizedHash = _currentFinalizedHash;
         if (_currentFinalizedHead < finalized)
         {
