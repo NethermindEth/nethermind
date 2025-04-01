@@ -10,5 +10,6 @@ namespace Nethermind.Consensus.Transactions
     public interface ITxSource
     {
         IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null);
+        bool SupportsBlobs { get; }
     }
 }

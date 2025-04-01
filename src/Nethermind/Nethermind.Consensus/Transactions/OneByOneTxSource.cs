@@ -11,6 +11,8 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly ITxSource _txSource;
 
+        public bool SupportsBlobs => _txSource.SupportsBlobs;
+
         public OneByOneTxSource(ITxSource txSource)
         {
             _txSource = txSource;

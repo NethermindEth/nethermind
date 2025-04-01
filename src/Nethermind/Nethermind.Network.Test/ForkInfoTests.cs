@@ -170,6 +170,18 @@ public class ForkInfoTests
         Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
     }
 
+    [TestCase(0L, HoodiSpecProvider.CancunTimestamp, "0xBEF71D30", 1742999832UL, "First Cancun timestamp")]
+    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp - 1, "0xBEF71D30", 1742999832UL, "Future Cancun timestamp")]
+    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp, "0x929E24E", 0ul, "First Prague timestamp")]
+    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp + 100000, "0x929E24E", 0ul, "Future Prague timestamp")]
+    public void Fork_id_and_hash_as_expected_on_hoodi(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
+    {
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/hoodi.json");
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        Test(head, headTimestamp, KnownHashes.HoodiGenesis, forkHashHex, next, description, provider);
+    }
+
     // Local is mainnet Gray Glacier, remote announces the same. No future fork is announced.
     [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0xf0afd0e3", 0ul, ValidationResult.Valid)]
 

@@ -49,6 +49,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Hoodi": {
+      "commandName": "Project",
+      "commandLineArgs": "-c hoodi --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "JOC Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c joc-mainnet -dd .data",
@@ -87,6 +94,13 @@
     "Sepolia": {
       "commandName": "Project",
       "commandLineArgs": "-c sepolia --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Spaceneth": {
+      "commandName": "Project",
+      "commandLineArgs": "-c spaceneth --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

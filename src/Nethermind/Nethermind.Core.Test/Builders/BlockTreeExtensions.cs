@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Core.Events;
 using Nethermind.Crypto;
 
 namespace Nethermind.Core.Test.Builders
@@ -55,6 +58,15 @@ namespace Nethermind.Core.Test.Builders
         public static void UpdateMainChain(this IBlockTree blockTree, Block block)
         {
             blockTree.UpdateMainChain(new[] { block }, true);
+        }
+
+        public static Task WaitForNewBlock(this IBlockTree blockTree, CancellationToken cancellation)
+        {
+            return Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellation,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
+                (e) => true);
         }
     }
 }

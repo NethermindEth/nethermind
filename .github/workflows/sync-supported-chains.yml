@@ -9,7 +9,7 @@ on:
 
   schedule:
     - cron: "0 0 * * *"
-    
+
   workflow_dispatch:
     inputs:
       nethermind_image:
@@ -19,7 +19,7 @@ on:
       network_filter:
         description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
-        required: false    
+        required: false
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -60,7 +60,7 @@ jobs:
     steps:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
-        
+
       - name: Create a Runner
         id: run-linode-action
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
@@ -76,18 +76,18 @@ jobs:
           organization: "NethermindEth"
           repo_name: "nethermind"
           blocked_ports: "8545,8546,8551,8552"
-  
+
   sync-chain:
     needs: [setup-matrix, create_a_runner]
     strategy:
       fail-fast: false
       matrix:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
-        
+
     name: "Run sync of ${{ matrix.config.network }} chain"
     runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
     timeout-minutes: ${{ matrix.config.timeout }}
-    
+
     steps:
       - name: Authenticate App
         id: gh-app
@@ -96,13 +96,13 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
-          
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           clean: true
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
-          
+
       - name: Checkout tests repository
         uses: actions/checkout@v4
         with:
@@ -142,7 +142,7 @@ jobs:
         run: |
           docker_image=""
           network="${{ matrix.config.network }}"
-          
+
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
             CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}")
@@ -155,7 +155,7 @@ jobs:
           else
             docker_image="${{ inputs.nethermind_image }}"
           fi
-          
+
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
@@ -185,29 +185,34 @@ jobs:
 
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
-            
+
             ./build/sedge generate \
             --logging none \
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.10.3 \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
+            --el-op-extra-flag Sync.NonValidatorNode=true \
+            --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
           elif [[ "$network" == taiko-* ]]; then
-            if [[ "$network" == *mainnet* ]]; then
+            if [[ "$network" == *alethia* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
               stripped_network="mainnet"
+              taiko_client_version="taiko-alethia-client-v0.43.2"
             elif [[ "$network" == *hekla* ]]; then
               CONSENSUS_URL="${{ secrets.HOLESKY_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.HOLESKY_EXECUTION_URL }}"
               stripped_network="holesky"
+              taiko_client_version="latest"
             else
               echo "Unknown network"
               exit 1
@@ -215,24 +220,27 @@ jobs:
 
             mkdir -p execution-data-taiko/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
-            
+
             ./build/sedge generate \
             --logging none \
             -p $GITHUB_WORKSPACE/sedge \
             taiko-full-node \
             --l2-execution taiko-nethermind:$docker_image \
-            --taiko-image taiko:us-docker.pkg.dev/evmchain/images/taiko-client:latest \
+            --taiko-image taiko:us-docker.pkg.dev/evmchain/images/taiko-client:$taiko_client_version \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
+            --el-l2-extra-flag Sync.NonValidatorNode=true \
+            --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
           else
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
-          
+
             ./build/sedge generate \
             --logging none \
             -p $GITHUB_WORKSPACE/sedge \
@@ -251,8 +259,8 @@ jobs:
             --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-extra-flag Sync.SnapSync=true \
             --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
-          fi          
-          
+          fi
+
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
@@ -266,14 +274,14 @@ jobs:
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}
         id: find-and-upload
-        run: |      
+        run: |
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
           cd "$target_dir"
           cd logs
           ls
-          log_file=$(find . -type f -name "*logs.txt" | head -n 1)
+          log_file=$(find . -type f -name "*.log" | head -n 1)
           echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file" .txt)-${{ github.run_id }}
+          artifact_name=$(basename "$log_file")-${{ github.run_id }}
           zip "${artifact_name}.zip" "$log_file"
           echo "Compressed log file into ${artifact_name}.zip"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
@@ -286,7 +294,7 @@ jobs:
           name: ${{ env.artifact_name }}
           path: ${{ env.artifact_path }}
           retention-days: 7
-          
+
       - name: Get Consensus Logs
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia' && matrix.config.network != 'energyweb' && matrix.config.network != 'volta'
         run: |
@@ -296,10 +304,10 @@ jobs:
           elif [[ "$network" == taiko-* ]]; then
             docker logs sedge-consensus-taikodriver-client
           else
-            docker logs sedge-consensus-client      
+            docker logs sedge-consensus-client
           fi
-          
-      - name: Check size of DB 
+
+      - name: Check size of DB
         run: |
           du -h $GITHUB_WORKSPACE/sedge
 
@@ -338,7 +346,7 @@ jobs:
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
-          
+
       - name: Destroy Runner
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
@@ -362,7 +370,7 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
-          
+
       - name: Trigger notification action on test repo
         if: startsWith(github.event.workflow_run.head_branch, 'release/')
         continue-on-error: true

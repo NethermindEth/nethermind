@@ -196,6 +196,12 @@ namespace Nethermind.Core
         /// <returns></returns>
         public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
+        public string ToShortString(bool withZeroX = true)
+        {
+            string address = Bytes.ToHexString(withZeroX);
+            return $"{address[..(withZeroX ? 8 : 6)]}...{address[^6..]}";
+        }
+
         public override bool Equals(object? obj)
         {
             if (obj is null)

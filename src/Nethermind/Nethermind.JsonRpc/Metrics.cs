@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.JsonRpc
 {
@@ -59,5 +61,9 @@ namespace Nethermind.JsonRpc
         [CounterMetric]
         [Description("Number of JSON RPC bytes received through IPC.")]
         public static long JsonRpcBytesReceivedIpc;
+
+        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
+        [Description("Individual rpc latency metric calls")]
+        public static IMetricObserver JsonRpcCallLatencyMicros = NoopMetricObserver.Instance;
     }
 }

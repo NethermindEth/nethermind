@@ -22,9 +22,11 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -47,6 +49,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
+    public long TestTimout { get; set; } = DefaultTimeout;
     public IStateReader StateReader { get; private set; } = null!;
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager { get; private set; } = null!;
@@ -73,7 +76,6 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
@@ -95,19 +97,21 @@ public class TestBlockchain : IDisposable
 
     public string SealEngineType { get; set; } = null!;
 
-    public static Address AccountA = TestItem.AddressA;
-    public static Address AccountB = TestItem.AddressB;
-    public static Address AccountC = TestItem.AddressC;
-    public SemaphoreSlim _resetEvent = null!;
-    private ManualResetEvent _suggestedBlockResetEvent = null!;
-    private readonly AutoResetEvent _oneAtATime = new(true);
+    public static readonly Address AccountA = TestItem.AddressA;
+    public static readonly Address AccountB = TestItem.AddressB;
+    public static readonly Address AccountC = TestItem.AddressC;
     private IBlockFinder _blockFinder = null!;
+
+    public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
     public static readonly UInt256 InitialValue = 1000.Ether();
     private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
     public IHeaderValidator HeaderValidator { get; set; } = null!;
 
     private ReceiptCanonicalityMonitor? _canonicalityMonitor;
+    protected AutoCancelTokenSource _cts;
+    public CancellationToken CancellationToken => _cts.Token;
+    private TestBlockchainUtil _testUtil = null!;
 
     public IBlockValidator BlockValidator { get; set; } = null!;
 
@@ -127,45 +131,44 @@ public class TestBlockchain : IDisposable
 
     private PreBlockCaches PreBlockCaches { get; } = new();
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
     {
-        Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
+        Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
+        IWorldState state = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
         }
 
         // Eip2935
         if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+            state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
         }
 
-        State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+        state.CreateAccount(TestItem.AddressA, initialValues ?? InitialValue);
+        state.CreateAccount(TestItem.AddressB, initialValues ?? InitialValue);
+        state.CreateAccount(TestItem.AddressC, initialValues ?? InitialValue);
 
-        InitialStateMutator?.Invoke(State);
+        InitialStateMutator?.Invoke(state);
 
         byte[] code = Bytes.FromHexString("0xabcd");
-        Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+        state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
-        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+        state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
 
-        State.Commit(SpecProvider.GenesisSpec);
-        State.CommitTree(0);
+        state.Commit(SpecProvider.GenesisSpec);
+        state.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LogManager);
+        WorldStateManager = new WorldStateManager(state, TrieStore, DbProvider, LogManager);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
@@ -193,14 +196,14 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, state, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, state, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, State);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, state);
 
         BlockValidator = new BlockValidator(
             new TxValidator(SpecProvider.ChainId),
@@ -216,7 +219,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BlockProcessor = CreateBlockProcessor();
+        BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
         BlockchainProcessor = chainProcessor;
@@ -230,18 +233,21 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _resetEvent = new SemaphoreSlim(0);
-        _suggestedBlockResetEvent = new ManualResetEvent(true);
-        BlockTree.BlockAddedToMain += BlockAddedToMain;
-        BlockProducerRunner.BlockProduced += (s, e) =>
-        {
-            _suggestedBlockResetEvent.Set();
-        };
+        _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
+        _testUtil = new TestBlockchainUtil(
+            BlockProducerRunner,
+            BlockProductionTrigger,
+            Timestamper,
+            BlockTree,
+            TxPool,
+            slotTime
+        );
 
-        Block? genesis = GetGenesisBlock();
+        Task waitGenesis = WaitForNewHead();
+        Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
         BlockTree.SuggestBlock(genesis);
 
-        await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        await waitGenesis;
 
         if (addBlockOnStart)
             await AddBlocksOnStart();
@@ -256,28 +262,7 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    private void BlockAddedToMain(object? sender, BlockEventArgs e)
-    {
-        _resetEvent.Release(1);
-    }
-
     protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
-
-    private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
-    {
-        if (!await semaphore.WaitAsync(timeout))
-        {
-            throw new InvalidOperationException(error);
-        }
-    }
-
-    private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = DefaultTimeout)
-    {
-        if (!await eventWaitHandle.WaitOneAsync(timeout, CancellationToken.None))
-        {
-            throw new InvalidOperationException(error);
-        }
-    }
 
     protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
@@ -338,7 +323,7 @@ public class TestBlockchain : IDisposable
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 
-    protected virtual Block GetGenesisBlock()
+    protected virtual Block GetGenesisBlock(IWorldState state)
     {
         BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
         if (GenesisBlockBuilder is not null)
@@ -368,7 +353,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithEmptyRequestsHash();
         }
 
-        genesisBlockBuilder.WithStateRoot(State.StateRoot);
+        genesisBlockBuilder.WithStateRoot(state.StateRoot);
         return genesisBlockBuilder.TestObject;
     }
 
@@ -379,70 +364,47 @@ public class TestBlockchain : IDisposable
         await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
     }
 
-    protected virtual IBlockProcessor CreateBlockProcessor() =>
+    protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
         new BlockProcessor(
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-            State,
+            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+            state,
             ReceiptStorage,
             TxProcessor,
-            new BeaconBlockRootHandler(TxProcessor, State),
-            new BlockhashStore(SpecProvider, State),
+            new BeaconBlockRootHandler(TxProcessor, state),
+            new BlockhashStore(SpecProvider, state),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer(),
             executionRequestsProcessor: ExecutionRequestsProcessor);
 
 
     protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
-        new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager, WorldStateManager.GlobalWorldState), SpecProvider, 4, LogManager, PreBlockCaches);
+        new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager), WorldStateManager.GlobalWorldState, SpecProvider, 4, LogManager, PreBlockCaches);
 
     public async Task WaitForNewHead()
     {
-        await WaitAsync(_resetEvent, "Failed to produce new head in time.");
-        _suggestedBlockResetEvent.Reset();
+        await BlockTree.WaitForNewBlock(_cts.Token);
+    }
+
+    public Task WaitForNewHeadWhere(Func<Block, bool> predicate)
+    {
+        return Wait.ForEventCondition<BlockReplacementEventArgs>(
+            _cts.Token,
+            (h) => BlockTree.BlockAddedToMain += h,
+            (h) => BlockTree.BlockAddedToMain -= h,
+            (e) => predicate(e.Block));
     }
 
     public async Task AddBlock(params Transaction[] transactions)
     {
-        await AddBlockInternal(transactions);
-
-        await WaitAsync(_resetEvent, "Failed to produce new head in time.");
-        _suggestedBlockResetEvent.Reset();
-        _oneAtATime.Set();
+        await _testUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
     }
 
-    public async Task AddBlock(bool shouldWaitForHead = true, params Transaction[] transactions)
+    public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await AddBlockInternal(transactions);
-
-        if (shouldWaitForHead)
-        {
-            await WaitAsync(_resetEvent, "Failed to produce new head in time.");
-        }
-        else
-        {
-            await WaitAsync(_suggestedBlockResetEvent, "Failed to produce new suggested block in time.");
-        }
-
-        _oneAtATime.Set();
-    }
-
-    private async Task<AcceptTxResult[]> AddBlockInternal(params Transaction[] transactions)
-    {
-        // we want it to be last event, so lets re-register
-        BlockTree.BlockAddedToMain -= BlockAddedToMain;
-        BlockTree.BlockAddedToMain += BlockAddedToMain;
-
-        await WaitAsync(_oneAtATime, "Multiple block produced at once.").ConfigureAwait(false);
-        AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
-        Timestamper.Add(TimeSpan.FromSeconds(1));
-        var headProcessed = new SemaphoreSlim(0);
-        TxPool.TxPoolHeadChanged += (s, a) => headProcessed.Release();
-        await BlockProductionTrigger.BuildBlock().ConfigureAwait(false);
-        await headProcessed.WaitAsync().ConfigureAwait(false);
-        return txResults;
+        await _testUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)
