@@ -187,8 +187,9 @@ public class PayloadPreparationService : IPayloadPreparationService
 
                     if (_payloadStorage.TryRemove(payload.Key, out PayloadStore store))
                     {
-                        store.ImprovementContext.Dispose();
+                        store.CancellationTokenSource.Cancel();
                         store.CancellationTokenSource.Dispose();
+                        store.ImprovementContext.Dispose();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }

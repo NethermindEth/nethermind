@@ -109,9 +109,12 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         {
             // KeysMissed will be incremented when get_payload is called
             lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
+            await Task.Delay(5000);
 
             time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
         }
+
+        await Task.Delay(5000);
 
         Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
     }
