@@ -30,22 +30,23 @@ public class TxTrie : PatriciaTrie<Transaction>
         foreach (Transaction? transaction in list)
         {
             CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping, _bufferPool);
-            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(_bufferPool);
+            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
+            key++;
 
             Set(keyBuffer.AsSpan(), buffer);
         }
     }
 
-    public static byte[][] CalculateProof(Transaction[] transactions, int index)
+    public static byte[][] CalculateProof(ReadOnlySpan<Transaction> transactions, int index)
     {
-        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Length * 4);
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
         byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray).BuildProof(index);
         return rootHash;
     }
 
-    public static Hash256 CalculateRoot(Transaction[] transactions)
+    public static Hash256 CalculateRoot(ReadOnlySpan<Transaction> transactions)
     {
-        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Length * 4);
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
         Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
         return rootHash;
     }

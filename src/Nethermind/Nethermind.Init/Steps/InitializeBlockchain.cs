@@ -38,15 +38,9 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain : IStep
+    public class InitializeBlockchain(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-
-        // ReSharper disable once MemberCanBeProtected.Global
-        public InitializeBlockchain(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly INethermindApi _api = api;
 
         public async Task Execute(CancellationToken _)
         {

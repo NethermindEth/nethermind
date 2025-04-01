@@ -97,10 +97,12 @@ public class TestBlockchain : IDisposable
 
     public string SealEngineType { get; set; } = null!;
 
-    public static Address AccountA = TestItem.AddressA;
-    public static Address AccountB = TestItem.AddressB;
-    public static Address AccountC = TestItem.AddressC;
+    public static readonly Address AccountA = TestItem.AddressA;
+    public static readonly Address AccountB = TestItem.AddressB;
+    public static readonly Address AccountC = TestItem.AddressC;
     private IBlockFinder _blockFinder = null!;
+
+    public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
     public static readonly UInt256 InitialValue = 1000.Ether();
     private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
@@ -129,9 +131,9 @@ public class TestBlockchain : IDisposable
 
     private PreBlockCaches PreBlockCaches { get; } = new();
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
     {
-        Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
+        Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
@@ -151,9 +153,9 @@ public class TestBlockchain : IDisposable
             state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
         }
 
-        state.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        state.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        state.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+        state.CreateAccount(TestItem.AddressA, initialValues ?? InitialValue);
+        state.CreateAccount(TestItem.AddressB, initialValues ?? InitialValue);
+        state.CreateAccount(TestItem.AddressC, initialValues ?? InitialValue);
 
         InitialStateMutator?.Invoke(state);
 
@@ -237,7 +239,8 @@ public class TestBlockchain : IDisposable
             BlockProductionTrigger,
             Timestamper,
             BlockTree,
-            TxPool
+            TxPool,
+            slotTime
         );
 
         Task waitGenesis = WaitForNewHead();
