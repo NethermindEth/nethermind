@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>EngineApiProxy</AssemblyName>
+    <RootNamespace>Nethermind.EngineApiProxy</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+  </ItemGroup>
+
+</Project>
