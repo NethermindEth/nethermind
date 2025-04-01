@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/unichain-mainnet.zst",
+    "ChainSpecPath": "chainspec/unichain-mainnet.json.zst",
     "GenesisHash": "0x3425162ddf41a0a1f0106d67b71828c9a9577e6ddeb94e4f33d2cde1fdc3befe",
     "BaseDbPath": "nethermind_db/unichain-mainnet",
     "LogFileName": "unichain-mainnet.log"
