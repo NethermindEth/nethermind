@@ -144,7 +144,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
-                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
+                if (givenNumber - (ulong)header.Number > (ulong)_blocksLimit)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"too many blocks",
                         ErrorCodes.ClientLimitExceededError);
@@ -186,7 +186,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        return result;
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(

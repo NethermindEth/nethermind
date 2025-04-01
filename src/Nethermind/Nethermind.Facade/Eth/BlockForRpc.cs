@@ -29,6 +29,7 @@ public class BlockForRpc
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
+        Block = block;
         _isAuRaBlock = block.Header.AuRaSignature is not null;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
@@ -108,6 +109,9 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[] Nonce { get; set; }
+
+    [JsonIgnore]
+    public Block Block { get; set; }
 
     public bool ShouldSerializeNonce() => !_isAuRaBlock;
 
