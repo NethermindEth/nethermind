@@ -15,21 +15,10 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private class DelayBlockImprovementContextFactory : IBlockImprovementContextFactory
+    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay) : IBlockImprovementContextFactory
     {
-        private readonly IBlockProducer _blockProducer;
-        private readonly TimeSpan _timeout;
-        private readonly TimeSpan _delay;
-
-        public DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
-        {
-            _blockProducer = blockProducer;
-            _timeout = timeout;
-            _delay = delay;
-        }
-
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationToken cancellationToken) =>
-            new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime, cancellationToken);
+            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cancellationToken);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
