@@ -16,37 +16,47 @@ public class BlobsBundleV2
 {
     public BlobsBundleV2(Block block)
     {
-        int blobsCount = 0;
-        foreach (Transaction? tx in block.Transactions)
+        try
         {
-            blobsCount += tx?.GetBlobCount() ?? 0;
+            int blobsCount = 0;
+            foreach (Transaction? tx in block.Transactions)
+            {
+                blobsCount += tx?.GetBlobCount() ?? 0;
+            }
+
+            Commitments = new byte[blobsCount][];
+            Blobs = new byte[blobsCount][];
+            Proofs = new byte[blobsCount * Ckzg.Ckzg.CellsPerExtBlob][];
+            int blockIndex = 0;
+
+            foreach (Transaction? tx in block.Transactions)
+            {
+                if (!tx.SupportsBlobs)
+                {
+                    continue;
+                }
+
+                if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V2 } wrapper })
+                {
+                    throw new ArgumentException("Shard blob transaction should contain network wrapper data");
+                }
+
+                for (int txIndex = 0;
+                     txIndex < wrapper.Blobs.Length;
+                     blockIndex++, txIndex++)
+                {
+                    Commitments[blockIndex] = wrapper.Commitments[txIndex];
+                    Blobs[blockIndex] = wrapper.Blobs[txIndex];
+                    Array.Copy(wrapper.Proofs, 0, Proofs, blockIndex * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.CellsPerExtBlob);
+                }
+            }
         }
-
-        Commitments = new byte[blobsCount][];
-        Blobs = new byte[blobsCount][];
-        Proofs = new byte[blobsCount * Ckzg.Ckzg.CellsPerExtBlob][];
-        int blockIndex = 0;
-
-        foreach (Transaction? tx in block.Transactions)
+        catch (ArgumentException)
         {
-            if (!tx.SupportsBlobs)
-            {
-                continue;
-            }
 
-            if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
-            {
-                throw new ArgumentException("Shard blob transaction should contain network wrapper data");
-            }
-
-            for (int txIndex = 0;
-                 txIndex < wrapper.Blobs.Length;
-                 blockIndex++, txIndex++)
-            {
-                Commitments[blockIndex] = wrapper.Commitments[txIndex];
-                Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                Array.Copy(wrapper.Proofs, 0, Proofs, blockIndex * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.CellsPerExtBlob);
-            }
+            Commitments = [];
+            Blobs = [];
+            Proofs = [];
         }
     }
 

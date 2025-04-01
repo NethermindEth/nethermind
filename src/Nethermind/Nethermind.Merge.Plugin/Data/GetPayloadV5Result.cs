@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -12,4 +13,5 @@ public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 bl
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
+    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(new ForkActivation(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp)).IsEip7594Enabled;
 }
