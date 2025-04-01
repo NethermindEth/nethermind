@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -12,9 +13,9 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IHandler<byte[][]> _getInclusionListTransactionsHandler;
+    private readonly IHandler<ArrayPoolList<byte[]>> _getInclusionListTransactionsHandler;
     private readonly IHandler<(string, byte[][]), string?> _updatePayloadWithInclusionListHandler;
-    public Task<ResultWrapper<byte[][]>> engine_getInclusionListV1()
+    public Task<ResultWrapper<ArrayPoolList<byte[]>>> engine_getInclusionListV1()
         => _getInclusionListTransactionsHandler.Handle();
 
     /// <summary>

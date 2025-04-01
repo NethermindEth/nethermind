@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -15,7 +16,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns inclusion list based on local mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<byte[][]>> engine_getInclusionListV1();
+    Task<ResultWrapper<ArrayPoolList<byte[]>>> engine_getInclusionListV1();
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",

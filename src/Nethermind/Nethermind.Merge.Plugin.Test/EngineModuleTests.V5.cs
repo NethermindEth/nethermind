@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -132,7 +133,7 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx1, TxHandlingOptions.PersistentBroadcast);
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
 
-        byte[][]? inclusionList = (await rpc.engine_getInclusionListV1()).Data;
+        using ArrayPoolList<byte[]>? inclusionList = (await rpc.engine_getInclusionListV1()).Data;
 
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
@@ -140,7 +141,7 @@ public partial class EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(inclusionList, Is.Not.Null);
-            Assert.That(inclusionList, Has.Length.EqualTo(2));
+            Assert.That(inclusionList.Count, Is.EqualTo(2));
             Assert.That(inclusionList, Does.Contain(tx1Bytes));
             Assert.That(inclusionList, Does.Contain(tx2Bytes));
         });

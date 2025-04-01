@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -32,7 +34,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IHandler<byte[][]> getInclusionListTransactionsHandler,
+        IHandler<ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
         IHandler<(string, byte[][]), string?> updatePayloadWithInclusionListHandler,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
