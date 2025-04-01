@@ -26,19 +26,22 @@ public class Driver : IDisposable
         IExecutionEngineManager executionEngineManager,
         IL2Api l2Api,
         ulong chainId,
+        ulong l2GenesisTimestamp,
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
+        ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         _logger = logger;
         _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
-        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _executionEngineManager = executionEngineManager;
         var payloadAttributesDeriver = new PayloadAttributesDeriver(
             _systemConfigDeriver,
             new DepositTransactionBuilder(chainId, engineParameters),
             logger);
-        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge, _logger);
+        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge,
+            l2GenesisTimestamp, engineParameters.L2BlockTime.Value, chainId, _logger);
     }
 
     public async Task Run(CancellationToken token)
@@ -64,6 +67,7 @@ public class Driver : IDisposable
                 if (!valid)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
+                    break;
                 }
             }
 

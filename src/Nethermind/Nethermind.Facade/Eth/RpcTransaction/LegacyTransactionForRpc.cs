@@ -101,7 +101,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         tx.GasPrice = GasPrice ?? 20.GWei();
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.SystemUser;
-        if (R != 0 || S != 0)
+        if ((R != 0 || S != 0) && (R is not null || S is not null))
         {
             ulong v;
             if (V is null)

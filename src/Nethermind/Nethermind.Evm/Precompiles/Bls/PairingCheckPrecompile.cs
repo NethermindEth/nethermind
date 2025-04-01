@@ -64,10 +64,12 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
                 continue;
             }
 
+            // acc *= e(x, y)
             p.MillerLoop(y, x);
             acc.Mul(p);
         }
 
+        // e(x_0, y_0) * e(x_1, y_1) * ... == 1
         byte[] res = new byte[32];
         if (acc.FinalExp().IsOne())
         {

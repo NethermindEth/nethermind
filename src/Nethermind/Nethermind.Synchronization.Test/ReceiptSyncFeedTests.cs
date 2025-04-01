@@ -64,6 +64,7 @@ public class ReceiptSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
+        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
         _feed = new ReceiptsSyncFeed(
             MainnetSpecProvider.Instance,

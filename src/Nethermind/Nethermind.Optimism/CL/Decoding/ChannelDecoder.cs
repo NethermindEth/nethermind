@@ -52,15 +52,6 @@ public class ChannelDecoder
     }
 }
 
-public struct BatchV0
-{
-    public Hash256 ParentHash;
-    public ulong EpochNumber;
-    public Hash256 EpochHash;
-    public ulong Timestamp;
-    public byte[][] Transactions;
-}
-
 public struct SingularBatch
 {
     public bool IsFirstBlockInEpoch;

@@ -25,7 +25,7 @@ public class ChiadoSpecProvider : ISpecProvider
         _ => forkActivation.Timestamp switch
         {
             null or < ShanghaiTimestamp => GenesisSpec,
-            < CancunTimestamp => Shanghai.Instance,
+            < CancunTimestamp => ShanghaiGnosis.Instance,
             < PragueTimestamp => CancunGnosis.Instance,
             _ => PragueGnosis.Instance
         }

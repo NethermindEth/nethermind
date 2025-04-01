@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -37,15 +38,9 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain : IStep
+    public class InitializeBlockchain(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-
-        // ReSharper disable once MemberCanBeProtected.Global
-        public InitializeBlockchain(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly INethermindApi _api = api;
 
         public async Task Execute(CancellationToken _)
         {
@@ -62,6 +57,8 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
+
+            ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
 
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
@@ -103,10 +100,10 @@ namespace Nethermind.Init.Steps
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(new(
                         _api.WorldStateManager!,
-                        _api.BlockTree!,
+                        _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider,
-                        _api.LogManager,
-                        mainWorldState),
+                        _api.LogManager),
+                    mainWorldState,
                     _api.SpecProvider!,
                     blocksConfig,
                     _api.LogManager,

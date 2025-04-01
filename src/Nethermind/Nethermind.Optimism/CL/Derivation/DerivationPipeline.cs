@@ -15,26 +15,19 @@ using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
-public class DerivationPipeline : IDerivationPipeline
+public class DerivationPipeline(
+    IPayloadAttributesDeriver payloadAttributesDeriver,
+    IL1Bridge l1Bridge,
+    ulong l2GenesisTimestamp,
+    ulong l2BlockTime,
+    ulong chainId,
+    ILogger logger) : IDerivationPipeline
 {
-    private readonly IPayloadAttributesDeriver _payloadAttributesDeriver;
-    private readonly IL1Bridge _l1Bridge;
-    private readonly ILogger _logger;
-
-    public DerivationPipeline(
-        IPayloadAttributesDeriver payloadAttributesDeriver,
-        IL1Bridge l1Bridge,
-        ILogger logger)
-    {
-        _payloadAttributesDeriver = payloadAttributesDeriver;
-        _l1Bridge = l1Bridge;
-        _logger = logger;
-    }
 
     public async Task<PayloadAttributesRef[]> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch, CancellationToken token)
     {
         // TODO: propagate CancellationToken
-        if (_logger.IsInfo) _logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
+        if (logger.IsInfo) logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
         ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
         if (expectedParentNumber != l2Parent.Number)
@@ -45,7 +38,7 @@ public class DerivationPipeline : IDerivationPipeline
         (L1Block[]? l1Origins, ReceiptForRpc[][]? l1Receipts) = await GetL1Origins(batch);
         if (l1Origins is null || l1Receipts is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 Origins for span batch. RelTimestamp: {batch.RelTimestamp}");
+            if (logger.IsWarn) logger.Warn($"Unable to get L1 Origins for span batch. RelTimestamp: {batch.RelTimestamp}");
             throw new Exception("Unable to get L1 Origins");
         }
 
@@ -60,17 +53,17 @@ public class DerivationPipeline : IDerivationPipeline
         int originIdx = 0;
         try
         {
-            foreach (var singularBatch in batch.ToSingularBatches(480, 1719335639, 2))
+            foreach (var singularBatch in batch.ToSingularBatches(chainId, l2GenesisTimestamp, l2BlockTime))
             {
                 if (singularBatch.IsFirstBlockInEpoch) originIdx++;
-                var payloadAttributes = _payloadAttributesDeriver.TryDerivePayloadAttributes(
+                var payloadAttributes = payloadAttributesDeriver.TryDerivePayloadAttributes(
                     singularBatch,
                     l2ParentPayloadAttributes,
                     l1Origins[originIdx],
                     l1Receipts[originIdx]);
                 if (payloadAttributes is null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
+                    if (logger.IsWarn) logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
                     return result.ToArray();
                 }
                 result.Add(payloadAttributes);
@@ -80,11 +73,11 @@ public class DerivationPipeline : IDerivationPipeline
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error($"Exception occured while processing batch. RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
+            if (logger.IsError) logger.Error($"Exception occured while processing batch. RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
             throw;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}, Number of payload attributes: {result.Count}");
         return result.ToArray();
     }
 
@@ -92,46 +85,25 @@ public class DerivationPipeline : IDerivationPipeline
     {
         ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
-        L1Block? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
-        if (lastL1Origin is null)
+        L1Block lastL1Origin = await l1Bridge.GetBlock(lastL1OriginNum);
+        if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck.Span))
         {
-            _logger.Warn($"L1Origin unavailable. Number: {lastL1OriginNum}, L1 origin check: {batch.L1OriginCheck.ToHexString()}");
-            return (null, null);
-        }
-        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck.Span))
-        {
-            _logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Value.Hash}");
+            logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Hash}");
             return (null, null);
         }
         var l1Origins = new L1Block[numberOfL1Origins];
         var l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
-        l1Origins[numberOfL1Origins - 1] = lastL1Origin.Value;
-        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Value.Hash);
-        if (lastReceipts is null)
-        {
-            _logger.Warn($"Receipts unavailable during derivation. Block hash: {lastL1Origin.Value.Hash}");
-            return (null, null);
-        }
+        l1Origins[numberOfL1Origins - 1] = lastL1Origin;
+        ReceiptForRpc[] lastReceipts = await l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Hash);
         l1Receipts[numberOfL1Origins - 1] = lastReceipts;
-        Hash256 parentHash = lastL1Origin.Value.ParentHash;
+        Hash256 parentHash = lastL1Origin.ParentHash;
         for (ulong i = 1; i < numberOfL1Origins; i++)
         {
-            L1Block? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
-            ReceiptForRpc[]? receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
-            if (l1Origin is null)
-            {
-                _logger.Warn($"L1Origin unavailable. Number: {lastL1OriginNum - i}, Hash: {parentHash}");
-                return (null, null);
-            }
-
-            if (receipts is null)
-            {
-                _logger.Warn($"Receipts unavailable during derivation. Block hash: {parentHash}");
-                return (null, null);
-            }
-            l1Origins[numberOfL1Origins - i - 1] = l1Origin.Value;
+            L1Block l1Origin = await l1Bridge.GetBlockByHash(parentHash);
+            ReceiptForRpc[] receipts = await l1Bridge.GetReceiptsByBlockHash(parentHash);
+            l1Origins[numberOfL1Origins - i - 1] = l1Origin;
             l1Receipts[numberOfL1Origins - i - 1] = receipts;
-            parentHash = l1Origin.Value.ParentHash;
+            parentHash = l1Origin.ParentHash;
         }
         return (l1Origins, l1Receipts);
     }
@@ -147,10 +119,5 @@ public class DerivationPipeline : IDerivationPipeline
             }
         }
         return cnt;
-    }
-
-    public Task ConsumeV0Batches(BatchV0[] batches)
-    {
-        throw new NotImplementedException();
     }
 }

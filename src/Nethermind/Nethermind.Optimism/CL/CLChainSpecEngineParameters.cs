@@ -16,7 +16,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     // roles
     public Address? SystemConfigOwner { get; set; }
     public Address? ProxyAdminOwner { get; set; }
-    public Address? Guardian  { get; set; }
+    public Address? Guardian { get; set; }
     public Address? Challenger { get; set; }
     public Address? Proposer { get; set; }
     public Address? UnsafeBlockSigner { get; set; }

@@ -49,10 +49,9 @@ public class EthereumL1Bridge : IL1Bridge
 
     public async Task Run(CancellationToken token)
     {
-        _logger.Error("Starting L1Bridge");
+        if (_logger.IsInfo) _logger.Info("Starting L1Bridge");
         while (!token.IsCancellationRequested)
         {
-            // TODO: head block instead of finalized
             L1Block newHead = await GetFinalized();
             ulong newHeadNumber = newHead.Number;
 
@@ -87,7 +86,6 @@ public class EthereumL1Bridge : IL1Bridge
                 await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber, token);
             }
 
-            // TODO we can have reorg here
             _currentHeadNumber = newHeadNumber;
             _currentHeadHash = newHead.Hash;
             await ProcessBlock(newHead, token);
@@ -209,11 +207,6 @@ public class EthereumL1Bridge : IL1Bridge
             }
         }
 
-        if (_currentHeadHash is not null && _currentHeadHash != chainSegment[0].ParentHash)
-        {
-            // TODO: chain reorg
-        }
-
         for (int i = 0; i < chainSegment.Length; i++)
         {
             await ProcessBlock(chainSegment[i], cancellationToken);
@@ -234,37 +227,22 @@ public class EthereumL1Bridge : IL1Bridge
         L1Block? result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
         while (result is null)
         {
-            _logger.Warn($"Unable to get L1 block by block number({blockNumber})");
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 block by block number({blockNumber})");
             result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
         }
 
-        CacheBlock(result.Value);
         return result.Value;
-    }
-
-    // TODO: pruning
-    private readonly ConcurrentDictionary<Hash256, L1Block> _cachedL1Blocks = new();
-
-    private void CacheBlock(L1Block block)
-    {
-        _cachedL1Blocks.TryAdd(block.Hash, block);
     }
 
     public async Task<L1Block> GetBlockByHash(Hash256 blockHash)
     {
-        if (_cachedL1Blocks.TryGetValue(blockHash, out L1Block cachedBlock))
-        {
-            return cachedBlock;
-        }
-
         L1Block? result = await _ethL1Api.GetBlockByHash(blockHash, true);
         while (result is null)
         {
-            _logger.Warn($"Unable to get L1 block by hash({blockHash})");
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 block by hash({blockHash})");
             result = await _ethL1Api.GetBlockByHash(blockHash, true);
         }
 
-        CacheBlock(result.Value);
         return result.Value;
     }
 
@@ -273,7 +251,7 @@ public class EthereumL1Bridge : IL1Bridge
         ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
         while (result is null)
         {
-            _logger.Warn($"Unable to get L1 receipts by hash({blockHash})");
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 receipts by hash({blockHash})");
             result = await _ethL1Api.GetReceiptsByHash(blockHash);
         }
 
@@ -289,7 +267,6 @@ public class EthereumL1Bridge : IL1Bridge
             result = await _ethL1Api.GetHead(true);
         }
 
-        CacheBlock(result.Value);
         return result.Value;
     }
 
@@ -302,7 +279,6 @@ public class EthereumL1Bridge : IL1Bridge
             result = await _ethL1Api.GetFinalized(true);
         }
 
-        CacheBlock(result.Value);
         return result.Value;
     }
 

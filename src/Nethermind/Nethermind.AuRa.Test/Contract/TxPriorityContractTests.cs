@@ -25,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -71,9 +72,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
-        [Retry(3)]
-        public async Task
-            priority_should_return_correctly()
+        public async Task priority_should_return_correctly()
         {
             using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             IEnumerable<TxPriorityContract.Destination> priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
@@ -310,7 +309,7 @@ namespace Nethermind.AuRa.Test.Contract
                 );
 
                 await AddBlock(
-                    SignTransactions(ecdsa, TestItem.PrivateKeyA, State.GetNonce(TestItem.PrivateKeyA.Address),
+                    SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.PrivateKeyA.Address),
                         // overrides for some of previous block values:
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
 
@@ -355,7 +354,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() =>
                 LocalDataSource.GetMinGasPricesLocalDataSource();
 
-            protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+            protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
             {
                 TempFile = TempPath.GetTempFile();
                 LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
@@ -364,7 +363,7 @@ namespace Nethermind.AuRa.Test.Contract
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
 
-                return base.Build(specProvider, initialValues);
+                return base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
             }
 
             public override void Dispose()

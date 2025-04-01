@@ -36,6 +36,8 @@ public class L1BlockInfo
 
 public class L1BlockInfoBuilder
 {
+    public const UInt32 L1InfoTransactionMethodId = 1141530144;
+
     private const int SystemTxDataLengthEcotone = 164;
     private static readonly byte[] ExpectedAddressPadding = new byte[12];
 
@@ -46,9 +48,8 @@ public class L1BlockInfoBuilder
             throw new ArgumentException("System tx data length is incorrect");
         }
 
-        // TODO check MethodId
         uint methodId = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
-        if (methodId != 1141530144)
+        if (methodId != L1InfoTransactionMethodId)
         {
             throw new ArgumentException($"MethodId is incorrect. {methodId}");
         }

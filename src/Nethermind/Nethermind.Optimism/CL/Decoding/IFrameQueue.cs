@@ -5,7 +5,6 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public interface IFrameQueue
 {
-    void ConsumeFrame(Frame frames);
-    bool IsReady();
-    byte[] BuildChannel();
+    BatchV1[]? GetReadyBatches();
+    void ConsumeFrame(Frame frame);
 }

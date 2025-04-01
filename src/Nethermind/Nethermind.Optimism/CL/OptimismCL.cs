@@ -36,12 +36,14 @@ public class OptimismCL : IDisposable
         IJsonSerializer jsonSerializer,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
+        ulong l2GenesisTimestamp,
         ILogManager logManager,
         IOptimismEthRpcModule l2EthRpc,
         IOptimismEngineRpcModule engineRpcModule)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
+        ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
 
         _logger = logManager.GetClassLogger();
@@ -52,7 +54,7 @@ public class OptimismCL : IDisposable
         _decodingPipeline = new DecodingPipeline(_logger);
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _logger);
 
-        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, _logger);
         _executionEngineManager = new ExecutionEngineManager(_l2Api, _logger);
         _driver = new Driver(
@@ -62,6 +64,7 @@ public class OptimismCL : IDisposable
             _executionEngineManager,
             _l2Api,
             specProvider.ChainId,
+            l2GenesisTimestamp,
             _logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,

@@ -77,7 +77,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
     }
 
-    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(10);
+    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(20);
     private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
     private const int HeadPivotDistance = 500;
@@ -315,11 +315,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         public virtual async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
         {
-            Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
-                cancellation,
-                (h) => blockTree.BlockAddedToMain += h,
-                (h) => blockTree.BlockAddedToMain -= h,
-                (e) => true);
+            Task newBlockTask = blockTree.WaitForNewBlock(cancellation);
 
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
@@ -328,8 +324,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
 
             timestamper.Add(TimeSpan.FromSeconds(1));
-            await manualBlockProductionTrigger.BuildBlock();
-            await newBlockTask;
+            try
+            {
+                (await manualBlockProductionTrigger.BuildBlock()).Should().NotBeNull();
+                await newBlockTask;
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Error building block. Head: {blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, {e}");
+            }
         }
 
 
@@ -370,11 +373,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         public async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
         {
-            Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
-                cancellation,
-                (h) => blockTree.BlockAddedToMain += h,
-                (h) => blockTree.BlockAddedToMain -= h,
-                (e) => true);
+            Task newBlockTask = blockTree.WaitForNewBlock(cancellation);
 
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)

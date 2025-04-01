@@ -50,10 +50,9 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
-        // TODO: We can cash unsafe blocks to save time during verification
-        // TODO: lock here
         if (_currentHead >= payloadAttributes.Number)
         {
+            if (_logger.IsInfo) _logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
             L2Block actualBlock = await _l2Api.GetBlockByNumber(payloadAttributes.Number);
             if (_derivedBlocksVerifier.ComparePayloadAttributes(
                     actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
@@ -65,6 +64,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return false;
         }
 
+        if (_logger.IsInfo) _logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
         ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
         if (executionPayload is null)
         {
@@ -90,6 +90,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
         if (fcuResult.PayloadStatus.Status != PayloadStatus.Valid)
         {
+            if (_logger.IsWarn) _logger.Warn($"ForkChoiceUpdated result: {fcuResult.PayloadStatus.Status}, payload number: {payloadAttributes.Number}");
             return null;
         }
 
@@ -105,9 +106,17 @@ public class ExecutionEngineManager : IExecutionEngineManager
     {
         PayloadStatusV1 npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
 
-        if (npResult.Status == PayloadStatus.Invalid)
+        while (npResult.Status == PayloadStatus.Syncing)
         {
-            if (_logger.IsWarn) _logger.Warn($"Got invalid payload");
+            // retry after delay
+            if (_logger.IsWarn) _logger.Warn($"Got Syncing after NewPayload. {executionPayload.BlockNumber}");
+            await Task.Delay(100);
+            npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
+        }
+
+        if (npResult.Status != PayloadStatus.Valid)
+        {
+            if (_logger.IsWarn) _logger.Warn($"NewPayloadV3 result: {npResult.Status}, payload number: {executionPayload.BlockNumber}");
             return false;
         }
         return true;
@@ -117,7 +126,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
         Hash256 headBlockHash, Hash256 finalizedBlockHash, Hash256 safeBlockHash,
         ulong head, ulong finalized, ulong safe)
     {
-        ulong newFinalized  = _currentFinalizedHead;
+        ulong newFinalized = _currentFinalizedHead;
         Hash256 newFinalizedHash = _currentFinalizedHash;
         if (_currentFinalizedHead < finalized)
         {
@@ -149,9 +158,9 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
         var result = await _l2Api.ForkChoiceUpdatedV3(newHeadHash, newFinalizedHash, newSafeHash);
 
-        if (result.PayloadStatus.Status == PayloadStatus.Invalid)
+        if (result.PayloadStatus.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdated({newHeadHash}, {newFinalizedHash}, {newSafeHash})");
+            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdatedV3({newHeadHash}, {newFinalizedHash}, {newSafeHash}), Result: {result.PayloadStatus.Status}");
             return false;
         }
         _currentHeadHash = newHeadHash;

@@ -26,7 +26,7 @@ public static class SystemConfigUpdate
 }
 
 public class SystemConfigDeriver(
-    CLChainSpecEngineParameters rollupConfig
+    Address systemConfigProxy
 ) : ISystemConfigDeriver
 {
     public SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit)
@@ -55,7 +55,7 @@ public class SystemConfigDeriver(
 
             foreach (var log in receipt.Logs ?? [])
             {
-                if (log.Address == rollupConfig.SystemConfigProxy && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
+                if (log.Address == systemConfigProxy && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
                 {
                     config = UpdateSystemConfigFromLogEvent(config, log);
                 }
@@ -94,33 +94,20 @@ public class SystemConfigDeriver(
 
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
             if ((UInt64)decoded[1] != 64) throw new FormatException("Invalid length field");
-            var overhead = (byte[])decoded[2];
             var scalar = (byte[])decoded[3];
-
-            // if (specHelper.IsEcotone(header))
+            if (!ValidL1SystemConfigScalar(scalar))
             {
-                if (!ValidEcotoneL1SystemConfigScalar(scalar))
-                {
-                    // ignore invalid scalars, retain the old system-config scalar
-                    return systemConfig;
-                }
-
-                systemConfig = systemConfig with
-                {
-                    // retain the scalar data in encoded form
-                    Scalar = scalar,
-                    // zero out the overhead, it will not affect the state-transition after Ecotone
-                    Overhead = new byte[32]
-                };
+                // ignore invalid scalars, retain the old system-config scalar
+                return systemConfig;
             }
-            // else
-            // {
-            //     systemConfig = systemConfig with
-            //     {
-            //         Overhead = overhead,
-            //         Scalar = scalar,
-            //     };
-            // }
+
+            systemConfig = systemConfig with
+            {
+                // retain the scalar data in encoded form
+                Scalar = scalar,
+                // zero out the overhead, it will not affect the state-transition after Ecotone
+                Overhead = new byte[32]
+            };
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
@@ -163,15 +150,13 @@ public class SystemConfigDeriver(
         return systemConfig;
     }
 
-    private static bool ValidEcotoneL1SystemConfigScalar(ReadOnlySpan<byte> scalar)
+    private static bool ValidL1SystemConfigScalar(ReadOnlySpan<byte> scalar)
     {
-        const byte L1ScalarBedrock = 0;
         const byte L1ScalarEcotone = 1;
 
         var versionByte = scalar[0];
         return versionByte switch
         {
-            L1ScalarBedrock => scalar[1..28].IsZero(),
             L1ScalarEcotone => scalar[1..24].IsZero(),
             // ignore the event if it's an unknown scalar format
             _ => false,

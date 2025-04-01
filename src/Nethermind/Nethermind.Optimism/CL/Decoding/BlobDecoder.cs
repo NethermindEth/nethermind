@@ -81,7 +81,6 @@ public static class BlobDecoder
         // two highest order bits of the first byte of each field element should always be 0
         if ((blob[blobPos] & 0b1100_0000) != 0)
         {
-            // TODO: remove exception
             throw new FormatException("Invalid field element");
         }
 
