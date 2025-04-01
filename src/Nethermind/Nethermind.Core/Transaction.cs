@@ -355,7 +355,7 @@ namespace Nethermind.Core
 
     public enum ProofVersion : byte
     {
-        V1 = 0x01,
-        V2 = 0x02,
+        V1 = 0x00,
+        V2 = 0x01,
     }
 }
