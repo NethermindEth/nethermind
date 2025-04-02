@@ -62,6 +62,7 @@ public class BlockProcessingModule : Module
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // These are common between processing and production and worldstate-ful, so they should be scoped instead
             // of singleton.
