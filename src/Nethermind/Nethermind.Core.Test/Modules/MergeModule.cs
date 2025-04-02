@@ -68,12 +68,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
 
-            .AddSingleton<IPeerRefresher, PeerRefresher>()
-            .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
-
-            .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
-
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()
             .AddScoped<IBlockImprovementContextFactory, IBlockProducer>(blockProducer => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot)))

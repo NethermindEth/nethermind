@@ -36,6 +36,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -408,15 +409,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
-
-            _ = new StartingSyncPivotUpdater(
-                _api.BlockTree,
-                _api.SyncModeSelector,
-                _api.SyncPeerPool!,
-                _syncConfig,
-                _blockCacheService,
-                _api.Context.Resolve<BeaconSync>(),
-                _api.LogManager);
         }
 
         return Task.CompletedTask;
@@ -448,7 +440,12 @@ public class MergePluginModule : Module
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+
             .AddSingleton<IPeerRefresher, PeerRefresher>()
+            .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
+
+            .AddSingleton<StartingSyncPivotUpdater>()
+            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();
     }

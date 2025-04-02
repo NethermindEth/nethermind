@@ -20,9 +20,6 @@ public class MergeSynchronizer(
     [KeyFilter(nameof(BeaconHeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> beaconHeaderComponent,
     ISyncConfig syncConfig,
     Synchronizer baseSynchronizer,
-#pragma warning disable CS9113 // Parameter is unread.
-    IPeerRefresher peerRefresher, // Need to be instantiated
-#pragma warning restore CS9113 // Parameter is unread.
     ILogManager logManager)
     : ISynchronizer
 {

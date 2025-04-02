@@ -258,28 +258,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         if (_api is null)
             return Task.CompletedTask;
 
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
         ArgumentNullException.ThrowIfNull(_api.MainProcessingContext);
-
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
 
         _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext.BlockchainProcessor);
 
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
-
-        _ = new UnsafeStartingSyncPivotUpdater(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool!,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.LogManager);
-        _beaconSync.AllowBeaconHeaderSync();
 
         return Task.CompletedTask;
     }
@@ -325,6 +309,14 @@ public class TaikoModule : Module
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
 
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+            .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
+
+            .AddDecorator<BeaconSync>((_, strategy) =>
+            {
+                strategy.AllowBeaconHeaderSync();
+                return strategy;
+            })
+
             ;
     }
 }
