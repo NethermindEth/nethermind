@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -33,10 +32,11 @@ namespace Nethermind.Db
         public const int BlockNumSize = sizeof(int);
         public const int BlockMaxVal = int.MaxValue;
         public const int MaxUncompressedLength = 256 * BlockNumSize;
+        private const int CompactionDistance = 8096;
 
         // TODO: get rid of static fields
-        private static readonly Channel<byte[]> NewKeysChannel = Channel.CreateUnbounded<byte[]>();
-        public static readonly ChannelWriter<byte[]> NewKeys = NewKeysChannel.Writer;
+        private static readonly Channel<byte[]> CompressKeysChannel = Channel.CreateUnbounded<byte[]>();
+        public static readonly ChannelWriter<byte[]> CompressKeys = CompressKeysChannel.Writer;
 
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism)
@@ -64,6 +64,7 @@ namespace Nethermind.Db
 
         public async Task StopAsync()
         {
+            //Console.WriteLine("!!!!!!!!!! StopAsync !!!!!!!!!!");
             await _setReceiptsSemaphore.WaitAsync();
             if (_logger.IsInfo) _logger.Info("Log index storage stopped");
         }
@@ -103,7 +104,7 @@ namespace Nethermind.Db
             using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
             var dbKeyBuffer = ArrayPool<byte>.Shared.Rent(keyPrefix.Length + BlockNumSize);
-            Span<byte> dbKey = dbKeyBuffer.AsSpan(0, keyPrefix.Length + BlockNumSize);
+            var dbKey = dbKeyBuffer.AsSpan(0, keyPrefix.Length + BlockNumSize);
 
             // Find last index for the given key, starting at or before `from`
             CreateDbKey(keyPrefix, from, dbKey);
@@ -135,15 +136,16 @@ namespace Nethermind.Db
                     }
                     else
                     {
-                        nextLowestBlockNumber = int.MaxValue;
+                        nextLowestBlockNumber = BlockMaxVal;
                     }
 
-                    if (nextLowestBlockNumber > from && currentLowestBlockNumber <= to)
+                    if (nextLowestBlockNumber > from &&
+                        (currentLowestBlockNumber <= to || currentLowestBlockNumber == BlockMaxVal))
                     {
                         ReadOnlySpan<byte> data = db.Get(firstKey);
 
-                        var decompressedBlockNumbers = ReadCompressionMarker(data) == 0
-                            ? ReadBlockNums(data[BlockNumSize..])
+                        var decompressedBlockNumbers = data.Length == 0 || ReadCompressionMarker(data) <= 0
+                            ? ReadBlockNums(data)
                             : DecompressDbValue(data);
 
                         int startIndex = BinarySearch(decompressedBlockNumbers, from);
@@ -254,22 +256,21 @@ namespace Nethermind.Db
         }
 
         private int? _lastCompactionAt;
-        private const int CompactionDistance = 10_000;
 
         // batch is expected to be sorted
         public async Task<SetReceiptsStats> SetReceiptsAsync(
             BlockReceipts[] batch, bool isBackwardSync
         )
         {
+            //Console.WriteLine("!!!!!!!!!! SetReceiptsAsync !!!!!!!!!!");
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
 
             var stats = new SetReceiptsStats();
-            Dictionary<byte[], List<int>> dictionary = null;
 
             try
             {
-                dictionary = BuildProcessingDictionary(batch, stats);
+                var dictionary = BuildProcessingDictionary(batch, stats);
 
                 if (dictionary is { Count: > 0 })
                 {
@@ -278,7 +279,7 @@ namespace Nethermind.Db
                         dictionary, new() { MaxDegreeOfParallelism = _ioParallelism },
                         pair => SaveBlockNumbersByKey(pair.Key, pair.Value, stats)
                     );
-                    stats.ProcessingData.Include(watch.Elapsed);
+                    stats.Processing.Include(watch.Elapsed);
                 }
             }
             finally
@@ -289,15 +290,19 @@ namespace Nethermind.Db
                 if (batch[^1].BlockNumber - _lastCompactionAt >= CompactionDistance)
                 {
                     watch.Restart();
+                    _addressDb.Flush();
+                    _topicsDb.Flush();
+                    stats.FlushingDbs.Include(watch.Elapsed);
+
+                    watch.Restart();
                     _addressDb.Compact();
                     _topicsDb.Compact();
                     _lastCompactionAt = batch[^1].BlockNumber;
                     stats.CompactingDbs.Include(watch.Elapsed);
-                }
 
-                {
                     watch.Restart();
-                    stats.CreatingPostMergeKeys.Include(watch.Elapsed);
+                    CompressPostMerge(CompressKeysChannel.Reader, stats);
+                    stats.PostMergeProcessing.Include(watch.Elapsed);
                 }
 
                 if (_lastKnownBlock < batch[^1].BlockNumber)
@@ -306,6 +311,7 @@ namespace Nethermind.Db
                 stats.LastBlockNumber = _lastKnownBlock;
 
                 _setReceiptsSemaphore.Release();
+                //Console.WriteLine("!!!!!!!!!! _setReceiptsSemaphore.Release() !!!!!!!!!!");
             }
 
             return stats;
@@ -321,33 +327,27 @@ namespace Nethermind.Db
                 var size => throw ValidationException($"Unexpected key of {size} bytes.")
             };
 
-            var lastEntry = GetLastDbEntry(db, key, stats);
+            var dbKeyArray = ArrayPool<byte>.Shared.Rent(key.Length + BlockNumSize);
+            var dbKey = dbKeyArray.AsSpan(0, key.Length + BlockNumSize);
 
-            // TODO: handle writing already processed blocks
-            // if (blockNums[^1] <= lastSavedNum)
-            //     return;
-
-            byte[] dbKey;
-            if (lastEntry?.value is { } value && ReadCompressionMarker(value) != 0)
+            try
             {
-                // check is present and uncompressed
-                dbKey = lastEntry.Value.key;
+                CreateDbKey(key, BlockMaxVal, dbKey);
+
+                // TODO: handle writing already processed blocks
+                // if (blockNums[^1] <= lastSavedNum)
+                //     return;
+
+                var newValue = CreateDbValue(blockNums);
+
+                var watch = Stopwatch.StartNew();
+                db.Merge(dbKey, newValue);
+                stats.CallingMerge.Include(watch.Elapsed);
             }
-            else
+            finally
             {
-                dbKey = new byte[key.Length + BlockNumSize];
-                CreateDbKey(key, blockNums[0], dbKey);
-                Interlocked.Increment(ref stats.NewDBKeys);
+                ArrayPool<byte>.Shared.Return(dbKeyArray);
             }
-
-            var newValue = CreateDbValue(
-                blockNums,
-                isNew: dbKey != lastEntry?.key
-            );
-
-            var watch = Stopwatch.StartNew();
-            db.Merge(dbKey, newValue);
-            stats.CallingMerge.Include(watch.Elapsed);
         }
 
         /// <summary>
@@ -411,42 +411,43 @@ namespace Nethermind.Db
         // used for data validation, TODO: remove, replace with tests
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
-        private (byte[] key, byte[] value)? GetLastDbEntry(IDb db, byte[] key, SetReceiptsStats stats)
+        // TODO: optimize allocations
+        private void CompressPostMerge(ChannelReader<byte[]> newKeysReader, SetReceiptsStats stats)
         {
-            var dbKey = new byte[key.Length + BlockNumSize];
-            CreateDbKey(key, BlockMaxVal, dbKey);
-
-            var dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (as size is not guaranteed)
-            Array.Copy(key, dbPrefix, key.Length);
-
-            var options = new IteratorOptions
-            {
-                IsTailing = true,
-                LowerBound = dbPrefix
-            };
-
-            using var iterator = db.GetIterator(ref options);
-
             var watch = Stopwatch.StartNew();
-            iterator.SeekForPrev(dbKey);
 
-            if (iterator.Valid() && // Found key is less than or equal to the requested one
-                iterator.Key().AsSpan()[..key.Length].SequenceEqual(key))
-            {
-                stats.SeekForPrevHit.Include(watch.Elapsed);
+            using var addressWriteBatch = _addressDb.StartWriteBatch();
+            using var topicsWriteBatch = _topicsDb.StartWriteBatch();
 
-                var dbValue = iterator.Value();
-                return (iterator.Key(), dbValue);
-            }
-            else
+            while (newKeysReader.TryRead(out var dbKey))
             {
-                stats.SeekForPrevMiss.Include(watch.Elapsed);
-                return null;
+                var (db, batch) = (dbKey.Length - BlockNumSize) switch
+                {
+                    Address.Size => (_addressDb, addressWriteBatch),
+                    Hash256.Size => (_topicsDb, topicsWriteBatch),
+                    var size => throw ValidationException($"Unexpected index size of {size} bytes.")
+                };
+
+                var dbValue = db.Get(dbKey) ?? throw new ValidationException("Empty value in the post-merge compression queue.");
+                var blockNum = ReadBlockNum(dbValue);
+
+                var dbKeyComp = (byte[])dbKey.Clone();
+                SetBlockNumber(dbKeyComp, blockNum);
+
+                // Put compressed value at a new key and clear uncompressed one
+                dbValue = CompressDbValue(dbValue);
+                batch.PutSpan(dbKeyComp, dbValue);
+                batch.PutSpan(dbKey, Array.Empty<byte>());
+
+                if (db == _addressDb) stats.CompressedAddressKeys++;
+                else if (db == _topicsDb) stats.CompressedTopicKeys++;
             }
+
+            stats.PostMergeProcessing.Include(watch.Elapsed);
         }
 
-        public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
-        public static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, len);
+        public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
+        public static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
         public static void WriteBlockNum(Span<byte> destination, int blockNum) => BinaryPrimitives.WriteInt32LittleEndian(destination, blockNum);
         public static int ReadBlockNum(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
@@ -474,25 +475,24 @@ namespace Nethermind.Db
             return result;
         }
 
-        public static byte[] CreateDbValue(IEnumerable<int> blockNums, bool isNew)
+        public static byte[] CreateDbValue(IReadOnlyList<int> blockNums)
         {
-            var shift = isNew ? BlockNumSize : 0;
-            var value = new byte[blockNums.Count() * BlockNumSize + shift];
-            WriteBlockNums(value.AsSpan(shift..), blockNums); // Use first byte as marker of uncompressed data
+            var value = new byte[blockNums.Count * BlockNumSize];
+            WriteBlockNums(value, blockNums);
             return value;
         }
 
         public static byte[] CompressDbValue(ReadOnlySpan<byte> data)
         {
-            if (ReadCompressionMarker(data) != 0)
+            if (ReadCompressionMarker(data) >= 0)
                 throw ValidationException("Data is already compressed.");
             if (data.Length % BlockNumSize != 0)
                 throw ValidationException("Invalid data length.");
 
             // TODO: use same array as destination if possible
-            Span<byte> buffer = new byte[data.Length - BlockNumSize + 1];
-            WriteCompressionMarker(buffer, (data.Length - BlockNumSize) / BlockNumSize);
-            var compressed = Compress(data[BlockNumSize..], buffer[BlockNumSize..]);
+            Span<byte> buffer = new byte[data.Length + BlockNumSize];
+            WriteCompressionMarker(buffer, data.Length / BlockNumSize);
+            var compressed = Compress(data, buffer[BlockNumSize..]);
 
             compressed = buffer[..(BlockNumSize + compressed.Length)];
             return compressed.ToArray();
@@ -501,7 +501,7 @@ namespace Nethermind.Db
         public static int[] DecompressDbValue(ReadOnlySpan<byte> data)
         {
             var len = ReadCompressionMarker(data);
-            if (len == 0)
+            if (len < 0)
                 throw new ValidationException("Data is not compressed");
 
             var buffer = new int[len];

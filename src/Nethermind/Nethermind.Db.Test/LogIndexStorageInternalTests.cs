@@ -13,7 +13,7 @@ public class LogIndexStorageInternalTests
     [TestCase(new[] { 1, 100, 200, 999 })]
     public void CompressDecompressDbValue(int[] blockNums)
     {
-        var dbValue = LogIndexStorage.CreateDbValue(blockNums, isNew: true);
+        var dbValue = LogIndexStorage.CreateDbValue(blockNums);
         var compressed = LogIndexStorage.CompressDbValue(dbValue);
         var decompressed = LogIndexStorage.DecompressDbValue(compressed);
         Assert.That(decompressed, Is.EquivalentTo(blockNums));

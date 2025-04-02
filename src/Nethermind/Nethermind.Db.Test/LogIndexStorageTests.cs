@@ -114,11 +114,12 @@ namespace Nethermind.Db.Test
                 .Should().BeEquivalentTo([topic1, topic2]);
         }
 
-        [TestCase(7)]
-        [TestCase(8)]
-        [TestCase(15)]
-        [TestCase(300)]
-        public async Task GetBlockNumbersFor_ReturnsCorrectBlocks(int batchSize)
+        [TestCase(7, 1)]
+        [TestCase(8, 2)]
+        [TestCase(15, 3)]
+        [TestCase(300, 4)]
+        [TestCase(9999, 10)]
+        public async Task GetBlockNumbersFor_ReturnsCorrectBlocks(int batchSize, int batchCount)
         {
             // Arrange
             var address = new Address("0x0000000000000000000000000000000000001234");
@@ -131,7 +132,6 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            const int batchCount = 5;
             _logIndexStorage.GetLastKnownBlockNumber().Should().Be(-1);
 
             for (var batchNum = 0; batchNum < batchCount; batchNum++)
@@ -176,8 +176,8 @@ namespace Nethermind.Db.Test
 
             Enumerable.Concat<object>(
                     Enumerate(addressDb).Select(x => new Address(x.key[..Address.Size])).ToHashSet(),
-                    Enumerate(topicDb).Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
-                ).ToArray()
+                    Enumerate(topicDb).Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet())
+                .ToArray()
                 .Should().BeEquivalentTo(new object[] { address, topic });
         }
 

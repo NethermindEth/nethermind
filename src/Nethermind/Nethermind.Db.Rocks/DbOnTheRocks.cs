@@ -558,6 +558,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         if (optionsAsDict.TryGetValue("merge_operator", out var mergeOperator))
         {
             options.SetMergeOperator(CustomMergeOperators.All[mergeOperator]);
+            DoNotGcOptions.Add(options);
         }
 
         #endregion
@@ -596,6 +597,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         }
         #endregion
     }
+
+    // TODO: get rid of
+    private static readonly HashSet<OptionsHandle> DoNotGcOptions = new();
 
     private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
     {
@@ -1836,31 +1840,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    // TODO: find better location
+    // TODO: move to LogIndexStorage!
     private static class CustomMergeOperators
     {
         public static readonly IReadOnlyDictionary<string, MergeOperator> All = new Dictionary<string, MergeOperator>(StringComparer.OrdinalIgnoreCase)
         {
-            { "Concatenate", MergeOperators.Create("Concatenate", ConcatenatePartialMerge, ConcatenateFullMerge) }
+            { "LogIndexStorage.Merge", MergeOperators.Create("LogIndexStorage.Merge", ConcatenatePartialMerge, ConcatenateFullMerge) }
         };
-
-        private static unsafe ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> data, Span<byte> buffer)
-        {
-            int length;
-            var blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-
-            fixed (int* blockNumbersPtr = blockNumbers)
-            fixed (byte* compressedPtr = buffer)
-            {
-                length = TurboPFor.p4nd1enc256v32(blockNumbersPtr, blockNumbers.Length, compressedPtr);
-            }
-
-            return buffer[..length];
-        }
 
         private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
         {
             success = true;
+
+            // TODO: avoid array copying
+            if (existingValue.IsEmpty && operands.Count == 1)
+                return operands.Get(0).ToArray();
 
             // TODO: does Get involve IO request? if yes - use single Get per operand
             var resultLength = existingValue.Length;
@@ -1877,17 +1871,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             for (int i = 0; i < operands.Count; i++)
             {
                 ReadOnlySpan<byte> operand = operands.Get(i);
-
-                if (shift + operand.Length > result.Length)
-                    operand = operand[..^(result.Length - shift)];
-
                 operand.CopyTo(result.AsSpan(shift..));
                 shift += operand.Length;
             }
 
-            return result.Length <= LogIndexStorage.MaxUncompressedLength
-                ? result
-                : LogIndexStorage.CompressDbValue(result);
+            if (result.Length > LogIndexStorage.MaxUncompressedLength)
+            {
+                LogIndexStorage.CompressKeys.TryWrite(key.ToArray());
+            }
+
+            return result;
         }
 
         private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)

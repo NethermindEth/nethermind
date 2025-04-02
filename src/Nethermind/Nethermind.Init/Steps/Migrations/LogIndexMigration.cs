@@ -52,9 +52,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly SetReceiptsStats _totalStats = new();
         private SetReceiptsStats _lastStats = new();
 
-        private readonly FileInfo _tempFileInfo;
-        private readonly FileInfo _finalFileInfo;
-
         public LogIndexMigration(IApiWithNetwork api) : this(
             api.LogIndexStorage!,
             api.ReceiptStorage!,
@@ -94,8 +91,6 @@ namespace Nethermind.Init.Steps.Migrations
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
             });
             _progress = new("Log-index Migration", logManager);
-            _tempFileInfo = new(_logIndexStorage.TempFilePath);
-            _finalFileInfo = new(_logIndexStorage.FinalFilePath);
         }
 
         public async Task<bool> Run(long blockNumber)
@@ -156,7 +151,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (_logger.IsInfo)
             {
-                (SetReceiptsStats last, SetReceiptsStats total, PagesStats pagesStats) = (_lastStats, _totalStats, _logIndexStorage.PagesStats);
+                (SetReceiptsStats last, SetReceiptsStats total) = (_lastStats, _totalStats);
                 _lastStats = new();
 
                 if (total.LastBlockNumber < 0)
@@ -169,24 +164,28 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
 
+                    $"\n\t\tWaiting batch: {last.WaitingBatch} ( {total.WaitingBatch} on average )" +
                     $"\n\t\tKeys per batch: {last.KeysCount:N0} ( {total.KeysCount:N0} on average )" +
-                    $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss} ( {total.SeekForPrevHit} / {total.SeekForPrevMiss} on average )" +
                     $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average )" +
-                    $"\n\t\tProcessing: {last.ProcessingData} ( {total.ProcessingData} on average )" +
+                    $"\n\t\tProcessing: {last.Processing} ( {total.Processing} on average )" +
 
                     $"\n\t\tMerge call: {last.CallingMerge} ( {total.CallingMerge} on average )" +
                     $"\n\t\tCompacting DBs: {last.CompactingDbs} ( {total.CompactingDbs} on average )" +
-                    $"\n\t\tNew DB keys: {last.NewDBKeys:N0} ( {total.NewDBKeys:N0} in total )"
+                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
+                    $"\n\t\tPost-merge processing: {last.PostMergeProcessing} ( {total.PostMergeProcessing} in total )" +
+                    $"\n\t\tCompressed keys: {last.CompressedAddressKeys} address, {last.CompressedTopicKeys} topic ( {total.CompressedAddressKeys} address, {total.CompressedTopicKeys} topic in total )" +
+                    $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndexStorage))}"
                 );
             }
         }
 
         private static readonly string[] Suffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
 
-        private static string GetFileSize(FileInfo file)
+        private static string GetFolderSize(string path)
         {
-            file.Refresh();
-            double size = file.Length;
+            var info = new DirectoryInfo(path);
+
+            var size = info.Exists ? info.GetFiles().Sum(f => f.Length) : 0;
 
             int index = 0;
             while (size >= 1024 && index < Suffixes.Length - 1)
@@ -275,12 +274,16 @@ namespace Nethermind.Init.Steps.Migrations
                 var watch = Stopwatch.StartNew();
                 var prevElapsed = TimeSpan.Zero;
 
-                foreach (BlockReceipts[] batch in reader.ReadAllAsync(token).ToEnumerable())
+                var readWatch = new Stopwatch();
+                await foreach (var batch in reader.ReadAllAsync(token))
                 {
+                    var readElapsed = readWatch.Elapsed;
+
                     if (token.IsCancellationRequested)
                         return;
 
                     SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
+                    runStats.WaitingBatch.Include(readElapsed);
                     migrated += batch.Length;
 
                     if (ReportSize > 0 && (migrated - prevMigrated) >= ReportSize)
@@ -294,6 +297,8 @@ namespace Nethermind.Init.Steps.Migrations
 
                     _lastStats.Combine(runStats);
                     _totalStats.Combine(runStats);
+
+                    readWatch.Restart();
                 }
             }
             catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == token)

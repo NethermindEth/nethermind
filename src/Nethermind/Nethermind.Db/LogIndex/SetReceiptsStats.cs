@@ -12,20 +12,19 @@ public class SetReceiptsStats
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
     public long LastBlockNumber { get; set; } = -1;
-    public long NewDBKeys;
 
-    public ExecTimeStats SeekForPrevHit { get; } = new();
-    public ExecTimeStats SeekForPrevMiss { get; } = new();
     public ExecTimeStats BuildingDictionary { get; } = new();
-    public ExecTimeStats ProcessingData { get; } = new();
+    public ExecTimeStats Processing { get; } = new();
 
-    public long AddressMerges { get; set; }
-    public long TopicMerges { get; set; }
+    public long CompressedAddressKeys { get; set; }
+    public long CompressedTopicKeys { get; set; }
     public ExecTimeStats CallingMerge { get; } = new();
     public ExecTimeStats CompactingDbs { get; } = new();
-    public ExecTimeStats CreatingPostMergeKeys { get; } = new();
+    public ExecTimeStats FlushingDbs { get; } = new();
+    public ExecTimeStats PostMergeProcessing { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
+    public ExecTimeStats WaitingBatch { get; } = new();
 
     public void Combine(SetReceiptsStats other)
     {
@@ -33,18 +32,17 @@ public class SetReceiptsStats
         TxAdded += other.TxAdded;
         LogsAdded += other.LogsAdded;
         TopicsAdded += other.TopicsAdded;
-        AddressMerges += other.AddressMerges;
-        TopicMerges += other.TopicMerges;
-        NewDBKeys += other.NewDBKeys;
+        CompressedAddressKeys += other.CompressedAddressKeys;
+        CompressedTopicKeys += other.CompressedTopicKeys;
 
-        SeekForPrevHit.Combine(other.SeekForPrevHit);
-        SeekForPrevMiss.Combine(other.SeekForPrevMiss);
         BuildingDictionary.Combine(other.BuildingDictionary);
-        ProcessingData.Combine(other.ProcessingData);
+        Processing.Combine(other.Processing);
         CallingMerge.Combine(other.CallingMerge);
         CompactingDbs.Combine(other.CompactingDbs);
-        CreatingPostMergeKeys.Combine(other.CreatingPostMergeKeys);
+        FlushingDbs.Combine(other.FlushingDbs);
+        PostMergeProcessing.Combine(other.PostMergeProcessing);
         KeysCount.Combine(other.KeysCount);
         LastBlockNumber = Math.Max(LastBlockNumber, other.LastBlockNumber);
+        WaitingBatch.Combine(other.WaitingBatch);
     }
 }
