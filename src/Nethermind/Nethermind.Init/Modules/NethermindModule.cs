@@ -14,6 +14,7 @@ using Nethermind.Era1;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -41,6 +42,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .Bind<IBlockFinder, IBlockTree>()
 
+            .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
+            .Bind<ITxValidator, TxValidator>()
             .AddSingleton<IBlockValidator, BlockValidator>()
             ;
     }

@@ -220,7 +220,7 @@ namespace Nethermind.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
-        public TxValidator? TxValidator { get; set; }
+        public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }

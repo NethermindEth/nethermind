@@ -32,7 +32,6 @@ public class BlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<ITxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
