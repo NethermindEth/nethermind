@@ -219,7 +219,7 @@ namespace Nethermind.Api
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
-        public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
+        public IRpcCapabilitiesProvider RpcCapabilitiesProvider => Context.Resolve<IRpcCapabilitiesProvider>();
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 

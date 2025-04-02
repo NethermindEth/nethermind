@@ -61,7 +61,9 @@ namespace Nethermind.Api
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
         IHealthHintService? HealthHintService { get; set; }
-        IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
+
+        [SkipServiceCollection]
+        IRpcCapabilitiesProvider RpcCapabilitiesProvider { get; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
 

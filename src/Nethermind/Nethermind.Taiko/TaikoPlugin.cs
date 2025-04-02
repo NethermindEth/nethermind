@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain;
 using Nethermind.Taiko.Rpc;
-using Nethermind.HealthChecks;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Handlers;
@@ -140,7 +139,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
         IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
         TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, readonlyBlockTree, txDecoder);
-        _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         ReadOnlyTxProcessingEnvFactory readonlyTxProcessingEnvFactory = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
@@ -180,8 +178,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
                 _api.SpecProvider,
                 _api.SyncPeerPool,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
+                _api.Config<IBlocksConfig>(),
+                _api.Config<IMergeConfig>()),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),

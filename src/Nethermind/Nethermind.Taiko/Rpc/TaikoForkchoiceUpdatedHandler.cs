@@ -18,6 +18,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Peers;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Config;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -34,8 +35,8 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     ILogManager logManager,
-    ulong secondsPerSlot,
-    bool simulateBlockProduction = false) : ForkchoiceUpdatedHandler(blockTree,
+    IBlocksConfig blocksConfig,
+    IMergeConfig mergeConfig) : ForkchoiceUpdatedHandler(blockTree,
           manualBlockFinalizationManager,
           poSSwitcher,
           payloadPreparationService,
@@ -48,8 +49,8 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
           specProvider,
           syncPeerPool,
           logManager,
-          secondsPerSlot,
-          simulateBlockProduction)
+          blocksConfig,
+          mergeConfig)
 {
     protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)

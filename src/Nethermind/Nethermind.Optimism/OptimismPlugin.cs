@@ -217,69 +217,14 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             await Task.Delay(100);
         await Task.Delay(5000);
 
+        // TODO: Check why different from merge
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
-        OptimismPayloadPreparationService payloadPreparationService = new(
-            _api.SpecProvider,
-            (PostMergeBlockProducer)_api.BlockProducer,
-            improvementContextFactory,
-            _api.TimerFactory,
-            _api.LogManager,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        _api.BlockImprovementContextFactory = improvementContextFactory;
 
-        _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
-
-        var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
-
-        IInitConfig initConfig = _api.Config<IInitConfig>();
-        IEngineRpcModule engineRpcModule = new EngineRpcModule(
-            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new NewPayloadHandler(
-                _api.BlockValidator,
-                _api.BlockTree,
-                _syncConfig,
-                posSwitcher,
-                _beaconSync,
-                _beaconPivot,
-                _blockCacheService,
-                _api.BlockProcessingQueue,
-                _invalidChainTracker,
-                _beaconSync,
-                _api.LogManager,
-                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts),
-            new ForkchoiceUpdatedHandler(
-                _api.BlockTree,
-                _blockFinalizationManager,
-                posSwitcher,
-                payloadPreparationService,
-                _api.BlockProcessingQueue,
-                _blockCacheService,
-                _invalidChainTracker,
-                _beaconSync,
-                _beaconPivot,
-                _peerRefresher,
-                _api.SpecProvider,
-                _api.SyncPeerPool!,
-                _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
-            new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
-            new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
-            new GetBlobsHandler(_api.TxPool),
-            _api.SpecProvider,
-            new GCKeeper(
-                initConfig.DisableGcOnNewPayload
-                    ? NoGCStrategy.Instance
-                    : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
-            _api.LogManager);
+        IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
         IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(
             OptimismConstants.CurrentProtocolVersion,
@@ -336,6 +281,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
+            .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
             ;
 
     }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -18,6 +20,24 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 {
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
+
+
+    public OptimismPayloadPreparationService(
+        ISpecProvider specProvider,
+        PostMergeBlockProducer blockProducer,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig)
+        : this(
+            specProvider,
+            blockProducer,
+            blockImprovementContextFactory,
+            timerFactory,
+            logManager,
+            TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot))
+    {
+    }
 
     public OptimismPayloadPreparationService(
         ISpecProvider specProvider,

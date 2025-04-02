@@ -21,6 +21,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -30,6 +31,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -298,73 +300,14 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
             }
 
-            IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
+            _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
 
-            PayloadPreparationService payloadPreparationService = new(
-                _postMergeBlockProducer,
-                improvementContextFactory,
-                _api.TimerFactory,
-                _api.LogManager,
-                TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
-
-            _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
-
-            IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new NewPayloadHandler(
-                    _api.BlockValidator,
-                    _api.BlockTree,
-                    _syncConfig,
-                    _poSSwitcher,
-                    _beaconSync,
-                    _beaconPivot,
-                    _blockCacheService,
-                    _api.BlockProcessingQueue,
-                    _invalidChainTracker,
-                    _beaconSync,
-                    _api.LogManager,
-                    TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts),
-                new ForkchoiceUpdatedHandler(
-                    _api.BlockTree,
-                    _blockFinalizationManager,
-                    _poSSwitcher,
-                    payloadPreparationService,
-                    _api.BlockProcessingQueue,
-                    _blockCacheService,
-                    _invalidChainTracker,
-                    _beaconSync,
-                    _beaconPivot,
-                    _peerRefresher,
-                    _api.SpecProvider,
-                    _api.SyncPeerPool!,
-                    _api.LogManager,
-                    _api.Config<IBlocksConfig>().SecondsPerSlot,
-                    _api.Config<IMergeConfig>().SimulateBlockProduction),
-                new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
-                new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-                new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
-                new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
-                new GetBlobsHandler(_api.TxPool),
-                _api.SpecProvider,
-                new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, mergeConfig), _api.LogManager),
-                _api.LogManager);
-
-            RegisterEngineRpcModule(engineRpcModule);
+            _api.RpcModuleProvider!.RegisterSingle(_api.Context.Resolve<IEngineRpcModule>());
 
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
 
         return Task.CompletedTask;
-    }
-
-    protected virtual void RegisterEngineRpcModule(IEngineRpcModule engineRpcModule)
-    {
-        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
-        _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
 
     public Task InitSynchronization()
@@ -455,6 +398,46 @@ public class MergePluginModule : Module
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
-            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();
+            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
+
+            .AddModule(new MergeRpcModule())
+            ;
+    }
+}
+
+public class MergeRpcModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder
+            .AddSingleton<IEngineRpcModule, EngineRpcModule>()
+
+            .AddSingleton<IAsyncHandler<byte[], ExecutionPayload?>, GetPayloadV1Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV2Result?>, GetPayloadV2Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
+            .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
+            .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
+            .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
+            .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
+            .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()
+            .AddSingleton<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
+            .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
+
+            .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
+            .AddSingleton<NoSyncGcRegionStrategy>()
+            .AddSingleton<GCKeeper>((ctx) =>
+            {
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                return new GCKeeper(
+                    initConfig.DisableGcOnNewPayload
+                        ? NoGCStrategy.Instance
+                        : ctx.Resolve<NoSyncGcRegionStrategy>(),
+                    ctx.Resolve<ILogManager>());
+            })
+            .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
+            ;
     }
 }
