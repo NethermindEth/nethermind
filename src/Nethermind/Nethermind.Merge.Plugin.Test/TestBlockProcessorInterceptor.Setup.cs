@@ -38,6 +38,9 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
     }
 
+    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+        => _blockProcessorImplementation.ValidateInclusionList(suggestedBlock, block, options);
+
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
     {
         add => _blockProcessorImplementation.BlocksProcessing += value;

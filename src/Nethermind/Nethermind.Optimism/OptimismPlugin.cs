@@ -251,6 +251,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
                 _invalidChainTracker,
                 _beaconSync,
                 _api.LogManager,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
             new ForkchoiceUpdatedHandler(
@@ -274,6 +275,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetInclusionListTransactionsHandler(_api.BlockTree, null),
+            new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

@@ -61,6 +61,8 @@ public partial class BlockProcessor(
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
+    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -304,6 +306,17 @@ public partial class BlockProcessor(
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+    }
+
+    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            return true;
+        }
+
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+        return _inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>

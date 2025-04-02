@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, ISpecProvider specProvider, int concurrency, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
-    private int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
+    private readonly int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateToWarmup), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 

@@ -22,27 +22,19 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class TxPoolTxSource : ITxSource
+    public class TxPoolTxSource(
+        ITxPool? transactionPool,
+        ISpecProvider? specProvider,
+        ITransactionComparerProvider? transactionComparerProvider,
+        ILogManager? logManager,
+        ITxFilterPipeline? txFilterPipeline)
+        : ITxSource
     {
-        private readonly ITxPool _transactionPool;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly ITxFilterPipeline _txFilterPipeline;
-        private readonly ISpecProvider _specProvider;
-        protected readonly ILogger _logger;
-
-        public TxPoolTxSource(
-            ITxPool? transactionPool,
-            ISpecProvider? specProvider,
-            ITransactionComparerProvider? transactionComparerProvider,
-            ILogManager? logManager,
-            ITxFilterPipeline? txFilterPipeline)
-        {
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
-            _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+        private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
+        private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
@@ -234,7 +226,7 @@ namespace Nethermind.Consensus.Producers
                 // Use actual gas used when available as the tx may be using over-estimated gaslimit
                 ulong feeValue = (ulong)premiumPerGas * (ulong)(tx.SpentGas);
 
-                // Iterate backward from maxBlobCapacity down to blobCount 
+                // Iterate backward from maxBlobCapacity down to blobCount
                 // so we only compute for valid capacities that can fit this transaction.
                 for (int capacity = leftoverCapacity; capacity >= blobCount; capacity--)
                 {

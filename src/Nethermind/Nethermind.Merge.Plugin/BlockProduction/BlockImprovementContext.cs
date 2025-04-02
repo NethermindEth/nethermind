@@ -24,9 +24,11 @@ public class BlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        UInt256 currentBlockFees)
+        UInt256 currentBlockFees,
+        CancellationToken cancellationToken = default)
     {
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        using var timeoutTokenSource = new CancellationTokenSource((int)timeout.TotalMilliseconds);
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutTokenSource.Token);
         CurrentBestBlock = currentBestBlock;
         BlockFees = currentBlockFees;
         StartDateTime = startDateTime;

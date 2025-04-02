@@ -164,6 +164,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
                 invalidChainTracker,
                 _beaconSync,
                 _api.LogManager,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
             new TaikoForkchoiceUpdatedHandler(
@@ -187,6 +188,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetInclusionListTransactionsHandler(_api.BlockTree, null),
+            new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

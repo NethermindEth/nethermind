@@ -26,6 +26,8 @@ namespace Nethermind.Consensus.Processing
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
 
+        bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options);
+
         /// <summary>
         /// Fired when a branch is being processed.
         /// </summary>
@@ -49,6 +51,7 @@ namespace Nethermind.Consensus.Processing
         public interface IBlockTransactionsExecutor
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            bool IsTransactionInBlock(Transaction tx);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         }
     }

@@ -39,7 +39,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -65,6 +64,38 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         int ErrorCode
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
+
+    [TestCase(
+        "0xe05eb5783e1ee8b0b6a6c4c9a09a9bdeb798835d3d44cda510e3083c0578165f",
+        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba")]
+    public override Task NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot)
+        => base.NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(blockHash, stateRoot);
+
+    [TestCase(
+        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
+        "0x81a41f22fa776446737cc3dfab96f8536bacfa2fd3d85b0f013b55a6be3ecfe7",
+        "0x6d43db6fab328470c4ad01d6658a317496d373a1892aab8273bf52448beb915e",
+        "0x9971bfe0d6f1fe54",
+        "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
+        "0x2632e314a000",
+        "0x5208")]
+    public override Task Should_build_block_with_inclusion_list_transactions_V5(
+        string latestValidHash,
+        string blockHash,
+        string stateRoot,
+        string payloadId,
+        string receiptsRoot,
+        string blockFees,
+        string gasUsed)
+        => base.Should_build_block_with_inclusion_list_transactions_V5(latestValidHash, blockHash, stateRoot, payloadId, receiptsRoot, blockFees, gasUsed);
+
+    [TestCase(
+        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
+        "0xea3bdca86662fa8b5399f2c3ff494ced747f07834740ead723ebe023852e9ea1",
+        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
+        "0x7389011914b1ca84")]
+    public override Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash, string stateRoot, string payloadId)
+        => base.Should_process_block_as_expected_V5(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
         "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
@@ -213,7 +244,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ExecutionRequestsProcessor);
 
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
+            InclusionListTxSource = new InclusionListTxSource(SpecProvider.ChainId);
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource.Then(InclusionListTxSource));
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
