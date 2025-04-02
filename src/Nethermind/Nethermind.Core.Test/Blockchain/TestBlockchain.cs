@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -26,6 +27,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -40,7 +42,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -56,8 +57,7 @@ public class TestBlockchain : IDisposable
     public TransactionProcessor TxProcessor { get; set; } = null!;
     public IReceiptStorage ReceiptStorage { get; set; } = null!;
     public ITxPool TxPool { get; set; } = null!;
-    public IDb CodeDb => DbProvider.CodeDb;
-    public IWorldStateManager WorldStateManager { get; set; } = null!;
+    public IWorldStateManager WorldStateManager => Container.Resolve<IWorldStateManager>();
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -79,10 +79,10 @@ public class TestBlockchain : IDisposable
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
-    public TrieStore TrieStore { get; set; } = null!;
+    public TrieStore TrieStore => Container.Resolve<TrieStore>();
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
-    public IDbProvider DbProvider { get; set; } = null!;
+    public IDbProvider DbProvider => Container.Resolve<IDbProvider>();
     public ISpecProvider SpecProvider { get; set; } = null!;
 
     public ISealEngine SealEngine { get; set; } = null!;
@@ -118,8 +118,6 @@ public class TestBlockchain : IDisposable
     public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
-    public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
-
     public ManualTimestamper Timestamper { get; protected set; } = null!;
     public BlocksConfig BlocksConfig { get; protected set; } = new();
 
@@ -130,7 +128,7 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    private PreBlockCaches PreBlockCaches { get; } = new();
+    protected IContainer Container { get; set; } = null!;
 
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
     {
@@ -138,9 +136,31 @@ public class TestBlockchain : IDisposable
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
-        DbProvider = await CreateDbProvider();
-        TrieStore = new TrieStore(StateDb, LogManager);
-        IWorldState state = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
+
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddSingleton<ISpecProvider>(SpecProvider)
+
+            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden
+            // This means it does not use pruning triestore normally though.
+            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
+            .Bind<IPruningTrieStore, TrieStore>()
+            .AddSingleton<IWorldStateManager>(ctx =>
+            {
+                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
+                TrieStore trieStore = ctx.Resolve<TrieStore>();
+                PreBlockCaches preBlockCaches = new PreBlockCaches();
+                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance, preBlockCaches: preBlockCaches);
+                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+            })
+
+            ;
+
+        await ConfigureContainer(builder);
+
+        Container = builder.Build();
+
+        IWorldState state = Container.Resolve<IWorldStateManager>().GlobalWorldState;
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -168,9 +188,7 @@ public class TestBlockchain : IDisposable
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(state, TrieStore, DbProvider, LogManager);
-        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+        StateReader = Container.Resolve<IStateReader>();
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
         BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
@@ -256,14 +274,17 @@ public class TestBlockchain : IDisposable
         return this;
     }
 
+    protected virtual Task ConfigureContainer(ContainerBuilder builder)
+    {
+        return Task.CompletedTask;
+    }
+
     private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
     {
         return specProvider is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
-
-    protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
 
     protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
@@ -379,8 +400,18 @@ public class TestBlockchain : IDisposable
             executionRequestsProcessor: ExecutionRequestsProcessor);
 
 
-    protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
-        new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager), WorldStateManager.GlobalWorldState, SpecProvider, 4, LogManager, PreBlockCaches);
+    protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
+        new BlockCachePreWarmer(
+            new ReadOnlyTxProcessingEnvFactory(
+                WorldStateManager,
+                BlockTree,
+                SpecProvider,
+                LogManager),
+            WorldStateManager.GlobalWorldState,
+            SpecProvider,
+            4,
+            LogManager,
+            (WorldStateManager.GlobalWorldState as IPreBlockCaches)?.Caches);
 
     public async Task WaitForNewHead()
     {
@@ -419,14 +450,13 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner?.StopAsync();
         if (DbProvider is not null)
         {
-            CodeDb?.Dispose();
             StateDb?.Dispose();
             DbProvider.BlobTransactionsDb?.Dispose();
             DbProvider.ReceiptsDb?.Dispose();
         }
 
         _trieStoreWatcher?.Dispose();
-        DbProvider?.Dispose();
+        Container.Dispose();
     }
 
     /// <summary>

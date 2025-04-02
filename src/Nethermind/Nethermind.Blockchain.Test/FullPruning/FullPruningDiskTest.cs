@@ -8,6 +8,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -74,19 +75,20 @@ public class FullPruningDiskTest
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
-                chain.TrieStore,
+                Container.Resolve<IPruningTrieStore>(),
                 _chainEstimations,
                 LogManager);
             return chain;
         }
 
-        protected override async Task<IDbProvider> CreateDbProvider()
+        protected override async Task ConfigureContainer(ContainerBuilder builder)
         {
             IDbProvider dbProvider = new DbProvider();
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
             StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
             await standardDbInitializer.InitStandardDbsAsync(true);
-            return dbProvider;
+
+            builder.AddSingleton<IDbProvider>(dbProvider);
         }
 
         public override void Dispose()
