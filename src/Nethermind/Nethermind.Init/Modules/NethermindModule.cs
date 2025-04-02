@@ -46,6 +46,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Bind<ITxValidator, TxValidator>()
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
+            .AddSingleton<IUnclesValidator, UnclesValidator>()
             ;
     }
 

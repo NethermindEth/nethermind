@@ -74,6 +74,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton<ITxValidator>(new TxValidator(MainnetSpecProvider.Instance.ChainId))
                     .AddSingleton(Substitute.For<IBlockValidator>())
                     .AddSingleton(Substitute.For<IHeaderValidator>())
+                    .AddSingleton(Substitute.For<IUnclesValidator>())
                     .Build()
             );
 
@@ -134,7 +135,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
             api.EthSyncingInfo = Substitute.For<IEthSyncingInfo>();
             api.HealthHintService = Substitute.For<IHealthHintService>();
-            api.UnclesValidator = Substitute.For<IUnclesValidator>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();

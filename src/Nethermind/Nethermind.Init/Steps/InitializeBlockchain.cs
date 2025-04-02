@@ -79,8 +79,6 @@ namespace Nethermind.Init.Steps
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            setApi.UnclesValidator = CreateUnclesValidator();
-
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
@@ -160,14 +158,6 @@ namespace Nethermind.Init.Steps
             }
 
             return Task.CompletedTask;
-        }
-
-        protected virtual IUnclesValidator CreateUnclesValidator()
-        {
-            return new UnclesValidator(
-                _api.BlockTree,
-                _api.HeaderValidator,
-                _api.LogManager);
         }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)

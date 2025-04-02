@@ -69,8 +69,6 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             preWarmer: preWarmer);
     }
 
-    protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;
-
     protected override IHealthHintService CreateHealthHintService() =>
         new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
 

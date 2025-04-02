@@ -6,10 +6,12 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -61,8 +63,9 @@ public class MergePluginTests
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
-            .AddDecorator<INethermindApi>((ctx, api) =>
+            .OnBuild((ctx) =>
             {
+                INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
                 api.BlockProcessingQueue?.IsEmpty.Returns(true);
@@ -79,8 +82,6 @@ public class MergePluginTests
                     api.TransactionComparerProvider!,
                     ctx.Resolve<IBlocksConfig>(),
                     api.LogManager!);
-
-                return api;
             })
             .Build();
     }

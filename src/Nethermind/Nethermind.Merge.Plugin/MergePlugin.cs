@@ -221,7 +221,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
-            _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
             _api.HealthHintService =
                 new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
@@ -352,20 +351,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         if (MergeEnabled)
         {
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
-            if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
-            if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
-            if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
-            if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
-            if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
-            if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
-
-            // ToDo strange place for validators initialization
-
-            _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
         }
 
         return Task.CompletedTask;
@@ -412,7 +397,7 @@ public class MergePluginModule : Module
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
-            // .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
             /*
             _api.BlockValidator = new InvalidBlockInterceptor(

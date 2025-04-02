@@ -312,6 +312,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
+            .AddSingleton<IUnclesValidator>(Always.Valid)
             ;
 
     }

@@ -32,7 +32,6 @@ public class BlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<IUnclesValidator, UnclesValidator>()
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()

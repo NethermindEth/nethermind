@@ -310,9 +310,10 @@ public class TaikoModule : Module
                 return strategy;
             })
 
-            // BlockValidators
+            // Validators
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
+            .AddSingleton<IUnclesValidator>(Always.Valid)
 
             ;
     }

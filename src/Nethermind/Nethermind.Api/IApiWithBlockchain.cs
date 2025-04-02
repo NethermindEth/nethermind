@@ -39,7 +39,9 @@ namespace Nethermind.Api
         IEnode? Enode { get; set; }
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
-        IUnclesValidator? UnclesValidator { get; set; }
+
+        [SkipServiceCollection]
+        IUnclesValidator? UnclesValidator { get; }
 
         [SkipServiceCollection]
         IHeaderValidator? HeaderValidator { get; }

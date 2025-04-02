@@ -55,7 +55,6 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
-using Nethermind.Era1;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
@@ -146,7 +145,7 @@ namespace Nethermind.Api
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
-        public IUnclesValidator? UnclesValidator { get; set; }
+        public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
 
