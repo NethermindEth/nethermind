@@ -29,8 +29,18 @@ public class UInt256Converter : JsonConverter<UInt256>
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
-            return reader.GetUInt64();
+            if (reader.TryGetUInt64(out ulong smallValue))
+            {
+                return smallValue;
+            }
+
+            ReadOnlySpan<byte> bytes = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            Span<char> chars = stackalloc char[bytes.Length + 1];
+            Encoding.UTF8.GetChars(bytes, chars);
+
+            return UInt256.Parse(chars, NumberStyles.None);
         }
+
         if (reader.TokenType != allowedTokenType)
         {
             ThrowJsonException();
