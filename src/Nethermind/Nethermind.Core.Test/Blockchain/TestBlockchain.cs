@@ -51,7 +51,7 @@ public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
     public long TestTimout { get; set; } = DefaultTimeout;
-    public IStateReader StateReader { get; private set; } = null!;
+    public IStateReader StateReader => Container.Resolve<IStateReader>();
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager { get; private set; } = null!;
     public TransactionProcessor TxProcessor { get; set; } = null!;
@@ -124,7 +124,7 @@ public class TestBlockchain : IDisposable
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
-    public ChainLevelInfoRepository ChainLevelInfoRepository { get; protected set; } = null!;
+    public IChainLevelInfoRepository ChainLevelInfoRepository => Container.Resolve<IChainLevelInfoRepository>();
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
@@ -188,9 +188,6 @@ public class TestBlockchain : IDisposable
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
 
-        StateReader = Container.Resolve<IStateReader>();
-
-        ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
         BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
             new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
             DbProvider.BlockInfosDb,
