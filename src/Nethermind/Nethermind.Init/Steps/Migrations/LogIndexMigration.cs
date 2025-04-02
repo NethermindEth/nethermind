@@ -185,7 +185,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             var info = new DirectoryInfo(path);
 
-            var size = info.Exists ? info.GetFiles().Sum(f => f.Length) : 0;
+            double size = info.Exists ? info.GetFiles().Sum(f => f.Length) : 0;
 
             int index = 0;
             while (size >= 1024 && index < Suffixes.Length - 1)
@@ -238,7 +238,8 @@ namespace Nethermind.Init.Steps.Migrations
                 // var startFrom = 750_000 + 18_000 + 33_000; // Holesky: Where slowdown starts
                 // const int startFrom = 2_000_000; // Holesky: Average blocks
                 // const int startFrom = 2_000_000 + 180_000; // Holesky: Very log-dense blocks
-                //var startFrom =  4_750_000; // Ethereum: Where slowdown starts
+                // var startFrom =  4_750_000; // 0x487AB0 // Ethereum: Where slowdown starts
+                // var startFrom = 11_000_000; // Ethereum: ~50%
 
                 // TODO: move to chain configuration
                 startFrom = Math.Max(startFrom, 52_029); // Ethereum: fist block with logs

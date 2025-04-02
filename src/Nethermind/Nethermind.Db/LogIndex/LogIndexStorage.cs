@@ -295,6 +295,9 @@ namespace Nethermind.Db
                 _lastCompactionAt ??= batch[0].BlockNumber - 1;
                 if (batch[^1].BlockNumber - _lastCompactionAt >= CompactionDistance)
                 {
+                    // TODO: log as Debug
+                    _logger.Info("Compaction started");
+
                     watch.Restart();
                     _addressDb.Flush();
                     _topicsDb.Flush();
@@ -309,6 +312,8 @@ namespace Nethermind.Db
                     watch.Restart();
                     CompressPostMerge(CompressKeysChannel.Reader, stats);
                     stats.PostMergeProcessing.Include(watch.Elapsed);
+
+                    _logger.Info("Compaction completed");
                 }
 
                 if (_lastKnownBlock < batch[^1].BlockNumber)
