@@ -164,8 +164,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
 
-        _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor);
-
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
 

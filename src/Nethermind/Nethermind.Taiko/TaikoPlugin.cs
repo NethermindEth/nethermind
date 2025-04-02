@@ -258,10 +258,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         if (_api is null)
             return Task.CompletedTask;
 
-        ArgumentNullException.ThrowIfNull(_api.MainProcessingContext);
-
-        _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext.BlockchainProcessor);
-
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
 

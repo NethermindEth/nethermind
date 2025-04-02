@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -24,6 +25,13 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
 {
     private readonly TaikoNethermindApi _api = api;
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
+
+    protected override async Task InitBlockchain()
+    {
+        await base.InitBlockchain();
+
+        _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor);
+    }
 
     protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
     {
