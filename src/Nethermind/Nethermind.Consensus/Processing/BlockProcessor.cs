@@ -316,7 +316,7 @@ public partial class BlockProcessor(
         }
 
         block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-        return _inclusionListValidator.ValidateInclusionList(block);
+        return _inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>

@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,10 +16,10 @@ public class InclusionListValidator(
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
-    public bool ValidateInclusionList(Block block) =>
-        ValidateInclusionList(block, _specProvider.GetSpec(block.Header));
+    public bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock) =>
+        ValidateInclusionList(block, isTransactionInBlock, _specProvider.GetSpec(block.Header));
 
-    public bool ValidateInclusionList(Block block, IReleaseSpec spec)
+    public bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock, IReleaseSpec spec)
     {
         if (!spec.InclusionListsEnabled)
         {
@@ -40,11 +38,9 @@ public class InclusionListValidator(
             return true;
         }
 
-        var blockTxHashes = new HashSet<Hash256>(block.Transactions.Select(tx => tx.Hash));
-
         foreach (Transaction tx in block.InclusionListTransactions)
         {
-            if (blockTxHashes.Contains(tx.Hash))
+            if (isTransactionInBlock(tx))
             {
                 continue;
             }

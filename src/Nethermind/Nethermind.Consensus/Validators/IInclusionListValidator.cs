@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Validators;
@@ -17,5 +18,5 @@ public interface IInclusionListValidator
     /// <c>true</c> if the block's inclusion list is satisfied according to EIP-7805;
     /// otherwise, <c>false</c>.
     /// </returns>
-    bool ValidateInclusionList(Block block);
+    bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock);
 }
