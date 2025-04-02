@@ -25,10 +25,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(
-    OptimismNethermindApi api,
-    IPoSSwitcher poSSwitcher,
-    IInvalidChainTracker invalidChainTracker) : InitializeBlockchain(api)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api)
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
@@ -45,6 +42,8 @@ public class InitializeBlockchainOptimism(
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+
+        api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(api.MainProcessingContext!.BlockchainProcessor);
     }
 
     protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
@@ -62,29 +61,6 @@ public class InitializeBlockchainOptimism(
             api.SpecHelper,
             codeInfoRepository
         );
-    }
-
-    protected override IHeaderValidator CreateHeaderValidator()
-    {
-        if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-        if (api.SealValidator is null) throw new StepDependencyException(nameof(api.SealValidator));
-        if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
-        if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
-        if (api.LogManager is null) throw new StepDependencyException(nameof(api.LogManager));
-
-        OptimismHeaderValidator opHeaderValidator = new(
-            poSSwitcher,
-            api.BlockTree,
-            api.SealValidator,
-            api.SpecProvider,
-            api.LogManager);
-
-        return new InvalidHeaderInterceptor(opHeaderValidator, invalidChainTracker, api.LogManager);
-    }
-
-    protected override IBlockValidator CreateBlockValidator()
-    {
-        return new InvalidBlockInterceptor(base.CreateBlockValidator(), invalidChainTracker, api.LogManager);
     }
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
@@ -113,8 +89,6 @@ public class InitializeBlockchainOptimism(
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
             preWarmer: preWarmer);
     }
-
-    protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;
 
     protected override IHealthHintService CreateHealthHintService() =>
         new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
