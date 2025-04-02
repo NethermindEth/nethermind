@@ -66,6 +66,12 @@ namespace Nethermind.Db
         {
             //Console.WriteLine("!!!!!!!!!! StopAsync !!!!!!!!!!");
             await _setReceiptsSemaphore.WaitAsync();
+
+            // TODO: check if needed
+            _addressDb.Flush();
+            _topicsDb.Flush();
+            _defaultDb.Flush();
+
             if (_logger.IsInfo) _logger.Info("Log index storage stopped");
         }
 
