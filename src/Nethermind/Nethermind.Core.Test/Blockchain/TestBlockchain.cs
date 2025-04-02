@@ -64,7 +64,7 @@ public class TestBlockchain : IDisposable
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
-    public IBlockTree BlockTree { get; set; } = null!;
+    public IBlockTree BlockTree => Container.Resolve<IBlockTree>();
 
     public Action<IWorldState>? InitialStateMutator { get; set; }
 
@@ -130,7 +130,17 @@ public class TestBlockchain : IDisposable
 
     protected IContainer Container { get; set; } = null!;
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
+    public class Configuration
+    {
+        public bool SuggestGenesisOnStart = true;
+    }
+
+    protected virtual async Task<TestBlockchain> Build(
+        ISpecProvider? specProvider = null,
+        UInt256? initialValues = null,
+        bool addBlockOnStart = true,
+        long slotTime = 1,
+        Action<ContainerBuilder>? configurer = null)
     {
         Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
@@ -140,6 +150,7 @@ public class TestBlockchain : IDisposable
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(SpecProvider)
+            .AddSingleton<Configuration>()
 
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden
             // This means it does not use pruning triestore normally though.
@@ -157,6 +168,7 @@ public class TestBlockchain : IDisposable
             ;
 
         await ConfigureContainer(builder);
+        configurer?.Invoke(builder);
 
         Container = builder.Build();
 
@@ -187,17 +199,6 @@ public class TestBlockchain : IDisposable
 
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
-
-        BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
-            new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
-            DbProvider.BlockInfosDb,
-            DbProvider.MetadataDb,
-            new BadBlockStore(new TestMemDb(), 100),
-            ChainLevelInfoRepository,
-            SpecProvider,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LogManager);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
@@ -259,11 +260,14 @@ public class TestBlockchain : IDisposable
             slotTime
         );
 
-        Task waitGenesis = WaitForNewHead();
-        Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
-        BlockTree.SuggestBlock(genesis);
-
-        await waitGenesis;
+        Configuration testConfiguration = Container.Resolve<Configuration>();
+        if (testConfiguration.SuggestGenesisOnStart)
+        {
+            Task waitGenesis = WaitForNewHead();
+            Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
+            BlockTree.SuggestBlock(genesis);
+            await waitGenesis;
+        }
 
         if (addBlockOnStart)
             await AddBlocksOnStart();

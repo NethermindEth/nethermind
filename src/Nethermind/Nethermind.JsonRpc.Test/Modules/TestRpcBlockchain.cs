@@ -37,6 +37,7 @@ using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
 using System.IO.Abstractions;
+using Autofac;
 using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -125,9 +126,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Action<ContainerBuilder>? configurer = null)
             {
-                return (T)await _blockchain.Build(specProvider, initialValues, addBlockOnStart);
+                return (T)await _blockchain.Build(specProvider, initialValues, addBlockOnStart, configurer: configurer);
             }
         }
 
@@ -187,10 +188,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
             bool addBlockOnStart = true,
-            long slotTime = 1)
+            long slotTime = 1,
+            Action<ContainerBuilder>? configurer = null)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
+            await base.Build(specProvider, initialValues, addBlockOnStart, slotTime, configurer);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);

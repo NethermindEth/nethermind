@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -74,9 +75,10 @@ public partial class BaseEngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null,
-        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
+        Action<ContainerBuilder>? configurer = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
-            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance), configurer: configurer);
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
@@ -386,13 +388,7 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
-        {
-            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
-            return chain;
-        }
-
-        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
-            (MergeTestBlockchain)await Build(specProvider, null);
+        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null) =>
+            (MergeTestBlockchain)await Build(specProvider, null, configurer: configurer);
     }
 }

@@ -54,8 +54,8 @@ public class FullPruningDiskTest
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
             bool addBlockOnStart = true,
-            long slotTime = 1
-        )
+            long slotTime = 1,
+            Action<ContainerBuilder>? containerBuilder = null)
         {
             TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
             PruningDb = (FullPruningDb)DbProvider.StateDb;
@@ -88,7 +88,7 @@ public class FullPruningDiskTest
             StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
             await standardDbInitializer.InitStandardDbsAsync(true);
 
-            builder.AddSingleton<IDbProvider>(dbProvider);
+            builder .AddSingleton<IDbProvider>(dbProvider);
         }
 
         public override void Dispose()
