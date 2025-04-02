@@ -24,19 +24,10 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             ILogManager logManager,
             AuRaChainSpecEngineParameters param)
-            : this(blockTree, sealValidator, specProvider, logManager, param.BlockGasLimitContractTransitions.Keys.ToArray())
-        {
-        }
-
-        private AuRaHeaderValidator(
-            IBlockTree blockTree,
-            ISealValidator sealValidator,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IList<long> blockGasLimitContractTransitions)
             : base(blockTree, sealValidator, specProvider, logManager)
         {
-            _blockGasLimitContractTransitions = blockGasLimitContractTransitions ?? throw new ArgumentNullException(nameof(blockGasLimitContractTransitions));
+            long[] blockGasLimitContractTransitions = param.BlockGasLimitContractTransitions.Keys.ToArray();
+            _blockGasLimitContractTransitions = blockGasLimitContractTransitions;
         }
 
         protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string error) =>

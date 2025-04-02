@@ -56,10 +56,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             // Validators
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
-            .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
-            .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
-            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()

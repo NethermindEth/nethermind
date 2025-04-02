@@ -374,33 +374,19 @@ public class MergePluginModule : Module
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
+            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
+
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
 
             .AddSingleton<StartingSyncPivotUpdater>()
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
-            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
-
             // Validators
-            // .AddDecorator<ISealValidator, MergeSealValidator>()
-            // .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
-
-            /*
-            _api.BlockValidator = new InvalidBlockInterceptor(
-                new BlockValidator(
-                    _api.TxValidator,
-                    _api.HeaderValidator,
-                    _api.UnclesValidator,
-                    _api.SpecProvider,
-                    _api.LogManager),
-                _invalidChainTracker,
-                _api.LogManager);
-                */
             ;
     }
 }
