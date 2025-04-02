@@ -29,8 +29,18 @@ namespace Nethermind.EngineApiProxy
         
         public ProxyServer(ProxyConfig config, ILogManager logManager)
         {
+            Console.WriteLine("Application starting...");
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            // Add this line to ensure console output
+            Console.WriteLine($"Logger initialized with level: {_config.LogLevel}");
+            
+            // Duplicate logger messages to console to ensure visibility
+            _logger.Info("Setting up logging...");
+            
+            _logger.Info($"Engine API Proxy initializing with config: {_config}");
+            Console.WriteLine($"Engine API Proxy initializing with config: {_config}");
             
             // Validate configuration
             if (string.IsNullOrWhiteSpace(_config.ExecutionClientEndpoint))
@@ -147,6 +157,9 @@ namespace Nethermind.EngineApiProxy
                     await SendErrorResponse(context, 400, "Invalid JSON-RPC request");
                     return;
                 }
+                
+                // Store the original request headers for forwarding
+                request.OriginalHeaders = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString());
                 
                 _logger.Debug($"Processing request: {request}");
             }
@@ -292,10 +305,51 @@ namespace Nethermind.EngineApiProxy
             try
             {
                 string requestJson = JsonConvert.SerializeObject(request);
+                _logger.Info($"CL -> EL: {requestJson}");
                 var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
-                var response = await _httpClient.PostAsync("", content);
+                // Create a request message instead of using PostAsync directly
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+                {
+                    Content = content
+                };
+                
+                // Copy all original headers from the client request
+                if (request.OriginalHeaders != null)
+                {
+                    _logger.Debug($"Forwarding {request.OriginalHeaders.Count} original headers from client request");
+                    
+                    // Special handling for Authorization header
+                    if (request.OriginalHeaders.TryGetValue("Authorization", out var authHeader))
+                    {
+                        requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
+                        _logger.Debug("Added Authorization header");
+                    }
+                    
+                    foreach (var header in request.OriginalHeaders)
+                    {
+                        // Skip content-related headers that will be set by HttpClient
+                        // Also skip Authorization which was handled separately
+                        if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) && 
+                            !string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
+                        {
+                            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                            _logger.Debug($"Added header: {header.Key}");
+                        }
+                        else if (!string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.Debug($"Skipped content header: {header.Key}");
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.Info("No original headers to forward");
+                }
+                
+                var response = await _httpClient.SendAsync(requestMessage);
                 string responseBody = await response.Content.ReadAsStringAsync();
+                _logger.Info($"EL -> CL: {responseBody}");
                 
                 if (!response.IsSuccessStatusCode)
                 {

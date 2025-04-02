@@ -2,6 +2,9 @@
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
 
 namespace Nethermind.EngineApiProxy
 {
@@ -39,6 +42,10 @@ namespace Nethermind.EngineApiProxy
                 {
                     // Configure logging
                     var logManager = new NLogManager("logs", "proxy.logs.json");
+                    
+                    // Ensure all logs also appear in console output
+                    ConfigureConsoleLogging(logLevel);
+                    
                     logManager.SetGlobalVariable("logLevel", logLevel);
                     
                     var logger = logManager.GetClassLogger();
@@ -92,6 +99,29 @@ namespace Nethermind.EngineApiProxy
             }, executionClientOption, portOption, logLevelOption);
             
             return await rootCommand.InvokeAsync(args);
+        }
+        
+        private static void ConfigureConsoleLogging(string logLevel)
+        {
+            // Access NLog's configuration
+            var config = LogManager.Configuration ?? new LoggingConfiguration();
+            
+            // Create console target
+            var consoleTarget = new ColoredConsoleTarget("console")
+            {
+                Layout = "${longdate}|${level:uppercase=true}|${logger}|${message} ${exception:format=tostring}"
+            };
+            
+            // Add console target to configuration
+            config.AddTarget(consoleTarget);
+            
+            // Add rule for console target with specified log level
+            var level = NLog.LogLevel.FromString(logLevel);
+            var rule = new LoggingRule("*", level, consoleTarget);
+            config.LoggingRules.Add(rule);
+            
+            // Apply configuration
+            LogManager.Configuration = config;
         }
     }
 }

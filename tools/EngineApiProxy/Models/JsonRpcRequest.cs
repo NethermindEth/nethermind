@@ -16,6 +16,9 @@ namespace Nethermind.EngineApiProxy.Models
 
         [JsonProperty("id")]
         public object? Id { get; set; }
+        
+        [JsonIgnore]
+        public Dictionary<string, string>? OriginalHeaders { get; set; }
 
         public JsonRpcRequest()
         {
