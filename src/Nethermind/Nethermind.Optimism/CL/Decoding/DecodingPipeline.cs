@@ -56,7 +56,7 @@ public class DecodingPipeline : IDecodingPipeline
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Exception in decoding pipeline: {e}");
+                if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
             }
         }
     }

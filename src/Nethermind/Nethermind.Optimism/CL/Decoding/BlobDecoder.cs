@@ -16,7 +16,7 @@ public static class BlobDecoder
     {
         if (output.Length < MaxBlobDataSize)
         {
-            throw new ArgumentException("Output buffer is too small");
+            throw new ArgumentException($"Output buffer is too small. Expected a buffer of at least {MaxBlobDataSize} but got {output.Length}");
         }
 
         if (blob[1] != EncodingVersion)

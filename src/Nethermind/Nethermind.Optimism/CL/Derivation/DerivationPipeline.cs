@@ -86,7 +86,7 @@ public class DerivationPipeline(
         ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
         L1Block lastL1Origin = await l1Bridge.GetBlock(lastL1OriginNum);
-        if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck))
+        if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck.Span))
         {
             logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Hash}");
             return (null, null);

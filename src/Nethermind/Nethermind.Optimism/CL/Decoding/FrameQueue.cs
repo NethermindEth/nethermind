@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
@@ -41,11 +42,14 @@ public class FrameQueue : IFrameQueue
 
         if (frame.IsLast)
         {
-            byte[] decompressed = ChannelDecoder.DecodeChannel(_frameData.ToArray());
+            var decodedChannel = ChannelDecoder.DecodeChannel(_frameData.ToArray());
             _frameData.Clear();
-            RlpStream rlpStream = new(decompressed);
-            ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArraySpan();
-            BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
+
+            var memory = new Memory<byte>(decodedChannel);
+            var rlp = new Rlp.ValueDecoderContext(memory);
+            var batchData = rlp.DecodeByteArrayMemory()!.Value;
+            var batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
+
             _batches.Enqueue(batches);
         }
     }
