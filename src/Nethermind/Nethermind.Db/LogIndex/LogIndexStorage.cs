@@ -296,13 +296,14 @@ namespace Nethermind.Db
                 if (batch[^1].BlockNumber - _lastCompactionAt >= CompactionDistance)
                 {
                     // TODO: log as Debug
-                    _logger.Info("Compaction started");
+                    _logger.Info("Log index compaction started");
 
                     watch.Restart();
                     _addressDb.Flush();
                     _topicsDb.Flush();
                     stats.FlushingDbs.Include(watch.Elapsed);
 
+                    // TODO: try keep writing during compaction
                     watch.Restart();
                     _addressDb.Compact();
                     _topicsDb.Compact();
@@ -313,7 +314,7 @@ namespace Nethermind.Db
                     CompressPostMerge(CompressKeysChannel.Reader, stats);
                     stats.PostMergeProcessing.Include(watch.Elapsed);
 
-                    _logger.Info("Compaction completed");
+                    _logger.Info("Log index compaction completed");
                 }
 
                 if (_lastKnownBlock < batch[^1].BlockNumber)
@@ -425,8 +426,6 @@ namespace Nethermind.Db
         // TODO: optimize allocations
         private void CompressPostMerge(ChannelReader<byte[]> newKeysReader, SetReceiptsStats stats)
         {
-            var watch = Stopwatch.StartNew();
-
             using var addressWriteBatch = _addressDb.StartWriteBatch();
             using var topicsWriteBatch = _topicsDb.StartWriteBatch();
 
@@ -453,8 +452,6 @@ namespace Nethermind.Db
                 if (db == _addressDb) stats.CompressedAddressKeys++;
                 else if (db == _topicsDb) stats.CompressedTopicKeys++;
             }
-
-            stats.PostMergeProcessing.Include(watch.Elapsed);
         }
 
         public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);

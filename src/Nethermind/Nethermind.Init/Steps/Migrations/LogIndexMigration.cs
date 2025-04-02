@@ -173,7 +173,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tCompacting DBs: {last.CompactingDbs} ( {total.CompactingDbs} on average )" +
                     $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
                     $"\n\t\tPost-merge processing: {last.PostMergeProcessing} ( {total.PostMergeProcessing} in total )" +
-                    $"\n\t\tCompressed keys: {last.CompressedAddressKeys} address, {last.CompressedTopicKeys} topic ( {total.CompressedAddressKeys} address, {total.CompressedTopicKeys} topic in total )" +
+                    $"\n\t\tCompressed keys: {last.CompressedAddressKeys:N0} address, {last.CompressedTopicKeys:N0} topic ( {total.CompressedAddressKeys:N0} address, {total.CompressedTopicKeys:N0} topic in total )" +
                     $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndexStorage))}"
                 );
             }
