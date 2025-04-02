@@ -76,7 +76,7 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
+    public IReadOnlyStateProvider ReadOnlyState => Container.Resolve<IReadOnlyStateProvider>();
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
     public TrieStore TrieStore => Container.Resolve<TrieStore>();
@@ -87,7 +87,7 @@ public class TestBlockchain : IDisposable
 
     public ISealEngine SealEngine { get; set; } = null!;
 
-    public ITransactionComparerProvider TransactionComparerProvider { get; set; } = null!;
+    public ITransactionComparerProvider TransactionComparerProvider => Container.Resolve<ITransactionComparerProvider>();
 
     public IPoSSwitcher PoSSwitcher { get; set; } = null!;
 
@@ -200,8 +200,6 @@ public class TestBlockchain : IDisposable
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
 
-        ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
-        TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
         CodeInfoRepository codeInfoRepository = new();
         TxPool = CreateTxPool(codeInfoRepository);
 
