@@ -49,7 +49,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected IBlocksConfig _blocksConfig = null!;
     protected ITxPoolConfig _txPoolConfig = null!;
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
-    private IBeaconPivot _beaconPivot = null!;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
@@ -273,7 +272,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
-            if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
             if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
@@ -309,6 +307,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
             IMergeSyncController beaconSync = _api.Context.Resolve<IMergeSyncController>();
             IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
+            IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -320,7 +320,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _syncConfig,
                     _poSSwitcher,
                     beaconSyncStrategy,
-                    _beaconPivot,
+                    beaconPivot,
                     _blockCacheService,
                     _api.BlockProcessingQueue,
                     _invalidChainTracker,
@@ -337,7 +337,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _blockCacheService,
                     _invalidChainTracker,
                     beaconSync,
-                    _beaconPivot,
+                    beaconPivot,
                     peerRefresher,
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
@@ -383,8 +383,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
 
             // ToDo strange place for validators initialization
-
-            _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
 
             MergeHeaderValidator headerValidator = new(
                     _poSSwitcher,

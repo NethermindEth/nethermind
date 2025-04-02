@@ -56,8 +56,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     private ISyncConfig _syncConfig = null!;
 
     private IBlockCacheService? _blockCacheService;
-    private IBeaconPivot? _beaconPivot;
-    private BeaconSync? _beaconSync;
 
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
@@ -124,8 +122,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
-        ArgumentNullException.ThrowIfNull(_beaconPivot);
-        ArgumentNullException.ThrowIfNull(_beaconSync);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -145,6 +141,9 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         var invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
         var peerRefresher = _api.Context.Resolve<IPeerRefresher>();
+        var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+        var beaconSync = _api.Context.Resolve<BeaconSync>();
+
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -155,12 +154,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
                 _api.BlockTree,
                 _syncConfig,
                 poSSwitcher,
-                _beaconSync,
-                _beaconPivot,
+                beaconSync,
+                beaconPivot,
                 _blockCacheService,
                 _api.BlockProcessingQueue,
                 invalidChainTracker,
-                _beaconSync,
+                beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
@@ -172,8 +171,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
                 _api.BlockProcessingQueue,
                 _blockCacheService,
                 invalidChainTracker,
-                _beaconSync,
-                _beaconPivot,
+                beaconSync,
+                beaconPivot,
                 peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool,
@@ -257,9 +256,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     {
         if (_api is null)
             return Task.CompletedTask;
-
-        _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
-        _beaconSync = _api.Context.Resolve<BeaconSync>();
 
         return Task.CompletedTask;
     }
