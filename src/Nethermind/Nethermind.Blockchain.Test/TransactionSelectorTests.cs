@@ -160,6 +160,7 @@ namespace Nethermind.Blockchain.Test
                     tx.Type = TxType.Blob;
                     tx.BlobVersionedHashes = new byte[1][];
                     tx.MaxFeePerBlobGas = 1;
+                    tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V1);
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
                     new byte[maxTransactionsSelected.ReleaseSpec.MaxBlobCount - 1][];
@@ -178,9 +179,13 @@ namespace Nethermind.Blockchain.Test
                 expectedSelectedTransactions[0].BlobVersionedHashes =
                     new byte[enoughTransactionsSelected.ReleaseSpec.MaxBlobCount][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
+                expectedSelectedTransactions[0].NetworkWrapper =
+                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V1);
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
                 expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
+                expectedSelectedTransactions[1].NetworkWrapper =
+                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V1);
                 enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     expectedSelectedTransactions.Where(static (_, index) => index != 1));
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
@@ -224,9 +229,13 @@ namespace Nethermind.Blockchain.Test
 
                 static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
                 {
-                    return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(maxFee).WithMaxFeePerBlobGas(1).WithGasLimit(20)
-                        .WithBlobVersionedHashes([.. Enumerable.Range(0, blobCount).Select(i => new byte[1] { 0 })])
+                    return Build.A.Transaction
+                        .WithSenderAddress(address)
+                        .WithShardBlobTxTypeAndFields(blobCount)
+                        .WithNonce(1)
+                        .WithMaxFeePerGas(maxFee)
+                        .WithMaxFeePerBlobGas(1)
+                        .WithGasLimit(20)
                         .SignedAndResolved(key).TestObject;
                 }
             }
