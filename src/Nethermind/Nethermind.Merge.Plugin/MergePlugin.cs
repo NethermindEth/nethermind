@@ -274,6 +274,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
+            if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
             if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
@@ -341,6 +342,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _peerRefresher,
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
+                    _api.WorldStateManager.GlobalWorldState,
                     _api.LogManager,
                     _api.Config<IBlocksConfig>().SecondsPerSlot,
                     _api.Config<IMergeConfig>().SimulateBlockProduction),

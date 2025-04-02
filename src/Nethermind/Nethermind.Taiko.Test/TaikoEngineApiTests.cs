@@ -18,6 +18,7 @@ using NSubstitute;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc;
+using Nethermind.State;
 using Nethermind.Taiko.Rpc;
 
 namespace Nethermind.Taiko.Test;
@@ -47,6 +48,7 @@ public class TaikoEngineApiTests
             Substitute.For<IPeerRefresher>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
+            Substitute.For<IWorldState>(),
             Substitute.For<ILogManager>(),
             12UL, // secondsPerSlot
             false // simulateBlockProduction
