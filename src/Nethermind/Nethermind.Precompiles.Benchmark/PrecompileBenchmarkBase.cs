@@ -43,7 +43,9 @@ namespace Nethermind.Precompiles.Benchmark
                 foreach (IPrecompile precompile in Precompiles)
                 {
                     List<Param> inputs = [];
-                    foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.csv", SearchOption.TopDirectoryOnly))
+                    var inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
+
+                    foreach (string file in Directory.GetFiles(inputsDir, "*.csv", SearchOption.TopDirectoryOnly))
                     {
                         // take only first line from each file
                         inputs.AddRange(File.ReadAllLines(file)
@@ -51,7 +53,7 @@ namespace Nethermind.Precompiles.Benchmark
                             .Select(i => new Param(precompile, file, i, null)));
                     }
 
-                    foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.json", SearchOption.TopDirectoryOnly))
+                    foreach (string file in Directory.GetFiles(inputsDir, "*.json", SearchOption.TopDirectoryOnly))
                     {
                         EthereumJsonSerializer jsonSerializer = new();
                         JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));

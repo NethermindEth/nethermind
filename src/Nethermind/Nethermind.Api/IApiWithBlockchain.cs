@@ -73,8 +73,6 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IGasLimitCalculator? GasLimitCalculator { get; set; }
-
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
 

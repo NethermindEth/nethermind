@@ -67,28 +67,14 @@ public class NethermindRunnerModule(
             .AddSingleton<EthereumRunner>()
             .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
             .AddSingleton<EthereumStepsManager>()
+            .AddSingleton<IProcessExitSource>(processExitSource)
 
             .AddSingleton<NethermindApi>()
+            .AddSingleton<NethermindApi.Dependencies>()
             .Bind<INethermindApi, NethermindApi>()
 
             .AddSingleton(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
-
-            .OnBuild((ctx) =>
-            {
-                INethermindApi api = ctx.Resolve<INethermindApi>();
-
-                // TODO: These should be injected from constructor
-                ISpecProvider specProvider = new ChainSpecBasedSpecProvider(chainSpec, logManager);
-                FollowOtherMiners gasLimitCalculator = new FollowOtherMiners(specProvider);
-                api.SpecProvider = specProvider;
-                api.GasLimitCalculator = gasLimitCalculator;
-                api.ProcessExit = processExitSource;
-                ((List<INethermindPlugin>)api.Plugins).AddRange(plugins);
-
-                // I would like to thank object inheritance for inspiring this laziness.
-                api.Context = ctx;
-            })
             ;
 
         foreach (var plugin in plugins)

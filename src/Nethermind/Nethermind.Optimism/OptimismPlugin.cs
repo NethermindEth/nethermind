@@ -104,7 +104,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             _api.L1CostHelper,
             _api.LogManager);
 
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
 
         BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
@@ -114,7 +114,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
             producerEnv.ReadOnlyStateProvider,
-            _api.GasLimitCalculator,
+            gasLimitCalculator,
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
@@ -178,14 +178,13 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
 
-        _ = new UnsafePivotUpdator(
+        _ = new UnsafeStartingSyncPivotUpdater(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool!,
             _syncConfig,
             _blockCacheService,
             _beaconSync,
-            _api.DbProvider.MetadataDb,
             _api.LogManager);
 
         return Task.CompletedTask;

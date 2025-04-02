@@ -84,7 +84,7 @@ namespace Nethermind.State.Repositories
             byte[][] keys = new byte[blockNumbers.Count][];
             for (var i = 0; i < blockNumbers.Count; i++)
             {
-                keys[i] = blockNumbers[i].ToBigEndianByteArray();
+                keys[i] = blockNumbers[i].ToBigEndianByteArrayWithoutLeadingZeros();
             }
 
             KeyValuePair<byte[], byte[]?>[] data = _blockInfoDb[keys];
