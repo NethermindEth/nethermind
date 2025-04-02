@@ -29,6 +29,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
@@ -174,8 +175,8 @@ public class EthereumRunnerTests
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.BlockValidator = Substitute.For<IBlockValidator>();
         api.DbProvider = Substitute.For<IDbProvider>();
+        api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
 
         try
         {
