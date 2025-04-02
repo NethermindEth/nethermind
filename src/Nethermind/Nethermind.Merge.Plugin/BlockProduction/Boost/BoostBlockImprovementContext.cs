@@ -20,7 +20,8 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
-    private CancellationTokenSource? _cancellationTokenSource;
+    private CancellationTokenSource? _timeOutCancellation;
+    private CancellationTokenSource? _linkedCancellation;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -29,14 +30,17 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        CancellationTokenSource cts)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        CancellationTokenSource = cts;
+        _timeOutCancellation = new CancellationTokenSource(timeout);
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
+        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
     }
 
     private async Task<Block?> StartImprovingBlock(
@@ -66,10 +70,14 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public UInt256 BlockFees { get; private set; }
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
+    public CancellationTokenSource CancellationTokenSource { get; }
 
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
+
+    public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
 }

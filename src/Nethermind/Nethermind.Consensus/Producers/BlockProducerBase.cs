@@ -75,15 +75,14 @@ namespace Nethermind.Consensus.Producers
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+            PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
-            token ??= default;
             Block? block = null;
-            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token.Value))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token.Value, parentHeader, blockTracer, payloadAttributes);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
                 }
                 catch (Exception e) when (e is not TaskCanceledException)
                 {
@@ -134,7 +133,7 @@ namespace Nethermind.Consensus.Producers
                 Block block = PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
+                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -201,8 +200,8 @@ namespace Nethermind.Consensus.Producers
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer) =>
-            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance);
+        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token) =>
+            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance, token);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {

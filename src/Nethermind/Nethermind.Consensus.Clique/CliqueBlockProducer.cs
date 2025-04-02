@@ -329,9 +329,8 @@ public class CliqueBlockProducer : IBlockProducer
     public ConcurrentDictionary<Address, bool> Proposals => _proposals;
 
     public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+        PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
     {
-        token ??= default;
         Block? block = PrepareBlock(parentHeader);
         if (block is null)
         {
@@ -344,7 +343,8 @@ public class CliqueBlockProducer : IBlockProducer
         Block? processedBlock = _processor.Process(
             block,
             ProcessingOptions.ProducingBlock,
-            NullBlockTracer.Instance);
+            NullBlockTracer.Instance,
+            token);
         if (processedBlock is null)
         {
             if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
@@ -356,7 +356,7 @@ public class CliqueBlockProducer : IBlockProducer
 
         try
         {
-            Block? sealedBlock = await _sealer.SealBlock(processedBlock, token.Value);
+            Block? sealedBlock = await _sealer.SealBlock(processedBlock, token);
             if (sealedBlock is not null)
             {
                 if (_logger.IsInfo)

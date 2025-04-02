@@ -45,7 +45,8 @@ namespace Nethermind.AuRa.Test
                 Keccak.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
-                NullBlockTracer.Instance);
+                NullBlockTracer.Instance,
+                default);
             Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
             Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
         }
@@ -67,7 +68,8 @@ namespace Nethermind.AuRa.Test
                 Keccak.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
-                NullBlockTracer.Instance);
+                NullBlockTracer.Instance,
+                default);
             txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>());
         }
 
@@ -85,7 +87,8 @@ namespace Nethermind.AuRa.Test
                 Keccak.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
-                NullBlockTracer.Instance));
+                NullBlockTracer.Instance,
+                default));
         }
 
         [Test]
@@ -99,7 +102,8 @@ namespace Nethermind.AuRa.Test
                     stateRoot,
                     new List<Block> { block },
                     ProcessingOptions.None,
-                    NullBlockTracer.Instance);
+                    NullBlockTracer.Instance,
+                    default);
             }
 
             Dictionary<long, IDictionary<Address, byte[]>> contractOverrides = new()

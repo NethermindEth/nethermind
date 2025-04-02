@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Producers;
 
-public interface IBlockProductionContext
+public interface IBlockProductionContext : IDisposable
 {
     Block? CurrentBestBlock { get; }
     UInt256 BlockFees { get; }
+
+    void CancelOngoingImprovements();
+    CancellationTokenSource CancellationTokenSource { get; }
 }

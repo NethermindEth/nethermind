@@ -25,7 +25,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {
         string payloadStr = payloadId.ToHexString(true);
-        IBlockProductionContext? blockContext = await payloadPreparationService.GetPayload(payloadStr);
+        using IBlockProductionContext? blockContext = await payloadPreparationService.GetPayload(payloadStr);
         Block? block = blockContext?.CurrentBestBlock;
 
         if (blockContext is null || block is null)
@@ -34,6 +34,8 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
             if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed - unknown payload.");
             return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
         }
+
+        blockContext.CancelOngoingImprovements();
 
         TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
 

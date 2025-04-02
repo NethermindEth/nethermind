@@ -27,7 +27,8 @@ public class ShutterBlockImprovementContextFactory(
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        UInt256 currentBlockFees) =>
+        UInt256 currentBlockFees,
+        CancellationTokenSource cts) =>
         new ShutterBlockImprovementContext(blockProducer,
                                            shutterTxSource,
                                            shutterConfig,
@@ -37,7 +38,8 @@ public class ShutterBlockImprovementContextFactory(
                                            payloadAttributes,
                                            startDateTime,
                                            slotLength,
-                                           logManager);
+                                           logManager,
+                                           cts);
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
@@ -51,7 +53,9 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private CancellationTokenSource? _cancellationTokenSource;
+    public CancellationTokenSource CancellationTokenSource { get; }
+
+    private CancellationTokenSource? _linkedCancellation;
     private readonly ILogger _logger;
     private readonly IBlockProducer _blockProducer;
     private readonly IShutterTxSignal _txSignal;
@@ -72,7 +76,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         TimeSpan slotLength,
-        ILogManager logManager)
+        ILogManager logManager,
+        CancellationTokenSource cts)
     {
         if (slotLength == TimeSpan.Zero)
         {
@@ -81,7 +86,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         _slotTimestampMs = payloadAttributes.Timestamp * 1000;
 
-        _cancellationTokenSource = new CancellationTokenSource();
+        CancellationTokenSource = cts;
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger();
@@ -96,10 +101,12 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         ImprovementTask = Task.Run(ImproveBlock);
     }
 
+    public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
+
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
     }
 
     private async Task<Block?> ImproveBlock()
@@ -135,14 +142,12 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
-        ObjectDisposedException.ThrowIf(_cancellationTokenSource is null, this);
-
         using var txTimeout = new CancellationTokenSource((int)waitTime);
-        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource!.Token, txTimeout.Token);
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource!.Token, txTimeout.Token);
 
         try
         {
-            await _txSignal.WaitForTransactions(slot, source.Token);
+            await _txSignal.WaitForTransactions(slot, _linkedCancellation.Token);
         }
         catch (OperationCanceledException)
         {
@@ -167,11 +172,10 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     private async Task BuildBlock()
     {
-        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource!.Token);
+        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, (_linkedCancellation ?? CancellationTokenSource).Token);
         if (result is not null)
         {
             CurrentBestBlock = result;
         }
     }
-
 }

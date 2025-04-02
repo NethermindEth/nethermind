@@ -29,13 +29,14 @@ public partial class EngineModuleTests
         }
 
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
-        UInt256 currentBlockFees) =>
-            new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
+        UInt256 currentBlockFees, CancellationTokenSource cts) =>
+            new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime, cts);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
-        private CancellationTokenSource? _cancellationTokenSource;
+        private CancellationTokenSource? _timeOutCancellation;
+        private CancellationTokenSource? _linkedCancellation;
 
         public DelayBlockImprovementContext(Block currentBestBlock,
             IBlockProducer blockProducer,
@@ -43,12 +44,15 @@ public partial class EngineModuleTests
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
-            DateTimeOffset startDateTime)
+            DateTimeOffset startDateTime,
+            CancellationTokenSource cts)
         {
-            _cancellationTokenSource = new CancellationTokenSource(timeout);
             CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
-            ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
+            CancellationTokenSource = cts;
+            _timeOutCancellation = new CancellationTokenSource(timeout);
+            _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
+            ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _linkedCancellation.Token);
         }
 
         private async Task<Block?> BuildBlock(
@@ -73,11 +77,15 @@ public partial class EngineModuleTests
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
+        public CancellationTokenSource CancellationTokenSource { get; }
+
+        public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
 
         public void Dispose()
         {
             Disposed = true;
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
         }
     }
 }
