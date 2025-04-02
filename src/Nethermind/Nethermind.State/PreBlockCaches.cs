@@ -83,8 +83,8 @@ public class PreBlockCaches
 
         TValue? ISingleBlockProcessingCache<TKey, TValue>.GetOrAdd(TKey key, Func<TKey, TValue> valueFactory)
         {
-            _localValueFactory.Value = valueFactory;
-            return GetOrAdd(key, _valueFactory);
+            // _localValueFactory.Value = valueFactory;
+            return GetOrAdd(key, valueFactory);
         }
 
         private TValue ValueFactory(TKey key)
@@ -100,15 +100,15 @@ public class PreBlockCaches
             get => this[key];
             set
             {
-                TValue oldValue = this[key];
+                // long oldSize = TryGetValue(key, out TValue oldValue) ? _sizeCalculation(oldValue) : 0;
                 this[key] = value;
-                Interlocked.Add(ref _size, _sizeCalculation(value) - _sizeCalculation(oldValue));
+                // Interlocked.Add(ref _size, _sizeCalculation(value) - oldSize);
             }
         }
 
         public bool NoResizeClear()
         {
-            _size = 0;
+            // _size = 0;
             return CollectionExtensions.NoResizeClear(this);
         }
 

@@ -139,7 +139,7 @@ public partial class BlockProcessor(
                 else
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = preWarmer?.ClearCaches(preBlockStateRoot) ?? default;
+                    CacheType result = preWarmer?.ClearCaches(preBlockStateRoot, null) ?? default;
                     if (result != default)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
