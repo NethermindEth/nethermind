@@ -81,6 +81,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<MainBlockProcessingContext, ILifetimeScope>(ConfigureMainBlockProcessingContext)
             // Then component that has no ambiguity is extracted back out.
             .Map<IBlockProcessingQueue, MainBlockProcessingContext>(ctx => ctx.BlockProcessingQueue)
+            .Bind<IMainProcessingContext, MainBlockProcessingContext>()
 
 
             // Seems to be only used by block producer.

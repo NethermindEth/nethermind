@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -52,7 +53,7 @@ public class TestBlockchain : IDisposable
     public IStateReader StateReader => Container.Resolve<IStateReader>();
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager => Container.Resolve<INonceManager>();
-    public TransactionProcessor TxProcessor { get; set; } = null!;
+    public ITransactionProcessor TxProcessor => Container.Resolve<IMainProcessingContext>().TransactionProcessor;
     public IReceiptStorage ReceiptStorage => Container.Resolve<IReceiptStorage>();
     public ITxPool TxPool => Container.Resolve<ITxPool>();
     public IWorldStateManager WorldStateManager => Container.Resolve<IWorldStateManager>();
@@ -199,10 +200,6 @@ public class TestBlockchain : IDisposable
         state.CommitTree(0);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, state, LogManager), SpecProvider, codeInfoRepository, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, state, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
