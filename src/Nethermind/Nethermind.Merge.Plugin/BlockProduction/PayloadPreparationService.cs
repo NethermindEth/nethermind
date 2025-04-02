@@ -93,9 +93,15 @@ public class PayloadPreparationService : IPayloadPreparationService
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
             {
-                // if there is payload improvement and its not yet finished leave it be
+                if (cts.IsCancellationRequested)
+                {
+                    // If cancelled, return previous
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
+                    return currentContext;
+                }
                 if (!currentContext.ImprovementTask.IsCompleted)
                 {
+                    // If there is payload improvement and its not yet finished leave it be
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
                     return currentContext;
                 }
@@ -117,6 +123,12 @@ public class PayloadPreparationService : IPayloadPreparationService
             TaskContinuationOptions.RunContinuationsAsynchronously);
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
+            CancellationToken token = blockImprovementContext.CancellationTokenSource.Token;
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
             // if after delay we still have time to try producing the block in this slot
             TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + lastBuildTime;
@@ -124,8 +136,8 @@ public class PayloadPreparationService : IPayloadPreparationService
             if (whenWeCouldFinishNextProduction < slotFinished)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
-                await Task.Delay(_improvementDelay);
-                if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+                await Task.Delay(_improvementDelay, token);
+                if (token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
                     Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                     ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, blockImprovementContext.CancellationTokenSource);
