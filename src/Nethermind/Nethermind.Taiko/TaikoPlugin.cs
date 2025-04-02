@@ -56,7 +56,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     private ISyncConfig _syncConfig = null!;
 
     private IBlockCacheService? _blockCacheService;
-    private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
 
@@ -127,7 +126,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
         ArgumentNullException.ThrowIfNull(_beaconSync);
-        ArgumentNullException.ThrowIfNull(_peerRefresher);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -146,7 +144,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
         var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         var invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
-
+        var peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -176,7 +174,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
                 invalidChainTracker,
                 _beaconSync,
                 _beaconPivot,
-                _peerRefresher,
+                peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool,
                 _api.LogManager,
@@ -273,8 +271,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
 
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
         _ = new UnsafeStartingSyncPivotUpdater(
             _api.BlockTree,
             _api.SyncModeSelector,

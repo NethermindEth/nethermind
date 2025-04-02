@@ -49,10 +49,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected ITxPoolConfig _txPoolConfig = null!;
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBeaconPivot _beaconPivot = null!;
-    private BeaconSync? _beaconSync;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
-    private IPeerRefresher _peerRefresher = null!;
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -275,8 +273,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
-            if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
-            if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
             if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
@@ -309,6 +305,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
+            IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
+            IMergeSyncController beaconSync = _api.Context.Resolve<IMergeSyncController>();
+            IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -319,12 +318,12 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.BlockTree,
                     _syncConfig,
                     _poSSwitcher,
-                    _beaconSync,
+                    beaconSyncStrategy,
                     _beaconPivot,
                     _blockCacheService,
                     _api.BlockProcessingQueue,
                     _invalidChainTracker,
-                    _beaconSync,
+                    beaconSync,
                     _api.LogManager,
                     TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
                     _api.Config<IReceiptConfig>().StoreReceipts),
@@ -336,9 +335,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.BlockProcessingQueue,
                     _blockCacheService,
                     _invalidChainTracker,
-                    _beaconSync,
+                    beaconSync,
                     _beaconPivot,
-                    _peerRefresher,
+                    peerRefresher,
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
                     _api.LogManager,
@@ -409,19 +408,14 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
-            _beaconSync = _api.Context.Resolve<BeaconSync>();
 
-            PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
-            _peerRefresher = peerRefresher;
-            _api.DisposeStack.Push(peerRefresher);
-            _ = new
-            StartingSyncPivotUpdater(
+            _ = new StartingSyncPivotUpdater(
                 _api.BlockTree,
                 _api.SyncModeSelector,
                 _api.SyncPeerPool!,
                 _syncConfig,
                 _blockCacheService,
-                _beaconSync,
+                _api.Context.Resolve<BeaconSync>(),
                 _api.LogManager);
         }
 
@@ -454,6 +448,7 @@ public class MergePluginModule : Module
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddSingleton<IPeerRefresher, PeerRefresher>()
 
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();
     }

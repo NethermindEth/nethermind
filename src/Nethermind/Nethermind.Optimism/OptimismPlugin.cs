@@ -52,7 +52,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
-    private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
 
@@ -175,9 +174,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         _beaconSync = _api.Context.Resolve<BeaconSync>();
 
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
         _ = new UnsafeStartingSyncPivotUpdater(
             _api.BlockTree,
             _api.SyncModeSelector,
@@ -209,7 +205,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
-        ArgumentNullException.ThrowIfNull(_peerRefresher);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -233,6 +228,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
         var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
 
+        IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -263,7 +259,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
                 _invalidChainTracker,
                 _beaconSync,
                 _beaconPivot,
-                _peerRefresher,
+                peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
