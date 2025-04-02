@@ -46,17 +46,6 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         );
     }
 
-    protected override IHeaderValidator CreateHeaderValidator()
-    {
-        TaikoHeaderValidator taikoHeaderValidator = new(
-            _api.BlockTree,
-            _api.SealValidator,
-            _api.SpecProvider,
-            _api.LogManager);
-
-        return new InvalidHeaderInterceptor(taikoHeaderValidator, _api.Context.Resolve<IInvalidChainTracker>(), _api.LogManager);
-    }
-
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));

@@ -40,7 +40,9 @@ namespace Nethermind.Api
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
         IUnclesValidator? UnclesValidator { get; set; }
-        IHeaderValidator? HeaderValidator { get; set; }
+
+        [SkipServiceCollection]
+        IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }

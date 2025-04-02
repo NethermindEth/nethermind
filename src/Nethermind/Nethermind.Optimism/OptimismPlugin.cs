@@ -310,6 +310,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
+
+            .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             ;
 
     }

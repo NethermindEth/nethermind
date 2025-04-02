@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
@@ -10,8 +11,10 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -83,20 +86,29 @@ namespace Nethermind.Consensus.AuRa
             yield return typeof(StartBlockProcessorAuRa);
         }
 
-        public IModule Module => new AuraModule();
+        public IModule Module => new AuraModule(chainSpec);
 
         public Type ApiType => typeof(AuRaNethermindApi);
     }
 
-    public class AuraModule : Module
+    public class AuraModule(ChainSpec chainSpec) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
             base.Load(builder);
+            AuRaChainSpecEngineParameters specParam = chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
-                .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>();
+                .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
+                .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
+                ;
+
+            if (specParam.BlockGasLimitContractTransitions?.Any() == true)
+            {
+                builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
+            }
         }
     }
 }

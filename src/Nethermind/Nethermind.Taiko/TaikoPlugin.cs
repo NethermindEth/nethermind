@@ -312,6 +312,7 @@ public class TaikoModule : Module
 
             // BlockValidators
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
+            .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
 
             ;
     }

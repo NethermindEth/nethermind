@@ -73,6 +73,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncServer>())
                     .AddSingleton<ITxValidator>(new TxValidator(MainnetSpecProvider.Instance.ChainId))
                     .AddSingleton(Substitute.For<IBlockValidator>())
+                    .AddSingleton(Substitute.For<IHeaderValidator>())
                     .Build()
             );
 
@@ -108,7 +109,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.FilterManager = Substitute.For<IFilterManager>();
             api.FilterStore = Substitute.For<IFilterStore>();
             api.GrpcServer = Substitute.For<IGrpcServer>();
-            api.HeaderValidator = Substitute.For<IHeaderValidator>();
             api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();

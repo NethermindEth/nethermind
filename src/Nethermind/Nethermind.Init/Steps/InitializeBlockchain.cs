@@ -79,7 +79,6 @@ namespace Nethermind.Init.Steps
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            setApi.HeaderValidator = CreateHeaderValidator();
             setApi.UnclesValidator = CreateUnclesValidator();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -219,13 +218,6 @@ namespace Nethermind.Init.Steps
                 _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
-
-        // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
-        protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
-            _api.BlockTree,
-            _api.SealValidator,
-            _api.SpecProvider,
-            _api.LogManager);
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)

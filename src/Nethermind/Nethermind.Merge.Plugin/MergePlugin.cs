@@ -220,20 +220,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
-            if (_api.HeaderValidator is null) throw new ArgumentException(nameof(_api.HeaderValidator));
-
-            MergeHeaderValidator headerValidator = new(
-                    _poSSwitcher,
-                    _api.HeaderValidator,
-                    _api.BlockTree,
-                    _api.SpecProvider,
-                    _api.SealValidator,
-                    _api.LogManager);
-
-            _api.HeaderValidator = new InvalidHeaderInterceptor(
-                headerValidator,
-                _invalidChainTracker,
-                _api.LogManager);
 
             _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
             _api.HealthHintService =
@@ -379,19 +365,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             // ToDo strange place for validators initialization
 
-            MergeHeaderValidator headerValidator = new(
-                    _poSSwitcher,
-                    _api.HeaderValidator,
-                    _api.BlockTree,
-                    _api.SpecProvider,
-                    _api.SealValidator,
-                    _api.LogManager);
-
-            _api.HeaderValidator = new InvalidHeaderInterceptor(
-                headerValidator,
-                _invalidChainTracker,
-                _api.LogManager);
-
             _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
         }
 
@@ -436,8 +409,8 @@ public class MergePluginModule : Module
             // Validators
             // .AddDecorator<ISealValidator, MergeSealValidator>()
             // .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-            // .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
-            // .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
+            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+            .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
             // .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
