@@ -31,7 +31,6 @@ using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;
@@ -60,7 +59,7 @@ public class TestBlockchain : IDisposable
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
-    public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
+    public IBlockPreprocessorStep BlockPreprocessorStep => Container.Resolve<IBlockPreprocessorStep>();
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree => Container.Resolve<IBlockTree>();
@@ -150,6 +149,7 @@ public class TestBlockchain : IDisposable
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(SpecProvider)
             .AddSingleton<Configuration>()
+            .AddSingleton<IEthereumEcdsa>(EthereumEcdsa)
 
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden
             // This means it does not use pruning triestore normally though.
@@ -201,7 +201,6 @@ public class TestBlockchain : IDisposable
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
-        BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
