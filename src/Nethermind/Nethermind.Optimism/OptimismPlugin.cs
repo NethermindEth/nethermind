@@ -38,7 +38,7 @@ using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -151,14 +151,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
-
-        return Task.CompletedTask;
-    }
-
-    public Task InitSynchronization()
-    {
-        if (_api is null)
-            return Task.CompletedTask;
 
         return Task.CompletedTask;
     }

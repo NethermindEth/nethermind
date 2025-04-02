@@ -42,7 +42,7 @@ using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public const string Taiko = "Taiko";
     private const string L1OriginDbName = "L1Origin";
@@ -251,15 +251,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize => true;
-
-    // ISynchronizationPlugin
-    public Task InitSynchronization()
-    {
-        if (_api is null)
-            return Task.CompletedTask;
-
-        return Task.CompletedTask;
-    }
 
     // IInitializationPlugin
     public IEnumerable<StepInfo> GetSteps()

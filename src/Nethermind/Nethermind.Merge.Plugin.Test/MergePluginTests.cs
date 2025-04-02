@@ -114,7 +114,6 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
         Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
         Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
@@ -127,7 +126,6 @@ public class MergePluginTests
         INethermindApi api = container.Resolve<INethermindApi>();
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         await _plugin.Init(api);
-        await _plugin.InitSynchronization();
         await _plugin.InitNetworkProtocol();
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);

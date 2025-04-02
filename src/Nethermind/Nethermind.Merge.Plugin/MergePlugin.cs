@@ -41,7 +41,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
-public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : IConsensusWrapperPlugin, ISynchronizationPlugin
+public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : IConsensusWrapperPlugin
 {
     protected INethermindApi _api = null!;
     private ILogger _logger;
@@ -345,15 +345,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
-    }
-
-    public Task InitSynchronization()
-    {
-        if (MergeEnabled)
-        {
-        }
-
-        return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
