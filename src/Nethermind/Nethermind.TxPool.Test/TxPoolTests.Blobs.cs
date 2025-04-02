@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
@@ -812,8 +813,60 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                int lengthOfProofs = ((ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper).Proofs.Length;
-                lengthOfProofs.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+                wrapper.Version.Should().Be(hasTxCellProofs ? ProofVersion.V2 : ProofVersion.V1);
+
+                blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
+                if (isPersistentStorage)
+                {
+                    blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
+                        .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                        .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                }
+            }
+        }
+
+        [Test]
+        public void should_convert_blob_proofs_to_cell_proofs_if_enabled([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool isOsakaActivated, [Values(true, false)] bool isConversionEnabled)
+        {
+            // tx has old version of proofs, so is valid if osaka is not activated or conversion is enabled
+            bool isTxValid = !isOsakaActivated || isConversionEnabled;
+
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                Size = 10,
+                ProofsTranslationEnabled = isConversionEnabled
+            };
+            BlobTxStorage blobTxStorage = new();
+
+            _txPool = CreatePool(txPoolConfig,
+                isOsakaActivated ? GetOsakaSpecProvider() : GetCancunSpecProvider(),
+                txStorage: blobTxStorage);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // update head and set correct current proof version
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+            result.Should().Be(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
+            blobTxReturned.Should().BeEquivalentTo(isTxValid ? blobTxAdded : null);
+
+            if (isTxValid)
+            {
+                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+                wrapper.Version.Should().Be(isOsakaActivated ? ProofVersion.V2 : ProofVersion.V1);
 
                 blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
                 if (isPersistentStorage)
