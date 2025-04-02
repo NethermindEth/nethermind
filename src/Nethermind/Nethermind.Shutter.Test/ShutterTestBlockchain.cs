@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
@@ -29,4 +32,12 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
         => _api!.GetBlockImprovementContextFactory(blockProducer);
+
+    protected override async Task ConfigureContainer(ContainerBuilder builder)
+    {
+        await base.ConfigureContainer(builder);
+
+        // Weird stuff where there are receipts but no tx.
+        builder.AddSingleton<IReceiptStorage, InMemoryReceiptStorage>();
+    }
 }

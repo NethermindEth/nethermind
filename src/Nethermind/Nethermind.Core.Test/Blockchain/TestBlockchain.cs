@@ -53,7 +53,7 @@ public class TestBlockchain : IDisposable
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager => Container.Resolve<INonceManager>();
     public TransactionProcessor TxProcessor { get; set; } = null!;
-    public IReceiptStorage ReceiptStorage { get; set; } = null!;
+    public IReceiptStorage ReceiptStorage => Container.Resolve<IReceiptStorage>();
     public ITxPool TxPool => Container.Resolve<ITxPool>();
     public IWorldStateManager WorldStateManager => Container.Resolve<IWorldStateManager>();
     public IBlockProcessor BlockProcessor { get; set; } = null!;
@@ -198,11 +198,9 @@ public class TestBlockchain : IDisposable
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
 
-        CodeInfoRepository codeInfoRepository = new();
-
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
-        ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
+        CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, state, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, state, virtualMachine, codeInfoRepository, LogManager);
 
