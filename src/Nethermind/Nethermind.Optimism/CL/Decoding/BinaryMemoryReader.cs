@@ -31,26 +31,25 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
     {
 
         var m = Peek(bytes);
-        _offset += bytes;
+        Skip(bytes);
         return m;
     }
 
     public byte PeekByte()
     {
-        var b = Peek(1);
-        return b.Span[0];
+        return memory.Span[_offset];
     }
 
     public void SkipByte()
     {
-        Skip(1);
+        _offset++;
     }
 
     public byte TakeByte()
     {
-
-        var m = Take(1);
-        return m.Span[0];
+        var b = PeekByte();
+        SkipByte();
+        return b;
     }
 
     public ReadOnlyMemory<byte> Remainder => memory[_offset..];
