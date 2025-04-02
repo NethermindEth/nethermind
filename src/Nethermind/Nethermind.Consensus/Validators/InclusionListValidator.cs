@@ -13,13 +13,10 @@ public class InclusionListValidator(
     ISpecProvider specProvider,
     ITransactionProcessor transactionProcessor) : IInclusionListValidator
 {
-    private readonly ISpecProvider _specProvider = specProvider;
-    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
-
     public bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock) =>
-        ValidateInclusionList(block, isTransactionInBlock, _specProvider.GetSpec(block.Header));
+        ValidateInclusionList(block, isTransactionInBlock, specProvider.GetSpec(block.Header));
 
-    public bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock, IReleaseSpec spec)
+    private bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock, IReleaseSpec spec)
     {
         if (!spec.InclusionListsEnabled)
         {
@@ -50,7 +47,7 @@ public class InclusionListValidator(
                 continue;
             }
 
-            bool couldIncludeTx = _transactionProcessor.CallAndRestore(tx, new(block.Header, spec), NullTxTracer.Instance);
+            bool couldIncludeTx = transactionProcessor.CallAndRestore(tx, new(block.Header, spec), NullTxTracer.Instance);
             if (couldIncludeTx)
             {
                 return false;

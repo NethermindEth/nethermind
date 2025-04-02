@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -104,7 +105,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                     ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cancellationTokenSource.Token),
                     StartDateTime = startDateTime,
                     CurrentBestBlock = currentBestBlock,
-                    CurrrentBestBlockFees = currentBlockFees,
+                    CurrentBestBlockFees = currentBlockFees,
                     BuildCount = 1,
                     CancellationTokenSource = cancellationTokenSource
                 };
@@ -117,8 +118,8 @@ public class PayloadPreparationService : IPayloadPreparationService
                 {
                     if (force)
                     {
-                        store.CancellationTokenSource.Cancel();
-                        store.CancellationTokenSource.TryReset();
+                        store.CancellationTokenSource?.Cancel();
+                        store.CancellationTokenSource?.TryReset();
                     }
                     else
                     {
@@ -128,7 +129,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                     }
                 }
 
-                store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource.Token);
+                store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource?.Token ?? CancellationToken.None);
                 store.BuildCount++;
                 currentContext.Dispose();
                 return store;
@@ -181,14 +182,14 @@ public class PayloadPreparationService : IPayloadPreparationService
             foreach (KeyValuePair<string, PayloadStore> payload in _payloadStorage)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.ImprovementContext.StartDateTime + _cleanupOldPayloadDelay <= now)
+                IBlockImprovementContext improvementContext = payload.Value.ImprovementContext;
+                if (improvementContext.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.ImprovementContext.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {improvementContext.CurrentBestBlock?.Timestamp}");
 
-                    if (_payloadStorage.TryRemove(payload.Key, out PayloadStore store))
+                    if (_payloadStorage.TryRemove(payload.Key, out PayloadStore? store))
                     {
-                        store.CancellationTokenSource.Cancel();
-                        store.CancellationTokenSource.Dispose();
+                        store.CancellationTokenSource?.CancelAndDispose();
                         store.ImprovementContext.Dispose();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
@@ -251,7 +252,7 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
     {
-        if (_payloadStorage.TryGetValue(payloadId, out PayloadStore store))
+        if (_payloadStorage.TryGetValue(payloadId, out PayloadStore? store))
         {
             var blockContext = store.ImprovementContext;
             using (blockContext)
@@ -277,26 +278,43 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     public void ForceRebuildPayload(string payloadId)
     {
-        if (_payloadStorage.TryGetValue(payloadId, out PayloadStore store))
+        if (_payloadStorage.TryGetValue(payloadId, out PayloadStore? store))
         {
-            ImproveBlock(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrrentBestBlockFees, true);
+            ImproveBlock(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrentBestBlockFees, true);
         }
     }
 
     // for testing
     internal PayloadStore? GetPayloadStore(string payloadId)
-        => _payloadStorage.TryGetValue(payloadId, out PayloadStore store) ? store : null;
-}
+        => _payloadStorage.GetValueOrDefault(payloadId);
 
-public struct PayloadStore
-{
-    public string Id;
-    public BlockHeader Header;
-    public PayloadAttributes PayloadAttributes;
-    public IBlockImprovementContext ImprovementContext;
-    public DateTimeOffset StartDateTime;
-    public Block CurrentBestBlock;
-    public UInt256 CurrrentBestBlockFees;
-    public uint BuildCount;
-    public CancellationTokenSource CancellationTokenSource;
+    protected internal class PayloadStore : IEquatable<PayloadStore>
+    {
+        public required string Id { get; init; }
+        public required BlockHeader Header { get; init; }
+        public required PayloadAttributes PayloadAttributes { get; init; }
+        public required IBlockImprovementContext ImprovementContext { get; set; }
+        public required DateTimeOffset StartDateTime { get; init; }
+        public required Block CurrentBestBlock { get; init; }
+        public UInt256 CurrentBestBlockFees { get; init; } = UInt256.Zero;
+        public uint BuildCount { get; set; }
+        public CancellationTokenSource? CancellationTokenSource { get; init; }
+
+        public bool Equals(PayloadStore? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Id == other.Id;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj is null) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((PayloadStore)obj);
+        }
+
+        public override int GetHashCode() => Id.GetHashCode();
+    }
 }

@@ -301,7 +301,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payloadStore, Is.Not.Null, "Initial payload context should not be null");
-            Assert.That(payloadStore!.Value.BuildCount, Is.EqualTo(1));
+            Assert.That(payloadStore!.BuildCount, Is.EqualTo(1));
         }
 
         payloadPreparationService.ForceRebuildPayload(payloadId);
@@ -310,7 +310,7 @@ public partial class EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(payloadStore, Is.Not.Null, "Should be able to get the payload after rebuilding");
-            Assert.That(payloadStore!.Value.BuildCount, Is.EqualTo(2), "Block improvement should be triggered after forcing rebuild");
+            Assert.That(payloadStore!.BuildCount, Is.EqualTo(2), "Block improvement should be triggered after forcing rebuild");
         });
     }
 

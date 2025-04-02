@@ -328,11 +328,11 @@ public partial class EngineModuleTests
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
-        return await PrepareAndGetPayloadResultV1(rpc, startingHead, timestamp, random, feeRecipient, chain.SpecProvider.ChainId);
+        return await PrepareAndGetPayloadResultV1(rpc, startingHead, timestamp, random, feeRecipient);
     }
 
     private async Task<ExecutionPayload> PrepareAndGetPayloadResultV1(
-        IEngineRpcModule rpc, Hash256 currentHead, ulong timestamp, Hash256 random, Address feeRecipient, ulong chainId)
+        IEngineRpcModule rpc, Hash256 currentHead, ulong timestamp, Hash256 random, Address feeRecipient)
     {
         PayloadAttributes? payloadAttributes = new()
         {

@@ -47,6 +47,12 @@ namespace Nethermind.Core.Extensions
             return false;
         }
 
+        public static void CancelAndDispose(this CancellationTokenSource cancellationTokenSource)
+        {
+            cancellationTokenSource.Cancel();
+            cancellationTokenSource.Dispose();
+        }
+
         /// <summary>
         /// DSL for `CancelAfter`.
         /// </summary>
