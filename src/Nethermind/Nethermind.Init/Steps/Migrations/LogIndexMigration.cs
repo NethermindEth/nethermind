@@ -43,7 +43,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ILogIndexStorage _logIndexStorage;
         private readonly IInitConfig _initConfig;
         private const int BatchSize = 250;
-        private const int QueueSize = 2_000;
+        private const int QueueSize = 25_000;
         private const int ReportSize = 50_000;
         private readonly Channel<BlockReceipts[]> _blocksChannel;
 

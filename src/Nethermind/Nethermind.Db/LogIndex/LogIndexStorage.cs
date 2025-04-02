@@ -31,8 +31,8 @@ namespace Nethermind.Db
         private readonly int _ioParallelism;
         public const int BlockNumSize = sizeof(int);
         public const int BlockMaxVal = int.MaxValue;
-        public const int MaxUncompressedLength = 256 * BlockNumSize;
-        private const int CompactionDistance = 8096;
+        public const int MaxUncompressedLength = 128 * BlockNumSize;
+        private const int CompactionDistance = 262_144; // 2^18
 
         // TODO: get rid of static fields
         private static readonly Channel<byte[]> CompressKeysChannel = Channel.CreateUnbounded<byte[]>();
