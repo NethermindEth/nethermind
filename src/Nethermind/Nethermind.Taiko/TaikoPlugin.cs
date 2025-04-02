@@ -286,7 +286,7 @@ public class TaikoModule : Module
 
         builder
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
-            .AddModule(new MergePluginModule())
+            .AddModule(new BaseMergePluginModule())
 
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>

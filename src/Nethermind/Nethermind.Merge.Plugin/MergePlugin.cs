@@ -361,6 +361,21 @@ public class MergePluginModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+
+            .AddModule(new BaseMergePluginModule());
+    }
+}
+
+/// <summary>
+/// Common post merge code, also uses by some plugins.
+/// </summary>
+public class BaseMergePluginModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
             // Sync related
             .AddModule(new MergeSynchronizerModule())
 
@@ -383,10 +398,8 @@ public class MergePluginModule : Module
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
             // Validators
-            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
-            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
             ;
     }
 }

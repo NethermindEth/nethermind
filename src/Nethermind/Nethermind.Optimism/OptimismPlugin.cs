@@ -294,7 +294,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
         builder
             .AddSingleton<NethermindApi, OptimismNethermindApi>()
-            .AddModule(new MergePluginModule())
+            .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
             .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider

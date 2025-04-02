@@ -43,7 +43,7 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
         base.Load(builder);
 
         builder
-            .AddModule(new MergePluginModule())
+            .AddModule(new BaseMergePluginModule())
 
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
             .OnActivate<MainBlockProcessingContext>(((context, componentContext) =>
