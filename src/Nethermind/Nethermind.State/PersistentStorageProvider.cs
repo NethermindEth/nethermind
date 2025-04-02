@@ -314,6 +314,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         Db.Metrics.StorageTreeWrites++;
         toUpdateRoots.Add(change.StorageCell.Address);
         tree.Set(change.StorageCell.Index, change.Value);
+        if (_preBlockCache is not null)
+        {
+            _preBlockCache[change.StorageCell] = change.Value;
+        }
 
         ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
         if (!exists)

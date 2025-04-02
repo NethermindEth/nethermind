@@ -694,6 +694,10 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
+            if (_preBlockCache is not null)
+            {
+                _preBlockCache[address] = account;
+            }
         }
 
         private Account? GetAndAddToCache(Address address)
@@ -787,19 +791,8 @@ namespace Nethermind.State
             Delete
         }
 
-        private readonly struct Change
+        private readonly record struct Change(ChangeType ChangeType, Address Address, Account? Account)
         {
-            public Change(ChangeType type, Address address, Account? account)
-            {
-                ChangeType = type;
-                Address = address;
-                Account = account;
-            }
-
-            public readonly ChangeType ChangeType;
-            public readonly Address Address;
-            public readonly Account? Account;
-
             public bool IsNull => ChangeType == ChangeType.Null;
         }
 

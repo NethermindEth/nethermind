@@ -49,15 +49,7 @@ namespace Nethermind.Core
             Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)) &&
             Address.Equals(other.Address);
 
-        public override bool Equals(object? obj)
-        {
-            if (obj is null)
-            {
-                return false;
-            }
-
-            return obj is StorageCell address && Equals(address);
-        }
+        public override bool Equals(object? obj) => obj is StorageCell address && Equals(address);
 
         public override int GetHashCode()
         {

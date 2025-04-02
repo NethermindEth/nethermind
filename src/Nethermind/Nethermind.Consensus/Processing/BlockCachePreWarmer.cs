@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, ISpecProvider specProvider, int concurrency, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
-    private int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
+    private readonly int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateToWarmup), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
@@ -37,7 +37,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     {
         if (preBlockCaches is not null)
         {
-            CacheType result = preBlockCaches.ClearCaches();
+            CacheType result = preBlockCaches.ClearCaches(parentStateRoot);
             if (result != default)
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
@@ -61,10 +61,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     // Parent state root is null for genesis block
     private static bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public CacheType ClearCaches()
+    public CacheType ClearCaches(Hash256? stateRoot, Hash256? postBlockStateRoot)
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
+        CacheType cachesCleared = preBlockCaches?.ClearCaches(stateRoot, postBlockStateRoot) ?? default;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
 
         return cachesCleared;

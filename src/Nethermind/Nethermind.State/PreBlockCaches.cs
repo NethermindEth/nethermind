@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
@@ -19,10 +21,12 @@ public class PreBlockCaches
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly ISingleBlockProcessingCache<StorageCell, byte[]> _storageCache = new ConcurrentDictionaryCache<StorageCell, byte[]>(LockPartitions, InitialCapacity);
-    private readonly ISingleBlockProcessingCache<AddressAsKey, Account> _stateCache = new ConcurrentDictionaryCache<AddressAsKey, Account>(LockPartitions, InitialCapacity);
+    private readonly ISingleBlockProcessingCache<StorageCell, byte[]> _storageCache = new ConcurrentDictionaryCache<StorageCell, byte[]>(LockPartitions, InitialCapacity, _ => 0);
+    private readonly ISingleBlockProcessingCache<AddressAsKey, Account> _stateCache = new ConcurrentDictionaryCache<AddressAsKey, Account>(LockPartitions, InitialCapacity, _ => 0);
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> _precompileCache = new(LockPartitions, InitialCapacity);
+
+    public Hash256? StateRoot { get; set; }
 
     public PreBlockCaches()
     {
@@ -40,16 +44,20 @@ public class PreBlockCaches
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> PrecompileCache => _precompileCache;
 
-    public CacheType ClearCaches()
+    public CacheType ClearCaches(Hash256? stateRoot, Hash256? postStateRoot = null)
     {
         CacheType isDirty = CacheType.None;
-        foreach (Func<CacheType> clearCache in _clearCaches)
+        for (int index = KeepStateCashes(stateRoot) ? 2 : 0; index < _clearCaches.Length; index++)
         {
-            isDirty |= clearCache();
+            isDirty |= _clearCaches[index]();
         }
+
+        StateRoot = postStateRoot ?? StateRoot;
 
         return isDirty;
     }
+
+    private bool KeepStateCashes(Hash256? parentStateRoot) => parentStateRoot == StateRoot;
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
     {
@@ -60,19 +68,52 @@ public class PreBlockCaches
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
 
-    private class ConcurrentDictionaryCache<TKey, TValue>(int lockPartitions, int initialCapacity)
-        : ConcurrentDictionary<TKey, TValue>(lockPartitions, initialCapacity), ISingleBlockProcessingCache<TKey, TValue>
+    private class ConcurrentDictionaryCache<TKey, TValue> : ConcurrentDictionary<TKey, TValue>, ISingleBlockProcessingCache<TKey, TValue> where TKey : notnull
     {
-        public bool NoResizeClear() => CollectionExtensions.NoResizeClear(this);
-    }
-}
+        private readonly Func<TValue, long> _sizeCalculation;
+        private readonly Func<TKey, TValue> _valueFactory;
+        private readonly ThreadLocal<Func<TKey, TValue>> _localValueFactory = new();
+        private long _size;
 
-public interface ISingleBlockProcessingCache<TKey, TValue>
-{
-    TValue? GetOrAdd(TKey key, Func<TKey, TValue> valueFactory);
-    bool TryGetValue(TKey key, out TValue value);
-    TValue this[TKey key] { get; set; }
-    bool NoResizeClear();
+        public ConcurrentDictionaryCache(int lockPartitions, int initialCapacity, Func<TValue, long> sizeCalculation) : base(lockPartitions, initialCapacity)
+        {
+            _sizeCalculation = sizeCalculation;
+            _valueFactory = ValueFactory;
+        }
+
+        TValue? ISingleBlockProcessingCache<TKey, TValue>.GetOrAdd(TKey key, Func<TKey, TValue> valueFactory)
+        {
+            _localValueFactory.Value = valueFactory;
+            return GetOrAdd(key, _valueFactory);
+        }
+
+        private TValue ValueFactory(TKey key)
+        {
+            TValue value = _localValueFactory.Value(key);
+            long size = _sizeCalculation(value);
+            Interlocked.Add(ref _size, size);
+            return value;
+        }
+
+        TValue ISingleBlockProcessingCache<TKey, TValue>.this[TKey key]
+        {
+            get => this[key];
+            set
+            {
+                TValue oldValue = this[key];
+                this[key] = value;
+                Interlocked.Add(ref _size, _sizeCalculation(value) - _sizeCalculation(oldValue));
+            }
+        }
+
+        public bool NoResizeClear()
+        {
+            _size = 0;
+            return CollectionExtensions.NoResizeClear(this);
+        }
+
+        public long Size => _size;
+    }
 }
 
 [Flags]

@@ -32,10 +32,7 @@ namespace Nethermind.Config
 
         public string ExtraData
         {
-            get
-            {
-                return _extraDataString;
-            }
+            get => _extraDataString;
             set
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
@@ -50,10 +47,7 @@ namespace Nethermind.Config
                 _extraDataBytes = bytes;
             }
         }
-        public byte[] GetExtraDataBytes()
-        {
-            return _extraDataBytes;
-        }
+        public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 

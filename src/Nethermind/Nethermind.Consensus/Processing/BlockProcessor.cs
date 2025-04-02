@@ -65,7 +65,6 @@ public partial class BlockProcessor(
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -140,7 +139,7 @@ public partial class BlockProcessor(
                 else
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = preWarmer?.ClearCaches() ?? default;
+                    CacheType result = preWarmer?.ClearCaches(preBlockStateRoot) ?? default;
                     if (result != default)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
@@ -152,7 +151,7 @@ public partial class BlockProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
-                QueueClearCaches(preWarmTask);
+                QueueClearCaches(preWarmTask, preBlockStateRoot, processedBlock.StateRoot);
 
                 if (notReadOnly)
                 {
@@ -196,7 +195,7 @@ public partial class BlockProcessor(
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
-            QueueClearCaches(preWarmTask);
+            QueueClearCaches(preWarmTask, preBlockStateRoot);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
@@ -219,16 +218,16 @@ public partial class BlockProcessor(
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
-    private void QueueClearCaches(Task? preWarmTask)
+    private void QueueClearCaches(Task? preWarmTask, Hash256 preBlockStateRoot, Hash256? postBlockStateRoot = null)
     {
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+            _clearTask = preWarmTask.ContinueWith(_ => preWarmer!.ClearCaches(preBlockStateRoot, postBlockStateRoot), TaskContinuationOptions.RunContinuationsAsynchronously);
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
+            _clearTask = Task.Run(() => preWarmer.ClearCaches(preBlockStateRoot, postBlockStateRoot));
         }
     }
 

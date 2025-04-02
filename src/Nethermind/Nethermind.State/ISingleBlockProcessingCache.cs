@@ -5,10 +5,11 @@ using System;
 
 namespace Nethermind.State;
 
-public interface ISingleBlockProcessingCache<TKey, TValue>
+public interface ISingleBlockProcessingCache<TKey, TValue> where TKey : notnull
 {
     TValue? GetOrAdd(TKey key, Func<TKey, TValue> valueFactory);
     bool TryGetValue(TKey key, out TValue value);
     TValue this[TKey key] { get; set; }
     bool NoResizeClear();
+    long Size { get; }
 }

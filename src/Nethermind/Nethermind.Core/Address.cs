@@ -202,32 +202,12 @@ namespace Nethermind.Core
             return $"{address[..(withZeroX ? 8 : 6)]}...{address[^6..]}";
         }
 
-        public override bool Equals(object? obj)
-        {
-            if (obj is null)
-            {
-                return false;
-            }
-
-            if (ReferenceEquals(this, obj))
-            {
-                return true;
-            }
-
-            return obj.GetType() == GetType() && Equals((Address)obj);
-        }
+        public override bool Equals(object? obj) =>
+            obj is not null && (ReferenceEquals(this, obj) || obj.GetType() == GetType() && Equals((Address)obj));
 
         public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
-        public static bool operator ==(Address? a, Address? b)
-        {
-            if (ReferenceEquals(a, b))
-            {
-                return true;
-            }
-
-            return a?.Equals(b) ?? false;
-        }
+        public static bool operator ==(Address? a, Address? b) => ReferenceEquals(a, b) || a?.Equals(b) == true;
 
         public static bool operator !=(Address? a, Address? b) => !(a == b);
 
@@ -267,19 +247,14 @@ namespace Nethermind.Core
     {
         private readonly Address _key = key;
         public Address Value => _key;
-
         public static implicit operator Address(AddressAsKey key) => key._key;
         public static implicit operator AddressAsKey(Address key) => new(key);
-
         public bool Equals(AddressAsKey other) => _key == other._key;
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
-        public override string ToString()
-        {
-            return _key?.ToString() ?? "<null>";
-        }
+        public override string ToString() => _key?.ToString() ?? "<null>";
     }
 
-    public ref struct AddressStructRef
+    public readonly ref struct AddressStructRef
     {
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
@@ -291,7 +266,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
-        public readonly byte this[int index] => Bytes[index];
+        public byte this[int index] => Bytes[index];
 
         public static bool IsValidAddress(string hexString, bool allowPrefix)
         {
@@ -312,10 +287,7 @@ namespace Nethermind.Core
             for (int i = hasPrefix ? 2 : 0; i < hexString.Length; i++)
             {
                 char c = hexString[i];
-                bool isHex = (c >= '0' && c <= '9') ||
-                             (c >= 'a' && c <= 'f') ||
-                             (c >= 'A' && c <= 'F');
-
+                bool isHex = c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
                 if (!isHex) return false;
             }
 
@@ -343,35 +315,30 @@ namespace Nethermind.Core
             return new AddressStructRef(addressBytes);
         }
 
-        public override readonly string ToString() => ToString(true, false);
+        public override string ToString() => ToString(true, false);
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public readonly string ToString(bool withEip55Checksum) => ToString(true, withEip55Checksum);
+        public string ToString(bool withEip55Checksum) => ToString(true, withEip55Checksum);
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public readonly string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
+        public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
-        public readonly bool Equals(Address? other) => other is not null && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public bool Equals(Address? other) => other is not null && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
-        public readonly bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
-        public override readonly bool Equals(object? obj)
+        public override bool Equals(object? obj)
         {
-            if (obj is null)
-            {
-                return false;
-            }
-
-            return obj.GetType() == typeof(Address) && Equals((Address)obj);
+            return obj is not null && obj.GetType() == typeof(Address) && Equals((Address)obj);
         }
 
-        public override readonly int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public static bool operator ==(AddressStructRef a, Address? b) => a.Equals(b);
 
@@ -385,6 +352,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public readonly Address ToAddress() => new(Bytes.ToArray());
+        public Address ToAddress() => new(Bytes.ToArray());
     }
 }
