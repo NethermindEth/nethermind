@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
-        public ProofVersion CurrentProofVersion { get; internal set; }
+        public ProofVersion CurrentProofVersion { get; private set; }
 
         public bool IsSyncing
         {

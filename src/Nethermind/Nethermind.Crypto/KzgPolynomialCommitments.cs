@@ -86,5 +86,9 @@ public static class KzgPolynomialCommitments
         }
     }
 
+    public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
+    {
+        Ckzg.Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
+    }
 }
 

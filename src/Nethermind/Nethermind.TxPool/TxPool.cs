@@ -456,6 +456,8 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
+            TryConvertProofVersion(tx);
+
             TxFilteringState state = new(tx, _accounts);
 
             AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, ref state);
@@ -480,15 +482,24 @@ namespace Nethermind.TxPool
             return accepted;
         }
 
-        private void AddPendingDelegations(Transaction tx)
+        private void TryConvertProofVersion(Transaction tx)
         {
-            if (tx.HasAuthorizationList)
+            if (_txPoolConfig.ProofsTranslationEnabled
+                && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper }
+                && _headInfo.CurrentProofVersion == ProofVersion.V2)
             {
-                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+
+                foreach (byte[] blob in wrapper.Blobs)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                    byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
+                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
+                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
+                    cellProofs.AddRange(cellProofsSeparated);
                 }
+
+                wrapper.Proofs = cellProofs.ToArray();
+                wrapper.Version = ProofVersion.V2;
             }
         }
 
@@ -579,6 +590,18 @@ namespace Nethermind.TxPool
             Metrics.TransactionCount = _transactions.Count;
             Metrics.BlobTransactionCount = _blobTransactions.Count;
             return AcceptTxResult.Accepted;
+        }
+
+        private void AddPendingDelegations(Transaction tx)
+        {
+            if (tx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                }
+            }
         }
 
         private void RemovePendingDelegations(Transaction transaction)
