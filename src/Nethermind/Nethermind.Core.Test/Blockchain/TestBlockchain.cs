@@ -10,9 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -56,7 +54,7 @@ public class TestBlockchain : IDisposable
     public INonceManager NonceManager { get; private set; } = null!;
     public TransactionProcessor TxProcessor { get; set; } = null!;
     public IReceiptStorage ReceiptStorage { get; set; } = null!;
-    public ITxPool TxPool { get; set; } = null!;
+    public ITxPool TxPool => Container.Resolve<ITxPool>();
     public IWorldStateManager WorldStateManager => Container.Resolve<IWorldStateManager>();
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
@@ -201,7 +199,6 @@ public class TestBlockchain : IDisposable
         state.CommitTree(0);
 
         CodeInfoRepository codeInfoRepository = new();
-        TxPool = CreateTxPool(codeInfoRepository);
 
         IChainHeadInfoProvider chainHeadInfoProvider =
             new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader, codeInfoRepository);
@@ -319,16 +316,6 @@ public class TestBlockchain : IDisposable
     }
 
     public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
-
-    protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-        new(
-            EthereumEcdsa,
-            new BlobTxStorage(),
-            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState, codeInfoRepository) { HasSynced = true },
-            new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
-            new TxValidator(SpecProvider.ChainId),
-            LogManager,
-            TransactionComparerProvider.GetDefaultComparer());
 
     protected virtual TxPoolTxSource CreateTxPoolTxSource()
     {
