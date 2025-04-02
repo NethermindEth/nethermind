@@ -82,7 +82,6 @@ namespace Nethermind.Init.Steps
 
             setApi.HeaderValidator = CreateHeaderValidator();
             setApi.UnclesValidator = CreateUnclesValidator();
-            setApi.BlockValidator = CreateBlockValidator();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
@@ -168,16 +167,6 @@ namespace Nethermind.Init.Steps
         protected virtual TxValidator? CreateTxValidator(ulong v)
         {
             return new TxValidator(_api.SpecProvider!.ChainId);
-        }
-
-        protected virtual IBlockValidator CreateBlockValidator()
-        {
-            return new BlockValidator(
-                _api.TxValidator,
-                _api.HeaderValidator,
-                _api.UnclesValidator,
-                _api.SpecProvider,
-                _api.LogManager);
         }
 
         protected virtual IUnclesValidator CreateUnclesValidator()

@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -39,6 +40,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
+
+            .AddSingleton<IBlockValidator, BlockValidator>()
             ;
     }
 

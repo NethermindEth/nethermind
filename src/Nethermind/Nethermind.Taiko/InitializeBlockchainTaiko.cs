@@ -57,25 +57,6 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         return new InvalidHeaderInterceptor(taikoHeaderValidator, _api.Context.Resolve<IInvalidChainTracker>(), _api.LogManager);
     }
 
-    protected override IBlockValidator CreateBlockValidator()
-    {
-        if (_api.TxValidator is null) throw new StepDependencyException(nameof(_api.TxValidator));
-        if (_api.HeaderValidator is null) throw new StepDependencyException(nameof(_api.HeaderValidator));
-        if (_api.UnclesValidator is null) throw new StepDependencyException(nameof(_api.UnclesValidator));
-        if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-
-        TaikoBlockValidator blockValidator = new(
-            _api.TxValidator,
-            _api.HeaderValidator,
-            _api.UnclesValidator,
-            _api.SpecProvider,
-            _api.EthereumEcdsa,
-            _api.LogManager);
-
-        return new InvalidBlockInterceptor(blockValidator, _api.Context.Resolve<IInvalidChainTracker>(), _api.LogManager);
-    }
-
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));

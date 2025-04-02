@@ -71,6 +71,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
                     .AddSingleton(Substitute.For<ISyncServer>())
+                    .AddSingleton(Substitute.For<IBlockValidator>())
                     .Build()
             );
 
@@ -93,7 +94,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
-            api.BlockValidator = Substitute.For<IBlockValidator>();
             api.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.StaticNodesManager = Substitute.For<IStaticNodesManager>();

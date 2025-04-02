@@ -236,11 +236,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.LogManager);
 
             _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
-            _api.BlockValidator = new InvalidBlockInterceptor(
-                new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
-                    _api.SpecProvider, _api.LogManager),
-                _invalidChainTracker,
-                _api.LogManager);
             _api.HealthHintService =
                 new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
@@ -398,15 +393,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.LogManager);
 
             _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
-            _api.BlockValidator = new InvalidBlockInterceptor(
-                new BlockValidator(
-                    _api.TxValidator,
-                    _api.HeaderValidator,
-                    _api.UnclesValidator,
-                    _api.SpecProvider,
-                    _api.LogManager),
-                _invalidChainTracker,
-                _api.LogManager);
         }
 
         return Task.CompletedTask;
@@ -445,6 +431,27 @@ public class MergePluginModule : Module
             .AddSingleton<StartingSyncPivotUpdater>()
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
-            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>();
+            .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
+
+            // Validators
+            // .AddDecorator<ISealValidator, MergeSealValidator>()
+            // .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
+            // .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+            // .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
+            .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
+            // .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+
+            /*
+            _api.BlockValidator = new InvalidBlockInterceptor(
+                new BlockValidator(
+                    _api.TxValidator,
+                    _api.HeaderValidator,
+                    _api.UnclesValidator,
+                    _api.SpecProvider,
+                    _api.LogManager),
+                _invalidChainTracker,
+                _api.LogManager);
+                */
+            ;
     }
 }

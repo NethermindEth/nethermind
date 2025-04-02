@@ -174,7 +174,6 @@ public class EthereumRunnerTests
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.BlockValidator = Substitute.For<IBlockValidator>();
         api.DbProvider = Substitute.For<IDbProvider>();
 
         try

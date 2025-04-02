@@ -84,11 +84,6 @@ public class InitializeBlockchainOptimism(
         return new InvalidHeaderInterceptor(opHeaderValidator, invalidChainTracker, api.LogManager);
     }
 
-    protected override IBlockValidator CreateBlockValidator()
-    {
-        return new InvalidBlockInterceptor(base.CreateBlockValidator(), invalidChainTracker, api.LogManager);
-    }
-
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));

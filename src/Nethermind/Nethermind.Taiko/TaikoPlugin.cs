@@ -35,6 +35,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Taiko.TaikoSpec;
@@ -308,6 +309,9 @@ public class TaikoModule : Module
                 strategy.AllowBeaconHeaderSync();
                 return strategy;
             })
+
+            // BlockValidators
+            .AddSingleton<IBlockValidator, TaikoBlockValidator>()
 
             ;
     }
