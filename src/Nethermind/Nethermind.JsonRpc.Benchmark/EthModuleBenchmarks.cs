@@ -124,8 +124,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.NoReceipts);
 
-            blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
-            blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
+            blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance, default);
+            blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance, default);
 
             IBloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
 
