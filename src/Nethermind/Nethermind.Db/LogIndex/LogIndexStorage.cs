@@ -261,6 +261,13 @@ namespace Nethermind.Db
             return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync);
         }
 
+        public SetReceiptsStats Compact()
+        {
+            var stats = new SetReceiptsStats();
+            Compact(stats);
+            return stats;
+        }
+
         private int? _lastCompactionAt;
 
         // batch is expected to be sorted
@@ -290,31 +297,11 @@ namespace Nethermind.Db
             }
             finally
             {
-                var watch = new Stopwatch();
-
                 _lastCompactionAt ??= batch[0].BlockNumber - 1;
                 if (batch[^1].BlockNumber - _lastCompactionAt >= CompactionDistance)
                 {
-                    // TODO: log as Debug
-                    _logger.Info("Log index compaction started");
-
-                    watch.Restart();
-                    _addressDb.Flush();
-                    _topicsDb.Flush();
-                    stats.FlushingDbs.Include(watch.Elapsed);
-
-                    // TODO: try keep writing during compaction
-                    watch.Restart();
-                    _addressDb.Compact();
-                    _topicsDb.Compact();
+                    Compact(stats);
                     _lastCompactionAt = batch[^1].BlockNumber;
-                    stats.CompactingDbs.Include(watch.Elapsed);
-
-                    watch.Restart();
-                    CompressPostMerge(CompressKeysChannel.Reader, stats);
-                    stats.PostMergeProcessing.Include(watch.Elapsed);
-
-                    _logger.Info("Log index compaction completed");
                 }
 
                 if (_lastKnownBlock < batch[^1].BlockNumber)
@@ -327,6 +314,30 @@ namespace Nethermind.Db
             }
 
             return stats;
+        }
+
+        private void Compact(SetReceiptsStats stats)
+        {
+            // TODO: log as Debug
+            _logger.Info("Log index compaction started");
+            var watch = new Stopwatch();
+
+            watch.Restart();
+            _addressDb.Flush();
+            _topicsDb.Flush();
+            stats.FlushingDbs.Include(watch.Elapsed);
+
+            // TODO: try keep writing during compaction
+            watch.Restart();
+            _addressDb.Compact();
+            _topicsDb.Compact();
+            stats.CompactingDbs.Include(watch.Elapsed);
+
+            watch.Restart();
+            CompressPostMerge(CompressKeysChannel.Reader, stats);
+            stats.PostMergeProcessing.Include(watch.Elapsed);
+
+            _logger.Info("Log index compaction completed");
         }
 
         // TODO: optimize allocations

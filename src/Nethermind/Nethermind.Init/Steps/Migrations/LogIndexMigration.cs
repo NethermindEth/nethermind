@@ -214,6 +214,8 @@ namespace Nethermind.Init.Steps.Migrations
                 var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, token), token);
                 var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
+
+                _logIndexStorage.Compact();
             }
             finally
             {

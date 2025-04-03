@@ -20,6 +20,7 @@ public interface ILogIndexStorage : IAsyncDisposable
     Task CheckMigratedData();
     Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
+    SetReceiptsStats Compact();
     Task StopAsync();
 
     PagesStats PagesStats => default;
