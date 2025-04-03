@@ -85,7 +85,7 @@ public class TestBlockchain : IDisposable
     public IDbProvider DbProvider => Container.Resolve<IDbProvider>();
     public ISpecProvider SpecProvider { get; set; } = null!;
 
-    public ISealEngine SealEngine { get; set; } = null!;
+    public ISealEngine SealEngine => Container.Resolve<ISealEngine>();
 
     public ITransactionComparerProvider TransactionComparerProvider => Container.Resolve<ITransactionComparerProvider>();
 
@@ -170,6 +170,7 @@ public class TestBlockchain : IDisposable
 
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
 
             .AddSingleton<ILogFinder>(ctx =>
             {
@@ -223,9 +224,6 @@ public class TestBlockchain : IDisposable
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
 
-        ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-        SealEngine = new SealEngine(sealer, Always.Valid);
-
         BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -235,7 +233,7 @@ public class TestBlockchain : IDisposable
 
         TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
         ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
-        BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
+        BlockProducer = CreateTestBlockProducer(txPoolTxSource, Container.Resolve<ISealer>(), transactionComparerProvider);
         BlockProducerRunner ??= CreateBlockProducerRunner();
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);

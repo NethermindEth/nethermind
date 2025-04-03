@@ -313,7 +313,6 @@ public partial class BaseEngineModuleTests
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
-            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
             IBlockProducer preMergeBlockProducer =
                 base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
