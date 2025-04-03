@@ -146,7 +146,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             // Measure how long we've already spent building in this slot:
             TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
-            DateTimeOffset doubleFinishTime = startDateTime + _timePerSlot * 2;
+            DateTimeOffset slotPlusThirdFinishTime = startDateTime + _timePerSlot * 1.3;
 
             TimeSpan dynamicDelay;
             if (!_improvementDelay.HasValue)
@@ -189,7 +189,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             // Check if we still have time to do an “improvement build”:
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
 
-            if (whenWeCouldFinishNextProduction < doubleFinishTime)
+            if (whenWeCouldFinishNextProduction < slotPlusThirdFinishTime)
             {
                 try
                 {
