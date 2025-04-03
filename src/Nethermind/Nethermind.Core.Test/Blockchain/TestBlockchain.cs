@@ -76,14 +76,14 @@ public class TestBlockchain : IDisposable
     public IDb BlocksDb => DbProvider.BlocksDb;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
-    public IDbProvider DbProvider => _fromContainer.DbProvider ;
-    public ISpecProvider SpecProvider => _fromContainer.SpecProvider ;
+    public IDbProvider DbProvider => _fromContainer.DbProvider;
+    public ISpecProvider SpecProvider => _fromContainer.SpecProvider;
 
-    public ISealEngine SealEngine => _fromContainer.SealEngine ;
+    public ISealEngine SealEngine => _fromContainer.SealEngine;
 
-    public ITransactionComparerProvider TransactionComparerProvider => _fromContainer.TransactionComparerProvider ;
+    public ITransactionComparerProvider TransactionComparerProvider => _fromContainer.TransactionComparerProvider;
 
-    public IPoSSwitcher PoSSwitcher => _fromContainer.PoSSwitcher ;
+    public IPoSSwitcher PoSSwitcher => _fromContainer.PoSSwitcher;
 
     protected TestBlockchain()
     {
@@ -98,7 +98,7 @@ public class TestBlockchain : IDisposable
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
     public static readonly UInt256 InitialValue = 1000.Ether();
-    public IHeaderValidator HeaderValidator => _fromContainer.HeaderValidator ;
+    public IHeaderValidator HeaderValidator => _fromContainer.HeaderValidator;
 
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
@@ -114,7 +114,7 @@ public class TestBlockchain : IDisposable
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
-    public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository ;
+    public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 

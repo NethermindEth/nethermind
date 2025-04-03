@@ -523,7 +523,10 @@ public class BlockchainProcessorTests
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
                     readOnlyState,
-                    new CodeInfoRepository()) { HasSynced = true };
+                    new CodeInfoRepository())
+                {
+                    HasSynced = true
+                };
             });
         });
         await testBlockchain.BuildSomeBlocks(5);
