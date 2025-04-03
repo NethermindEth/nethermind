@@ -51,41 +51,41 @@ public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
     protected long TestTimout { get; init; } = DefaultTimeout;
-    public IStateReader StateReader => Container.Resolve<IStateReader>();
-    public IEthereumEcdsa EthereumEcdsa => Container.Resolve<IEthereumEcdsa>();
-    public INonceManager NonceManager => Container.Resolve<INonceManager>();
-    public ITransactionProcessor TxProcessor => Container.Resolve<IMainProcessingContext>().TransactionProcessor;
-    public IReceiptStorage ReceiptStorage => Container.Resolve<IReceiptStorage>();
-    public ITxPool TxPool => Container.Resolve<ITxPool>();
-    public IWorldStateManager WorldStateManager => Container.Resolve<IWorldStateManager>();
+    public IStateReader StateReader => _fromContainer.StateReader;
+    public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
+    public INonceManager NonceManager => _fromContainer.NonceManager;
+    public ITransactionProcessor TxProcessor => _fromContainer.MainProcessingContext.TransactionProcessor;
+    public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
+    public ITxPool TxPool => _fromContainer.TxPool;
+    public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
-    public IBlockPreprocessorStep BlockPreprocessorStep => Container.Resolve<IBlockPreprocessorStep>();
+    public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
-    public IBlockTree BlockTree => Container.Resolve<IBlockTree>();
+    public IBlockTree BlockTree => _fromContainer.BlockTree;
 
     public Action<IWorldState>? InitialStateMutator { get; set; }
 
-    public IBlockFinder BlockFinder => Container.Resolve<IBlockFinder>();
+    public IBlockFinder BlockFinder => _fromContainer.BlockFinder;
 
-    public ILogFinder LogFinder => Container.Resolve<ILogFinder>();
+    public ILogFinder LogFinder => _fromContainer.LogFinder;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IReadOnlyStateProvider ReadOnlyState => Container.Resolve<IReadOnlyStateProvider>();
+    public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
-    public TrieStore TrieStore => Container.Resolve<TrieStore>();
+    public TrieStore TrieStore => _fromContainer.TrieStore;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
-    public IDbProvider DbProvider => Container.Resolve<IDbProvider>();
-    public ISpecProvider SpecProvider => Container.Resolve<ISpecProvider>();
+    public IDbProvider DbProvider => _fromContainer.DbProvider ;
+    public ISpecProvider SpecProvider => _fromContainer.SpecProvider ;
 
-    public ISealEngine SealEngine => Container.Resolve<ISealEngine>();
+    public ISealEngine SealEngine => _fromContainer.SealEngine ;
 
-    public ITransactionComparerProvider TransactionComparerProvider => Container.Resolve<ITransactionComparerProvider>();
+    public ITransactionComparerProvider TransactionComparerProvider => _fromContainer.TransactionComparerProvider ;
 
-    public IPoSSwitcher PoSSwitcher => Container.Resolve<IPoSSwitcher>();
+    public IPoSSwitcher PoSSwitcher => _fromContainer.PoSSwitcher ;
 
     protected TestBlockchain()
     {
@@ -100,13 +100,13 @@ public class TestBlockchain : IDisposable
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
     public static readonly UInt256 InitialValue = 1000.Ether();
-    public IHeaderValidator HeaderValidator => Container.Resolve<IHeaderValidator>();
+    public IHeaderValidator HeaderValidator => _fromContainer.HeaderValidator ;
 
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
     private TestBlockchainUtil _testUtil = null!;
 
-    public IBlockValidator BlockValidator => Container.Resolve<IBlockValidator>();
+    public IBlockValidator BlockValidator => _fromContainer.BlockValidator;
 
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
@@ -116,11 +116,39 @@ public class TestBlockchain : IDisposable
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
-    public IChainLevelInfoRepository ChainLevelInfoRepository => Container.Resolve<IChainLevelInfoRepository>();
+    public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository ;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
     protected IContainer Container { get; set; } = null!;
+
+    // Resolving all these component at once is faster.
+    private FromContainer _fromContainer = null!;
+    private record FromContainer(
+        IStateReader StateReader,
+        IEthereumEcdsa EthereumEcdsa,
+        INonceManager NonceManager,
+        IReceiptStorage ReceiptStorage,
+        ITxPool TxPool,
+        IWorldStateManager WorldStateManager,
+        IBlockPreprocessorStep BlockPreprocessorStep,
+        IBlockTree BlockTree,
+        IBlockFinder BlockFinder,
+        ILogFinder LogFinder,
+        IReadOnlyStateProvider ReadOnlyState,
+        TrieStore TrieStore,
+        IDbProvider DbProvider,
+        ISpecProvider SpecProvider,
+        ISealEngine SealEngine,
+        ITransactionComparerProvider TransactionComparerProvider,
+        IPoSSwitcher PoSSwitcher,
+        IHeaderValidator HeaderValidator,
+        IBlockValidator BlockValidator,
+        IChainLevelInfoRepository ChainLevelInfoRepository,
+        IMainProcessingContext MainProcessingContext,
+        Configuration Configuration,
+        ISealer Sealer
+    );
 
     public class Configuration
     {
@@ -142,8 +170,9 @@ public class TestBlockchain : IDisposable
         configurer?.Invoke(builder);
 
         Container = builder.Build();
+        _fromContainer = Container.Resolve<FromContainer>();
 
-        IWorldState state = Container.Resolve<IWorldStateManager>().GlobalWorldState;
+        IWorldState state = _fromContainer.WorldStateManager.GlobalWorldState;
 
         ISpecProvider specProvider = SpecProvider;
         // Eip4788 precompile state account
@@ -158,7 +187,7 @@ public class TestBlockchain : IDisposable
             state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
         }
 
-        Configuration testConfiguration = Container.Resolve<Configuration>();
+        Configuration testConfiguration = _fromContainer.Configuration;
         state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
         state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
         state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
@@ -182,7 +211,7 @@ public class TestBlockchain : IDisposable
 
         TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
         ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
-        BlockProducer = CreateTestBlockProducer(txPoolTxSource, Container.Resolve<ISealer>(), transactionComparerProvider);
+        BlockProducer = CreateTestBlockProducer(txPoolTxSource, _fromContainer.Sealer, transactionComparerProvider);
         BlockProducerRunner ??= CreateBlockProducerRunner();
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
@@ -223,9 +252,10 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
             .AddSingleton<Configuration>()
+            .AddSingleton<FromContainer>()
 
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
-            // This means it does not use pruning triestore normally though.
+            // This means it does not use pruning triestore by default though which is potential edge case.
             .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
             .Bind<IPruningTrieStore, TrieStore>()
             .AddSingleton<IWorldStateManager>(ctx =>
