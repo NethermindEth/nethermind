@@ -68,11 +68,7 @@ public class TestBlockchain : IDisposable
 
     public Action<IWorldState>? InitialStateMutator { get; set; }
 
-    public IBlockFinder BlockFinder
-    {
-        get => _blockFinder ?? BlockTree;
-        set => _blockFinder = value;
-    }
+    public IBlockFinder BlockFinder => Container.Resolve<IBlockFinder>();
 
     public ILogFinder LogFinder => Container.Resolve<ILogFinder>();
     public IJsonSerializer JsonSerializer { get; set; } = null!;
@@ -100,7 +96,6 @@ public class TestBlockchain : IDisposable
     public static readonly Address AccountA = TestItem.AddressA;
     public static readonly Address AccountB = TestItem.AddressB;
     public static readonly Address AccountC = TestItem.AddressC;
-    private IBlockFinder _blockFinder = null!;
 
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 

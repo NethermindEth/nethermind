@@ -38,6 +38,7 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -73,6 +74,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             private readonly TestRpcBlockchain _blockchain = blockchain;
 
+            private IBlockFinder? _blockFinderOverride = null;
+
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
                 _blockchain.Bridge = blockchainBridge;
@@ -87,7 +90,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             public Builder<T> WithBlockFinder(IBlockFinder blockFinder)
             {
-                _blockchain.BlockFinder = blockFinder;
+                _blockFinderOverride = blockFinder;
                 return this;
             }
 
@@ -126,14 +129,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build2(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null)
-            {
-                return (T)await _blockchain.Build(specProvider, configurer: configurer);
-            }
-
             public async Task<T> Build(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null)
             {
-                return (T)await _blockchain.Build(specProvider, configurer: configurer);
+                return (T)await _blockchain.Build(specProvider, configurer: (builder) =>
+                {
+                    configurer?.Invoke(builder);
+                    if (_blockFinderOverride is not null)
+                    {
+                        builder.AddSingleton(_blockFinderOverride);
+                    }
+                });
             }
         }
 
@@ -216,7 +221,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             // TODO: Double check these
             ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
-            BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
