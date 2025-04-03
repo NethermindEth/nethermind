@@ -3,7 +3,6 @@
 
 using System;
 using System.Net.Http;
-using System.Runtime.CompilerServices;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
@@ -19,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
@@ -58,10 +56,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             // Validators
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
-            .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
-            .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
-            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
@@ -69,12 +63,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
-
-            .AddSingleton<IPeerRefresher, PeerRefresher>()
-            .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
-
-            .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()

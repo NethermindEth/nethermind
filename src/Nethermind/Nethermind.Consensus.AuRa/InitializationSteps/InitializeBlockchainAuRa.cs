@@ -209,20 +209,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
     //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
-    protected override IHeaderValidator CreateHeaderValidator()
-    {
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        IDictionary<long, Address> blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
-        return blockGasLimitContractTransitions?.Any() == true
-            ? new AuRaHeaderValidator(
-                _api.BlockTree,
-                _api.SealValidator,
-                _api.SpecProvider,
-                _api.LogManager,
-                blockGasLimitContractTransitions.Keys.ToArray())
-            : base.CreateHeaderValidator();
-    }
-
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {
         if (txPriorityContract is not null || localDataSource is not null)
