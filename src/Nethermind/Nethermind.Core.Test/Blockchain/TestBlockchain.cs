@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
-    public long TestTimout { get; set; } = DefaultTimeout;
+    protected long TestTimout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => Container.Resolve<IStateReader>();
     public IEthereumEcdsa EthereumEcdsa => Container.Resolve<IEthereumEcdsa>();
     public INonceManager NonceManager => Container.Resolve<INonceManager>();
@@ -105,10 +105,8 @@ public class TestBlockchain : IDisposable
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
     public static readonly UInt256 InitialValue = 1000.Ether();
-    private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
     public IHeaderValidator HeaderValidator => Container.Resolve<IHeaderValidator>();
 
-    private ReceiptCanonicalityMonitor? _canonicalityMonitor;
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
     private TestBlockchainUtil _testUtil = null!;
@@ -117,7 +115,7 @@ public class TestBlockchain : IDisposable
 
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
-    public ManualTimestamper Timestamper { get; protected set; } = null!;
+    public ManualTimestamper Timestamper { get; private set; } = null!;
     public BlocksConfig BlocksConfig { get; protected set; } = new();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
@@ -153,7 +151,7 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ISpecProvider>(SpecProvider)
             .AddSingleton<Configuration>()
 
-            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden
+            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
             // This means it does not use pruning triestore normally though.
             .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
             .Bind<IPruningTrieStore, TrieStore>()
@@ -165,6 +163,8 @@ public class TestBlockchain : IDisposable
                 WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance, preBlockCaches: preBlockCaches);
                 return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
             })
+            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
+            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>()
 
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
@@ -218,10 +218,6 @@ public class TestBlockchain : IDisposable
 
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
-
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-
-        _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
 
         BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 
@@ -432,14 +428,6 @@ public class TestBlockchain : IDisposable
     public virtual void Dispose()
     {
         BlockProducerRunner?.StopAsync();
-        if (DbProvider is not null)
-        {
-            StateDb?.Dispose();
-            DbProvider.BlobTransactionsDb?.Dispose();
-            DbProvider.ReceiptsDb?.Dispose();
-        }
-
-        _trieStoreWatcher?.Dispose();
         Container.Dispose();
     }
 
