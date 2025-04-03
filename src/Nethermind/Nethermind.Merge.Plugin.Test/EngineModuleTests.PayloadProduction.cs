@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
@@ -126,32 +127,56 @@ public partial class EngineModuleTests
     {
         get
         {
-            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 10) { ExpectedResult = 3, TestName = "Production manages to finish" };
-            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2) { ExpectedResult = 0, TestName = "Production takes too long" };
+            yield return new TestCaseData(TimeSpan.Zero, TimeSpan.Zero) { ExpectedResult = 50, TestName = "Production manages to finish" };
+            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 4) { ExpectedResult = 3, TestName = "Production makes partial block" };
+            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2) { ExpectedResult = 0, TestName = "Production takes too long" };
+        }
+    }
+
+    private class TxDelayedSource(Transaction[] transactions, TimeSpan delay) : ITxSource
+    {
+        public bool SupportsBlobs { get; }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        {
+            foreach (var item in transactions)
+            {
+                if (delay.TotalMilliseconds > 0)
+                    Thread.Sleep(delay);
+                yield return item;
+            }
         }
     }
 
     [TestCaseSource(nameof(WaitTestCases))]
-    public async Task<int> getPayloadV1_waits_for_block_production(TimeSpan delay)
+    public async Task<int> getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay)
     {
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain => new DelayBlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(10), delay),
+            chain =>
+            {
+                Hash256 startingHead = chain.BlockTree.HeadHash;
+                uint count = 50;
+                int value = 10;
+                Address recipient = TestItem.AddressF;
+                PrivateKey sender = TestItem.PrivateKeyB;
+                Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+                chain.PostMergeBlockProducer!.TxSource = new TxDelayedSource(transactions, txDelay);
+                return new DelayBlockImprovementContextFactory(chain.PostMergeBlockProducer, TimeSpan.FromSeconds(10), improveDelay);
+            },
             TimeSpan.FromSeconds(10));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
-        uint count = 3;
-        int value = 10;
-        Address recipient = TestItem.AddressF;
-        PrivateKey sender = TestItem.PrivateKeyB;
-        Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
-        chain.AddTransactions(transactions);
-        string payloadId = rpc.engine_forkchoiceUpdatedV1(
+
+        string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
-            .Result.Data.PayloadId!;
+                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+
+        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+
+        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
         return getPayloadResult.Transactions.Length;
     }

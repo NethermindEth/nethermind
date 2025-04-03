@@ -62,8 +62,8 @@ public partial class EngineModuleTests
             TimeSpan delay,
             CancellationToken cancellationToken)
         {
-            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, cancellationToken);
             await Task.Delay(delay, cancellationToken);
+            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, cancellationToken);
             if (block is not null)
             {
                 CurrentBestBlock = block;

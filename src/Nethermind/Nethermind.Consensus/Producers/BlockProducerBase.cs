@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -18,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Consensus.Producers
 {
     /// <summary>
@@ -40,7 +42,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
-        protected readonly ITxSource _txSource;
+        protected internal ITxSource TxSource { get; set; }
         protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
@@ -59,7 +61,7 @@ namespace Nethermind.Consensus.Producers
             IDifficultyCalculator? difficultyCalculator,
             IBlocksConfig? blocksConfig)
         {
-            _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
+            TxSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -172,7 +174,7 @@ namespace Nethermind.Consensus.Producers
                             }
 
                             return null;
-                        }), token);
+                        }), CancellationToken.None);
                     }
                 }
             }
@@ -249,7 +251,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
+            IEnumerable<Transaction> transactions = TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
