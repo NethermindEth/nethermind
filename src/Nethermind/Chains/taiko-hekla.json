@@ -48,7 +48,7 @@
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0",
-    "eip1559BaseFeeMinValueTransition": "0xcd340",
+    "eip1559BaseFeeMinValueTransition": "0xcd340"
   },
   "genesis": {
     "seal": {
