@@ -26,6 +26,9 @@ public class SetReceiptsStats
     public AverageStats KeysCount { get; } = new();
     public ExecTimeStats WaitingBatch { get; } = new();
 
+    public ExecTimeStats QueueingAddressCompression { get; } = new();
+    public ExecTimeStats QueueingTopicCompression { get; } = new();
+
     public void Combine(SetReceiptsStats other)
     {
         BlocksAdded += other.BlocksAdded;
@@ -44,5 +47,8 @@ public class SetReceiptsStats
         KeysCount.Combine(other.KeysCount);
         LastBlockNumber = Math.Max(LastBlockNumber, other.LastBlockNumber);
         WaitingBatch.Combine(other.WaitingBatch);
+
+        QueueingAddressCompression.Combine(other.QueueingAddressCompression);
+        QueueingTopicCompression.Combine(other.QueueingTopicCompression);
     }
 }

@@ -149,6 +149,9 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void LogStats(object? sender, ElapsedEventArgs e)
         {
+            if (_totalBlocks == 0)
+                return;
+
             if (_logger.IsInfo)
             {
                 (SetReceiptsStats last, SetReceiptsStats total) = (_lastStats, _totalStats);
@@ -209,13 +212,21 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                //await _logIndexStorage.CheckMigratedData();
+                // await _logIndexStorage.CheckMigratedData();
 
                 var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, token), token);
                 var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
 
-                _logIndexStorage.Compact();
+                // await Task.CompletedTask;
+                // var stats = _logIndexStorage.CompressAndCompact(LogIndexStorage.MaxUncompressedLength / 4);
+                // _logger.Info($"LogIndexMigration" +
+                //     $"\n\t\tQueueing for compression: {stats.QueueingAddressCompression} address, {stats.QueueingTopicCompression} topic" +
+                //     $"\n\t\tCompacting DBs: {stats.CompactingDbs}" +
+                //     $"\n\t\tFlushing DBs: {stats.FlushingDbs}" +
+                //     $"\n\t\tPost-merge processing: {stats.PostMergeProcessing}" +
+                //     $"\n\t\tCompressed keys: {stats.CompressedAddressKeys:N0} address, {stats.CompressedTopicKeys:N0} topic"
+                // );
             }
             finally
             {

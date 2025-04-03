@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -271,6 +272,55 @@ namespace Nethermind.Db
             var stats = new SetReceiptsStats();
             Compact(stats);
             return stats;
+        }
+
+        public SetReceiptsStats CompressAndCompact(int maxUncompressedLength = MaxUncompressedLength)
+        {
+            var stats = new SetReceiptsStats();
+            var watch = Stopwatch.StartNew();
+
+            watch.Restart();
+            var addressCount = QueueLargeKeysCompression(_addressDb, maxUncompressedLength);
+            stats.QueueingAddressCompression.Include(watch.Elapsed);
+
+            watch.Restart();
+            var topicCount = QueueLargeKeysCompression(_topicsDb, maxUncompressedLength);
+            stats.QueueingTopicCompression.Include(watch.Elapsed);
+
+            _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
+
+            watch.Restart();
+            CompressPostMerge(CompressKeysChannel.Reader, stats);
+            stats.PostMergeProcessing.Include(watch.Elapsed);
+
+            watch.Restart();
+            _addressDb.Flush();
+            _topicsDb.Flush();
+            stats.FlushingDbs.Include(watch.Elapsed);
+
+            watch.Restart();
+            _addressDb.Compact();
+            _topicsDb.Compact();
+            stats.CompactingDbs.Include(watch.Elapsed);
+
+            return stats;
+        }
+
+        private int QueueLargeKeysCompression(IDb db, int maxUncompressedLength)
+        {
+            var counter = 0;
+
+            using var addressIterator = db.GetIterator();
+            foreach (var (key, value) in Enumerate(addressIterator))
+            {
+                if (GetKeyBlockNum(key) == BlockMaxVal && value.Length > maxUncompressedLength)
+                {
+                    CompressKeys.TryWrite(key.ToArray());
+                    counter++;
+                }
+            }
+
+            return counter;
         }
 
         private int? _lastCompactionAt;
