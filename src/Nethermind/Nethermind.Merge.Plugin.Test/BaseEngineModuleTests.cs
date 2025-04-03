@@ -361,7 +361,6 @@ public partial class BaseEngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
@@ -379,16 +378,6 @@ public partial class BaseEngineModuleTests
                 executionRequestsProcessor: ExecutionRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
-        }
-
-        protected IBlockValidator CreateBlockValidator()
-        {
-            return new BlockValidator(
-                new TxValidator(SpecProvider.ChainId),
-                HeaderValidator,
-                Always.Valid,
-                SpecProvider,
-                LogManager);
         }
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();

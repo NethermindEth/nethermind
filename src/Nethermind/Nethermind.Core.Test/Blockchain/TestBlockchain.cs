@@ -113,7 +113,7 @@ public class TestBlockchain : IDisposable
     public CancellationToken CancellationToken => _cts.Token;
     private TestBlockchainUtil _testUtil = null!;
 
-    public IBlockValidator BlockValidator { get; set; } = null!;
+    public IBlockValidator BlockValidator => Container.Resolve<IBlockValidator>();
 
     public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
@@ -211,13 +211,6 @@ public class TestBlockchain : IDisposable
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
         BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, state);
-
-        BlockValidator = new BlockValidator(
-            new TxValidator(SpecProvider.ChainId),
-            HeaderValidator,
-            Always.Valid,
-            SpecProvider,
-            LogManager);
 
         ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
         SealEngine = new SealEngine(sealer, Always.Valid);

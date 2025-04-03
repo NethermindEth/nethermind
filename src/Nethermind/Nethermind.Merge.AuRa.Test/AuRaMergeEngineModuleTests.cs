@@ -161,7 +161,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager
             );
 
-            BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
