@@ -144,7 +144,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
+            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
             CliqueBlockProducer blockProducer = new(
                 additionalTxSource.Then(txPoolTxSource),

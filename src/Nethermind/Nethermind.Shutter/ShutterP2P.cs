@@ -154,8 +154,8 @@ public class ShutterP2P : IShutterP2P
     public async ValueTask DisposeAsync()
     {
         _router?.UnsubscribeAll();
+        _cts?.Dispose();
         await (_serviceProvider?.DisposeAsync() ?? default);
-        await (_cts?.CancelAsync() ?? Task.CompletedTask);
     }
 
     private Identity GetPeerIdentity(IFileSystem fileSystem, IShutterConfig shutterConfig, IKeyStoreConfig keyStoreConfig)

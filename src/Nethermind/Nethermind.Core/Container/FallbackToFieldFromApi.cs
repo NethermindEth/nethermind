@@ -60,7 +60,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
 
         PropertyInfo? property;
         Type serviceType = ts.ServiceType;
-        if (registrationAccessor(service).Any())
+        if (registrationAccessor(service).Any(reg => !reg.Registration.Metadata.ContainsKey(FallbackMetadata)))
         {
             // Already have registration
             if (!_allowRedundantRegistration && _availableTypes.TryGetValue(serviceType, out property) && property.SetMethod is not null)
@@ -90,10 +90,14 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
                 throw new MissingFieldException($"Property {property.Name} in {baseT.GetType().Name} is null");
             }
             return value!;
-        }).ExternallyOwned();
+        })
+            .WithMetadata(FallbackMetadata, true)
+            .ExternallyOwned();
 
         return new[] { builder.CreateRegistration() };
     }
 
     public bool IsAdapterForIndividualComponents => false;
+
+    public static string FallbackMetadata = "IsFallback";
 }

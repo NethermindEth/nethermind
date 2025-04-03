@@ -98,6 +98,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Spaceneth": {
+      "commandName": "Project",
+      "commandLineArgs": "-c spaceneth --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Taiko Alethia": {
       "commandName": "Project",
       "commandLineArgs": "-c taiko-alethia --data-dir .data",

@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -38,7 +39,13 @@ namespace Nethermind.Consensus.Validators
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
-        public static bool ValidateHash(BlockHeader header) => header.Hash == header.CalculateHash();
+        public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
+        {
+            actualHash = header.CalculateHash();
+            return header.Hash == actualHash;
+        }
+
+        public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);
 
         private bool ValidateHash(BlockHeader header, ref string? error)
         {

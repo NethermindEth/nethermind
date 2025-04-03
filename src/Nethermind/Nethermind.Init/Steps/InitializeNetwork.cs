@@ -6,12 +6,10 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -29,11 +27,9 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 
@@ -41,8 +37,13 @@ namespace Nethermind.Init.Steps;
 
 public static class NettyMemoryEstimator
 {
-    // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
     private const uint PageSize = 8192;
+
+    public static void SetPageSize()
+    {
+        // For some reason needs to be half page size to get page size
+        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
+    }
 
     public static long Estimate(uint arenaCount, int arenaOrder)
     {
@@ -96,33 +97,8 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
-
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-
-        IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
-        foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
-        {
-            await plugin.InitSynchronization();
-        }
-
-        _api.Pivot ??= new Pivot(_api.BlockTree);
-
-        if (_api.Synchronizer is null)
-        {
-            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
-                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
-
-            ContainerBuilder builder = new ContainerBuilder();
-            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
-            builder.RegisterModule(new SynchronizerModule(_syncConfig));
-            IContainer container = builder.Build();
-
-            _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Push((IAsyncDisposable)container);
-        }
 
         _api.WorldStateManager!.InitializeNetwork(
             new PathNodeRecovery(

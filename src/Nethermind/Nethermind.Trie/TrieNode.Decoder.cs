@@ -22,7 +22,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int StackallocByteThreshold = 256;
+        // Used to create the nibble key from bytes, and threshold before using ArrayPool for the key
+        private const int StackallocByteThreshold = 384;
 
         private class TrieNodeDecoder
         {

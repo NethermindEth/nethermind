@@ -7,7 +7,6 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    // Tests need to be updated
     // [TestFixture]
     // [Parallelizable(ParallelScope.All)]
     // public class Eip2537Tests : GeneralStateTestBase
@@ -20,7 +19,7 @@ namespace Ethereum.Blockchain.Test
     //
     //     public static IEnumerable<GeneralStateTest> LoadTests()
     //     {
-    //         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "../EIPTests/StateTests/stEIP2537");
+    //         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP2537");
     //         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     //     }
     // }
