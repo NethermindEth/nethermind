@@ -74,7 +74,7 @@ public class TestBlockchain : IDisposable
         set => _blockFinder = value;
     }
 
-    public ILogFinder LogFinder { get; private set; } = null!;
+    public ILogFinder LogFinder => Container.Resolve<ILogFinder>();
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState => Container.Resolve<IReadOnlyStateProvider>();
     public IDb StateDb => DbProvider.StateDb;
@@ -115,7 +115,6 @@ public class TestBlockchain : IDisposable
 
     public IBlockValidator BlockValidator => Container.Resolve<IBlockValidator>();
 
-    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public ManualTimestamper Timestamper { get; protected set; } = null!;
@@ -210,14 +209,10 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, state);
 
         ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
         SealEngine = new SealEngine(sealer, Always.Valid);
 
-        BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-        ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId), SpecProvider);
-        LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
         BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
