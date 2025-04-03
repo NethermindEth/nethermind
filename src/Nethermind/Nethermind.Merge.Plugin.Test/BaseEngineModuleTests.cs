@@ -21,7 +21,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -39,6 +38,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -51,7 +51,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public class BaseEngineModuleTests
+public partial class BaseEngineModuleTests
 {
     [SetUp]
     public Task Setup()
@@ -87,6 +87,10 @@ public class BaseEngineModuleTests
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = syncConfig ?? new SyncConfig();
 
+        chain.BlockTree.SyncPivot = (
+            LongConverter.FromString(synchronizationConfig.PivotNumber),
+            synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
+        );
         chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.PoSSwitcher, chain.LogManager);
         BlockCacheService blockCacheService = new();
         InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
@@ -231,17 +235,20 @@ public class BaseEngineModuleTests
         public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
 
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
+        public StoringBlockImprovementContextFactory? StoringBlockImprovementContextFactory { get; set; }
 
-        public Task WaitForImprovedBlocck(Hash256? parentHash = null)
+        public Task WaitForImprovedBlock(Hash256? parentHash = null)
         {
-            return Wait.ForEventCondition<BlockEventArgs>(default,
-                e => PayloadPreparationService!.BlockImproved += e,
-                e => PayloadPreparationService!.BlockImproved -= e,
-                b =>
-                {
-                    if (parentHash is null) return true;
-                    return b.Block.ParentHash == parentHash;
-                });
+            if (parentHash == null)
+            {
+                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => true);
+            }
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
+        }
+
+        public Task WaitForImprovedBlockWithCondition(Func<Block, bool> predicate)
+        {
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, predicate);
         }
 
         public ISealValidator? SealValidator { get; set; }
@@ -317,9 +324,10 @@ public class BaseEngineModuleTests
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
+            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                BlockImprovementContextFactory,
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -368,11 +376,19 @@ public class BaseEngineModuleTests
         }
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
-        public IBlockImprovementContextFactory BlockImprovementContextFactory { get; set; } = null!;
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        public IBlockImprovementContextFactory BlockImprovementContextFactory
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
+            get => StoringBlockImprovementContextFactory!;
+            set
+            {
+                StoringBlockImprovementContextFactory = value as StoringBlockImprovementContextFactory ?? new StoringBlockImprovementContextFactory(value);
+            }
+        }
+
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
+        {
+            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
             return chain;
         }
 

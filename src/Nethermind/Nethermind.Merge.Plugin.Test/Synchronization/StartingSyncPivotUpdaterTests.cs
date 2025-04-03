@@ -24,7 +24,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Test.Synchronization
 {
-    public class PivotUpdatorTests
+    public class StartingSyncPivotUpdaterTests
     {
         private IBlockTree? _blockTree;
         private ISyncModeSelector? _syncModeSelector;
@@ -59,25 +59,29 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
 
-            _blockTree = Substitute.For<IBlockTree>();
+            _metadataDb = new MemDb();
+            _blockTree = Build.A.BlockTree()
+                .WithMetadataDb(_metadataDb)
+                .TestObject;
             _syncModeSelector = Substitute.For<ISyncModeSelector>();
-            _syncConfig = Substitute.For<ISyncConfig>();
+            _syncConfig = new SyncConfig()
+            {
+                MaxAttemptsToUpdatePivot = 1
+            };
             _blockCacheService = new BlockCacheService();
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-            _metadataDb = new MemDb();
         }
 
         [Test]
         public void TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
-            _ = new PivotUpdator(
+            _ = new StartingSyncPivotUpdater(
                 _blockTree!,
                 _syncModeSelector!,
                 _syncPeerPool!,
                 _syncConfig!,
                 _blockCacheService!,
                 _beaconSyncStrategy!,
-                _metadataDb!,
                 LimboLogs.Instance
             );
 
@@ -100,14 +104,13 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void TrySetFreshPivot_for_unsafe_updator_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
-            _ = new UnsafePivotUpdator(
+            _ = new UnsafeStartingSyncPivotUpdater(
                 _blockTree!,
                 _syncModeSelector!,
                 _syncPeerPool!,
                 _syncConfig!,
                 _blockCacheService!,
                 _beaconSyncStrategy!,
-                _metadataDb!,
                 LimboLogs.Instance
             );
 

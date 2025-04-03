@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Collections;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core;
 
@@ -57,7 +57,7 @@ public class LatencyAndMessageSizeBasedRequestSizer
         return await _requestSizer.Run(async (adjustedRequestSize) =>
         {
             long startTime = Stopwatch.GetTimestamp();
-            (TResponse result, long messageSize) = await func(request.Clamp(adjustedRequestSize));
+            (TResponse result, long messageSize) = await func(request.Slice(0, Math.Min(adjustedRequestSize, request.Count)));
             TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
             if (messageSize > _maxResponseSize)
             {

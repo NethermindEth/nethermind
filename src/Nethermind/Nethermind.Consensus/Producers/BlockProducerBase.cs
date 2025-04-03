@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
-        private readonly ITxSource _txSource;
+        protected readonly ITxSource _txSource;
         protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
@@ -148,8 +148,8 @@ namespace Nethermind.Consensus.Producers
                             {
                                 if (t.Result is not null)
                                 {
-                                    if (Logger.IsInfo)
-                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                    if (Logger.IsDebug)
+                                        Logger.Debug($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     return t.Result;
                                 }

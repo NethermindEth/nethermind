@@ -52,7 +52,8 @@ public class FullPruningDiskTest
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
-            bool addBlockOnStart = true
+            bool addBlockOnStart = true,
+            long slotTime = 1
         )
         {
             TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
@@ -60,7 +61,7 @@ public class FullPruningDiskTest
             DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
             _chainEstimations.StateSize.Returns((long?)null);
 
-            NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
             MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
 
             FullPruner = new FullTestPruner(
@@ -96,9 +97,13 @@ public class FullPruningDiskTest
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null)
+        public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null, long testTimeoutMs = 10000)
         {
-            PruningTestBlockchain chain = new() { PruningConfig = pruningConfig ?? new PruningConfig() };
+            PruningTestBlockchain chain = new()
+            {
+                PruningConfig = pruningConfig ?? new PruningConfig(),
+                TestTimout = testTimeoutMs,
+            };
             await chain.Build();
             return chain;
         }
@@ -135,7 +140,7 @@ public class FullPruningDiskTest
     [Test, MaxTime(Timeout.LongTestTime)]
     public async Task prune_on_disk_multiple_times()
     {
-        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
+        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 }, testTimeoutMs: Timeout.LongTestTime);
         for (int i = 0; i < 3; i++)
         {
             await RunPruning(chain, i, false);
@@ -174,7 +179,7 @@ public class FullPruningDiskTest
         if (args.Status != PruningStatus.Starting) return;
         for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
         {
-            await chain.AddBlock(true);
+            await chain.AddBlock();
         }
 
         HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
@@ -182,7 +187,7 @@ public class FullPruningDiskTest
         for (int i = 0; i < 100 && !pruningFinished; i++)
         {
             pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
-            await chain.AddBlock(true);
+            await chain.AddBlockDoNotWaitForHead();
         }
 
         if (!onlyFirstRuns || time == 0)
