@@ -284,7 +284,7 @@ namespace Nethermind.Benchmarks.Store
                 {
                     // Its an existing write
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         currentItems[(int)(rand.NextInt64() % currentItems.Count)],
                         new Account((UInt256)rand.NextInt64()));
                 }
@@ -294,7 +294,7 @@ namespace Nethermind.Benchmarks.Store
                     Hash256 newAccount = Keccak.Compute(i.ToBigEndianByteArray());
                     currentItems.Add(newAccount);
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         newAccount,
                         new Account((UInt256)rand.NextInt64()));
                 }
