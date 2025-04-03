@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -29,12 +30,13 @@ public class UInt256Converter : JsonConverter<UInt256>
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
-            if (reader.TryGetUInt64(out ulong smallValue))
+            ReadOnlySpan<byte> bytes = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+
+            if (Utf8Parser.TryParse(bytes, out ulong shortValue, out int bytesConsumed) && bytes.Length == bytesConsumed)
             {
-                return smallValue;
+                return new UInt256(shortValue);
             }
 
-            ReadOnlySpan<byte> bytes = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
             Span<char> chars = stackalloc char[bytes.Length + 1];
             Encoding.UTF8.GetChars(bytes, chars);
 
