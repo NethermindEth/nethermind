@@ -31,7 +31,6 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;
@@ -258,22 +257,7 @@ public class TestBlockchain : IDisposable
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
-
-            // For rpc
-            .AddSingleton<ILogFinder>(ctx =>
-            {
-                // TODO: Test fail when using the same BloomStorage as BlockTree.
-                var receiptStorage = ctx.Resolve<IReceiptStorage>();
-                var blockTree = ctx.Resolve<IBlockTree>();
-                var fileStorage = ctx.Resolve<IFileStoreFactory>();
-                var bloomDb = ctx.ResolveKeyed<IDb>(DbNames.Bloom);
-                var bloomConfig = ctx.Resolve<IBloomConfig>();
-                var receiptsRecovery = ctx.Resolve<IReceiptsRecovery>();
-                IBloomStorage bloomStorage = new BloomStorage(bloomConfig, bloomDb, fileStorage);
-                return new LogFinder(blockTree, receiptStorage, receiptStorage, bloomStorage, LimboLogs.Instance,
-                    receiptsRecovery);
-            });
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD));
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
