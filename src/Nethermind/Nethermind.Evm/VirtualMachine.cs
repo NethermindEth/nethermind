@@ -81,9 +81,10 @@ public class VirtualMachine : IVirtualMachine
         {
             IsILEvmEnabled = true,
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisQueueMaxSize = 4,
-            IlEvmAnalysisThreshold = 2,
-            IsIlEvmAggressiveModeEnabled = true
+            IlEvmAnalysisQueueMaxSize = 8,
+            IlEvmAnalysisThreshold = 4,
+            IsIlEvmAggressiveModeEnabled = true,
+            IlEvmAnalysisMaxTasksCount = 8,
         };
 
         switch (_vmConfig.IlEvmEnabledMode)
@@ -718,7 +719,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
-                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
+                Metrics.IncrementIlvmAotPrecompiledCalls(); // this will treat continuations as new calls 
 
                 ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
                 PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
@@ -730,7 +731,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     ref chunkExecutionState))
                 {
                     UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
-                    Metrics.IlvmAotPrecompiledCalls--; // to compensate for the increment at the beginning of the next continuation 
+                    Metrics.DecrementIlvmAotPrecompiledCalls(); // this will treat continuations as new calls 
                     return new CallResult(chunkExecutionState.CallResult);
                 }
 

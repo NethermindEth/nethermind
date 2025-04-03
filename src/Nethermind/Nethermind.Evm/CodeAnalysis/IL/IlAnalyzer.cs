@@ -38,18 +38,35 @@ public static class IlAnalyzer
             return;
         }
 
+        Metrics.IncrementIlvmAotQueueSize();
         _queue.Enqueue(codeInfo);
 
-        if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
+        if (_queue.Count > config.IlEvmAnalysisQueueMaxSize)
         {
             if(tasksRunningCount < config.IlEvmAnalysisMaxTasksCount)
             {
-                Interlocked.Increment(ref tasksRunningCount);
                 Task.Run(() => {
+                    Interlocked.Increment(ref tasksRunningCount);
+                    Metrics.IncrementIlvmAotQueueTasksCount();
                     AnalyzeQueue(config, logger);
+                }).ContinueWith(_ => {
                     Interlocked.Decrement(ref tasksRunningCount);
+                    Metrics.DecrementIlvmAotQueueTasksCount();
                 });
             }
+        }
+    }
+
+    public static bool TryGetIledCode(ValueHash256 codeHash, out PrecompiledContract ilCode)
+    {
+        if (_processed.TryGetValue(codeHash, out ilCode))
+        {
+            return true;
+        }
+        else
+        {
+            ilCode = null;
+            return false;
         }
     }
 
@@ -58,6 +75,7 @@ public static class IlAnalyzer
         int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out CodeInfo worklet))
         {
+            Metrics.DecrementIlvmAotQueueSize();
             worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
             try
             {
@@ -66,6 +84,9 @@ public static class IlAnalyzer
             } catch
             {
                 Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+            } finally
+            {
+                Metrics.IncrementIlvmAotContractsProcessed();
             }
         }
     }
@@ -87,13 +108,13 @@ public static class IlAnalyzer
     /// </summary>
     public static void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
     {
-        Metrics.IlvmContractsAnalyzed++;
         switch (mode)
         {
             case ILMode.FULL_AOT_MODE:
                 if (_processed.TryGetValue(codeInfo.Codehash, out PrecompiledContract? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+                    Metrics.IncrementIlvmAotCacheTouched();
                     return;
                 } else
                 {
@@ -102,6 +123,7 @@ public static class IlAnalyzer
                         return;
                     }
                     CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
+                    Metrics.IncrementIlvmContractsAnalyzed();
                 }
                 break;
         }
@@ -109,6 +131,8 @@ public static class IlAnalyzer
 
     internal static bool AnalyseContract(CodeInfo codeInfo,  IVMConfig config, out ContractCompilerMetadata? compilerMetadata)
     {
+        Metrics.IncrementIlvmCurrentlyAnalysing();
+
         byte[] codeAsSpan = codeInfo.MachineCode.ToArray();
         Dictionary<int, short> stackOffsets = [];
         Dictionary<int, long> gasOffsets = [];
@@ -146,12 +170,16 @@ public static class IlAnalyzer
             SubSegments = subSegmentData,
             SegmentsBoundaries = entryPoints
         };
+
+        Metrics.DecrementIlvmCurrentlyAnalysing();
         return true;
     }
 
     internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
+        Metrics.IncrementIlvmCurrentlyCompiling();
         var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig);
+        Metrics.DecrementIlvmCurrentlyCompiling();
 
         _processed[codeInfo.Codehash] = contractDelegate;
         codeInfo.IlInfo.PrecompiledContract = contractDelegate;
