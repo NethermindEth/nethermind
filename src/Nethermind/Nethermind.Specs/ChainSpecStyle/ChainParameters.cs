@@ -132,7 +132,6 @@ public class ChainParameters
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
-    public long? PacayaTransition { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
 
     public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];

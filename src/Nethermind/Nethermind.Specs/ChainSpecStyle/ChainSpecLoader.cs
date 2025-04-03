@@ -145,7 +145,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
             OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
-            PacayaTransition = chainSpecJson.Params.PacayaTransition,
             OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
