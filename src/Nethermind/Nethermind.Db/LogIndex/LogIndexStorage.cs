@@ -102,6 +102,8 @@ namespace Nethermind.Db
 
         private IEnumerable<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
         {
+            var watch = Stopwatch.StartNew();
+
             bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
                 return iterator.Valid() && iterator.Key().AsSpan()[..key.Length].SequenceEqual(key);
@@ -174,6 +176,9 @@ namespace Nethermind.Db
             finally
             {
                 ArrayPool<byte>.Shared.Return(dbKeyBuffer);
+
+                // TODO: log in Debug
+                _logger.Info($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {watch.Elapsed}");
             }
         }
 
