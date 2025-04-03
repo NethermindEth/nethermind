@@ -147,9 +147,10 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         try
         {
+            _linkedCancellation.Token.ThrowIfCancellationRequested();
             await _txSignal.WaitForTransactions(slot, _linkedCancellation.Token);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
             Metrics.ShutterKeysMissed++;
             if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
