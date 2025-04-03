@@ -260,7 +260,7 @@ namespace Nethermind.Db
         // Used for:
         // - blocking concurrent executions
         // - ensuring current migration task is completed before stopping
-        private readonly SemaphoreSlim _setReceiptsSemaphore = new (1, 1);
+        private readonly SemaphoreSlim _setReceiptsSemaphore = new(1, 1);
 
         public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync)
         {

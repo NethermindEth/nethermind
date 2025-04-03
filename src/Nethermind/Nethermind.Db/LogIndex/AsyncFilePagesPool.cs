@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -89,7 +89,7 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
         _fileHandle = File.OpenHandle(
             filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
             FileShare.Read, FileOptions.RandomAccess
-            // TODO: cover potential data loss/corruption, since WriteThrough is not specified
+        // TODO: cover potential data loss/corruption, since WriteThrough is not specified
         );
         _fileStream = new(_fileHandle, FileAccess.ReadWrite);
         _lazyStart = new(StartOnce);

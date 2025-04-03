@@ -957,10 +957,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         ReadOptions readOptions = new();
         readOptions.SetTailing(!options.IsTailing);
 
-        if (options.LowerBound is {} lowerBound)
+        if (options.LowerBound is { } lowerBound)
             readOptions.SetIterateLowerBound(lowerBound);
 
-        if (options.UpperBound is {} upperBound)
+        if (options.UpperBound is { } upperBound)
             readOptions.SetIterateUpperBound(upperBound);
 
         try

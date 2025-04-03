@@ -61,7 +61,8 @@ namespace Nethermind.Init.Steps.Migrations
             api.DbProvider?.ReceiptsDb!,
             new ReceiptsRecovery(api.EthereumEcdsa, api.SpecProvider),
             api.LogManager,
-            api.Config<IInitConfig>()) { }
+            api.Config<IInitConfig>())
+        { }
 
         public LogIndexMigration(
             ILogIndexStorage logIndexStorage,
@@ -88,7 +89,9 @@ namespace Nethermind.Init.Steps.Migrations
             _logger = logManager.GetClassLogger();
             _blocksChannel = Channel.CreateBounded<BlockReceipts[]>(new BoundedChannelOptions(QueueSize / BatchSize)
             {
-                SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.Wait
             });
             _progress = new("Log-index Migration", logManager);
         }

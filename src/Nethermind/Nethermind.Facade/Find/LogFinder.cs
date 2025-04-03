@@ -205,7 +205,7 @@ namespace Nethermind.Facade.Find
         private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken)
         {
             ConcurrentDictionary<Address, List<int>> byAddress = null;
-            if (filter.AddressFilter.Address is {} address)
+            if (filter.AddressFilter.Address is { } address)
             {
                 byAddress = new() { [address] = null };
             }
@@ -237,14 +237,14 @@ namespace Nethermind.Facade.Find
             HashSet<int> blockNumbers = null;
             if (byAddress is not null)
             {
-                blockNumbers = [..byAddress.Values.SelectMany(x => x)];
+                blockNumbers = [.. byAddress.Values.SelectMany(x => x)];
             }
 
             if (byTopic is not null)
             {
                 HashSet<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
                 if (blockNumbers is null)
-                    blockNumbers = [..topicNumbers];
+                    blockNumbers = [.. topicNumbers];
                 else
                     blockNumbers.IntersectWith(topicNumbers);
             }
