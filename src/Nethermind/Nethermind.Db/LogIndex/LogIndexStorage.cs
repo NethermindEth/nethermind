@@ -133,14 +133,14 @@ namespace Nethermind.Db
                 {
                     ReadOnlySpan<byte> firstKey = iterator.Key().AsSpan();
 
-                    int currentLowestBlockNumber = GetBlockNumber(firstKey);
+                    int currentLowestBlockNumber = GetKeyBlockNum(firstKey);
 
                     iterator.Next();
                     int? nextLowestBlockNumber;
                     if (IsInKeyBounds(iterator, keyPrefix))
                     {
                         ReadOnlySpan<byte> nextKey = iterator.Key().AsSpan();
-                        nextLowestBlockNumber = GetBlockNumber(nextKey);
+                        nextLowestBlockNumber = GetKeyBlockNum(nextKey);
                     }
                     else
                     {
@@ -384,12 +384,12 @@ namespace Nethermind.Db
         public static void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
         {
             key.CopyTo(dbKey);
-            SetBlockNumber(dbKey, blockNumber);
+            SetKeyBlockNum(dbKey, blockNumber);
         }
 
         // RocksDB uses big-endian (lexicographic) ordering
-        private static int GetBlockNumber(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
-        private static void SetBlockNumber(Span<byte> dbKey, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKey[^BlockNumSize..], blockNumber);
+        private static int GetKeyBlockNum(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
+        private static void SetKeyBlockNum(Span<byte> dbKey, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKey[^BlockNumSize..], blockNumber);
 
         private static int BinarySearch(ReadOnlySpan<int> blocks, int from)
         {
@@ -455,10 +455,10 @@ namespace Nethermind.Db
                 };
 
                 var dbValue = db.Get(dbKey) ?? throw new ValidationException("Empty value in the post-merge compression queue.");
-                var blockNum = ReadBlockNum(dbValue);
+                var blockNum = ReadValBlockNum(dbValue);
 
                 var dbKeyComp = (byte[])dbKey.Clone();
-                SetBlockNumber(dbKeyComp, blockNum);
+                SetKeyBlockNum(dbKeyComp, blockNum);
 
                 // Put compressed value at a new key and clear uncompressed one
                 dbValue = CompressDbValue(dbValue);
@@ -473,16 +473,16 @@ namespace Nethermind.Db
         public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         public static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
-        public static void WriteBlockNum(Span<byte> destination, int blockNum) => BinaryPrimitives.WriteInt32LittleEndian(destination, blockNum);
-        public static int ReadBlockNum(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
-        public static int ReadLastBlockNum(ReadOnlySpan<byte> source) => ReadBlockNum(source[^BlockNumSize..]);
+        public static void WriteValBlockNum(Span<byte> destination, int blockNum) => BinaryPrimitives.WriteInt32LittleEndian(destination, blockNum);
+        public static int ReadValBlockNum(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
+        public static int ReadValLastBlockNum(ReadOnlySpan<byte> source) => ReadValBlockNum(source[^BlockNumSize..]);
 
         public static void WriteBlockNums(Span<byte> destination, IEnumerable<int> blockNums)
         {
             var shift = 0;
             foreach (var blockNum in blockNums)
             {
-                WriteBlockNum(destination[shift..], blockNum);
+                WriteValBlockNum(destination[shift..], blockNum);
                 shift += BlockNumSize;
             }
         }
@@ -494,7 +494,7 @@ namespace Nethermind.Db
 
             var result = new int[source.Length / BlockNumSize];
             for (var i = 0; i < source.Length; i += BlockNumSize)
-                result[i / BlockNumSize] = ReadBlockNum(source[i..]);
+                result[i / BlockNumSize] = ReadValBlockNum(source[i..]);
 
             return result;
         }
