@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Producers;
 
-public interface IBlockProductionContext : IDisposable
+public interface IBlockProductionContext
 {
     Block? CurrentBestBlock { get; }
     UInt256 BlockFees { get; }

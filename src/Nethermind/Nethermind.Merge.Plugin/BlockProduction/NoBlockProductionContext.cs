@@ -17,6 +17,4 @@ public class NoBlockProductionContext : IBlockProductionContext
 
     public Block? CurrentBestBlock { get; }
     public UInt256 BlockFees { get; }
-
-    public void Dispose() { }
 }
