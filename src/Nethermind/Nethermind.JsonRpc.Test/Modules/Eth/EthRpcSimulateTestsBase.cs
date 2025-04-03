@@ -30,7 +30,7 @@ public class EthRpcSimulateTestsBase
         TestSpecProvider testSpecProvider = releaseSpec is not null
             ? new TestSpecProvider(releaseSpec)
             : new TestSpecProvider(London.Instance);
-        return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build((builder) => builder.AddSingleton<ISpecProvider>(testSpecProvider));
+        return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
     private static string GetEcRecoverContractJsonAbi(string name = "recover")

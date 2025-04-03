@@ -142,6 +142,17 @@ namespace Nethermind.JsonRpc.Test.Modules
                 });
             }
 
+            public Task<T> Build(UInt256 initialValues)
+            {
+                return Build((builder) =>
+                {
+                    builder.ConfigureTestConfiguration(conf =>
+                    {
+                        conf.AccountInitialValue = initialValues;
+                    });
+                });
+            }
+
             public async Task<T> Build(Action<ContainerBuilder> configurer)
             {
                 return (T)await _blockchain.Build(configurer: (builder) =>

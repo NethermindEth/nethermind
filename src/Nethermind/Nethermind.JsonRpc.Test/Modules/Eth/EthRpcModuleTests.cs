@@ -330,13 +330,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(configurer: (builder) =>
-        {
-            builder.ConfigureTestConfiguration(conf =>
-            {
-                conf.AccountInitialValue = 2.Ether();
-            });
-        });
+        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockEventArgs e)
@@ -541,13 +535,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
-        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(configurer: (builder) =>
-        {
-            builder.ConfigureTestConfiguration(conf =>
-            {
-                conf.AccountInitialValue = 2.Ether();
-            });
-        });
+        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
 
