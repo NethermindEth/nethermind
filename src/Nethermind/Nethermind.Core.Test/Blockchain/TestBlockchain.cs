@@ -268,9 +268,7 @@ public class TestBlockchain : IDisposable
         return new ChainSpec();
     }
 
-    protected virtual void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-    {
-    }
+    protected virtual ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) => builder;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {

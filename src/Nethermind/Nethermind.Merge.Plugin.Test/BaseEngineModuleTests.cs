@@ -303,13 +303,9 @@ public partial class BaseEngineModuleTests
             return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
         }
 
-        protected override void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-        {
-            base.ConfigureContainer(builder, configProvider);
-            builder
-                .AddModule(new MergeModule(configProvider))
-                ;
-        }
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
+                .AddModule(new MergeModule(configProvider));
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {

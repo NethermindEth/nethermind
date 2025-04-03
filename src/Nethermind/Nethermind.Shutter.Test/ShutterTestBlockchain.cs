@@ -34,11 +34,8 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
         => _api!.GetBlockImprovementContextFactory(blockProducer);
 
-    protected override void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-    {
-        base.ConfigureContainer(builder, configProvider);
-
-        // Weird stuff where there are receipts but no tx.
-        builder.AddSingleton<IReceiptStorage, InMemoryReceiptStorage>();
-    }
+    protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+        base.ConfigureContainer(builder, configProvider)
+            // Weird stuff where there are receipts but no tx.
+            .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>();
 }

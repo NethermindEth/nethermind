@@ -81,14 +81,14 @@ public class FullPruningDiskTest
             return chain;
         }
 
-        protected override void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
         {
             IDbProvider dbProvider = new DbProvider();
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
             StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
             standardDbInitializer.InitStandardDbs(true);
 
-            builder .AddSingleton<IDbProvider>(dbProvider);
+            return base.ConfigureContainer(builder, configProvider).AddSingleton<IDbProvider>(dbProvider);
         }
 
         public override void Dispose()
