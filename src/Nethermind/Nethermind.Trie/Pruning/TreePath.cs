@@ -14,6 +14,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using System.Numerics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Trie;
 
@@ -517,20 +518,69 @@ public struct TreePath : IEquatable<TreePath>
         return path2;
     }
 
-    public static void ShiftLeft4BitMut(Span<byte> byteSpan)
+    public static void ShiftLeft4BitMut(Span<byte> data)
+    {
+        if (data.Length != 32)
+            throw new ArgumentException("Span must be exactly 32 bytes", nameof(data));
+
+        // Use SIMD if supported
+        if (Avx2.IsSupported)
+        {
+            ShiftLeft4BitMutSimd(data);
+        }
+        else
+        {
+            // Fallback to scalar implementation.
+            ShiftLeft4Scalar(data);
+        }
+    }
+
+    private static readonly Vector256<byte> LowNibMask = Vector256.Create((byte)0x0F);
+    private static readonly Vector256<byte> HighNibMask = Vector256.Create((byte)0xF0);
+
+    private static unsafe void ShiftLeft4BitMutSimd(Span<byte> data)
+    {
+        fixed (byte* ptr = data)
+        {
+            // Load 32 bytes into two 256-bit vectors
+            var vector = Avx.LoadVector256(ptr);
+
+            // Split each byte into two nibbles and shift
+            var lowNibbles = Avx2.And(vector, LowNibMask);
+            var highNibbles = Avx2.And(vector, HighNibMask);
+
+            // Shift nibbles
+            lowNibbles = Avx2.ShiftLeftLogical(lowNibbles.AsUInt16(), 4).AsByte();
+            highNibbles = Avx2.ShiftRightLogical(highNibbles.AsUInt16(), 4).AsByte();
+
+            // Shift highNibbles by one whole byte to the left
+            Span<byte> shift1ByteBuff = stackalloc byte[33];
+            MemoryMarshal.GetReference(MemoryMarshal.Cast<byte, Vector256<byte>>(shift1ByteBuff)) = highNibbles;
+            highNibbles = MemoryMarshal.GetReference(MemoryMarshal.Cast<byte, Vector256<byte>>(shift1ByteBuff[1..]));
+
+            // Combine nibbles
+            var shifted = Avx2.Or(lowNibbles, highNibbles);
+
+            // Store the result back
+            Avx.Store(ptr, shifted);
+        }
+    }
+
+    // Scalar fallback for reference.
+    private static void ShiftLeft4Scalar(Span<byte> data)
     {
         for (int i = 0; i < 4; i++)
         {
-            ulong asLong = BinaryPrimitives.ReadUInt64BigEndian(byteSpan[(i*8)..]);
+            ulong asLong = BinaryPrimitives.ReadUInt64BigEndian(data[(i*8)..]);
             asLong <<= 4;
             if (i < 3)
             {
 #pragma warning disable CS0675 // Bitwise-or operator used on a sign-extended operand
-                byte asByte = byteSpan[(i*8) + 8];
+                byte asByte = data[(i*8) + 8];
                 asLong |= (ulong)(asByte >> 4);
 #pragma warning restore CS0675 // Bitwise-or operator used on a sign-extended operand
             }
-            BinaryPrimitives.WriteUInt64BigEndian(byteSpan[(i*8)..], asLong);
+            BinaryPrimitives.WriteUInt64BigEndian(data[(i*8)..], asLong);
         }
     }
 
