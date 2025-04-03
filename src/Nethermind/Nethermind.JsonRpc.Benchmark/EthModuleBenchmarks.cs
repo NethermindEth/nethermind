@@ -135,7 +135,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 new InMemoryReceiptStorage(),
                 bloomStorage,
                 LimboLogs.Instance,
-                new ReceiptsRecovery(ecdsa, specProvider));
+                new ReceiptsRecovery(ecdsa, specProvider),
+                logIndexStorage: null);
 
             BlockchainBridge bridge = new(
                 new OverridableTxProcessingEnv(

@@ -34,7 +34,7 @@ namespace Nethermind.Facade.Find
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
-        private readonly ILogIndexStorage _logIndexStorage;
+        private readonly ILogIndexStorage? _logIndexStorage;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,
@@ -50,7 +50,7 @@ namespace Nethermind.Facade.Find
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
+            _logIndexStorage = logIndexStorage;
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
@@ -174,7 +174,7 @@ namespace Nethermind.Facade.Find
 
         private bool CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            return !filter.AcceptsAnyBlock && toBlock.Number <= _logIndexStorage.GetLastKnownBlockNumber();
+            return _logIndexStorage != null && !filter.AcceptsAnyBlock && toBlock.Number <= _logIndexStorage.GetLastKnownBlockNumber();
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
@@ -204,6 +204,9 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken)
         {
+            if (_logIndexStorage == null)
+                throw new InvalidOperationException("Log index storage is not provided.");
+
             ConcurrentDictionary<Address, List<int>> byAddress = null;
             if (filter.AddressFilter.Address is { } address)
             {
