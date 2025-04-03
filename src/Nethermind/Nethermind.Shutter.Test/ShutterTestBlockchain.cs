@@ -42,21 +42,10 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
         base.ConfigureContainer(builder, configProvider)
-            // Weird stuff where there are receipts but no tx.
+            // ShutterApiSimulator add receipts to block with empty transaction. Crash with full receipt storage.
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
 
-            // For rpc
-            .AddSingleton<ILogFinder>(ctx =>
-            {
-                // TODO: Test fail when using the same BloomStorage as BlockTree.
-                var receiptStorage = ctx.Resolve<IReceiptStorage>();
-                var blockTree = ctx.Resolve<IBlockTree>();
-                var fileStorage = ctx.Resolve<IFileStoreFactory>();
-                var bloomDb = ctx.ResolveKeyed<IDb>(DbNames.Bloom);
-                var bloomConfig = ctx.Resolve<IBloomConfig>();
-                var receiptsRecovery = ctx.Resolve<IReceiptsRecovery>();
-                IBloomStorage bloomStorage = new BloomStorage(bloomConfig, bloomDb, fileStorage);
-                return new LogFinder(blockTree, receiptStorage, receiptStorage, bloomStorage, LimboLogs.Instance,
-                    receiptsRecovery);
-            });
+            // It seems that it does not work with bloom.
+            // This or use a separate bloom storage for LogFinder and BlockTree.
+            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance);
 }
