@@ -30,13 +30,25 @@ namespace Nethermind.EngineApiProxy
                 getDefaultValue: () => "Info");
             logLevelOption.AddAlias("-l");
             
+            var validateAllBlocksOption = new Option<bool>(
+                name: "--validate-all-blocks",
+                description: "Enable validation for all blocks, including those where CL doesn't request validation",
+                getDefaultValue: () => false);
+            
+            var feeRecipientOption = new Option<string>(
+                name: "--fee-recipient",
+                description: "Default fee recipient address for generated payload attributes",
+                getDefaultValue: () => "0x8943545177806ed17b9f23f0a21ee5948ecaa776");
+            
             // Create root command with options
             var rootCommand = new RootCommand("Nethermind Engine API Proxy");
             rootCommand.AddOption(executionClientOption);
             rootCommand.AddOption(portOption);
             rootCommand.AddOption(logLevelOption);
+            rootCommand.AddOption(validateAllBlocksOption);
+            rootCommand.AddOption(feeRecipientOption);
             
-            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel) =>
+            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel, bool validateAllBlocks, string feeRecipient) =>
             {
                 try
                 {
@@ -62,7 +74,9 @@ namespace Nethermind.EngineApiProxy
                     {
                         ExecutionClientEndpoint = ecEndpoint,
                         ListenPort = port,
-                        LogLevel = logLevel
+                        LogLevel = logLevel,
+                        ValidateAllBlocks = validateAllBlocks,
+                        DefaultFeeRecipient = feeRecipient
                     };
                     
                     logger.Info($"Starting Engine API Proxy with configuration: {config}");
@@ -96,7 +110,7 @@ namespace Nethermind.EngineApiProxy
                     Console.Error.WriteLine($"Error: {ex.Message}");
                     Environment.Exit(1);
                 }
-            }, executionClientOption, portOption, logLevelOption);
+            }, executionClientOption, portOption, logLevelOption, validateAllBlocksOption, feeRecipientOption);
             
             return await rootCommand.InvokeAsync(args);
         }

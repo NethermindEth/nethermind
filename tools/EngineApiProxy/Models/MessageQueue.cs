@@ -12,11 +12,58 @@ namespace Nethermind.EngineApiProxy.Models
         private readonly ConcurrentQueue<QueuedMessage> _messageQueue = new();
         private readonly ConcurrentDictionary<string, QueuedMessage> _messageById = new();
         
+        // Fields for pause/resume functionality
+        private volatile bool _processingPaused = false;
+        private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(1, 1);
+        
         public MessageQueue(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
+        /// <summary>
+        /// Pauses message processing
+        /// </summary>
+        public void PauseProcessing()
+        {
+            if (!_processingPaused)
+            {
+                _processingPaused = true;
+                _pauseSemaphore.Wait(0); // Acquire the semaphore to block processing
+                _logger.Debug("Message processing paused");
+            }
+        }
+        
+        /// <summary>
+        /// Resumes message processing
+        /// </summary>
+        public void ResumeProcessing()
+        {
+            if (_processingPaused)
+            {
+                _processingPaused = false;
+                try
+                {
+                    _pauseSemaphore.Release(); // Release the semaphore to allow processing
+                }
+                catch (SemaphoreFullException)
+                {
+                    // Semaphore was already released
+                }
+                _logger.Debug("Message processing resumed");
+            }
+        }
+        
+        /// <summary>
+        /// Checks if processing is currently paused
+        /// </summary>
+        public bool IsProcessingPaused => _processingPaused;
+        
+        /// <summary>
+        /// Checks if the queue is empty
+        /// </summary>
+        public bool IsEmpty => _messageQueue.IsEmpty;
+
         /// <summary>
         /// Enqueues a message for delayed processing
         /// </summary>
@@ -44,6 +91,43 @@ namespace Nethermind.EngineApiProxy.Models
         }
         
         /// <summary>
+        /// Dequeues the next message from the queue
+        /// </summary>
+        /// <returns>The next message, or null if queue is empty or processing is paused</returns>
+        public QueuedMessage? DequeueNextMessage()
+        {
+            // Check if processing is paused
+            if (_processingPaused)
+            {
+                try
+                {
+                    // Wait on the semaphore to block processing
+                    _pauseSemaphore.Wait(0);
+                    _pauseSemaphore.Release(); // Release it immediately to not block other threads
+                }
+                catch (SemaphoreFullException)
+                {
+                    // Semaphore was already released
+                }
+                return null;
+            }
+            
+            if (_messageQueue.TryDequeue(out var message))
+            {
+                if (message.Request.Id != null)
+                {
+                    string messageId = message.Request.Id.ToString() ?? "null";
+                    _messageById.TryRemove(messageId, out _);
+                }
+                
+                _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id}");
+                return message;
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
         /// Checks if a message with the given ID is queued
         /// </summary>
         /// <param name="id">The message ID to check</param>
@@ -55,83 +139,44 @@ namespace Nethermind.EngineApiProxy.Models
                 return false;
             }
             
-            return _messageById.ContainsKey(id.ToString() ?? "null");
+            string messageId = id.ToString() ?? "null";
+            return _messageById.ContainsKey(messageId);
         }
         
         /// <summary>
-        /// Gets the next message in the queue without removing it
+        /// Gets a message with the given ID from the queue
         /// </summary>
-        /// <returns>The next message in the queue, or null if the queue is empty</returns>
-        public JsonRpcRequest? PeekNextMessage()
-        {
-            if (_messageQueue.TryPeek(out var queuedMessage))
-            {
-                return queuedMessage.Request;
-            }
-            
-            return null;
-        }
-        
-        /// <summary>
-        /// Dequeues the next message in the queue
-        /// </summary>
-        /// <returns>The next message in the queue, or null if the queue is empty</returns>
-        public QueuedMessage? DequeueNextMessage()
-        {
-            if (_messageQueue.TryDequeue(out var queuedMessage))
-            {
-                if (queuedMessage.Request.Id != null)
-                {
-                    string messageId = queuedMessage.Request.Id.ToString() ?? "null";
-                    _messageById.TryRemove(messageId, out _);
-                }
-                
-                _logger.Debug($"Dequeued message: {queuedMessage.Request.Method} with id {queuedMessage.Request.Id}");
-                
-                return queuedMessage;
-            }
-            
-            return null;
-        }
-        
-        /// <summary>
-        /// Completes a message with the given response
-        /// </summary>
-        /// <param name="id">The ID of the message to complete</param>
-        /// <param name="response">The response for the message</param>
-        /// <returns>True if the message was completed, false otherwise</returns>
-        public bool CompleteMessage(object id, JsonRpcResponse response)
+        /// <param name="id">The message ID to get</param>
+        /// <returns>The queued message, or null if not found</returns>
+        public QueuedMessage? GetMessage(object id)
         {
             if (id == null)
             {
-                return false;
+                return null;
             }
             
             string messageId = id.ToString() ?? "null";
-            if (_messageById.TryRemove(messageId, out var queuedMessage))
+            if (_messageById.TryGetValue(messageId, out var message))
             {
-                queuedMessage.CompletionTask.SetResult(response);
-                _logger.Debug($"Completed message with id {id}");
-                return true;
+                return message;
             }
             
-            _logger.Error($"Failed to complete message with id {id}, message not found");
-            return false;
+            return null;
         }
         
         /// <summary>
-        /// Gets the count of queued messages
+        /// Clears all messages from the queue
         /// </summary>
-        public int Count => _messageQueue.Count;
-        
-        /// <summary>
-        /// Checks if the queue is empty
-        /// </summary>
-        public bool IsEmpty => _messageQueue.IsEmpty;
+        public void Clear()
+        {
+            while (_messageQueue.TryDequeue(out _)) { }
+            _messageById.Clear();
+            _logger.Debug("Message queue cleared");
+        }
     }
-    
+
     /// <summary>
-    /// Represents a message in the queue
+    /// Represents a message queued for processing
     /// </summary>
     public class QueuedMessage
     {
@@ -141,20 +186,20 @@ namespace Nethermind.EngineApiProxy.Models
         public JsonRpcRequest Request { get; }
         
         /// <summary>
-        /// Task source that will be completed when the message is processed
+        /// Task source for completing the message
         /// </summary>
         public TaskCompletionSource<JsonRpcResponse> CompletionTask { get; }
         
         /// <summary>
-        /// When the message was queued
+        /// When the message was enqueued
         /// </summary>
-        public DateTime QueueTime { get; }
+        public DateTime EnqueuedTime { get; }
         
         public QueuedMessage(JsonRpcRequest request)
         {
             Request = request;
             CompletionTask = new TaskCompletionSource<JsonRpcResponse>();
-            QueueTime = DateTime.UtcNow;
+            EnqueuedTime = DateTime.UtcNow;
         }
     }
 } 

@@ -17,9 +17,24 @@ namespace Nethermind.EngineApiProxy.Config
         /// </summary>
         public string LogLevel { get; set; } = "Info";
 
+        /// <summary>
+        /// Whether to validate all blocks, even those where CL doesn't request validation
+        /// </summary>
+        public bool ValidateAllBlocks { get; set; } = false;
+
+        /// <summary>
+        /// Default fee recipient address to use when generating payload attributes
+        /// </summary>
+        public string DefaultFeeRecipient { get; set; } = "0x0000000000000000000000000000000000000000";
+
+        /// <summary>
+        /// Time offset in seconds for block timestamp calculation (default: 12s)
+        /// </summary>
+        public int TimestampOffsetSeconds { get; set; } = 12;
+
         public override string ToString()
         {
-            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}";
+            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}, ValidateAllBlocks: {ValidateAllBlocks}";
         }
     }
 } 

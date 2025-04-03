@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
+using Nethermind.EngineApiProxy.Services;
 using Nethermind.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -26,6 +27,11 @@ namespace Nethermind.EngineApiProxy
         // Components for state management and message queueing
         private readonly MessageQueue _messageQueue;
         private readonly PayloadTracker _payloadTracker;
+        
+        // New components for validation flow
+        private readonly BlockDataFetcher _blockDataFetcher;
+        private readonly PayloadAttributesGenerator _payloadAttributesGenerator;
+        private readonly RequestOrchestrator _requestOrchestrator;
         
         public ProxyServer(ProxyConfig config, ILogManager logManager)
         {
@@ -56,6 +62,18 @@ namespace Nethermind.EngineApiProxy
             // Initialize core components
             _messageQueue = new MessageQueue(logManager);
             _payloadTracker = new PayloadTracker(logManager);
+            
+            // Initialize new components for validation flow
+            _blockDataFetcher = new BlockDataFetcher(_httpClient, logManager);
+            _payloadAttributesGenerator = new PayloadAttributesGenerator(config, logManager);
+            _requestOrchestrator = new RequestOrchestrator(
+                _httpClient, 
+                _blockDataFetcher,
+                _payloadAttributesGenerator,
+                _messageQueue,
+                _payloadTracker,
+                config,
+                logManager);
 
             _webHost = new WebHostBuilder()
                 .UseKestrel(options =>
@@ -217,9 +235,70 @@ namespace Nethermind.EngineApiProxy
             
             try
             {
-                // TODO: Append PayloadAttributes to the request
+                // Check if we should validate this block
+                bool shouldValidate = _config.ValidateAllBlocks && 
+                                      request.Params != null && 
+                                      request.Params.Count > 0 &&
+                                      (request.Params.Count == 1 || request.Params[1] == null);
                 
-                // Forward the modified request to EC
+                if (shouldValidate)
+                {
+                    _logger.Info("Auto-validation enabled, pausing message queue");
+                    _messageQueue.PauseProcessing();
+                    
+                    try
+                    {
+                        // Get the head block hash
+                        if (request.Params?[0] is JObject forkChoiceState && 
+                            forkChoiceState["headBlockHash"] != null)
+                        {
+                            string headBlockHashStr = forkChoiceState["headBlockHash"]?.ToString() ?? string.Empty;
+                            
+                            if (!string.IsNullOrEmpty(headBlockHashStr))
+                            {
+                                _logger.Info($"Starting validation flow for head block: {headBlockHashStr}");
+                                
+                                // Use the orchestrator to handle the validation flow
+                                string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
+                                
+                                // Create a synthetic success response
+                                var validationResponse = new JsonRpcResponse
+                                {
+                                    Id = request.Id,
+                                    Result = new JObject
+                                    {
+                                        ["payloadStatus"] = new JObject
+                                        {
+                                            ["status"] = "VALID",
+                                            ["latestValidHash"] = headBlockHashStr,
+                                            ["validationError"] = null
+                                        },
+                                        ["payloadId"] = payloadId
+                                    }
+                                };
+                                
+                                return validationResponse;
+                            }
+                        }
+                        
+                        // If we couldn't get the head block hash, just forward the request
+                        _logger.Warn("Could not extract head block hash, forwarding request as-is");
+                        return await ForwardRequestToExecutionClient(request);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error($"Error in validation flow: {ex.Message}", ex);
+                        return await ForwardRequestToExecutionClient(request);
+                    }
+                    finally
+                    {
+                        // Always resume processing, even if there was an error
+                        _logger.Info("Resuming message queue processing");
+                        _messageQueue.ResumeProcessing();
+                    }
+                }
+                
+                // Forward the request to EC without modification if not validating
                 var response = await ForwardRequestToExecutionClient(request);
                 
                 // If response contains payloadId, store it for tracking
@@ -227,11 +306,11 @@ namespace Nethermind.EngineApiProxy
                     resultObj["payloadId"] != null && 
                     request.Params != null && 
                     request.Params.Count > 0 && 
-                    request.Params[0] is JObject forkChoiceState &&
-                    forkChoiceState["headBlockHash"] != null)
+                    request.Params[0] is JObject fcState &&
+                    fcState["headBlockHash"] != null)
                 {
                     string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
-                    string headBlockHashStr = forkChoiceState["headBlockHash"]?.ToString() ?? string.Empty;
+                    string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
                     
                     if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
                     {
