@@ -19,6 +19,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -311,7 +312,7 @@ public partial class BaseEngineModuleTests
             base.ConfigureContainer(builder, configProvider)
                 .AddModule(new MergeModule(configProvider));
 
-        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             IBlockProducer preMergeBlockProducer =
                 base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);

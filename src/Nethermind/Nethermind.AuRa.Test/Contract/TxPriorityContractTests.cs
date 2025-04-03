@@ -250,10 +250,8 @@ namespace Nethermind.AuRa.Test.Contract
 
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
 
-            protected override TxPoolTxSource CreateTxPoolTxSource()
+            protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
             {
-                TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
-
                 TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
                     new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
 
@@ -280,7 +278,7 @@ namespace Nethermind.AuRa.Test.Contract
                     LimboLogs.Instance,
                     GetWhitelistLocalDataStore());
 
-                return txPoolTxSource;
+                return base.CreateBlockProcessor(state);
             }
 
             protected virtual ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataStore() => new EmptyLocalDataSource<IEnumerable<Address>>();
@@ -378,7 +376,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             protected virtual bool FileFirst => false;
 
-            protected override TxPoolTxSource CreateTxPoolTxSource()
+            protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
             {
                 LocalData = new TxPriorityContract.LocalData()
                 {
@@ -397,7 +395,7 @@ namespace Nethermind.AuRa.Test.Contract
                     Whitelist = new[] { TestItem.AddressD, TestItem.AddressB }
                 };
 
-                return base.CreateTxPoolTxSource();
+                return base.CreateBlockProcessor(state);
             }
 
             private TxPriorityContract.LocalData LocalData { get; set; }

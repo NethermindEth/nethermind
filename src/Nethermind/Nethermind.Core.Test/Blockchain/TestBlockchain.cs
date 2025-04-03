@@ -209,7 +209,7 @@ public class TestBlockchain : IDisposable
         BlockProcessingQueue = chainProcessor;
         chainProcessor.Start();
 
-        TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
+        ITxSource txPoolTxSource = Container.Resolve<ITxSource>();
         ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
         BlockProducer = CreateTestBlockProducer(txPoolTxSource, _fromContainer.Sealer, transactionComparerProvider);
         BlockProducerRunner ??= CreateBlockProducerRunner();
@@ -292,7 +292,10 @@ public class TestBlockchain : IDisposable
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
-        return [];
+        return [new BlocksConfig()
+        {
+            MinGasPrice = 0 // Tx pool test seems to need this.
+        }];
     }
 
     private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
@@ -302,7 +305,7 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+    protected virtual IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
         BlockProducerEnvFactory blockProducerEnvFactory = new(
             WorldStateManager,
@@ -336,16 +339,6 @@ public class TestBlockchain : IDisposable
     }
 
     public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
-
-    protected virtual TxPoolTxSource CreateTxPoolTxSource()
-    {
-        BlocksConfig blocksConfig = new()
-        {
-            MinGasPrice = 0
-        };
-        ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LogManager, SpecProvider, blocksConfig);
-        return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
-    }
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 

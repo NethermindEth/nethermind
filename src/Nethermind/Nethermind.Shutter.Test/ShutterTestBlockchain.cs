@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 
@@ -24,7 +25,7 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected virtual ShutterApiSimulator CreateShutterApi()
         => ShutterTestsCommon.InitApi(_rnd, this, _timestamper, eventSimulator);
 
-    protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+    protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
         _api = CreateShutterApi();
         _additionalTxSource = _api.TxSource;
