@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -12,7 +11,4 @@ public interface IBlockProductionContext : IDisposable
 {
     Block? CurrentBestBlock { get; }
     UInt256 BlockFees { get; }
-
-    void CancelOngoingImprovements();
-    CancellationTokenSource CancellationTokenSource { get; }
 }

@@ -239,6 +239,9 @@ public class PayloadPreparationService : IPayloadPreparationService
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
+                    // Inform current improvement that we need results now
+                    blockContext.CancelOngoingImprovements();
+
                     using CancellationTokenSource cts = new();
                     Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
                     Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
@@ -247,6 +250,12 @@ public class PayloadPreparationService : IPayloadPreparationService
                         cts.Cancel();
                     }
                 }
+                else
+                {
+                    // Stop any on-going improvements as they won't be used
+                    blockContext.CancelOngoingImprovements();
+                }
+
 
                 return blockContext;
             }

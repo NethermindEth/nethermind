@@ -74,7 +74,9 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
                 {
-                    token.ThrowIfCancellationRequested();
+                    // Check if we have gone over time or the payload has been requested
+                    if (token.IsCancellationRequested) break;
+
                     TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
                 }

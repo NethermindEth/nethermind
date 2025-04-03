@@ -43,8 +43,7 @@ public class TaikoPayloadPreparationService(
             {
                 Block block = BuildBlock(parentHeader, attrs);
                 Hash256 parentStateRoot = parentHeader.StateRoot ?? throw new InvalidOperationException("Parent state root is null");
-                CancellationTokenSource cts = new();
-                block = ProcessBlock(block, parentStateRoot, cts.Token);
+                block = ProcessBlock(block, parentStateRoot, token: default);
 
                 // L1Origin **MUST NOT** be null, it's a required field in PayloadAttributes.
                 L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
@@ -58,7 +57,7 @@ public class TaikoPayloadPreparationService(
                 l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
-                return new NoBlockProductionContext(block, UInt256.Zero, cts);
+                return new NoBlockProductionContext(block, UInt256.Zero);
             },
             (payloadId, existing) =>
             {
