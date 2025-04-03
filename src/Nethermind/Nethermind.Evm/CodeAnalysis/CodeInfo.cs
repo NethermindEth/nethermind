@@ -57,6 +57,13 @@ namespace Nethermind.Evm.CodeAnalysis
         public CodeInfo(ReadOnlyMemory<byte> code, ValueHash256? codeHash = null)
         {
             Codehash = codeHash;
+
+            if (codeHash is not null && IlAnalyzer.TryGetIledCode(codeHash.Value, out PrecompiledContract ilCode))
+            {
+                IlInfo.PrecompiledContract = ilCode;
+                IlInfo.AnalysisPhase = AnalysisPhase.Completed;
+            }
+
             MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
