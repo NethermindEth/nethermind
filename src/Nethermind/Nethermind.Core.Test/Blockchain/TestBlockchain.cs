@@ -158,6 +158,9 @@ public class TestBlockchain : IDisposable
         public long SlotTime = 1;
     }
 
+    // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
+    // or override method or a utility function that wrap around the autofac configuration.
+    // Try to use plugin's module where possible to make sure prod and test components are wired similarly.
     protected virtual async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
         Timestamper = new ManualTimestamper(InitialTimestamp);
