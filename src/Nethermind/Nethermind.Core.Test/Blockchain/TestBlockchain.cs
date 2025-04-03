@@ -171,6 +171,19 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
+            .AddSingleton<ILogFinder>(ctx =>
+            {
+                // TODO: Test fail when using the same BloomStorage as BlockTree.
+                var receiptStorage = ctx.Resolve<IReceiptStorage>();
+                var blockTree = ctx.Resolve<IBlockTree>();
+                var fileStorage = ctx.Resolve<IFileStoreFactory>();
+                var bloomDb = ctx.ResolveKeyed<IDb>(DbNames.Bloom);
+                var bloomConfig = ctx.Resolve<IBloomConfig>();
+                var receiptsRecovery = ctx.Resolve<IReceiptsRecovery>();
+                IBloomStorage bloomStorage = new BloomStorage(bloomConfig, bloomDb, fileStorage);
+                return new LogFinder(blockTree, receiptStorage, receiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
+            })
+
             ;
 
         ConfigureContainer(builder, configProvider);
