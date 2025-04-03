@@ -476,7 +476,7 @@ public static class ContainerBuilderExtensions
     }
 
     /// <summary>
-    /// Some test require exposed `TrieStore` and `IPruningTrieStore` which is not normally exposed as it is all
+    /// Some test require exposed `TrieStore` and `IPruningTrieStore` which is not normally exposed at all
     /// hidden in `PruningTrieStateFactory`. So this create mini state configuration for that.
     /// It does not cover the full standard world state configuration though, so not for general use.
     /// </summary>
