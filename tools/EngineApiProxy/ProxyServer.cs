@@ -108,16 +108,7 @@ namespace Nethermind.EngineApiProxy
                         if (message != null)
                         {
                             // Process the dequeued message based on its type
-                            JsonRpcResponse response;
-                            switch (message.Request.Method)
-                            {
-                                case "engine_newPayload":
-                                    response = await HandleNewPayload(message.Request);
-                                    break;
-                                default:
-                                    response = await ForwardRequestToExecutionClient(message.Request);
-                                    break;
-                            }
+                            JsonRpcResponse response = await HandleRequest(message.Request);
                             
                             // Complete the message with the response
                             if (message.Request.Id != null)
@@ -184,6 +175,7 @@ namespace Nethermind.EngineApiProxy
                     case "engine_newPayload":
                         // Queue the newPayload message and return a placeholder response
                         // The actual request will be processed by the message queue
+                        // TODO: we should add all requests to the queue, not just newPayload
                         Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
                         
                         // If this is a synchronous request, wait for processing to complete
@@ -204,7 +196,7 @@ namespace Nethermind.EngineApiProxy
                         
                     default:
                         // Forward any other methods directly to EC
-                        response = await ForwardRequestToExecutionClient(request);
+                        response = await HandleRequest(request);
                         break;
                 }
             }
@@ -377,8 +369,57 @@ namespace Nethermind.EngineApiProxy
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
             
-            var error = new { error = message };
-            await context.Response.WriteAsync(JsonConvert.SerializeObject(error));
+            var errorResponse = new
+            {
+                jsonrpc = "2.0",
+                id = (object?)null,
+                error = new
+                {
+                    code = statusCode,
+                    message = message
+                }
+            };
+            
+            await context.Response.WriteAsync(JsonConvert.SerializeObject(errorResponse));
+        }
+        
+        // Method added specifically for testing purposes
+        private async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
+        {
+            _logger.Debug($"Handle request: {request}");
+            
+            try
+            {
+                // Process the request based on method
+                switch (request.Method)
+                {
+                    case "engine_forkChoiceUpdated":
+                    case "engine_forkChoiceUpdatedV2":
+                    case "engine_forkchoiceUpdatedV3":
+                    case "engine_forkChoiceUpdatedV4":
+                        return await HandleForkChoiceUpdated(request);
+                        
+                    case "engine_newPayload":
+                    case "engine_newPayloadV2":
+                    case "engine_newPayloadV3":
+                        // Direct handling without queueing for testing
+                        return await HandleNewPayload(request);
+                        
+                    case "engine_getPayload":
+                    case "engine_getPayloadV2":
+                    case "engine_getPayloadV3":
+                        return await HandleGetPayload(request);
+                        
+                    default:
+                        // Forward any other methods directly to EC
+                        return await ForwardRequestToExecutionClient(request);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error processing test request: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Internal error: {ex.Message}");
+            }
         }
     }
 } 
