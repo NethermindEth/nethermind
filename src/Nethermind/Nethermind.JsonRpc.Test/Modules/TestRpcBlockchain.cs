@@ -188,11 +188,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
             bool addBlockOnStart = true,
-            long slotTime = 1,
             Action<ContainerBuilder>? configurer = null)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues, addBlockOnStart, slotTime, configurer);
+            await base.Build(specProvider, initialValues, addBlockOnStart, configurer);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
@@ -211,6 +210,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SimulateTransactionProcessorFactory.Instance,
                 LimboLogs.Instance);
 
+            // TODO: Double check these
             ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
             BlockFinder ??= BlockTree;

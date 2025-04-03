@@ -132,13 +132,13 @@ public class TestBlockchain : IDisposable
     public class Configuration
     {
         public bool SuggestGenesisOnStart = true;
+        public long SlotTime = 1;
     }
 
     protected virtual async Task<TestBlockchain> Build(
         ISpecProvider? specProvider = null,
         UInt256? initialValues = null,
         bool addBlockOnStart = true,
-        long slotTime = 1,
         Action<ContainerBuilder>? configurer = null)
     {
         Timestamper = new ManualTimestamper(InitialTimestamp);
@@ -238,6 +238,7 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
+        Configuration testConfiguration = Container.Resolve<Configuration>();
         _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
         _testUtil = new TestBlockchainUtil(
             BlockProducerRunner,
@@ -245,10 +246,9 @@ public class TestBlockchain : IDisposable
             Timestamper,
             BlockTree,
             TxPool,
-            slotTime
+            testConfiguration.SlotTime
         );
 
-        Configuration testConfiguration = Container.Resolve<Configuration>();
         if (testConfiguration.SuggestGenesisOnStart)
         {
             Task waitGenesis = WaitForNewHead();

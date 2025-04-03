@@ -54,7 +54,6 @@ public class FullPruningDiskTest
             ISpecProvider? specProvider = null,
             UInt256? initialValues = null,
             bool addBlockOnStart = true,
-            long slotTime = 1,
             Action<ContainerBuilder>? containerBuilder = null)
         {
             TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
