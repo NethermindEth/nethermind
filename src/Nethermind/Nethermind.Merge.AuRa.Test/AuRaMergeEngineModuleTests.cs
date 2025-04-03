@@ -118,10 +118,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             _additionalTxSource = additionalTxSource;
         }
 
-        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Action<ContainerBuilder>? configurer = null)
+        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null)
         {
             if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
-            return base.Build(specProvider, initialValues, addBlockOnStart, configurer: configurer);
+            return base.Build(specProvider, configurer: configurer);
         }
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)

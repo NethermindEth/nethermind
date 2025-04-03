@@ -63,7 +63,7 @@ public partial class FlashbotsModuleTests
 
     protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
         IReleaseSpec? releaseSpec = null)
-    => await new EngineModuleTests.MergeTestBlockchain().Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+    => await new EngineModuleTests.MergeTestBlockchain().BuildMergeTestBlockchain(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
     private IFlashbotsRpcModule CreateFlashbotsModule(EngineModuleTests.MergeTestBlockchain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
     {

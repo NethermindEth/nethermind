@@ -52,11 +52,9 @@ public class FullPruningDiskTest
 
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,
-            UInt256? initialValues = null,
-            bool addBlockOnStart = true,
             Action<ContainerBuilder>? containerBuilder = null)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
+            TestBlockchain chain = await base.Build(specProvider);
             PruningDb = (FullPruningDb)DbProvider.StateDb;
             DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
             _chainEstimations.StateSize.Returns((long?)null);

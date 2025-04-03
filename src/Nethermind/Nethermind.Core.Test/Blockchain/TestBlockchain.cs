@@ -132,13 +132,13 @@ public class TestBlockchain : IDisposable
     public class Configuration
     {
         public bool SuggestGenesisOnStart = true;
+        public bool AddBlockOnStart = true;
+        public UInt256 AccountInitialValue = InitialValue;
         public long SlotTime = 1;
     }
 
     protected virtual async Task<TestBlockchain> Build(
         ISpecProvider? specProvider = null,
-        UInt256? initialValues = null,
-        bool addBlockOnStart = true,
         Action<ContainerBuilder>? configurer = null)
     {
         Timestamper = new ManualTimestamper(InitialTimestamp);
@@ -206,9 +206,10 @@ public class TestBlockchain : IDisposable
             state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
         }
 
-        state.CreateAccount(TestItem.AddressA, initialValues ?? InitialValue);
-        state.CreateAccount(TestItem.AddressB, initialValues ?? InitialValue);
-        state.CreateAccount(TestItem.AddressC, initialValues ?? InitialValue);
+        Configuration testConfiguration = Container.Resolve<Configuration>();
+        state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
+        state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
+        state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
 
         InitialStateMutator?.Invoke(state);
 
@@ -238,7 +239,6 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        Configuration testConfiguration = Container.Resolve<Configuration>();
         _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
         _testUtil = new TestBlockchainUtil(
             BlockProducerRunner,
@@ -257,7 +257,7 @@ public class TestBlockchain : IDisposable
             await waitGenesis;
         }
 
-        if (addBlockOnStart)
+        if (testConfiguration.AddBlockOnStart)
             await AddBlocksOnStart();
 
         return this;
@@ -487,5 +487,17 @@ public class TestBlockchain : IDisposable
             .WithChainId(MainnetSpecProvider.Instance.ChainId)
             .TestObject;
         return tx;
+    }
+}
+
+public static class ContainerBuilderExtensions
+{
+    public static ContainerBuilder ConfigureTestConfiguration(this ContainerBuilder builder, Action<TestBlockchain.Configuration> configurer)
+    {
+        return builder.AddDecorator<TestBlockchain.Configuration>((ctx, conf) =>
+        {
+            configurer(conf);
+            return conf;
+        });
     }
 }

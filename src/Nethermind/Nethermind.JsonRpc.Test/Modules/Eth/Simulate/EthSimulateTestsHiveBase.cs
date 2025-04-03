@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -124,7 +126,13 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
             {
                 SecondsPerSlot = (ulong)secondsPerSlot
             })
-            .Build(new TestSpecProvider(London.Instance), addBlockOnStart: false);
+            .Build(new TestSpecProvider(London.Instance), configurer: (builder) =>
+            {
+                builder.ConfigureTestConfiguration((config) =>
+                {
+                    config.AddBlockOnStart = false;
+                });
+            });
 
         await chain.AddBlock();
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);

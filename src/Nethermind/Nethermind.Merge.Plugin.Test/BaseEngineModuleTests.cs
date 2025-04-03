@@ -80,11 +80,11 @@ public partial class BaseEngineModuleTests
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
-            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance), configurer: configurer);
+            .BuildMergeTestBlockchain(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance), configurer: configurer);
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
-        => await CreateBaseBlockchain(logManager: logManager).Build(specProvider);
+        => await CreateBaseBlockchain(logManager: logManager).BuildMergeTestBlockchain(specProvider);
 
     protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -386,7 +386,7 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null) =>
-            (MergeTestBlockchain)await Build(specProvider, null, configurer: configurer);
+        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null) =>
+            (MergeTestBlockchain)await Build(specProvider, configurer: configurer);
     }
 }
