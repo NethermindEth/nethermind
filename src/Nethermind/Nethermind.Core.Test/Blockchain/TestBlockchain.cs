@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,6 +38,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -87,7 +89,7 @@ public class TestBlockchain : IDisposable
 
     public ITransactionComparerProvider TransactionComparerProvider => Container.Resolve<ITransactionComparerProvider>();
 
-    public IPoSSwitcher PoSSwitcher { get; set; } = null!;
+    public IPoSSwitcher PoSSwitcher => Container.Resolve<IPoSSwitcher>();
 
     protected TestBlockchain()
     {
@@ -104,7 +106,7 @@ public class TestBlockchain : IDisposable
 
     public static readonly UInt256 InitialValue = 1000.Ether();
     private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
-    public IHeaderValidator HeaderValidator { get; set; } = null!;
+    public IHeaderValidator HeaderValidator => Container.Resolve<IHeaderValidator>();
 
     private ReceiptCanonicalityMonitor? _canonicalityMonitor;
     protected AutoCancelTokenSource _cts;
@@ -145,8 +147,11 @@ public class TestBlockchain : IDisposable
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
 
+        IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
+
         ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddModule(new PseudoNethermindModule(CreateChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(SpecProvider)
             .AddSingleton<Configuration>()
             .AddSingleton<IEthereumEcdsa>(EthereumEcdsa)
@@ -164,9 +169,12 @@ public class TestBlockchain : IDisposable
                 return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
             })
 
+            .AddSingleton<ISealValidator>(Always.Valid)
+            .AddSingleton<IUnclesValidator>(Always.Valid)
+
             ;
 
-        await ConfigureContainer(builder);
+        ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
 
         Container = builder.Build();
@@ -201,8 +209,6 @@ public class TestBlockchain : IDisposable
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
-        HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
-
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
         BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, state);
 
@@ -213,7 +219,6 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             LogManager);
 
-        PoSSwitcher = NoPoS.Instance;
         ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
         SealEngine = new SealEngine(sealer, Always.Valid);
 
@@ -259,9 +264,18 @@ public class TestBlockchain : IDisposable
         return this;
     }
 
-    protected virtual Task ConfigureContainer(ContainerBuilder builder)
+    protected virtual ChainSpec CreateChainSpec()
     {
-        return Task.CompletedTask;
+        return new ChainSpec();
+    }
+
+    protected virtual void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+    {
+    }
+
+    protected virtual IEnumerable<IConfig> CreateConfigs()
+    {
+        return [];
     }
 
     private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)

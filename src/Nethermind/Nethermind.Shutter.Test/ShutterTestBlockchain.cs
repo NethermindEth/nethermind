@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
@@ -33,9 +34,9 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
         => _api!.GetBlockImprovementContextFactory(blockProducer);
 
-    protected override async Task ConfigureContainer(ContainerBuilder builder)
+    protected override void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
     {
-        await base.ConfigureContainer(builder);
+        base.ConfigureContainer(builder, configProvider);
 
         // Weird stuff where there are receipts but no tx.
         builder.AddSingleton<IReceiptStorage, InMemoryReceiptStorage>();

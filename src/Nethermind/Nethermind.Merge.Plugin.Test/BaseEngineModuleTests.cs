@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -26,6 +27,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -253,7 +255,7 @@ public partial class BaseEngineModuleTests
             return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, predicate);
         }
 
-        public ISealValidator? SealValidator { get; set; }
+        public ISealValidator? SealValidator => Container.Resolve<ISealValidator>();
 
         public IBeaconPivot? BeaconPivot { get; set; }
 
@@ -290,6 +292,24 @@ public partial class BaseEngineModuleTests
         public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
+
+        protected override ChainSpec CreateChainSpec()
+        {
+            return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
+        }
+
+        protected override IEnumerable<IConfig> CreateConfigs()
+        {
+            return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
+        }
+
+        protected override void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            base.ConfigureContainer(builder, configProvider);
+            builder
+                .AddModule(new MergeModule(configProvider))
+                ;
+        }
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
@@ -363,12 +383,6 @@ public partial class BaseEngineModuleTests
 
         protected IBlockValidator CreateBlockValidator()
         {
-            _ = new BlockCacheService();
-            PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject }, LogManager);
-            SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
-            HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
-            HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
-
             return new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
                 HeaderValidator,

@@ -81,12 +81,12 @@ public class FullPruningDiskTest
             return chain;
         }
 
-        protected override async Task ConfigureContainer(ContainerBuilder builder)
+        protected override void ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
         {
             IDbProvider dbProvider = new DbProvider();
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
             StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-            await standardDbInitializer.InitStandardDbsAsync(true);
+            standardDbInitializer.InitStandardDbs(true);
 
             builder .AddSingleton<IDbProvider>(dbProvider);
         }
