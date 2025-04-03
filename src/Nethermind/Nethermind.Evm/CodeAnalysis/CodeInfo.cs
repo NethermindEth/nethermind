@@ -46,6 +46,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
             if(codeHash is not null && IlAnalyzer.TryGetIledCode(codeHash.Value, out PrecompiledContract ilCode))
             {
+                Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;
                 IlInfo.AnalysisPhase = AnalysisPhase.Completed;
             }
@@ -60,6 +61,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
             if (codeHash is not null && IlAnalyzer.TryGetIledCode(codeHash.Value, out PrecompiledContract ilCode))
             {
+                Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;
                 IlInfo.AnalysisPhase = AnalysisPhase.Completed;
             }
