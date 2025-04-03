@@ -32,7 +32,7 @@ public class PayloadPreparationService : IPayloadPreparationService
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
     public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMillisecondsDelay = TimeSpan.FromMilliseconds(50);
-    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// Delay between block improvements
