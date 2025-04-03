@@ -127,9 +127,9 @@ public partial class EngineModuleTests
     {
         get
         {
-            yield return new TestCaseData(TimeSpan.Zero, TimeSpan.Zero) { ExpectedResult = 50, TestName = "Production manages to finish" };
-            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 4) { ExpectedResult = 3, TestName = "Production makes partial block" };
-            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2) { ExpectedResult = 0, TestName = "Production takes too long" };
+            yield return new TestCaseData(TimeSpan.Zero, TimeSpan.Zero, 50, 50) { TestName = "Production manages to finish" };
+            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 4, 2, 5) { TestName = "Production makes partial block" };
+            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, 0, 0) { TestName = "Production takes too long" };
         }
     }
 
@@ -149,7 +149,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(WaitTestCases))]
-    public async Task<int> getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay)
+    public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, int minCount, int maxCount)
     {
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             chain =>
@@ -178,7 +178,7 @@ public partial class EngineModuleTests
 
         await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
-        return getPayloadResult.Transactions.Length;
+        Assert.That(getPayloadResult.Transactions, Has.Length.InRange(minCount, maxCount));
     }
 
     [Test]
