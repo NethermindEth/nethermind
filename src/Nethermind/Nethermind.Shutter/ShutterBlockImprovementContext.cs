@@ -172,7 +172,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     private async Task BuildBlock()
     {
-        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, (_linkedCancellation ?? CancellationTokenSource).Token);
+        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _linkedCancellation?.Token ?? default);
         if (result is not null)
         {
             CurrentBestBlock = result;

@@ -80,33 +80,26 @@ namespace Nethermind.Consensus.Producers
             PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
             Block? block = null;
-            try
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
             {
-                if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
+                try
                 {
-                    try
-                    {
-                        block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
-                    }
-                    catch (Exception e) when (e is not TaskCanceledException)
-                    {
-                        if (Logger.IsError) Logger.Error("Failed to produce block", e);
-                        Metrics.FailedBlockSeals++;
-                        throw;
-                    }
-                    finally
-                    {
-                        _producingBlockLock.Release();
-                    }
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
                 }
-                else
+                catch (Exception e) when (e is not TaskCanceledException)
                 {
-                    if (Logger.IsInfo) Logger.Info("Failed to produce block, previous block is still being produced");
+                    if (Logger.IsError) Logger.Error("Failed to produce block", e);
+                    Metrics.FailedBlockSeals++;
+                    throw;
+                }
+                finally
+                {
+                    _producingBlockLock.Release();
                 }
             }
-            catch (OperationCanceledException)
+            else
             {
-                if (Logger.IsDebug) Logger.Debug("Block production cancelled");
+                if (Logger.IsInfo) Logger.Info("Failed to produce block, previous block is still being produced");
             }
 
             return block;
