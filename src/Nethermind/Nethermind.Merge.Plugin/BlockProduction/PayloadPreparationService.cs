@@ -119,7 +119,13 @@ public class PayloadPreparationService : IPayloadPreparationService
         long startTimestamp = Stopwatch.GetTimestamp();
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
-            (b) => LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp)),
+            (b) =>
+            {
+                if (!blockImprovementContext.CancellationTokenSource.IsCancellationRequested)
+                {
+                    LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
+                }
+            },
             TaskContinuationOptions.RunContinuationsAsynchronously);
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {

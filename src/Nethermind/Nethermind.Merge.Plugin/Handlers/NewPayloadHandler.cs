@@ -6,9 +6,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -18,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -34,8 +35,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 {
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IBeaconPivot _beaconPivot;
     private readonly IBlockCacheService _blockCacheService;
@@ -46,6 +47,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly bool _simulateBlockProduction;
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
@@ -53,8 +55,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     public NewPayloadHandler(
         IBlockValidator blockValidator,
         IBlockTree blockTree,
-        ISyncConfig syncConfig,
         IPoSSwitcher poSSwitcher,
+        IPayloadPreparationService payloadPreparationService,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBeaconPivot beaconPivot,
         IBlockCacheService blockCacheService,
@@ -64,18 +66,20 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         ILogManager logManager,
         TimeSpan? timeout = null,
         bool storeReceipts = true,
-        int cacheSize = 50)
+        int cacheSize = 50,
+        bool simulateBlockProduction = false)
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
-        _syncConfig = syncConfig;
         _poSSwitcher = poSSwitcher;
+        _payloadPreparationService = payloadPreparationService;
         _beaconSyncStrategy = beaconSyncStrategy;
         _beaconPivot = beaconPivot;
         _blockCacheService = blockCacheService;
         _processingQueue = processingQueue;
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
+        _simulateBlockProduction = simulateBlockProduction;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
@@ -164,6 +168,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Syncing;
         }
 
+        if (_simulateBlockProduction)
+        {
+            _ = CancelSimulation(parentHeader);
+        }
+
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
         {
@@ -238,6 +247,13 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
+
+        async Task CancelSimulation(BlockHeader parentHeader)
+        {
+            PayloadAttributes payloadAttributes = PayloadAttributes.GenerateSimulatedPayload(parentHeader);
+            string payloadId = payloadAttributes.GetPayloadId(parentHeader);
+            await _payloadPreparationService.GetPayload(payloadId);
+        }
     }
 
     /// <summary>

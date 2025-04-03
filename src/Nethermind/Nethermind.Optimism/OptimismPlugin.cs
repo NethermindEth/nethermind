@@ -207,8 +207,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 posSwitcher,
+                payloadPreparationService,
                 beaconSync,
                 beaconPivot,
                 _blockCacheService,
@@ -217,7 +217,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts),
+                _api.Config<IReceiptConfig>().StoreReceipts,
+                simulateBlockProduction: _api.Config<IMergeConfig>().SimulateBlockProduction),
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,
@@ -232,7 +233,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),

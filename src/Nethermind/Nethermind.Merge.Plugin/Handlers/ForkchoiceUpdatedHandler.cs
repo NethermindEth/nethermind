@@ -49,7 +49,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IPeerRefresher _peerRefresher;
     private readonly ISpecProvider _specProvider;
     private readonly bool _simulateBlockProduction;
-    private readonly ulong _secondsPerSlot;
     private readonly ISyncPeerPool _syncPeerPool;
 
     public ForkchoiceUpdatedHandler(
@@ -66,7 +65,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         ISpecProvider specProvider,
         ISyncPeerPool syncPeerPool,
         ILogManager logManager,
-        ulong secondsPerSlot,
         bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -82,7 +80,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _specProvider = specProvider;
         _syncPeerPool = syncPeerPool;
         _simulateBlockProduction = simulateBlockProduction;
-        _secondsPerSlot = secondsPerSlot;
         _logger = logManager.GetClassLogger();
     }
 
@@ -310,14 +307,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_simulateBlockProduction)
         {
-            payloadAttributes ??= new PayloadAttributes()
-            {
-                Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
-                ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
-                PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
-                Withdrawals = [],
-                SuggestedFeeRecipient = Address.Zero
-            };
+            payloadAttributes ??= PayloadAttributes.GenerateSimulatedPayload(newHeadBlock.Header);
         }
 
         if (payloadAttributes is not null)

@@ -297,8 +297,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
-                    _syncConfig,
                     _poSSwitcher,
+                    payloadPreparationService,
                     beaconSyncStrategy,
                     beaconPivot,
                     _blockCacheService,
@@ -307,7 +307,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     beaconSync,
                     _api.LogManager,
                     TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts),
+                    _api.Config<IReceiptConfig>().StoreReceipts,
+                    simulateBlockProduction: _api.Config<IMergeConfig>().SimulateBlockProduction),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
                     _blockFinalizationManager,
@@ -322,7 +323,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
                     _api.LogManager,
-                    _api.Config<IBlocksConfig>().SecondsPerSlot,
                     _api.Config<IMergeConfig>().SimulateBlockProduction),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
