@@ -52,7 +52,7 @@ public class TestBlockchain : IDisposable
     public const int DefaultTimeout = 10000;
     public long TestTimout { get; set; } = DefaultTimeout;
     public IStateReader StateReader => Container.Resolve<IStateReader>();
-    public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
+    public IEthereumEcdsa EthereumEcdsa => Container.Resolve<IEthereumEcdsa>();
     public INonceManager NonceManager => Container.Resolve<INonceManager>();
     public ITransactionProcessor TxProcessor => Container.Resolve<IMainProcessingContext>().TransactionProcessor;
     public IReceiptStorage ReceiptStorage => Container.Resolve<IReceiptStorage>();
@@ -144,7 +144,6 @@ public class TestBlockchain : IDisposable
         Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
-        EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
 
         IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
 
@@ -153,7 +152,6 @@ public class TestBlockchain : IDisposable
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(SpecProvider)
             .AddSingleton<Configuration>()
-            .AddSingleton<IEthereumEcdsa>(EthereumEcdsa)
 
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden
             // This means it does not use pruning triestore normally though.
