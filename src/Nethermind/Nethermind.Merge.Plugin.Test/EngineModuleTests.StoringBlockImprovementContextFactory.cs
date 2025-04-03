@@ -61,7 +61,7 @@ public partial class BaseEngineModuleTests
                 {
                     t.GetAwaiter().GetResult();
                 }
-                catch(Exception ex)
+                catch (Exception ex)
                 {
                     BlockImproved?.Invoke(ex, new BlockEventArgs(null!));
                 }
