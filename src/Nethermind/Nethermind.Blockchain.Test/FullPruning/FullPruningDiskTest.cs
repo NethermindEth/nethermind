@@ -14,14 +14,12 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -83,7 +81,9 @@ public class FullPruningDiskTest
             StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
             standardDbInitializer.InitStandardDbs(true);
 
-            return base.ConfigureContainer(builder, configProvider).AddSingleton<IDbProvider>(dbProvider);
+            return base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<IDbProvider>(dbProvider)
+                .ConfigureTrieStoreExposedWorldStateManager();
         }
 
         public override void Dispose()

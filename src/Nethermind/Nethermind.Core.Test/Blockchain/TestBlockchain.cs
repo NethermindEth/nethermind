@@ -75,7 +75,6 @@ public class TestBlockchain : IDisposable
     public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
-    public TrieStore TrieStore => _fromContainer.TrieStore;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider => _fromContainer.DbProvider ;
@@ -120,7 +119,7 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected IContainer Container { get; set; } = null!;
+    public IContainer Container { get; set; } = null!;
 
     // Resolving all these component at once is faster.
     private FromContainer _fromContainer = null!;
@@ -136,7 +135,6 @@ public class TestBlockchain : IDisposable
         IBlockFinder BlockFinder,
         ILogFinder LogFinder,
         IReadOnlyStateProvider ReadOnlyState,
-        TrieStore TrieStore,
         IDbProvider DbProvider,
         ISpecProvider SpecProvider,
         ISealEngine SealEngine,
@@ -256,22 +254,6 @@ public class TestBlockchain : IDisposable
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
-
-            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
-            // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
-            .Bind<IPruningTrieStore, TrieStore>()
-            .AddSingleton<IWorldStateManager>(ctx =>
-            {
-                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
-                TrieStore trieStore = ctx.Resolve<TrieStore>();
-                PreBlockCaches preBlockCaches = new PreBlockCaches();
-                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance,
-                    preBlockCaches: preBlockCaches);
-                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
-            })
-            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
-            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>()
 
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
@@ -507,5 +489,30 @@ public static class ContainerBuilderExtensions
             configurer(conf);
             return conf;
         });
+    }
+
+    /// <summary>
+    /// Some test require exposed `TrieStore` and `IPruningTrieStore` which is not normally exposed as it is all
+    /// hidden in `PruningTrieStateFactory`. So this create mini state configuration for that.
+    /// It does not cover the full standard world state configuration though, so not for general use.
+    /// </summary>
+    public static ContainerBuilder ConfigureTrieStoreExposedWorldStateManager(this ContainerBuilder builder)
+    {
+        return builder
+            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
+            // This means it does not use pruning triestore by default though which is potential edge case.
+            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
+            .Bind<IPruningTrieStore, TrieStore>()
+            .AddSingleton<IWorldStateManager>(ctx =>
+            {
+                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
+                TrieStore trieStore = ctx.Resolve<TrieStore>();
+                PreBlockCaches preBlockCaches = new PreBlockCaches();
+                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance,
+                    preBlockCaches: preBlockCaches);
+                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+            })
+            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
+            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>();
     }
 }
