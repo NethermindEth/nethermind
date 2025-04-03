@@ -51,6 +51,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
+    private PayloadPreparationService? _payloadPreparationService = null;
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -281,6 +282,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.TimerFactory,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            _payloadPreparationService = payloadPreparationService;
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -347,7 +349,11 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize { get => true; }
 

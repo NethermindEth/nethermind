@@ -52,6 +52,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
+    private OptimismPayloadPreparationService? _payloadPreparationService;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -190,6 +191,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.TimerFactory,
             _api.LogManager,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        _payloadPreparationService = payloadPreparationService;
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -277,7 +279,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             blockProducer);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize => true;
 

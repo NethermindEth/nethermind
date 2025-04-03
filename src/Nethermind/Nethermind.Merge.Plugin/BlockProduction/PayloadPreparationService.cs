@@ -23,21 +23,22 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 /// Each payload is assigned a payloadId which can be used by the consensus client to retrieve payload later by calling a <see cref="GetPayloadV1Handler"/>.
 /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_getpayloadv1"/>
 /// </summary>
-public class PayloadPreparationService : IPayloadPreparationService
+public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 {
+    private readonly CancellationTokenSource _shutdown = new();
     private readonly PostMergeBlockProducer _blockProducer;
     private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
     private readonly ILogger _logger;
+    private readonly Core.Timers.ITimer _timer;
 
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
     public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMillisecondsDelay = TimeSpan.FromMilliseconds(50);
-    public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// Delay between block improvements
     /// </summary>
-    private readonly TimeSpan _improvementDelay;
+    private readonly TimeSpan? _improvementDelay;
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
@@ -59,10 +60,10 @@ public class PayloadPreparationService : IPayloadPreparationService
         _timePerSlot = timePerSlot;
         TimeSpan timeout = timePerSlot;
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
-        _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
-        Core.Timers.ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
-        timer.Elapsed += CleanupOldPayloads;
-        timer.Start();
+        _improvementDelay = improvementDelay;
+        _timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
+        _timer.Elapsed += CleanupOldPayloads;
+        _timer.Start();
 
         _logger = logManager.GetClassLogger();
     }
@@ -73,7 +74,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         if (!_payloadStorage.ContainsKey(payloadId))
         {
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new());
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
         }
         else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
@@ -143,16 +144,61 @@ public class PayloadPreparationService : IPayloadPreparationService
                 return;
             }
 
-            // if after delay we still have time to try producing the block in this slot
+            // Measure how long we've already spent building in this slot:
             TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
-            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + lastBuildTime;
-            DateTimeOffset slotFinished = startDateTime + _timePerSlot;
-            if (whenWeCouldFinishNextProduction < slotFinished)
+            DateTimeOffset doubleFinishTime = startDateTime + _timePerSlot * 2;
+
+            TimeSpan dynamicDelay;
+            if (!_improvementDelay.HasValue)
             {
-                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
+                // Calculate how much time is left in the slot:
+                TimeSpan timeUsedInSlot = DateTimeOffset.UtcNow - startDateTime;
+                TimeSpan timeRemainingInSlot = _timePerSlot - timeUsedInSlot;
+
+                // Clamp to at least 1 ms (or some other minimal time):
+                TimeSpan minDelay = TimeSpan.FromMilliseconds(1);
+                if (timeRemainingInSlot < minDelay)
+                {
+                    timeRemainingInSlot = minDelay;
+                }
+
+                // Decide the fraction range (start slow at ~1/12, end at ~1/480):
+                double fractionStart = 1.0 / 6.0;
+                double fractionEnd = 1.0 / 480.0;
+
+                // progress = 0   => at the very start of slot
+                // progress = 1   => at the very end of slot
+                double progress = timeUsedInSlot.TotalSeconds / _timePerSlot.TotalSeconds;
+
+                // Clamp progress between [0, 1] just in case:
+                progress = Math.Max(0.0, Math.Min(1.0, progress));
+                // Increase on a cube curve, so it starts infrequent and the delay between
+                // blocks gets shorter and shorter as the end of slot approaches.
+                progress *= progress * progress;
+
+                // Linear interpolation between fractionStart and fractionEnd:
+                double currentFraction = fractionStart + (fractionEnd - fractionStart) * progress;
+
+                // The dynamic delay is “some fraction” of whatever is left in the slot:
+                dynamicDelay = TimeSpan.FromSeconds(timeRemainingInSlot.TotalSeconds * currentFraction);
+            }
+            else
+            {
+                dynamicDelay = _improvementDelay.Value;
+            }
+            // Check if we still have time to do an “improvement build”:
+            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
+
+            if (whenWeCouldFinishNextProduction < doubleFinishTime)
+            {
                 try
                 {
-                    await Task.Delay(_improvementDelay, token);
+                    // If the dynamic delay is still positive, await that
+                    if (dynamicDelay > TimeSpan.Zero)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {dynamicDelay.TotalMilliseconds}ms");
+                        await Task.Delay(dynamicDelay, token);
+                    }
                 }
                 catch (OperationCanceledException) { }
 
@@ -281,5 +327,11 @@ public class PayloadPreparationService : IPayloadPreparationService
         }
 
         return null;
+    }
+
+    public void Dispose()
+    {
+        _timer.Stop();
+        _shutdown.Cancel();
     }
 }
