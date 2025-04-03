@@ -80,7 +80,11 @@ public partial class BaseEngineModuleTests
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
-            .BuildMergeTestBlockchain(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance), configurer: configurer);
+            .BuildMergeTestBlockchain(configurer: (builder) =>
+            {
+                builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+                configurer?.Invoke(builder);
+            });
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
@@ -386,7 +390,10 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null) =>
-            (MergeTestBlockchain)await Build(specProvider, configurer: configurer);
+        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(ISpecProvider specProvider) =>
+            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
+
+        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder>? configurer = null) =>
+            (MergeTestBlockchain)await Build(configurer: configurer);
     }
 }

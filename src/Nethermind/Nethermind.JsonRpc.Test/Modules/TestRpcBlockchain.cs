@@ -129,9 +129,22 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null)
+            public Task<T> Build()
             {
-                return (T)await _blockchain.Build(specProvider, configurer: (builder) =>
+                return Build((ISpecProvider?)null);
+            }
+
+            public Task<T> Build(ISpecProvider? specProvider)
+            {
+                return Build((builder) =>
+                {
+                    if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                });
+            }
+
+            public async Task<T> Build(Action<ContainerBuilder> configurer)
+            {
+                return (T)await _blockchain.Build(configurer: (builder) =>
                 {
                     configurer?.Invoke(builder);
                     if (_blockFinderOverride is not null)
@@ -194,12 +207,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.LogManager
         ).Create();
 
-        protected override async Task<TestBlockchain> Build(
-            ISpecProvider? specProvider = null,
-            Action<ContainerBuilder>? configurer = null)
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
-            specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, configurer);
+            await base.Build(configurer);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
@@ -223,9 +237,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
-            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
+            ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);
-            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
             EthRpcModule = _ethRpcModuleBuilder(this);

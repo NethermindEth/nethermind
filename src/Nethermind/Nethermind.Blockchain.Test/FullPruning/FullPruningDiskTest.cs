@@ -50,11 +50,9 @@ public class FullPruningDiskTest
             TempDirectory = TempPath.GetTempDirectory();
         }
 
-        protected override async Task<TestBlockchain> Build(
-            ISpecProvider? specProvider = null,
-            Action<ContainerBuilder>? containerBuilder = null)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
-            TestBlockchain chain = await base.Build(specProvider);
+            TestBlockchain chain = await base.Build(containerBuilder);
             PruningDb = (FullPruningDb)DbProvider.StateDb;
             DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
             _chainEstimations.StateSize.Returns((long?)null);

@@ -36,6 +36,7 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -118,11 +119,19 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             _additionalTxSource = additionalTxSource;
         }
 
-        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, Action<ContainerBuilder>? configurer = null)
-        {
-            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
-            return base.Build(specProvider, configurer: configurer);
-        }
+        protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null) =>
+            base.Build(builder =>
+            {
+                builder.AddDecorator<ISpecProvider>((ctx, specProvider) =>
+                {
+                    // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
+                    ISpecProvider unwrappedSpecProvider = specProvider;
+                    while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider) unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
+                    if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
+                    return specProvider;
+                });
+                configurer?.Invoke(builder);
+            });
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {

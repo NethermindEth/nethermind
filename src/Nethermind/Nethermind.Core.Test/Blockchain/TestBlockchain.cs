@@ -79,7 +79,7 @@ public class TestBlockchain : IDisposable
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider => Container.Resolve<IDbProvider>();
-    public ISpecProvider SpecProvider { get; set; } = null!;
+    public ISpecProvider SpecProvider => Container.Resolve<ISpecProvider>();
 
     public ISealEngine SealEngine => Container.Resolve<ISealEngine>();
 
@@ -130,13 +130,10 @@ public class TestBlockchain : IDisposable
         public long SlotTime = 1;
     }
 
-    protected virtual async Task<TestBlockchain> Build(
-        ISpecProvider? specProvider = null,
-        Action<ContainerBuilder>? configurer = null)
+    protected virtual async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
         Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
-        SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
 
         IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
 
@@ -148,6 +145,7 @@ public class TestBlockchain : IDisposable
 
         IWorldState state = Container.Resolve<IWorldStateManager>().GlobalWorldState;
 
+        ISpecProvider specProvider = SpecProvider;
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
@@ -222,7 +220,8 @@ public class TestBlockchain : IDisposable
         builder
             .AddModule(new PseudoNethermindModule(CreateChainSpec(), configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(SpecProvider)
+            .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+            .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
             .AddSingleton<Configuration>()
 
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
@@ -266,7 +265,7 @@ public class TestBlockchain : IDisposable
         return [];
     }
 
-    private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
+    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
     {
         return specProvider is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
