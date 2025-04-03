@@ -48,7 +48,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
         foreach (Address address in senders.Union(targets).Where(static t => t is not null))
         {
-            stateProvider.CreateAccountIfNotExists(address, 0, 1);
+            stateProvider.CreateAccountIfNotExists(address, UInt256.Zero, UInt256.Zero);
         }
 
         stateProvider.Commit(releaseSpec);
@@ -133,6 +133,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
                 Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, cancellationBlockTracer)[0];
+
+                payload.GasCap -= processedBlock.GasUsed;
+                payload.GasCap = Math.Max(payload.GasCap, 0);
 
                 processedBlock.Header.Hash = processedBlock.Header.CalculateHash(RlpBehaviors.Simulate);
 
@@ -242,11 +245,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long gasSpecified = callInputBlock.Calls?.Where(details => details.HadGasLimitInRequest).Sum(details => details.Transaction.GasLimit) ?? 0;
         if (notSpecifiedGasTxsCount > 0)
         {
-            long gasPerTx = (callHeader.GasLimit - gasSpecified) / notSpecifiedGasTxsCount;
+            long gasPerTx = Math.Max((callHeader.GasLimit - gasSpecified) / notSpecifiedGasTxsCount, 0);
+            long gasCapPerTx = payload.GasCap / notSpecifiedGasTxsCount;
             IEnumerable<TransactionWithSourceDetails> notSpecifiedGasTxs = callInputBlock.Calls?.Where(details => !details.HadGasLimitInRequest) ?? [];
             foreach (TransactionWithSourceDetails call in notSpecifiedGasTxs)
             {
-                call.Transaction.GasLimit = gasPerTx;
+                if (gasCapPerTx > 0 && gasCapPerTx < gasPerTx) call.Transaction.GasLimit = gasCapPerTx;
+                else call.Transaction.GasLimit = gasPerTx;
             }
         }
 
@@ -321,7 +326,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
                 RequestsHash = parent.RequestsHash,
-                ParentBeaconBlockRoot = spec.IsEip4844Enabled ? Hash256.Zero: null,
+                ParentBeaconBlockRoot = spec.IsEip4844Enabled ? Hash256.Zero : null,
                 WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null,
             };
         result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;

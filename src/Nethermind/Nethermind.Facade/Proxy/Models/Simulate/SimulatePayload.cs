@@ -27,4 +27,9 @@ public class SimulatePayload<T>
     /// When true, the simulate returns Full Tx Objects
     /// </summary>
     public bool ReturnFullTransactionObjects { get; set; } = false;
+
+    /// <summary
+    /// Traces the amount of gas remaining according to the JsonRpc Gas Cap
+    /// </summary>
+    public long GasCap { get; set; } = long.MaxValue;
 }
