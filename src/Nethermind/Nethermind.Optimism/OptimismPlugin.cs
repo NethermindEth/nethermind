@@ -300,6 +300,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
