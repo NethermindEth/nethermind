@@ -100,12 +100,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
-        foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
-        {
-            await plugin.InitSynchronization();
-        }
-
         _api.WorldStateManager!.InitializeNetwork(
             new PathNodeRecovery(
                 new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
