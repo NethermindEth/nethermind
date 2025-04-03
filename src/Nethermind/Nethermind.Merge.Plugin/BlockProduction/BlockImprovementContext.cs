@@ -39,7 +39,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         // Task.Run so doesn't block FCU response while first block is being produced
         ImprovementTask = Task.Run(() => blockProducer
             .BuildBlock(parentHeader, _feesTracer, payloadAttributes, ct)
-            .ContinueWith(SetCurrentBestBlock, ct), ct);
+            .ContinueWith(SetCurrentBestBlock));
     }
 
     public Task<Block?> ImprovementTask { get; }

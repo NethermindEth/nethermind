@@ -107,8 +107,16 @@ public class PayloadPreparationService : IPayloadPreparationService
                 }
 
                 IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
-                currentContext.Dispose();
-                return newContext;
+                if (!cts.IsCancellationRequested)
+                {
+                    currentContext.Dispose();
+                    return newContext;
+                }
+                else
+                {
+                    newContext.Dispose();
+                }
+                return currentContext;
             });
 
 
@@ -142,7 +150,12 @@ public class PayloadPreparationService : IPayloadPreparationService
             if (whenWeCouldFinishNextProduction < slotFinished)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
-                await Task.Delay(_improvementDelay, token);
+                try
+                {
+                    await Task.Delay(_improvementDelay, token);
+                }
+                catch (OperationCanceledException) { }
+
                 if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
                     Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
