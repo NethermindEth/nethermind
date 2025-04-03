@@ -143,7 +143,7 @@ public class PayloadPreparationService : IPayloadPreparationService
             {
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
                 await Task.Delay(_improvementDelay, token);
-                if (token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+                if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
                     Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                     ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, blockImprovementContext.CancellationTokenSource);
