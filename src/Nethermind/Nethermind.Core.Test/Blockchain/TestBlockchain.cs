@@ -140,46 +140,7 @@ public class TestBlockchain : IDisposable
 
         IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
 
-        ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new PseudoNethermindModule(CreateChainSpec(), configProvider, LimboLogs.Instance))
-            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(SpecProvider)
-            .AddSingleton<Configuration>()
-
-            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
-            // This means it does not use pruning triestore normally though.
-            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
-            .Bind<IPruningTrieStore, TrieStore>()
-            .AddSingleton<IWorldStateManager>(ctx =>
-            {
-                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
-                TrieStore trieStore = ctx.Resolve<TrieStore>();
-                PreBlockCaches preBlockCaches = new PreBlockCaches();
-                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance, preBlockCaches: preBlockCaches);
-                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
-            })
-            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
-            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>()
-
-            .AddSingleton<ISealValidator>(Always.Valid)
-            .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
-
-            .AddSingleton<ILogFinder>(ctx =>
-            {
-                // TODO: Test fail when using the same BloomStorage as BlockTree.
-                var receiptStorage = ctx.Resolve<IReceiptStorage>();
-                var blockTree = ctx.Resolve<IBlockTree>();
-                var fileStorage = ctx.Resolve<IFileStoreFactory>();
-                var bloomDb = ctx.ResolveKeyed<IDb>(DbNames.Bloom);
-                var bloomConfig = ctx.Resolve<IBloomConfig>();
-                var receiptsRecovery = ctx.Resolve<IReceiptsRecovery>();
-                IBloomStorage bloomStorage = new BloomStorage(bloomConfig, bloomDb, fileStorage);
-                return new LogFinder(blockTree, receiptStorage, receiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-            })
-
-            ;
-
+        ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
 
@@ -257,7 +218,48 @@ public class TestBlockchain : IDisposable
         return new ChainSpec();
     }
 
-    protected virtual ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) => builder;
+    protected virtual ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+        builder
+            .AddModule(new PseudoNethermindModule(CreateChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
+            .AddSingleton<ISpecProvider>(SpecProvider)
+            .AddSingleton<Configuration>()
+
+            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
+            // This means it does not use pruning triestore normally though.
+            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
+            .Bind<IPruningTrieStore, TrieStore>()
+            .AddSingleton<IWorldStateManager>(ctx =>
+            {
+                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
+                TrieStore trieStore = ctx.Resolve<TrieStore>();
+                PreBlockCaches preBlockCaches = new PreBlockCaches();
+                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance,
+                    preBlockCaches: preBlockCaches);
+                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+            })
+            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
+            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>()
+
+            // Some validator configurations
+            .AddSingleton<ISealValidator>(Always.Valid)
+            .AddSingleton<IUnclesValidator>(Always.Valid)
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
+
+            // For rpc
+            .AddSingleton<ILogFinder>(ctx =>
+            {
+                // TODO: Test fail when using the same BloomStorage as BlockTree.
+                var receiptStorage = ctx.Resolve<IReceiptStorage>();
+                var blockTree = ctx.Resolve<IBlockTree>();
+                var fileStorage = ctx.Resolve<IFileStoreFactory>();
+                var bloomDb = ctx.ResolveKeyed<IDb>(DbNames.Bloom);
+                var bloomConfig = ctx.Resolve<IBloomConfig>();
+                var receiptsRecovery = ctx.Resolve<IReceiptsRecovery>();
+                IBloomStorage bloomStorage = new BloomStorage(bloomConfig, bloomDb, fileStorage);
+                return new LogFinder(blockTree, receiptStorage, receiptStorage, bloomStorage, LimboLogs.Instance,
+                    receiptsRecovery);
+            });
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
