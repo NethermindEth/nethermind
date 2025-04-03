@@ -31,7 +31,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             Timestamp = BuildingSlotTimestamp
         };
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).BuildMergeTestBlockchain(ShutterTestsCommon.SpecProvider);
+        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[^1];
@@ -68,7 +68,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             Timestamp = BuildingSlotTimestamp
         };
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).BuildMergeTestBlockchain(ShutterTestsCommon.SpecProvider);
+        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -101,7 +101,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         Metrics.ShutterKeysMissed = 0;
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).BuildMergeTestBlockchain(ShutterTestsCommon.SpecProvider);
+        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);

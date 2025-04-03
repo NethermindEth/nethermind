@@ -347,7 +347,7 @@ public partial class EngineModuleTests
         {
             state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
         };
-        using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(SepoliaSpecProvider.Instance);
+        using MergeTestBlockchain chain = await blockchain.Build(SepoliaSpecProvider.Instance);
 
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 1000 * delay;

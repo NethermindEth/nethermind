@@ -89,7 +89,7 @@ public partial class BaseEngineModuleTests
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
-        => await CreateBaseBlockchain(logManager: logManager).BuildMergeTestBlockchain(specProvider);
+        => await CreateBaseBlockchain(logManager: logManager).Build(specProvider);
 
     protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -391,10 +391,10 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(ISpecProvider specProvider) =>
+        public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
             (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
 
-        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder>? configurer = null) =>
+        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
             (MergeTestBlockchain)await Build(configurer: configurer);
     }
 }

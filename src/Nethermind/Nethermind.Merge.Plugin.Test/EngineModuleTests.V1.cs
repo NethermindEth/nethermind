@@ -443,7 +443,7 @@ public partial class EngineModuleTests
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
-            .BuildMergeTestBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
@@ -461,7 +461,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-            .BuildMergeTestBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
@@ -1523,7 +1523,7 @@ public partial class EngineModuleTests
     public async Task Should_warn_for_missing_capabilities()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
-            .BuildMergeTestBlockchain(new TestSingleReleaseSpecProvider(Prague.Instance));
+            .Build(new TestSingleReleaseSpecProvider(Prague.Instance));
         var loggerManager = Substitute.For<ILogManager>();
         var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
