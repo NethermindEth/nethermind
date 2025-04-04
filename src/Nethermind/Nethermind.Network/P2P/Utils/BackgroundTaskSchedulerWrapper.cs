@@ -38,14 +38,14 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private async ValueTask BackgroundSyncSender<TReq, TRes>(
         (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        using TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
         handler.Send(response);
     }
 
     private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
         (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        using TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
         handler.Send(response);
     }
 
