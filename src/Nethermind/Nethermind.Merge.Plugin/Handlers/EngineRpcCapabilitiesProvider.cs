@@ -55,7 +55,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
 
             #region Osaka
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.RequestsEnabled, spec.RequestsEnabled);
-            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.RequestsEnabled, spec.RequestsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.RequestsEnabled, false);
             #endregion
         }
 
