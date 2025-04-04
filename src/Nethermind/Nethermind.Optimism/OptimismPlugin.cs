@@ -38,7 +38,7 @@ using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -52,9 +52,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
-    private IPeerRefresher? _peerRefresher;
-    private IBeaconPivot? _beaconPivot;
-    private BeaconSync? _beaconSync;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -158,38 +155,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         return Task.CompletedTask;
     }
 
-    public Task InitSynchronization()
-    {
-        if (_api is null)
-            return Task.CompletedTask;
-
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
-
-        _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor);
-
-        _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
-        _beaconSync = _api.Context.Resolve<BeaconSync>();
-
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
-        _ = new UnsafeStartingSyncPivotUpdater(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool!,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.LogManager);
-
-        return Task.CompletedTask;
-    }
-
     public async Task InitRpcModules()
     {
         if (_api is null)
@@ -204,12 +169,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
 
-        ArgumentNullException.ThrowIfNull(_beaconSync);
-        ArgumentNullException.ThrowIfNull(_beaconPivot);
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
-        ArgumentNullException.ThrowIfNull(_peerRefresher);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -232,7 +194,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
+        var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+        var beaconSync = _api.Context.Resolve<BeaconSync>();
 
+        IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -244,12 +209,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
                 _api.BlockTree,
                 _syncConfig,
                 posSwitcher,
-                _beaconSync,
-                _beaconPivot,
+                beaconSync,
+                beaconPivot,
                 _blockCacheService,
                 _api.BlockProcessingQueue,
                 _invalidChainTracker,
-                _beaconSync,
+                beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
@@ -261,9 +226,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
                 _api.BlockProcessingQueue,
                 _blockCacheService,
                 _invalidChainTracker,
-                _beaconSync,
-                _beaconPivot,
-                _peerRefresher,
+                beaconSync,
+                beaconPivot,
+                peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
@@ -329,13 +294,17 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
         builder
             .AddSingleton<NethermindApi, OptimismNethermindApi>()
-            .AddModule(new MergePluginModule())
+            .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
             .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
+            .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
+
+            .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
+            .AddSingleton<IUnclesValidator>(Always.Valid)
             ;
 
     }
