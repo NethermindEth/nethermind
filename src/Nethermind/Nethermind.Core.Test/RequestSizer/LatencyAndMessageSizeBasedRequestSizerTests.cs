@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -13,12 +14,13 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
 {
     private static readonly int[] _sampleRequest = Enumerable.Range(0, 10).ToArray();
 
-    [TestCase(0, 0, 3)]
-    [TestCase(0, 10000, 1)]
-    [TestCase(20, 0, 2)]
-    [TestCase(20, 10000, 1)]
-    [TestCase(100, 0, 1)]
-    public async Task TestChangeInRequestSize(int waitTimeMs, long responseSize, int afterRequestSize)
+    [TestCase(0, 0, 2, 3)]
+    [TestCase(0, 10000, 2, 1)]
+    [TestCase(20, 0, 2, 2)]
+    [TestCase(20, 10000, 2, 1)]
+    [TestCase(100, 0, 2, 1)]
+    [TestCase(20, 0, 1, 1)]
+    public async Task TestChangeInRequestSize(int waitTimeMs, long responseSize, int responseCount, int afterRequestSize)
     {
         LatencyAndMessageSizeBasedRequestSizer sizer = new(
             1, 4,
@@ -28,14 +30,15 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
             2
         );
 
-        await sizer.Run(_sampleRequest, async _ =>
+        await sizer.Run<int[], int, int>(_sampleRequest, async adjustedSize =>
         {
             await Task.Delay(waitTimeMs);
-            return (0, responseSize);
+            return (new int[responseCount], responseSize);
         });
 
-        int modifiedRequestSize = await sizer.Run(_sampleRequest, (cappedRequest) => Task.FromResult((cappedRequest.Count, (long)0)));
+        IReadOnlyList<int> modifiedRequestSize = await sizer.Run<IReadOnlyList<int>, int, int>(
+            _sampleRequest, (cappedRequest) => Task.FromResult((cappedRequest, (long)0)));
 
-        modifiedRequestSize.Should().Be(afterRequestSize);
+        modifiedRequestSize.Count.Should().Be(afterRequestSize);
     }
 }

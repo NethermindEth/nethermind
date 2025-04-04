@@ -39,7 +39,11 @@ namespace Nethermind.Stats
         /// Original request size clamped down to a calculated limit. Depending on the latency and response size,
         /// the limit will be adjusted for subsequent calls.
         /// </summary>
-        Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func);
+        Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(
+            RequestType requestType,
+            IReadOnlyList<TRequest> request,
+            Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func)
+            where TResponse : IReadOnlyList<TResponseItem>;
 
         /// <summary>
         /// Run a request sizer for the specific request type. The function passed in will receive a closure with a limit

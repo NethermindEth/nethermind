@@ -405,10 +405,9 @@ public class NodeStatsLight : INodeStats
         return rlpxReputation;
     }
 
-    public async Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func)
-    {
-        if (requestType == RequestType.Bodies) return await _bodiesRequestSizer.Run(request, func);
-        if (requestType == RequestType.Receipts) return await _receiptsRequestSizer.Run(request, func);
+    public async Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem> {
+        if (requestType == RequestType.Bodies) return await _bodiesRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
+        if (requestType == RequestType.Receipts) return await _receiptsRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
 
         throw new ArgumentException($"Unsupported request type: {requestType}");
     }
