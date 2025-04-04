@@ -30,6 +30,11 @@ namespace Nethermind.EngineApiProxy
                 getDefaultValue: () => "Info");
             logLevelOption.AddAlias("-l");
             
+            var logFileOption = new Option<string?>(
+                name: "--log-file",
+                description: "Path to log file (if not specified, only console logging is used)",
+                getDefaultValue: () => null);
+            
             var validateAllBlocksOption = new Option<bool>(
                 name: "--validate-all-blocks",
                 description: "Enable validation for all blocks, including those where CL doesn't request validation",
@@ -45,27 +50,49 @@ namespace Nethermind.EngineApiProxy
             rootCommand.AddOption(executionClientOption);
             rootCommand.AddOption(portOption);
             rootCommand.AddOption(logLevelOption);
+            rootCommand.AddOption(logFileOption);
             rootCommand.AddOption(validateAllBlocksOption);
             rootCommand.AddOption(feeRecipientOption);
             
-            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel, bool validateAllBlocks, string feeRecipient) =>
+            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel, string? logFile, bool validateAllBlocks, string feeRecipient) =>
             {
                 try
                 {
                     // Configure logging
-                    var logManager = new NLogManager("logs", "proxy.logs.json");
+                    var logManager = new NLogManager();
                     
-                    // Ensure all logs also appear in console output
+                    // Ensure all logs appear in console output
                     ConfigureConsoleLogging(logLevel);
                     
                     logManager.SetGlobalVariable("logLevel", logLevel);
                     
                     var logger = logManager.GetClassLogger();
                     
+                    // Configure file logging only if log file is specified
+                    if (!string.IsNullOrWhiteSpace(logFile))
+                    {
+                        string? logDirectory = Path.GetDirectoryName(logFile);
+                        if (string.IsNullOrEmpty(logDirectory))
+                        {
+                            logDirectory = "logs";
+                            logFile = Path.Combine(logDirectory, logFile);
+                        }
+                        string logFileName = Path.GetFileName(logFile);
+                        
+                        // Ensure log directory exists
+                        if (!Directory.Exists(logDirectory))
+                        {
+                            Directory.CreateDirectory(logDirectory);
+                        }
+                        
+                        ConfigureFileLogging(logDirectory, logFileName, logLevel);
+                        logger.Info($"File logging enabled. Logs will be written to {Path.Combine(logDirectory, logFileName)}");
+                    }
+                    
                     // Check required parameters
                     if (string.IsNullOrWhiteSpace(ecEndpoint))
                     {
-                        logger.Error("EC endpoint is required. Use --ec-endpoint or -e to specify.");
+                        logger.Error("Execution Client endpoint is required. Use --ec-endpoint or -e to specify.");
                         Environment.Exit(1);
                     }
                     
@@ -75,13 +102,14 @@ namespace Nethermind.EngineApiProxy
                         ExecutionClientEndpoint = ecEndpoint,
                         ListenPort = port,
                         LogLevel = logLevel,
+                        LogFile = logFile,
                         ValidateAllBlocks = validateAllBlocks,
                         DefaultFeeRecipient = feeRecipient
                     };
                     
                     logger.Info($"Starting Engine API Proxy with configuration: {config}");
                     
-                    // Create and start proxy server
+                    // Create and start proxy
                     var proxy = new ProxyServer(config, logManager);
                     await proxy.StartAsync();
                     
@@ -110,7 +138,7 @@ namespace Nethermind.EngineApiProxy
                     Console.Error.WriteLine($"Error: {ex.Message}");
                     Environment.Exit(1);
                 }
-            }, executionClientOption, portOption, logLevelOption, validateAllBlocksOption, feeRecipientOption);
+            }, executionClientOption, portOption, logLevelOption, logFileOption, validateAllBlocksOption, feeRecipientOption);
             
             return await rootCommand.InvokeAsync(args);
         }
@@ -132,6 +160,35 @@ namespace Nethermind.EngineApiProxy
             // Add rule for console target with specified log level
             var level = NLog.LogLevel.FromString(logLevel);
             var rule = new LoggingRule("*", level, consoleTarget);
+            config.LoggingRules.Add(rule);
+            
+            // Apply configuration
+            LogManager.Configuration = config;
+        }
+        
+        private static void ConfigureFileLogging(string logDirectory, string logFileName, string logLevel)
+        {
+            // Access NLog's configuration
+            var config = LogManager.Configuration ?? new LoggingConfiguration();
+            
+            // Create file target with JSON format
+            var fileTarget = new FileTarget("file")
+            {
+                FileName = Path.Combine(logDirectory, logFileName),
+                Layout = "${longdate}|${level:uppercase=true}|${logger}|${message} ${exception:format=tostring}",
+                CreateDirs = true,
+                ArchiveFileName = Path.Combine(logDirectory, "archive", "proxy.{#}.logs.txt"),
+                ArchiveNumbering = ArchiveNumberingMode.Date,
+                ArchiveEvery = FileArchivePeriod.Day,
+                MaxArchiveFiles = 7
+            };
+            
+            // Add file target to configuration
+            config.AddTarget(fileTarget);
+            
+            // Add rule for file target with specified log level
+            var level = NLog.LogLevel.FromString(logLevel);
+            var rule = new LoggingRule("*", level, fileTarget);
             config.LoggingRules.Add(rule);
             
             // Apply configuration

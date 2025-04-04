@@ -18,6 +18,11 @@ namespace Nethermind.EngineApiProxy.Config
         public string LogLevel { get; set; } = "Info";
 
         /// <summary>
+        /// Path to log file (null means console logging only)
+        /// </summary>
+        public string? LogFile { get; set; } = null;
+
+        /// <summary>
         /// Whether to validate all blocks, even those where CL doesn't request validation
         /// </summary>
         public bool ValidateAllBlocks { get; set; } = false;
@@ -34,7 +39,7 @@ namespace Nethermind.EngineApiProxy.Config
 
         public override string ToString()
         {
-            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}, ValidateAllBlocks: {ValidateAllBlocks}";
+            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}";
         }
     }
 } 
