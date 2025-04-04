@@ -239,6 +239,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(header.BaseFeePerGas);
             }
+            else if ((rlpBehaviors & RlpBehaviors.Simulate) == RlpBehaviors.Simulate)
+            {
+                rlpStream.EncodeEmptyByteArray();
+            }
 
             if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null || header.ParentBeaconBlockRoot is not null)
             {
@@ -297,7 +301,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
+                                + (item.BaseFeePerGas.IsZero ? (((rlpBehaviors & RlpBehaviors.Simulate) == RlpBehaviors.Simulate) ? 1 : 0) : Rlp.LengthOf(item.BaseFeePerGas))
                                 + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + ((item.BlobGasUsed is not null || item.ExcessBlobGas is not null) ? Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault()) + Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault()) : 0)
