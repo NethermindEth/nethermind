@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
@@ -29,6 +30,8 @@ namespace Nethermind.Synchronization.Peers
         void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details);
 
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
+
+        int GetCurrentRequestLimit(PeerInfo peerInfo, RequestType requestType);
 
         /// <summary>
         /// Wakes up all the sleeping peers.

@@ -125,6 +125,11 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
+        public int GetCurrentRequestLimit(PeerInfo peerInfo, RequestType requestType)
+        {
+            return _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+        }
+
         public void Start()
         {
             _refreshLoopTask = Task.Factory.StartNew(

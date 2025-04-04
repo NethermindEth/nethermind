@@ -38,7 +38,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly INodeStatsManager _nodeStatsManager;
         private readonly ISyncPointers _syncPointers;
         private readonly IDb _blocksDb;
 
@@ -54,7 +53,6 @@ namespace Nethermind.Synchronization.FastBlocks
             IBlockTree blockTree,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
-            INodeStatsManager nodeStatsManager,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             [KeyFilter(DbNames.Blocks)] IDb blocksDb,
@@ -66,7 +64,6 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree;
             _syncPointers = syncPointers;
             _syncPeerPool = syncPeerPool;
-            _nodeStatsManager = nodeStatsManager;
             _syncConfig = syncConfig;
             _syncReport = syncReport;
             _blocksDb = blocksDb;
@@ -142,8 +139,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 SyncPeerAllocation syncPeerAllocation = await _syncPeerPool.Allocate(_approximateAllocationStrategy, AllocationContexts.Blocks, 1000, token);
                 if (syncPeerAllocation is not null && syncPeerAllocation.HasPeer)
                 {
-                    requestSize = _nodeStatsManager.GetCurrentRequestLimit(
-                        syncPeerAllocation.Current!.SyncPeer.Node,
+                    requestSize = _syncPeerPool.GetCurrentRequestLimit(
+                        syncPeerAllocation.Current!,
                         RequestType.Bodies);
                     _syncPeerPool.Free(syncPeerAllocation);
                 }

@@ -31,7 +31,6 @@ public class BodiesSyncFeedTests
     private IBlockTree _syncingFromBlockTree = null!;
     private IBlockTree _syncingToBlockTree = null!;
     private TestMemDb _blocksDb = null!;
-    private INodeStatsManager _nodeStatsManager = null!;
     private ISyncPointers _syncPointers = null!;
     private BodiesSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
@@ -69,14 +68,12 @@ public class BodiesSyncFeedTests
             DownloadBodiesInFastSync = true,
         };
         _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
-        _nodeStatsManager = Substitute.For<INodeStatsManager>();
 
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
             _syncPointers,
             Substitute.For<ISyncPeerPool>(),
-            _nodeStatsManager,
             _syncConfig,
             new NullSyncReport(),
             _blocksDb,
