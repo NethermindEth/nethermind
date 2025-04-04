@@ -42,7 +42,33 @@ namespace Nethermind.EngineApiProxy.Services
                 var requestJson = JsonConvert.SerializeObject(request);
                 var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
-                var response = await _httpClient.PostAsync("", httpContent);
+                // Create a request message instead of using PostAsync directly
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+                {
+                    Content = httpContent
+                };
+                
+                bool authHeaderAdded = false;
+                
+                // Copy all authorization headers from the HttpClient
+                if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                {
+                    var authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                    if (!string.IsNullOrEmpty(authHeader))
+                    {
+                        _logger.Debug($"Adding Authorization header to block data fetch request for hash: {blockHash}");
+                        requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
+                        authHeaderAdded = true;
+                    }
+                }
+                
+                if (!authHeaderAdded)
+                {
+                    _logger.Warn($"No Authorization header available for block data fetch request for hash: {blockHash}");
+                }
+                
+                _logger.Debug($"Sending block data fetch request with Authorization header: {authHeaderAdded}");
+                var response = await _httpClient.SendAsync(requestMessage);
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.Error($"Failed to get block data. Status: {response.StatusCode}");
@@ -88,7 +114,33 @@ namespace Nethermind.EngineApiProxy.Services
                 var requestJson = JsonConvert.SerializeObject(request);
                 var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
-                var response = await _httpClient.PostAsync("", httpContent);
+                // Create a request message instead of using PostAsync directly
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+                {
+                    Content = httpContent
+                };
+                
+                bool authHeaderAdded = false;
+                
+                // Copy all authorization headers from the HttpClient
+                if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                {
+                    var authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                    if (!string.IsNullOrEmpty(authHeader))
+                    {
+                        _logger.Debug("Adding Authorization header to latest block fetch request");
+                        requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
+                        authHeaderAdded = true;
+                    }
+                }
+                
+                if (!authHeaderAdded)
+                {
+                    _logger.Warn("No Authorization header available for latest block fetch request");
+                }
+                
+                _logger.Debug($"Sending latest block fetch request with Authorization header: {authHeaderAdded}");
+                var response = await _httpClient.SendAsync(requestMessage);
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.Error($"Failed to get latest block data. Status: {response.StatusCode}");

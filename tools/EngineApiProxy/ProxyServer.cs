@@ -170,6 +170,14 @@ namespace Nethermind.EngineApiProxy
                 // Store the original request headers for forwarding
                 request.OriginalHeaders = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString());
                 
+                // Check if there's an Authorization header and set it on the HttpClient for all future requests
+                if (context.Request.Headers.TryGetValue("Authorization", out var authHeader))
+                {
+                    _logger.Debug("Found Authorization header in client request, storing for future internal requests");
+                    _httpClient.DefaultRequestHeaders.Remove("Authorization");
+                    _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader.ToString());
+                }
+                
                 _logger.Debug($"Processing request: {request}");
             }
             catch (Exception ex)
@@ -187,10 +195,15 @@ namespace Nethermind.EngineApiProxy
                 switch (request.Method)
                 {
                     case "engine_forkChoiceUpdated":
+                    case "engine_forkChoiceUpdatedV2":
+                    case "engine_forkchoiceUpdatedV3":
+                    case "engine_forkChoiceUpdatedV4":
                         response = await HandleForkChoiceUpdated(request);
                         break;
                         
                     case "engine_newPayload":
+                    case "engine_newPayloadV2":
+                    case "engine_newPayloadV3":
                         // Queue the newPayload message and return a placeholder response
                         // The actual request will be processed by the message queue
                         // TODO: we should add all requests to the queue, not just newPayload
@@ -208,7 +221,8 @@ namespace Nethermind.EngineApiProxy
                         }
                         break;
                         
-                    case "engine_getPayload":
+                    case "engine_getPayloadV3":
+                    case "engine_getPayloadV2":
                         response = await HandleGetPayload(request);
                         break;
                         
@@ -239,7 +253,17 @@ namespace Nethermind.EngineApiProxy
                 bool shouldValidate = _config.ValidateAllBlocks && 
                                       request.Params != null && 
                                       request.Params.Count > 0 &&
-                                      (request.Params.Count == 1 || request.Params[1] == null);
+                                      (request.Params.Count == 1 || 
+                                       request.Params[1] == null || 
+                                       (request.Params[1] is Newtonsoft.Json.Linq.JValue jv && jv.Type == Newtonsoft.Json.Linq.JTokenType.Null) ||
+                                       (request.Params[1]?.Type == Newtonsoft.Json.Linq.JTokenType.Null));
+                
+                // Add detailed logging to show validation decision
+                if (_config.ValidateAllBlocks) 
+                {
+                    _logger.Info($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
+                    _logger.Info($"shouldValidate evaluated to: {shouldValidate}");
+                }
                 
                 if (shouldValidate)
                 {
@@ -258,26 +282,43 @@ namespace Nethermind.EngineApiProxy
                             {
                                 _logger.Info($"Starting validation flow for head block: {headBlockHashStr}");
                                 
-                                // Use the orchestrator to handle the validation flow
-                                string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
-                                
-                                // Create a synthetic success response
-                                var validationResponse = new JsonRpcResponse
+                                try
                                 {
-                                    Id = request.Id,
-                                    Result = new JObject
+                                    // Use the orchestrator to handle the validation flow
+                                    string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
+                                    
+                                    // Create a synthetic success response
+                                    var validationResponse = new JsonRpcResponse
                                     {
-                                        ["payloadStatus"] = new JObject
+                                        Id = request.Id,
+                                        Result = new JObject
                                         {
-                                            ["status"] = "VALID",
-                                            ["latestValidHash"] = headBlockHashStr,
-                                            ["validationError"] = null
-                                        },
-                                        ["payloadId"] = payloadId
+                                            ["payloadStatus"] = new JObject
+                                            {
+                                                ["status"] = "VALID",
+                                                ["latestValidHash"] = headBlockHashStr,
+                                                ["validationError"] = null
+                                            },
+                                            ["payloadId"] = payloadId
+                                        }
+                                    };
+                                    
+                                    return validationResponse;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // If the validation flow fails due to unsupported methods, log and fall back to normal flow
+                                    if (ex.ToString().Contains("engine_getPayloadV3 is not supported") ||
+                                        ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported"))
+                                    {
+                                        _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
+                                        _logger.Info("Falling back to direct forwarding of request to execution client");
+                                        return await ForwardRequestToExecutionClient(request);
                                     }
-                                };
-                                
-                                return validationResponse;
+                                    
+                                    // For other errors, throw to be caught by the outer try/catch
+                                    throw;
+                                }
                             }
                         }
                         
@@ -332,7 +373,7 @@ namespace Nethermind.EngineApiProxy
         private async Task<JsonRpcResponse> HandleNewPayload(JsonRpcRequest request)
         {
             // This is a placeholder implementation - will be expanded in the NewPayloadHandler
-            _logger.Debug($"Processing engine_newPayload: {request}");
+            _logger.Debug($"Processing engine_newPayloadV3: {request}");
             
             // TODO: Implement interception logic
             return await ForwardRequestToExecutionClient(request);
@@ -341,7 +382,7 @@ namespace Nethermind.EngineApiProxy
         private async Task<JsonRpcResponse> HandleGetPayload(JsonRpcRequest request)
         {
             // Log the getPayload request
-            _logger.Debug($"Processing engine_getPayload: {request}");
+            _logger.Debug($"Processing engine_getPayloadV3: {request}");
             
             try
             {
@@ -359,15 +400,15 @@ namespace Nethermind.EngineApiProxy
                         _logger.Debug($"Retrieved payload for payloadId {payloadId}");
                     }
                     
-                    // TODO: Generate a synthetic engine_newPayload request from the payload
+                    // TODO: Generate a synthetic engine_newPayloadV3 request from the payload
                 }
                 
                 return response;
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error handling getPayload: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Error handling getPayload: {ex.Message}");
+                _logger.Error($"Error handling getPayloadV3: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Error handling getPayloadV3: {ex.Message}");
             }
         }
 
@@ -390,11 +431,21 @@ namespace Nethermind.EngineApiProxy
                 {
                     _logger.Debug($"Forwarding {request.OriginalHeaders.Count} original headers from client request");
                     
+                    // Log the presence of Authorization header in original headers
+                    if (request.OriginalHeaders.TryGetValue("Authorization", out var origAuthHeader))
+                    {
+                        _logger.Debug($"Found Authorization header in original request headers: {origAuthHeader.Substring(0, Math.Min(10, origAuthHeader.Length))}...");
+                    }
+                    else
+                    {
+                        _logger.Debug("No Authorization header found in original request headers");
+                    }
+                    
                     // Special handling for Authorization header
                     if (request.OriginalHeaders.TryGetValue("Authorization", out var authHeader))
                     {
                         requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                        _logger.Debug("Added Authorization header");
+                        _logger.Debug("Added Authorization header from original request headers");
                     }
                     
                     foreach (var header in request.OriginalHeaders)
@@ -416,6 +467,17 @@ namespace Nethermind.EngineApiProxy
                 else
                 {
                     _logger.Info("No original headers to forward");
+                }
+                
+                // Always check the HttpClient's DefaultRequestHeaders for Authorization as a fallback
+                if (!requestMessage.Headers.Contains("Authorization") && _httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                {
+                    var authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                    if (!string.IsNullOrEmpty(authHeader))
+                    {
+                        _logger.Debug("Adding Authorization header from HttpClient DefaultRequestHeaders as fallback");
+                        requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
+                    }
                 }
                 
                 var response = await _httpClient.SendAsync(requestMessage);
@@ -484,9 +546,8 @@ namespace Nethermind.EngineApiProxy
                         // Direct handling without queueing for testing
                         return await HandleNewPayload(request);
                         
-                    case "engine_getPayload":
-                    case "engine_getPayloadV2":
                     case "engine_getPayloadV3":
+                    case "engine_getPayloadV2":
                         return await HandleGetPayload(request);
                         
                     default:

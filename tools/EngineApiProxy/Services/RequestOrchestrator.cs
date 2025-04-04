@@ -51,6 +51,28 @@ namespace Nethermind.EngineApiProxy.Services
             
             try
             {
+                // Check if Authorization header is present in original request
+                if (originalRequest.OriginalHeaders != null && 
+                    originalRequest.OriginalHeaders.TryGetValue("Authorization", out var authHeader))
+                {
+                    _logger.Debug($"Original request contains Authorization header: {authHeader.Substring(0, Math.Min(10, authHeader.Length))}...");
+                }
+                else
+                {
+                    _logger.Debug("Original request does not contain Authorization header");
+                }
+                
+                // Check if DefaultRequestHeaders has Authorization
+                if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                {
+                    var authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                    _logger.Debug($"HttpClient DefaultRequestHeaders contains Authorization: {authHeaderValue?.Substring(0, Math.Min(10, authHeaderValue?.Length ?? 0))}...");
+                }
+                else
+                {
+                    _logger.Debug("HttpClient DefaultRequestHeaders does not contain Authorization");
+                }
+                
                 // 1. Get the head block data
                 var blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
                 if (blockData == null)
@@ -61,12 +83,20 @@ namespace Nethermind.EngineApiProxy.Services
                 // 2. Generate payload attributes
                 var payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
                 
+                // Extract the parent beacon block root from the payload attributes
+                string? parentBeaconBlockRoot = payloadAttributes["parentBeaconBlockRoot"]?.ToString();
+                
                 // 3. Clone the request and add payload attributes
                 var modifiedRequest = CloneRequest(originalRequest);
                 if (modifiedRequest.Params == null)
                 {
                     modifiedRequest.Params = new JArray();
                 }
+                
+                // Make sure we explicitly copy the originalRequest headers to ensure auth is preserved
+                modifiedRequest.OriginalHeaders = originalRequest.OriginalHeaders != null
+                    ? new Dictionary<string, string>(originalRequest.OriginalHeaders)
+                    : null;
                 
                 // Ensure the first parameter (fork choice state) exists
                 if (modifiedRequest.Params.Count == 0)
@@ -107,8 +137,27 @@ namespace Nethermind.EngineApiProxy.Services
                     // 6. Wait a short time for EL to prepare the payload
                     await Task.Delay(500);
                     
-                    // 7. Get the payload using engine_getPayload
-                    await GetAndProcessPayload(payloadId);
+                    try
+                    {
+                        // 7. Get the payload using engine_getPayloadV3
+                        // Pass the parent beacon block root from the payload attributes
+                        await GetAndProcessPayload(payloadId, parentBeaconBlockRoot);
+                    }
+                    catch (Exception ex)
+                    {
+                        // If engine_getPayloadV3 fails, log it but don't throw an exception
+                        // This allows us to gracefully handle the case where the execution client
+                        // doesn't support engine_getPayloadV3
+                        if (ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported") ||
+                            (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV3' is not supported")))
+                        {
+                            _logger.Warn($"Execution client does not support engine_getPayloadV3. Skipping payload validation for payloadId: {payloadId}");
+                        }
+                        else
+                        {
+                            _logger.Error($"Error in payload validation but continuing with FCU flow: {ex.Message}", ex);
+                        }
+                    }
                     
                     return payloadId;
                 }
@@ -128,32 +177,91 @@ namespace Nethermind.EngineApiProxy.Services
         /// Gets the payload for a given payload ID and processes it
         /// </summary>
         /// <param name="payloadId">The payload ID to get</param>
+        /// <param name="parentBeaconBlockRoot">The parent beacon block root from the block data</param>
         /// <returns>The get payload response</returns>
-        private async Task<JsonRpcResponse> GetAndProcessPayload(string payloadId)
+        private async Task<JsonRpcResponse> GetAndProcessPayload(string payloadId, string? parentBeaconBlockRoot = null)
         {
             try
             {
                 // Create getPayload request
                 var getPayloadRequest = new JsonRpcRequest(
-                    "engine_getPayload",
+                    "engine_getPayloadV3",
                     new JArray { payloadId },
                     Guid.NewGuid().ToString());
+                
+                // Make sure any authorization headers from HttpClient are included
+                if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                {
+                    var authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                    if (!string.IsNullOrEmpty(authHeaderValue))
+                    {
+                        getPayloadRequest.OriginalHeaders = new Dictionary<string, string>
+                        {
+                            { "Authorization", authHeaderValue }
+                        };
+                        _logger.Debug("Added Authorization header to getPayload request from HttpClient DefaultRequestHeaders");
+                    }
+                }
                 
                 // Send request to get the payload
                 _logger.Debug($"Getting payload for payloadId: {payloadId}");
                 var payloadResponse = await SendJsonRpcRequest(getPayloadRequest);
                 
+                // Check for error in response
+                if (payloadResponse.Error != null)
+                {
+                    // Check for unsupported method error
+                    if (payloadResponse.Error.Code == -32601 || 
+                        (payloadResponse.Error.Message?.Contains("not supported") == true))
+                    {
+                        throw new InvalidOperationException($"Method engine_getPayloadV3 is not supported: {payloadResponse.Error.Message}");
+                    }
+                    
+                    throw new InvalidOperationException($"Error getting payload: {payloadResponse.Error.Code} - {payloadResponse.Error.Message}");
+                }
+                
                 if (payloadResponse.Result is JObject payload)
                 {
-                    // Create newPayload request from the payload
-                    _logger.Debug($"Creating newPayload request from payload: {payload}");
-                    var newPayloadRequest = CreateNewPayloadRequest(payload);
+                    try
+                    {
+                        // Create newPayload request from the payload
+                        _logger.Debug($"Creating newPayload request from payload: {payload}");
+                        var newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot);
+                        
+                        // Copy auth headers to new request too
+                        if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                        {
+                            var authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                            if (!string.IsNullOrEmpty(authHeaderValue))
+                            {
+                                newPayloadRequest.OriginalHeaders = new Dictionary<string, string>
+                                {
+                                    { "Authorization", authHeaderValue }
+                                };
+                                _logger.Debug("Added Authorization header to newPayload request from HttpClient DefaultRequestHeaders");
+                            }
+                        }
+                        
+                        // Send newPayload request
+                        _logger.Debug($"Sending synthetic newPayload request: {newPayloadRequest}");
+                        var newPayloadResponse = await SendJsonRpcRequest(newPayloadRequest);
+                        
+                        // Check if newPayload resulted in an error
+                        if (newPayloadResponse.Error != null)
+                        {
+                            _logger.Warn($"Synthetic newPayload validation resulted in error: {newPayloadResponse.Error.Code} - {newPayloadResponse.Error.Message}");
+                        }
+                        else
+                        {
+                            _logger.Info($"Completed synthetic block validation flow for payloadId: {payloadId}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // If newPayload fails, just log the error but don't stop the process
+                        _logger.Warn($"Error in synthetic newPayload validation, continuing: {ex.Message}");
+                    }
                     
-                    // Send newPayload request
-                    _logger.Debug($"Sending synthetic newPayload request: {newPayloadRequest}");
-                    var newPayloadResponse = await SendJsonRpcRequest(newPayloadRequest);
-                    
-                    _logger.Info($"Completed synthetic block validation flow for payloadId: {payloadId}");
                     return payloadResponse;
                 }
                 else
@@ -172,21 +280,40 @@ namespace Nethermind.EngineApiProxy.Services
         /// Creates a newPayload request from a getPayload response
         /// </summary>
         /// <param name="payload">The payload from getPayload</param>
+        /// <param name="parentBeaconBlockRoot">The parent beacon block root extracted from block data</param>
         /// <returns>A newPayload request</returns>
-        private JsonRpcRequest CreateNewPayloadRequest(JObject payload)
+        private JsonRpcRequest CreateNewPayloadRequest(JObject payload, string? parentBeaconBlockRoot = null)
         {
-            // Extract the execution payload from the getPayload response
-            var blockValue = payload.DeepClone() as JObject;
-            
-            if (blockValue == null)
+            // For engine_newPayloadV3, we need to extract the executionPayload
+            if (payload["executionPayload"] == null)
             {
-                throw new InvalidOperationException("Failed to create execution payload from getPayload response");
+                throw new InvalidOperationException("Payload response does not contain executionPayload");
             }
             
-            // Create newPayload request with the execution payload as the first parameter
+            // Extract the executionPayload from the response
+            var executionPayload = payload["executionPayload"]?.ToObject<JObject>();
+            
+            if (executionPayload == null)
+            {
+                throw new InvalidOperationException("Failed to parse executionPayload from response");
+            }
+            
+            // Use provided parentBeaconBlockRoot or default if not provided
+            if (string.IsNullOrEmpty(parentBeaconBlockRoot))
+            {
+                parentBeaconBlockRoot = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                _logger.Warn("No parent beacon block root provided, using default zero value");
+            }
+            
+            // For engine_newPayloadV3, we need 3 parameters:
+            // 1. executionPayload - the actual payload object
+            // 2. blobVersionedHashes - array of blob version hashes (empty array for non-blob transactions)
+            // 3. The hex-encoded parent beacon block root
+            var blobVersionedHashes = new JArray();
+            
             return new JsonRpcRequest(
-                "engine_newPayload",
-                new JArray { blockValue },
+                "engine_newPayloadV3",
+                new JArray { executionPayload, blobVersionedHashes, parentBeaconBlockRoot },
                 Guid.NewGuid().ToString());
         }
         
@@ -201,23 +328,83 @@ namespace Nethermind.EngineApiProxy.Services
             {
                 // Serialize request
                 var requestJson = JsonConvert.SerializeObject(request);
+                _logger.Info($"Orchestrator sending request: {requestJson}");
                 var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
+                // Create a request message instead of using PostAsync
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+                {
+                    Content = httpContent
+                };
+                
+                bool authHeaderAdded = false;
+                
+                // First, check if the request already has an Authorization header
+                if (request.OriginalHeaders != null && 
+                    request.OriginalHeaders.TryGetValue("Authorization", out var requestAuthHeader) &&
+                    !string.IsNullOrEmpty(requestAuthHeader))
+                {
+                    requestMessage.Headers.TryAddWithoutValidation("Authorization", requestAuthHeader);
+                    _logger.Debug($"Added Authorization header from request.OriginalHeaders: {requestAuthHeader.Substring(0, Math.Min(10, requestAuthHeader.Length))}...");
+                    authHeaderAdded = true;
+                }
+                
+                // Next, try to get the Authorization header from the HttpClient's default headers
+                if (!authHeaderAdded && _httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                {
+                    var httpClientAuthHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                    if (!string.IsNullOrEmpty(httpClientAuthHeader))
+                    {
+                        requestMessage.Headers.TryAddWithoutValidation("Authorization", httpClientAuthHeader);
+                        _logger.Debug($"Added Authorization header from HttpClient.DefaultRequestHeaders: {httpClientAuthHeader.Substring(0, Math.Min(10, httpClientAuthHeader.Length))}...");
+                        authHeaderAdded = true;
+                    }
+                }
+                
+                // Then, copy any remaining original headers if present
+                if (request.OriginalHeaders != null)
+                {
+                    foreach (var header in request.OriginalHeaders)
+                    {
+                        // Skip content-related headers and the Authorization header we already added
+                        if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
+                        {
+                            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                        }
+                    }
+                }
+                
+                if (!authHeaderAdded)
+                {
+                    _logger.Warn("No Authorization header found in either request.OriginalHeaders or HttpClient.DefaultRequestHeaders");
+                }
+                
                 // Send request
-                var response = await _httpClient.PostAsync("", httpContent);
+                _logger.Debug($"Sending request with method: {request.Method}, HasAuth: {authHeaderAdded}");
+                var response = await _httpClient.SendAsync(requestMessage);
                 if (!response.IsSuccessStatusCode)
                 {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.Error($"HTTP request failed with status code: {response.StatusCode}, Content: {errorContent}");
                     throw new HttpRequestException($"HTTP request failed with status code: {response.StatusCode}");
                 }
                 
                 // Parse response
                 var responseJson = await response.Content.ReadAsStringAsync();
-                _logger.Debug($"Received response: {responseJson}");
+                _logger.Info($"Orchestrator received response: {responseJson}");
                 
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 if (jsonRpcResponse == null)
                 {
+                    _logger.Error($"Failed to deserialize JSON-RPC response: {responseJson}");
                     throw new InvalidOperationException("Failed to deserialize JSON-RPC response");
+                }
+                
+                // Check for JSON-RPC error
+                if (jsonRpcResponse.Error != null)
+                {
+                    _logger.Error($"JSON-RPC error: {jsonRpcResponse.Error.Code} - {jsonRpcResponse.Error.Message}");
                 }
                 
                 return jsonRpcResponse;
