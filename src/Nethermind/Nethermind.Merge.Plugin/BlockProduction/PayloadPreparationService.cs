@@ -192,10 +192,20 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 // We'll interpolate between two fractional rates:
                 // - fractionStart (1/6): a slower build rate at the start
                 // - fractionEnd   (1/480): a faster build rate near the end
-                double fractionStart = 1.0 / 6.0;
-                double fractionEnd = 1.0 / 480.0;
+                const double fractionStart = 1.0 / 6.0;
+                const double fractionEnd = 1.0 / 480.0;
+                // Slot Timeline: 0% -------------------------- 100%
+                //                |        (long gap)         | 
+                //    [Block Improvement #1]        <--- big delay here
+                // 
+                //                                   (medium gap)
+                //                                       [Block Improvement #2]
+                //                                           (small gap)
+                //                                              [Block Improvement #3]
+                //                                                (tiny gap)
+                //                                                   [Block Improvement #4]
+                //
                 double currentFraction = fractionStart + (fractionEnd - fractionStart) * progress;
-
                 // Dynamic delay = currentFraction * (remaining slot time)
                 // So near the start: delay is bigger (slower improvement)
                 // Near the end: delay shrinks, allowing more frequent improvements
