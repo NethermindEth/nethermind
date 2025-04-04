@@ -146,6 +146,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             // Measure how long we've already spent building in this slot:
             TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
+            // Even if the block has not been requested or cancelled,
+            // don't build past 1/3 extra on top of slot time
             DateTimeOffset slotPlusThirdFinishTime = startDateTime + _timePerSlot * 1.3;
 
             TimeSpan dynamicDelay;
@@ -162,19 +164,19 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     timeRemainingInSlot = minDelay;
                 }
 
-                // Decide the fraction range (start slow at ~1/12, end at ~1/480):
-                double fractionStart = 1.0 / 6.0;
-                double fractionEnd = 1.0 / 480.0;
-
                 // progress = 0   => at the very start of slot
                 // progress = 1   => at the very end of slot
                 double progress = timeUsedInSlot.TotalSeconds / _timePerSlot.TotalSeconds;
 
                 // Clamp progress between [0, 1] just in case:
-                progress = Math.Max(0.0, Math.Min(1.0, progress));
+                progress = Math.Clamp(progress, 0.0, 1.0);
                 // Increase on a cube curve, so it starts infrequent and the delay between
                 // blocks gets shorter and shorter as the end of slot approaches.
                 progress *= progress * progress;
+
+                // Decide the fraction range (start slow at ~1/12, end at ~1/480):
+                double fractionStart = 1.0 / 6.0;
+                double fractionEnd = 1.0 / 480.0;
 
                 // Linear interpolation between fractionStart and fractionEnd:
                 double currentFraction = fractionStart + (fractionEnd - fractionStart) * progress;
@@ -184,37 +186,38 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             }
             else
             {
+                // Is set explicitly in tests
                 dynamicDelay = _improvementDelay.Value;
             }
+
             // Check if we still have time to do an “improvement build”:
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
 
-            if (whenWeCouldFinishNextProduction < slotPlusThirdFinishTime)
+            if (whenWeCouldFinishNextProduction > slotPlusThirdFinishTime)
             {
-                try
-                {
-                    // If the dynamic delay is still positive, await that
-                    if (dynamicDelay > TimeSpan.Zero)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {dynamicDelay.TotalMilliseconds}ms");
-                        await Task.Delay(dynamicDelay, token);
-                    }
-                }
-                catch (OperationCanceledException) { }
+                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
+                return;
+            }
 
-                if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+            try
+            {
+                // If the dynamic delay is still positive, await that
+                if (dynamicDelay > TimeSpan.Zero)
                 {
-                    Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, blockImprovementContext.CancellationTokenSource);
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {dynamicDelay.TotalMilliseconds}ms");
+                    await Task.Delay(dynamicDelay, token);
                 }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
-                }
+            }
+            catch (OperationCanceledException) { }
+
+            if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+            {
+                Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
+                ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, blockImprovementContext.CancellationTokenSource);
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
+                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
             }
         });
 
@@ -278,7 +281,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         }
                     }
                 }
-                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {(supportsBlobs ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
+                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((supportsBlobs && blobs > 0) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
             }
             else
             {
