@@ -144,10 +144,23 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 return;
             }
 
-            // Measure how long we've already spent building in this slot:
+            // We want to keep building better blocks throughout this slot so that when 
+            // the consensus client requests the block, we have the best version ready.
+            // However, building blocks repeatedly is expensive. We also expect more 
+            // transactions towards the end of the slot, when it's more likely we will 
+            // actually need to deliver the block. So we slow down improvements early in 
+            // the slot (to save resources) and gradually increase the improvement 
+            // frequency toward the end of the slot.
+            //
+            // This is both to capture more transactions, and where the probability of
+            // being asked for a block is highest; so where the improvements will
+            // likely have highest impact.
+
+            // Measure how much time we've already spent building in this slot:
             TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
-            // Even if the block has not been requested or cancelled,
-            // don't build past 1/3 extra on top of slot time
+
+            // We don't want to keep improving a block too far beyond the slot duration.
+            // Specifically, we allow ourselves at most 30% extra of the nominal slot time.
             DateTimeOffset slotPlusThirdFinishTime = startDateTime + _timePerSlot * 1.3;
 
             TimeSpan dynamicDelay;
@@ -157,48 +170,55 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 TimeSpan timeUsedInSlot = DateTimeOffset.UtcNow - startDateTime;
                 TimeSpan timeRemainingInSlot = _timePerSlot - timeUsedInSlot;
 
-                // Clamp to at least 1 ms (or some other minimal time):
+                // Ensure we always have at least a tiny delay to avoid spinning too fast.
                 TimeSpan minDelay = TimeSpan.FromMilliseconds(1);
                 if (timeRemainingInSlot < minDelay)
                 {
                     timeRemainingInSlot = minDelay;
                 }
 
-                // progress = 0   => at the very start of slot
-                // progress = 1   => at the very end of slot
+                // progress = 0  => at the very start of the slot
+                // progress = 1  => at the very end of the slot
                 double progress = timeUsedInSlot.TotalSeconds / _timePerSlot.TotalSeconds;
 
-                // Clamp progress between [0, 1] just in case:
+                // Clamp progress to [0, 1] just in case:
                 progress = Math.Clamp(progress, 0.0, 1.0);
-                // Increase on a cube curve, so it starts infrequent and the delay between
-                // blocks gets shorter and shorter as the end of slot approaches.
+
+                // We use a cubic curve (progress^3) so that improvement builds 
+                // start off quite spaced out (less frequent at the start) and 
+                // rapidly become more frequent as we near the end of the slot.
                 progress *= progress * progress;
 
-                // Decide the fraction range (start slow at ~1/12, end at ~1/480):
+                // We'll interpolate between two fractional rates:
+                // - fractionStart (1/6): a slower build rate at the start
+                // - fractionEnd   (1/480): a faster build rate near the end
                 double fractionStart = 1.0 / 6.0;
                 double fractionEnd = 1.0 / 480.0;
-
-                // Linear interpolation between fractionStart and fractionEnd:
                 double currentFraction = fractionStart + (fractionEnd - fractionStart) * progress;
 
-                // The dynamic delay is “some fraction” of whatever is left in the slot:
+                // Dynamic delay = currentFraction * (remaining slot time)
+                // So near the start: delay is bigger (slower improvement)
+                // Near the end: delay shrinks, allowing more frequent improvements
                 dynamicDelay = TimeSpan.FromSeconds(timeRemainingInSlot.TotalSeconds * currentFraction);
             }
             else
             {
-                // Is set explicitly in tests
+                // In tests, we override the dynamic strategy with a fixed delay
                 dynamicDelay = _improvementDelay.Value;
             }
 
-            // Check if we still have time to do an “improvement build”:
+            // Ensure we don't exceed the allowed time window by checking if
+            // we can finish the next improvement build before 1.3x slot time.
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
 
             if (whenWeCouldFinishNextProduction > slotPlusThirdFinishTime)
             {
+                // If we can't finish before that cutoff, skip the improvement
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
                 return;
             }
 
+            // If we reach here, we still have time for an improvement build (which still responds to cancellation)
             try
             {
                 // If the dynamic delay is still positive, await that
