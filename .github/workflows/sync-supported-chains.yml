@@ -207,7 +207,7 @@ jobs:
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
               stripped_network="mainnet"
-              taiko_client_version="taiko-alethia-client-v0.43.2"
+              taiko_client_version="latest"
             elif [[ "$network" == *hekla* ]]; then
               CONSENSUS_URL="${{ secrets.HOLESKY_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.HOLESKY_EXECUTION_URL }}"
