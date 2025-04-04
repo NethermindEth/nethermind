@@ -21,7 +21,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -387,9 +386,9 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
+            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
             return chain;
         }
 
