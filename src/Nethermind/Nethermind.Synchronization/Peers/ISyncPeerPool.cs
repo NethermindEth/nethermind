@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         Task<int?> EstimateRequestLimit(
             RequestType bodies,
-            FastBlocksAllocationStrategy approximateAllocationStrategy,
+            IPeerAllocationStrategy peerAllocationStrategy,
             AllocationContexts blocks,
             CancellationToken token);
 

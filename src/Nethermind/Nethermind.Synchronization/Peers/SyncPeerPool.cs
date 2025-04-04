@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public async Task<int?> EstimateRequestLimit(RequestType requestType, FastBlocksAllocationStrategy allocationStrategy, AllocationContexts context, CancellationToken token)
+        public async Task<int?> EstimateRequestLimit(RequestType requestType, IPeerAllocationStrategy allocationStrategy, AllocationContexts context, CancellationToken token)
         {
             // So, to know which peer is next, we just try to allocate it, and then free it back.
             SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
