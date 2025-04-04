@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
@@ -25,28 +26,57 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
+    private static ConcurrentDictionary<ValueHash256?, IPrecompiledContract> _processed = new();
+
     private static readonly ConcurrentQueue<CodeInfo> _queue = new();
     private static int tasksRunningCount = 0;
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
-        if(codeInfo.IlInfo.AnalysisPhase is not AnalysisPhase.NotStarted)
+        if (Interlocked.CompareExchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted) != AnalysisPhase.NotStarted
+            || codeInfo.Codehash is null)
         {
             return;
         }
 
-        codeInfo.IlInfo.AnalysisPhase = AnalysisPhase.Queued;
+        Metrics.IncrementIlvmAotQueueSize();
         _queue.Enqueue(codeInfo);
 
-        if (config.IlEvmAnalysisQueueMaxSize <= _queue.Count)
+        if (_queue.Count > config.IlEvmAnalysisQueueMaxSize)
         {
-            if(tasksRunningCount < config.IlEvmAnalysisQueueMaxSize)
+            if(tasksRunningCount < config.IlEvmAnalysisMaxTasksCount)
             {
                 Task.Run(() => {
                     Interlocked.Increment(ref tasksRunningCount);
+                    Metrics.IncrementIlvmAotQueueTasksCount();
                     AnalyzeQueue(config, logger);
+                }).ContinueWith(_ => {
                     Interlocked.Decrement(ref tasksRunningCount);
+                    Metrics.DecrementIlvmAotQueueTasksCount();
                 });
             }
+        }
+    }
+
+    public static void AddIledCode(ValueHash256? codeHash, IPrecompiledContract ilCode)
+    {
+        if (codeHash is null || ilCode is null)
+        {
+            return;
+        }
+
+        _processed[codeHash] = ilCode;
+    }
+
+    public static bool TryGetIledCode(ValueHash256 codeHash, out IPrecompiledContract ilCode)
+    {
+        if (_processed.TryGetValue(codeHash, out ilCode))
+        {
+            return true;
+        }
+        else
+        {
+            ilCode = null;
+            return false;
         }
     }
 
@@ -55,14 +85,18 @@ public static class IlAnalyzer
         int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out CodeInfo worklet))
         {
+            Metrics.DecrementIlvmAotQueueSize();
             worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
             try
             {
                 Analyse(worklet, config.IlEvmEnabledMode, config, logger);
-                worklet.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
+                Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
             } catch
             {
-                worklet.IlInfo.AnalysisPhase = AnalysisPhase.Failed;
+                Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+            } finally
+            {
+                Metrics.IncrementIlvmAotContractsProcessed();
             }
         }
     }
@@ -84,21 +118,41 @@ public static class IlAnalyzer
     /// </summary>
     public static void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
     {
-        Metrics.IlvmContractsAnalyzed++;
         switch (mode)
         {
             case ILMode.FULL_AOT_MODE:
-                if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
+                if (_processed.TryGetValue(codeInfo.Codehash, out IPrecompiledContract? contractDelegate))
                 {
+                    codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+                    Metrics.IncrementIlvmAotCacheTouched();
                     return;
+                } else
+                {
+                    if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
+                    {
+                        return;
+                    }
+                    CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
+                    Metrics.IncrementIlvmContractsAnalyzed();
                 }
-                CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
                 break;
         }
     }
 
+    internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
+    {
+        Metrics.IncrementIlvmCurrentlyCompiling();
+        var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig);
+        Metrics.DecrementIlvmCurrentlyCompiling();
+
+        _processed[codeInfo.Codehash] = contractDelegate;
+        codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+    }
+
     internal static bool AnalyseContract(CodeInfo codeInfo,  IVMConfig config, out ContractCompilerMetadata? compilerMetadata)
     {
+        Metrics.IncrementIlvmCurrentlyAnalysing();
+
         byte[] codeAsSpan = codeInfo.MachineCode.ToArray();
         Dictionary<int, short> stackOffsets = [];
         Dictionary<int, long> gasOffsets = [];
@@ -136,14 +190,9 @@ public static class IlAnalyzer
             SubSegments = subSegmentData,
             SegmentsBoundaries = entryPoints
         };
+
+        Metrics.DecrementIlvmCurrentlyAnalysing();
         return true;
-    }
-
-    internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
-    {
-        var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), codeInfo, contractMetadata, vmConfig);
-
-        codeInfo.IlInfo.PrecompiledContract = contractDelegate;
     }
 
     internal static void AnalyzeSegment(byte[] fullcode, Range segmentRange, Dictionary<int, short> stackOffsets, Dictionary<int, long> gasOffsets, Dictionary<int, SubSegmentMetadata> subSegmentData)

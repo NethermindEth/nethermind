@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Attributes;
+using System.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 
@@ -117,14 +118,106 @@ public class Metrics
     [Description("Number of Point Evaluation precompile calls.")]
     public static long PointEvaluationPrecompile { get; set; }
 
+    public static long _IlvmContractsAnalyzed;
     [Description("Number of contracts analyzed by ILVM")] // "ILVM" is an abbreviation for "Intermediate Language Virtual Machine
-    public static long IlvmContractsAnalyzed { get; set; }
+    public static long IlvmContractsAnalyzed => _IlvmContractsAnalyzed;
+    public static void IncrementIlvmContractsAnalyzed()
+    {
+        Interlocked.Increment(ref _IlvmContractsAnalyzed);
+    }
 
-    [Description("Number of ILVM predefined pattern executions.")]
-    public static long IlvmPredefinedPatternsExecutions { get; set; }
-
+    public static long _IlvmAotPrecompiledCalls;
     [Description("Number of Ilemv precompile calls.")]
-    public static long IlvmAotPrecompiledCalls { get; set; }
+    public static long IlvmAotPrecompiledCalls => _IlvmAotPrecompiledCalls;
+    public static void IncrementIlvmAotPrecompiledCalls()
+    {
+        Interlocked.Increment(ref _IlvmAotPrecompiledCalls);
+    }
+    public static void DecrementIlvmAotPrecompiledCalls()
+    {
+        Interlocked.Decrement(ref _IlvmAotPrecompiledCalls);
+    }
+
+    public static long _IlvmAotQueueSize;
+    [Description("Number of Ilemv precompile analysis queues.")]
+    public static long IlvmAotQueueSize => _IlvmAotQueueSize;
+    public static void IncrementIlvmAotQueueSize()
+    {
+        Interlocked.Increment(ref _IlvmAotQueueSize);
+    }
+
+    public static void DecrementIlvmAotQueueSize()
+    {
+        Interlocked.Decrement(ref _IlvmAotQueueSize);
+    }
+
+    public static long _IlvmAotQueueTasksCount;
+
+    [Description("Number of Ilemv compiling tasks count.")]
+    public static long IlvmAotQueueTasksCount => _IlvmAotQueueTasksCount;
+    public static void IncrementIlvmAotQueueTasksCount()
+    {
+        Interlocked.Increment(ref _IlvmAotQueueTasksCount);
+    }
+    public static void DecrementIlvmAotQueueTasksCount()
+    {
+        Interlocked.Decrement(ref _IlvmAotQueueTasksCount);
+    }
+
+
+    public static long _IlvmAotContractsProcessed;
+
+    [Description("Number of Ilemv compiling tasks count.")]
+    public static long IlvmAotContractsProcessed => _IlvmAotContractsProcessed;
+    public static void IncrementIlvmAotContractsProcessed()
+    {
+        Interlocked.Increment(ref _IlvmAotContractsProcessed);
+    }
+
+    public static long _IlvmCurrentlyProcessing;
+    [Description("Number of Ilemv precompile contract currently being processing.")]
+    public static long IlvmCurrentlyProcessing => _IlvmCurrentlyProcessing;
+    public static void IncrementIlvmCurrentlyProcessing()
+    {
+        Interlocked.Increment(ref _IlvmCurrentlyProcessing);
+    }
+    public static void DecrementIlvmCurrentlyProcessing()
+    {
+        Interlocked.Decrement(ref _IlvmCurrentlyProcessing);
+    }
+
+    public static long _IlvmCurrentlyAnalysing;
+    [Description("Number of Ilemv precompile contract currently being analyzed.")]
+    public static long IlvmCurrentlyAnalysing => _IlvmCurrentlyAnalysing;
+    public static void IncrementIlvmCurrentlyAnalysing()
+    {
+        Interlocked.Increment(ref _IlvmCurrentlyAnalysing);
+    }
+    public static void DecrementIlvmCurrentlyAnalysing()
+    {
+        Interlocked.Decrement(ref _IlvmCurrentlyAnalysing);
+    }
+
+
+    public static long _IlvmCurrentlyCompiling;
+    [Description("Number of Ilemv precompile contract currently being compiled.")]
+    public static long IlvmCurrentlyCompiling => _IlvmCurrentlyCompiling;
+    public static void IncrementIlvmCurrentlyCompiling()
+    {
+        Interlocked.Increment(ref _IlvmCurrentlyCompiling);
+    }
+    public static void DecrementIlvmCurrentlyCompiling()
+    {
+        Interlocked.Decrement(ref _IlvmCurrentlyCompiling);
+    }
+
+    public static long _IlvmAotCacheTouched;
+    [Description("Number of Ilemv precompile contract currently being retrieved from cache.")]
+    public static long IlvmAotCacheTouched => _IlvmAotCacheTouched;
+    public static void IncrementIlvmAotCacheTouched()
+    {
+        Interlocked.Increment(ref _IlvmAotCacheTouched);
+    }
 
 
     [CounterMetric]

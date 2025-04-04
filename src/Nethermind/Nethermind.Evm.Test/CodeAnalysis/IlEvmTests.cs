@@ -2023,15 +2023,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .STOP()
                 .Done;
 
+            var hashCode = Keccak.Compute(bytecode);
+
             var address = enhancedChain.InsertCode(bytecode);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(address.ToString()));
+            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(hashCode.ToString()));
             var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
 
             Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
-            MethodInfo method = assembly.GetType("MyType").GetMethod("SumMethod");
+            MethodInfo method = assembly.GetType("ContractType").GetMethod("MoveNext");
+            Assert.That(method, Is.Not.Null);
         }
     }
 }

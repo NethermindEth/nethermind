@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.Config;
 public interface IVMConfig : IConfig
 {
-    static string DllName(string dllName) => $"Nethermind.{dllName}.g.dll";
+    static string DllName(string dllName) => $"{dllName}.Nethermind.g.c.dll";
 
     [ConfigItem(
         Description = "Set IL-EVM Activated Mode : 0- Il-evm is turned off 1- Pattern mode, 2- Precompilation mode",
@@ -44,6 +44,11 @@ public interface IVMConfig : IConfig
         Description = "Sets the path for saving Precompiled Contracts",
         DefaultValue = "PrecompiledContracts")]
     public string IlEvmPrecompiledContractsPath { get; set; }
+
+    [ConfigItem(
+        Description = "Sets Analysis max running tasks count",
+        DefaultValue = "8")]
+    public int IlEvmAnalysisMaxTasksCount { get; set; }
 
     public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;
 }

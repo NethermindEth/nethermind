@@ -56,7 +56,7 @@ internal static class OpcodeEmitter
                 method.FakeBranch(escapeLabels.jumpTable);
                 return;
             case Instruction.JUMPI:
-                Label noJump = method.DefineLabel();
+                Label noJump = method.DefineLabel(locals.GetLabelName());
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                 method.EmitCheck(nameof(Word.IsZero));
                 // if the jump condition is false, we do not jump
@@ -181,14 +181,14 @@ internal static class OpcodeEmitter
                 }
                 return;
             case Instruction.ADD:
-                EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.SUB:
-                Label pushNegItemB = method.DefineLabel();
-                Label pushItemA = method.DefineLabel();
+                Label pushNegItemB = method.DefineLabel(locals.GetLabelName());
+                Label pushItemA = method.DefineLabel(locals.GetLabelName());
                 // b - a a::b
-                Label fallbackToUInt256Call = method.DefineLabel();
-                Label endofOpcode = method.DefineLabel();
+                Label fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
+                Label endofOpcode = method.DefineLabel(locals.GetLabelName());
                 // we the two uint256 from the locals.stackHeadRef
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -198,7 +198,7 @@ internal static class OpcodeEmitter
                 method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
                 method.BranchIfTrue(pushItemA);
 
-                EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(pushItemA);
@@ -210,10 +210,10 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endofOpcode);
                 return;
             case Instruction.MUL:
-                Label push0Zero = method.DefineLabel();
-                pushItemA = method.DefineLabel();
-                Label pushItemB = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                Label push0Zero = method.DefineLabel(locals.GetLabelName());
+                pushItemA = method.DefineLabel(locals.GetLabelName());
+                Label pushItemB = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
                 // we the two uint256 from the locals.stackHeadRef
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -239,7 +239,7 @@ internal static class OpcodeEmitter
                 method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                 method.BranchIfTrue(pushItemA);
 
-                EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(push0Zero);
@@ -256,9 +256,9 @@ internal static class OpcodeEmitter
                 return;
 
             case Instruction.MOD:
-                Label pushZeroLabel = method.DefineLabel();
-                Label fallBackToOldBehavior = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+                Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -268,7 +268,7 @@ internal static class OpcodeEmitter
                 method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
                 method.BranchIfTrue(pushZeroLabel);
 
-                EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(pushZeroLabel);
@@ -276,8 +276,8 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endofOpcode);
                 return;
             case Instruction.SMOD:
-                Label bIsOneOrZero = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                Label bIsOneOrZero = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
                 method.StoreLocal(locals.wordRef256B);
@@ -286,7 +286,7 @@ internal static class OpcodeEmitter
                 method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
                 method.BranchIfTrue(bIsOneOrZero);
 
-                EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(bIsOneOrZero);
@@ -294,10 +294,10 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endofOpcode);
                 return;
             case Instruction.DIV:
-                fallBackToOldBehavior = method.DefineLabel();
-                pushZeroLabel = method.DefineLabel();
-                Label pushALabel = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
+                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+                Label pushALabel = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -314,7 +314,7 @@ internal static class OpcodeEmitter
                 method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
                 method.BranchIfTrue(pushALabel);
 
-                EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(pushZeroLabel);
@@ -331,10 +331,10 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endofOpcode);
                 return;
             case Instruction.SDIV:
-                fallBackToOldBehavior = method.DefineLabel();
-                pushZeroLabel = method.DefineLabel();
-                pushALabel = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
+                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+                pushALabel = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -360,7 +360,7 @@ internal static class OpcodeEmitter
                 method.BranchIfTrue(pushALabel);
 
                 method.MarkLabel(fallBackToOldBehavior);
-                EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitBinaryInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(pushZeroLabel);
@@ -379,9 +379,9 @@ internal static class OpcodeEmitter
                 return;
 
             case Instruction.ADDMOD:
-                push0Zero = method.DefineLabel();
-                fallbackToUInt256Call = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                push0Zero = method.DefineLabel(locals.GetLabelName());
+                fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                 method.StoreLocal(locals.wordRef256C);
@@ -394,13 +394,13 @@ internal static class OpcodeEmitter
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(fallbackToUInt256Call);
-                EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
+                EmitTrinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
                 method.MarkLabel(endofOpcode);
                 return;
             case Instruction.MULMOD:
-                push0Zero = method.DefineLabel();
-                fallbackToUInt256Call = method.DefineLabel();
-                endofOpcode = method.DefineLabel();
+                push0Zero = method.DefineLabel(locals.GetLabelName());
+                fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
+                endofOpcode = method.DefineLabel(locals.GetLabelName());
                 // we the two uint256 from the locals.stackHeadRef
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -431,7 +431,7 @@ internal static class OpcodeEmitter
                 method.BranchIfTrue(push0Zero);
 
                 method.MarkLabel(fallbackToUInt256Call);
-                EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
+                EmitTrinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
                 method.Branch(endofOpcode);
 
                 method.MarkLabel(push0Zero);
@@ -441,27 +441,27 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endofOpcode);
                 return;
             case Instruction.SHL:
-                EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitShiftUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.SHR:
-                EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitShiftUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.SAR:
-                EmitShiftInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitShiftInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.AND:
-                EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                EmitBitwiseUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                 return;
             case Instruction.OR:
-                EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                EmitBitwiseUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                 return;
             case Instruction.XOR:
-                EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                EmitBitwiseUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                 return;
             case Instruction.EXP:
-                Label powerIsZero = method.DefineLabel();
-                Label baseIsOneOrZero = method.DefineLabel();
-                Label endOfExpImpl = method.DefineLabel();
+                Label powerIsZero = method.DefineLabel(locals.GetLabelName());
+                Label baseIsOneOrZero = method.DefineLabel(locals.GetLabelName());
+                Label endOfExpImpl = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.Call(Word.GetUInt256);
@@ -521,16 +521,16 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endOfExpImpl);
                 return;
             case Instruction.LT:
-                EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitComparaisonUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.GT:
-                EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitComparaisonUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.SLT:
-                EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitComparaisonInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.SGT:
-                EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
+                EmitComparaisonInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.EQ:
                 refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
@@ -695,7 +695,7 @@ internal static class OpcodeEmitter
                 method.Call(Word.SetUInt256);
                 return;
             case Instruction.CALLDATACOPY:
-                Label endOfOpcode = method.DefineLabel();
+                Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.Call(Word.GetUInt256);
@@ -945,8 +945,8 @@ internal static class OpcodeEmitter
                 method.StoreLocal(locals.localReadonOnlySpan);
 
 
-                pushZeroLabel = method.DefineLabel();
-                Label endOfInstructionImpl = method.DefineLabel();
+                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+                Label endOfInstructionImpl = method.DefineLabel(locals.GetLabelName());
                 method.EmitCheck(nameof(Word.IsShort), locals.wordRef256A);
                 method.BranchIfFalse(pushZeroLabel);
                 method.LoadLocal(locals.wordRef256A);
@@ -975,7 +975,7 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endOfInstructionImpl);
                 return;
             case Instruction.CODECOPY:
-                endOfOpcode = method.DefineLabel();
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
                 method.Call(Word.GetUInt256);
@@ -1040,7 +1040,7 @@ internal static class OpcodeEmitter
                 method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                 return;
             case Instruction.RETURNDATACOPY:
-                endOfOpcode = method.DefineLabel();
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
@@ -1152,7 +1152,7 @@ internal static class OpcodeEmitter
                 method.Call(Word.SetUInt256);
                 return;
             case Instruction.BLOBBASEFEE:
-                Local uint256Nullable = method.DeclareLocal(typeof(UInt256?));
+                Local uint256Nullable = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
                 method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                 method.LoadBlockContext(locals, true);
                 method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
@@ -1163,8 +1163,8 @@ internal static class OpcodeEmitter
                 uint256Nullable.Dispose();
                 return;
             case Instruction.PREVRANDAO:
-                Label isPostMergeBranch = method.DefineLabel();
-                endOfOpcode = method.DefineLabel();
+                Label isPostMergeBranch = method.DefineLabel(locals.GetLabelName());
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
                 method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
                 method.LoadBlockContext(locals, true);
@@ -1185,11 +1185,11 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endOfOpcode);
                 return;
             case Instruction.BLOBHASH:
-                Label blobVersionedHashNotFound = method.DefineLabel();
-                Label indexTooLarge = method.DefineLabel();
-                endOfOpcode = method.DefineLabel();
+                Label blobVersionedHashNotFound = method.DefineLabel(locals.GetLabelName());
+                Label indexTooLarge = method.DefineLabel(locals.GetLabelName());
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
-                Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
+                Local byteMatrix = method.DeclareLocal(typeof(byte[][]), locals.GetLocalName());
                 method.LoadTxContext(locals, true);
                 method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
                 method.StoreLocal(byteMatrix);
@@ -1227,8 +1227,8 @@ internal static class OpcodeEmitter
                 byteMatrix.Dispose();
                 return;
             case Instruction.BLOCKHASH:
-                Label blockHashReturnedNull = method.DefineLabel();
-                endOfOpcode = method.DefineLabel();
+                Label blockHashReturnedNull = method.DefineLabel(locals.GetLabelName());
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.Call(Word.GetUInt256);
@@ -1263,10 +1263,10 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endOfOpcode);
                 return;
             case Instruction.SIGNEXTEND:
-                Label signIsNegative = method.DefineLabel();
-                Label endOfOpcodeHandling = method.DefineLabel();
-                Label argumentGt32 = method.DefineLabel();
-                Local wordSpan = method.DeclareLocal(typeof(Span<byte>));
+                Label signIsNegative = method.DefineLabel(locals.GetLabelName());
+                Label endOfOpcodeHandling = method.DefineLabel(locals.GetLabelName());
+                Label argumentGt32 = method.DefineLabel(locals.GetLabelName());
+                Local wordSpan = method.DeclareLocal(typeof(Span<byte>), locals.GetLocalName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.Duplicate();
@@ -1324,7 +1324,7 @@ internal static class OpcodeEmitter
             case Instruction.LOG3:
             case Instruction.LOG4:
                 var topicsCount = (sbyte)(op - Instruction.LOG0);
-                Local logEntry = method.DeclareLocal<LogEntry>();
+                Local logEntry = method.DeclareLocal<LogEntry>(locals.GetLocalName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.Call(Word.GetUInt256);
@@ -1389,7 +1389,7 @@ internal static class OpcodeEmitter
                 {
                     method.Duplicate();
                     method.LoadConstant(k);
-                    using (Local keccak = method.DeclareLocal(typeof(ValueHash256)))
+                    using (Local keccak = method.DeclareLocal(typeof(ValueHash256), locals.GetLocalName()))
                     {
                         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0) - 2, k + 1);
                         method.Call(Word.GetKeccak);
@@ -1405,7 +1405,7 @@ internal static class OpcodeEmitter
 
                 method.LoadVmState(locals, false);
 
-                Local accessTrackerLocal = method.DeclareLocal<StackAccessTracker>();
+                Local accessTrackerLocal = method.DeclareLocal<StackAccessTracker>(locals.GetLocalName());
                 method.Call(typeof(EvmState).GetProperty(nameof(EvmState.AccessTracker), BindingFlags.Instance | BindingFlags.Public).GetGetMethod());
                 method.LoadObject<StackAccessTracker>();
                 method.StoreLocal(accessTrackerLocal);
@@ -1493,8 +1493,8 @@ internal static class OpcodeEmitter
                 }
                 else
                 {
-                    Label callNonTracingMode = method.DefineLabel();
-                    Label skipBeyondCalls = method.DefineLabel();
+                    Label callNonTracingMode = method.DefineLabel(locals.GetLabelName());
+                    Label skipBeyondCalls = method.DefineLabel(locals.GetLabelName());
                     method.LoadTxTracer(locals, false);
                     method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
                     method.BranchIfFalse(callNonTracingMode);
@@ -1505,7 +1505,7 @@ internal static class OpcodeEmitter
                     method.MarkLabel(skipBeyondCalls);
                 }
 
-                endOfOpcode = method.DefineLabel();
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
                 method.Duplicate();
                 method.StoreLocal(locals.uint32A);
                 method.LoadConstant((int)EvmExceptionType.None);
@@ -1605,7 +1605,7 @@ internal static class OpcodeEmitter
                 method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                 return;
             case Instruction.EXTCODECOPY:
-                endOfOpcode = method.DefineLabel();
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 4);
                 method.Call(Word.GetUInt256);
@@ -1682,7 +1682,7 @@ internal static class OpcodeEmitter
                 method.MarkLabel(endOfOpcode);
                 return;
             case Instruction.EXTCODEHASH:
-                endOfOpcode = method.DefineLabel();
+                endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadLocal(locals.gasAvailable);
                 method.LoadSpec(locals, false);
@@ -1708,8 +1708,8 @@ internal static class OpcodeEmitter
                 method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
                 method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                pushZeroLabel = method.DefineLabel();
-                Label pushhashcodeLabel = method.DefineLabel();
+                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+                Label pushhashcodeLabel = method.DefineLabel(locals.GetLabelName());
 
                 // account exists
                 method.LoadWorldState(locals, false);
@@ -1784,8 +1784,8 @@ internal static class OpcodeEmitter
                 MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
                     .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
 
-                Label skipGasDeduction = method.DefineLabel();
-                Label happyPath = method.DefineLabel();
+                Label skipGasDeduction = method.DefineLabel(locals.GetLabelName());
+                Label happyPath = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadSpec(locals, false);
                 method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());
@@ -1814,8 +1814,8 @@ internal static class OpcodeEmitter
                 }
                 else
                 {
-                    Label skipNonTracingCall = method.DefineLabel();
-                    Label skipTracingCall = method.DefineLabel();
+                    Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
+                    Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
                     method.LoadTxTracer(locals, false);
                     method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
                     method.BranchIfFalse(skipTracingCall);
@@ -1857,9 +1857,9 @@ internal static class OpcodeEmitter
                     .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
                     .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
-                Local toPushToStack = method.DeclareLocal(typeof(UInt256?));
-                Local newStateToExe = method.DeclareLocal<object>();
-                happyPath = method.DefineLabel();
+                Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
+                Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
+                happyPath = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadVmState(locals, false);
                 method.LoadWorldState(locals, false);
@@ -1921,8 +1921,8 @@ internal static class OpcodeEmitter
                 }
                 else
                 {
-                    Label skipNonTracingCall = method.DefineLabel();
-                    Label skipTracingCall = method.DefineLabel();
+                    Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
+                    Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
                     method.LoadTxTracer(locals, false);
                     method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
                     method.BranchIfFalse(skipTracingCall);
@@ -1948,7 +1948,7 @@ internal static class OpcodeEmitter
 
                 method.MarkLabel(happyPath);
 
-                Label skipStateMachineScheduling = method.DefineLabel();
+                Label skipStateMachineScheduling = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadLocal(newStateToExe);
                 method.LoadNull();
@@ -1980,7 +1980,7 @@ internal static class OpcodeEmitter
                 method.FakeBranch(escapeLabels.returnLabel);
 
                 method.MarkLabel(skipStateMachineScheduling);
-                Label hasNoItemsToPush = method.DefineLabel();
+                Label hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadLocalAddress(toPushToStack);
                 method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
@@ -2006,9 +2006,9 @@ internal static class OpcodeEmitter
                     .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
                     .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
 
-                toPushToStack = method.DeclareLocal(typeof(UInt256?));
-                newStateToExe = method.DeclareLocal<object>();
-                happyPath = method.DefineLabel();
+                toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
+                newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
+                happyPath = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadVmState(locals, false);
 
@@ -2059,8 +2059,8 @@ internal static class OpcodeEmitter
                 }
                 else
                 {
-                    Label skipNonTracingCall = method.DefineLabel();
-                    Label skipTracingCall = method.DefineLabel();
+                    Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
+                    Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
                     method.LoadTxTracer(locals, false);
                     method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
                     method.BranchIfFalse(skipTracingCall);
@@ -2085,7 +2085,7 @@ internal static class OpcodeEmitter
                 method.FakeBranch(escapeLabels.exitLabel);
 
                 method.MarkLabel(happyPath);
-                hasNoItemsToPush = method.DefineLabel();
+                hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadLocalAddress(toPushToStack);
                 method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
@@ -2098,7 +2098,7 @@ internal static class OpcodeEmitter
 
                 method.MarkLabel(hasNoItemsToPush);
 
-                skipStateMachineScheduling = method.DefineLabel();
+                skipStateMachineScheduling = method.DefineLabel(locals.GetLabelName());
 
                 method.LoadLocal(newStateToExe);
                 method.LoadNull();

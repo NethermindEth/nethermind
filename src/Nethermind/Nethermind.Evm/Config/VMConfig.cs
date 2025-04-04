@@ -18,4 +18,5 @@ public class VMConfig : IVMConfig
     public int IlEvmAnalysisQueueMaxSize { get; set; } = 8;
     public bool IlEvmPersistPrecompiledContractsOnDisk { get; set; } = false;
     public string IlEvmPrecompiledContractsPath { get; set; } = "PrecompiledContracts";
+    public int IlEvmAnalysisMaxTasksCount { get; set; } = 8;
 }
