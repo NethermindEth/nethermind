@@ -21,7 +21,8 @@ using CallData = System.ReadOnlyMemory<byte>;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal static class EnvirementLoader
 {
-    public const int REF_MACHINECODE_INDEX = 0;
+    public const int REF_THIS_INDEX = 0;
+    public const int REF_MACHINECODE_INDEX = REF_THIS_INDEX + 1;
     public const int OBJ_SPECPROVIDER_INDEX = REF_MACHINECODE_INDEX + 1;
     public const int OBJ_BLOCKHASHPROVIDER_INDEX = OBJ_SPECPROVIDER_INDEX + 1;
     public const int OBJ_CODEINFOPROVIDER_INDEX = OBJ_BLOCKHASHPROVIDER_INDEX + 1;

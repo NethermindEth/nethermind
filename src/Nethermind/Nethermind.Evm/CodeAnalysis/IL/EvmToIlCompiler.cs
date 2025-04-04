@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Common.Utilities;
+using Lokad.ILPack;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
@@ -13,9 +14,11 @@ using Sigil;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.Loader;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -25,22 +28,53 @@ using Label = Sigil.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal static class Precompiler
 {
-    public static PrecompiledContract CompileContract(string contractName, CodeInfo codeInfo, ContractCompilerMetadata metadata, IVMConfig config)
+    public static IPrecompiledContract CompileContract(string contractName, CodeInfo codeInfo, ContractCompilerMetadata metadata, IVMConfig config)
     {
-        // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
-        // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
-        var method = Emit<PrecompiledContract>.NewDynamicMethod(contractName, doVerify: false, strictBranchVerification: true);
-        
-        EmitMoveNext(method, codeInfo, metadata, config);
-        PrecompiledContract dynEmitedDelegate = method.CreateDelegate(OptimizationOptions.All & ~OptimizationOptions.EnableBranchPatching);
-        return dynEmitedDelegate;
+        AssemblyBuilder asmBuilder;
+        if(config.IlEvmPersistPrecompiledContractsOnDisk)
+        {
+            asmBuilder = new PersistedAssemblyBuilder(new AssemblyName(contractName), typeof(Object).Assembly);
+        } else
+        {
+            asmBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(contractName), AssemblyBuilderAccess.Run);
+        }
+
+        var moduleBuilder = asmBuilder.DefineDynamicModule("MainModule");
+
+        // Define a type that implements MoveNext
+        var typeBuilder = moduleBuilder.DefineType("ContractType",
+            TypeAttributes.Public | TypeAttributes.Class);
+
+        typeBuilder.AddInterfaceImplementation(typeof(IPrecompiledContract));
+
+        // Define the MoveNext method
+        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true), codeInfo, metadata, config).CreateMethod();
+
+        // Finalize the type
+        var finalizedType = typeBuilder.CreateType();
+
+        if(config.IlEvmPersistPrecompiledContractsOnDisk)
+        {
+            var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(contractName));
+            var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
+            fileStream.SetLength(0); // Clear the file
+            ((PersistedAssemblyBuilder)asmBuilder).Save(fileStream);  // or pass filename to save into a file
+
+            fileStream.Seek(0, SeekOrigin.Begin);
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
+            finalizedType = assembly.GetType("ContractType");
+            fileStream.Close();
+        }
+
+        IPrecompiledContract contract = (IPrecompiledContract)Activator.CreateInstance(finalizedType);
+        return contract;
     }
 
-    public static void EmitMoveNext(Emit<PrecompiledContract> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<MoveNext> EmitMoveNext(Emit<MoveNext> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
-        using var locals = new Locals<PrecompiledContract>(method);
+        using var locals = new Locals<MoveNext>(method);
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
         Dictionary<int, Label> jumpDestinations = new();
@@ -344,5 +378,7 @@ internal static class Precompiler
             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
             method.Branch(exit);
         }
+
+        return method;
     }
 }

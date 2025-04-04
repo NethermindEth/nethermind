@@ -33,6 +33,8 @@ using Nethermind.Trie;
 
 using static System.Runtime.CompilerServices.Unsafe;
 using System.Reflection.Emit;
+using System.IO;
+using System.Runtime.Loader;
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
     internal class TestBlockChain : VirtualMachineTestsBase
@@ -1921,6 +1923,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Console.WriteLine(testcase.msg);
 
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+            Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContracts.dll");
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
@@ -1928,6 +1931,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IsIlEvmAggressiveModeEnabled = testcase.enableAggressiveMode,
+                IlEvmPersistPrecompiledContractsOnDisk = false,
             });
 
 
@@ -1997,6 +2001,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
             Assert.That(actual, Is.EqualTo(expected), testcase.msg);
+        }
+
+        [Test]
+        public void ILVM_AOT_Storage_Roundtrip()
+        {
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IsIlEvmAggressiveModeEnabled = true,
+                IlEvmPersistPrecompiledContractsOnDisk = true,
+                IlEvmPrecompiledContractsPath = Directory.GetCurrentDirectory(),
+            });
+
+            var bytecode = Prepare.EvmCode
+                .PushData(23)
+                .PushData(3)
+                .MUL()
+                .STOP()
+                .Done;
+
+            var address = enhancedChain.InsertCode(bytecode);
+
+            enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
+
+            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(address.ToString()));
+            var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
+
+            Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
+            MethodInfo method = assembly.GetType("MyType").GetMethod("SumMethod");
         }
     }
 }

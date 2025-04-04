@@ -714,10 +714,10 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
                 ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
-                PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
+                IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
                 int programCounter = vmState.ProgramCounter;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                if (precompiledContract(ref code,
+                if (precompiledContract.MoveNext(ref code,
                     _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
                     ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger,
                     ref chunkExecutionState))
