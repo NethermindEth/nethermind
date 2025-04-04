@@ -217,7 +217,7 @@ namespace Nethermind.Consensus.Processing
 
             foreach (var tx in txs)
             {
-                _chunkBlobs += (tx.BlobVersionedHashes?.Length ?? 0);
+                _chunkBlobs += tx.GetBlobCount();
             }
             long blobs = _chunkBlobs;
             if (blobs > 0)

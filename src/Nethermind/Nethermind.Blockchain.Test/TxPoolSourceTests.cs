@@ -39,7 +39,7 @@ public class TxPoolSourceTests
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader { }, long.MaxValue);
-        int blobsCount = txs.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0);
+        int blobsCount = txs.Sum(tx => tx.GetBlobCount());
 
         Assert.Multiple(() =>
         {

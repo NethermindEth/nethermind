@@ -22,4 +22,5 @@ public class PersistedMemoryLimit(IPruningStrategy baseStrategy, long persistedM
     public long PrunePersistedNodeMinimumTarget => 50.MiB();
 
     public int TrackedPastKeyCount => baseStrategy.TrackedPastKeyCount;
+    public int ShardBit => baseStrategy.ShardBit;
 }

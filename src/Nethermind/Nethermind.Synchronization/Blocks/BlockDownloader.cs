@@ -1,7 +1,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -181,8 +180,6 @@ namespace Nethermind.Synchronization.Blocks
         public void PruneDownloadBuffer()
         {
             _downloadRequests.Clear();
-
-            _logger.Error("==============================================PRUNE===============================================");
         }
 
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)

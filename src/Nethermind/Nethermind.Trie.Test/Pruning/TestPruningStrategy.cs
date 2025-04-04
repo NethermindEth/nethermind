@@ -10,7 +10,8 @@ namespace Nethermind.Trie.Test.Pruning
         bool pruningEnabled,
         bool shouldPrune = false,
         int? maxDepth = null,
-        int trackedPastKeyCount = 0)
+        int trackedPastKeyCount = 0,
+        int shardBit = 8)
         : IPruningStrategy
     {
         public bool PruningEnabled => pruningEnabled;
@@ -28,5 +29,6 @@ namespace Nethermind.Trie.Test.Pruning
         public long? WithPersistedMemoryLimit { get; set; }
 
         public int TrackedPastKeyCount => trackedPastKeyCount;
+        public int ShardBit => shardBit;
     }
 }

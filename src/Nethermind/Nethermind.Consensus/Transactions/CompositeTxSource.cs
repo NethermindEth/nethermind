@@ -13,11 +13,12 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly List<ITxSource> _transactionSources;
 
-        public bool SupportsBlobs => _transactionSources.Any(s => s.SupportsBlobs);
+        public bool SupportsBlobs { get; }
 
         public CompositeTxSource(params ITxSource[] transactionSources)
         {
             _transactionSources = transactionSources?.ToList() ?? throw new ArgumentNullException(nameof(transactionSources));
+            SupportsBlobs = _transactionSources.Any(s => s.SupportsBlobs);
         }
 
         public void Then(ITxSource txSource)

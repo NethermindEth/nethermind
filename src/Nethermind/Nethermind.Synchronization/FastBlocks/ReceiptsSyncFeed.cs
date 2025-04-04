@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc => _syncConfig.AncientReceiptsBarrierCalc;
         protected override Func<bool> HasPivot =>
-            () => _receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed);
+            () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
@@ -81,9 +81,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
             {
-                _pivotNumber = _syncConfig.PivotNumberParsed;
+                _pivotNumber = _blockTree.SyncPivot.BlockNumber;
                 _barrier = _syncConfig.AncientReceiptsBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();

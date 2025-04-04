@@ -155,7 +155,7 @@ namespace Nethermind.Db
                 _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
             }
 
-            public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
                 // Can't properly implement span for reading. As the decompressed span is different from the span
                 // from DB, it would crash on DangerouslyReleaseMemory.

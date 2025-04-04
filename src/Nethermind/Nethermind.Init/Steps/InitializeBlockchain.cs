@@ -38,15 +38,9 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain : IStep
+    public class InitializeBlockchain(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-
-        // ReSharper disable once MemberCanBeProtected.Global
-        public InitializeBlockchain(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly INethermindApi _api = api;
 
         public async Task Execute(CancellationToken _)
         {
@@ -58,7 +52,6 @@ namespace Nethermind.Init.Steps
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
-            setApi.TxValidator = CreateTxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
@@ -86,10 +79,6 @@ namespace Nethermind.Init.Steps
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            setApi.HeaderValidator = CreateHeaderValidator();
-            setApi.UnclesValidator = CreateUnclesValidator();
-            setApi.BlockValidator = CreateBlockValidator();
-
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
@@ -107,7 +96,7 @@ namespace Nethermind.Init.Steps
                 ? new(new(
                         _api.WorldStateManager!,
                         _api.BlockTree!.AsReadOnly(),
-                        _api.SpecProvider,
+                        _api.SpecProvider!,
                         _api.LogManager),
                     mainWorldState,
                     _api.SpecProvider!,
@@ -171,29 +160,6 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual TxValidator? CreateTxValidator(ulong v)
-        {
-            return new TxValidator(_api.SpecProvider!.ChainId);
-        }
-
-        protected virtual IBlockValidator CreateBlockValidator()
-        {
-            return new BlockValidator(
-                _api.TxValidator,
-                _api.HeaderValidator,
-                _api.UnclesValidator,
-                _api.SpecProvider,
-                _api.LogManager);
-        }
-
-        protected virtual IUnclesValidator CreateUnclesValidator()
-        {
-            return new UnclesValidator(
-                _api.BlockTree,
-                _api.HeaderValidator,
-                _api.LogManager);
-        }
-
         protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -242,13 +208,6 @@ namespace Nethermind.Init.Steps
                 _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
-
-        // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
-        protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
-            _api.BlockTree,
-            _api.SealValidator,
-            _api.SpecProvider,
-            _api.LogManager);
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
