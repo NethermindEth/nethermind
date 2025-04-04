@@ -328,7 +328,7 @@ namespace Nethermind.EngineApiProxy.Services
             {
                 // Serialize request
                 var requestJson = JsonConvert.SerializeObject(request);
-                _logger.Info($"Orchestrator sending request: {requestJson}");
+                _logger.Info($"PR -> EC: {requestJson}");
                 var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
                 // Create a request message instead of using PostAsync
@@ -392,7 +392,7 @@ namespace Nethermind.EngineApiProxy.Services
                 
                 // Parse response
                 var responseJson = await response.Content.ReadAsStringAsync();
-                _logger.Info($"Orchestrator received response: {responseJson}");
+                _logger.Info($"EC -> PR: {responseJson}");
                 
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 if (jsonRpcResponse == null)

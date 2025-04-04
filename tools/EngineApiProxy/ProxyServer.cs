@@ -45,7 +45,6 @@ namespace Nethermind.EngineApiProxy
             // Duplicate logger messages to console to ensure visibility
             _logger.Info("Setting up logging...");
             
-            _logger.Info($"Engine API Proxy initializing with config: {_config}");
             Console.WriteLine($"Engine API Proxy initializing with config: {_config}");
             
             // Validate configuration
@@ -116,6 +115,7 @@ namespace Nethermind.EngineApiProxy
 
         private async Task ProcessMessageQueueAsync(CancellationToken cancellationToken)
         {
+            // Exit with Ctrl+C
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
@@ -206,19 +206,11 @@ namespace Nethermind.EngineApiProxy
                     case "engine_newPayloadV3":
                         // Queue the newPayload message and return a placeholder response
                         // The actual request will be processed by the message queue
-                        // TODO: we should add all requests to the queue, not just newPayload
+                        // Queue the newPayload message. No needs to to queue other requests since they will be send bt CL after the newPayload is processed
                         Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
-                        
-                        // If this is a synchronous request, wait for processing to complete
-                        // Otherwise, return a placeholder success response
-                        if (request.Id != null)
-                        {
-                            response = await responseTask;
-                        }
-                        else
-                        {
-                            response = new JsonRpcResponse { Id = request.Id, Result = true };
-                        }
+
+                        // Always wait for the actual response from execution client
+                        response = await responseTask;
                         break;
                         
                     case "engine_getPayloadV3":
@@ -235,7 +227,7 @@ namespace Nethermind.EngineApiProxy
             catch (Exception ex)
             {
                 _logger.Error($"Error processing request: {ex.Message}", ex);
-                response = JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Internal error: {ex.Message}");
+                response = JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Engine API Proxy error: {ex.Message}");
             }
             
             context.Response.ContentType = "application/json";
@@ -261,13 +253,13 @@ namespace Nethermind.EngineApiProxy
                 // Add detailed logging to show validation decision
                 if (_config.ValidateAllBlocks) 
                 {
-                    _logger.Info($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
+                    _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
                     _logger.Info($"shouldValidate evaluated to: {shouldValidate}");
                 }
                 
                 if (shouldValidate)
                 {
-                    _logger.Info("Auto-validation enabled, pausing message queue");
+                    _logger.Debug("Validation enabled, pausing message queue");
                     _messageQueue.PauseProcessing();
                     
                     try
@@ -366,7 +358,7 @@ namespace Nethermind.EngineApiProxy
             catch (Exception ex)
             {
                 _logger.Error($"Error handling forkChoiceUpdated: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Error handling forkChoiceUpdated: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
             }
         }
 
@@ -375,7 +367,6 @@ namespace Nethermind.EngineApiProxy
             // This is a placeholder implementation - will be expanded in the NewPayloadHandler
             _logger.Debug($"Processing engine_newPayloadV3: {request}");
             
-            // TODO: Implement interception logic
             return await ForwardRequestToExecutionClient(request);
         }
 
@@ -400,7 +391,6 @@ namespace Nethermind.EngineApiProxy
                         _logger.Debug($"Retrieved payload for payloadId {payloadId}");
                     }
                     
-                    // TODO: Generate a synthetic engine_newPayloadV3 request from the payload
                 }
                 
                 return response;
@@ -408,7 +398,7 @@ namespace Nethermind.EngineApiProxy
             catch (Exception ex)
             {
                 _logger.Error($"Error handling getPayloadV3: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Error handling getPayloadV3: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling getPayloadV3: {ex.Message}");
             }
         }
 
@@ -493,7 +483,7 @@ namespace Nethermind.EngineApiProxy
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseBody);
                 if (jsonRpcResponse == null)
                 {
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Invalid response from EC");
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Proxy error: Invalid response from EC");
                 }
                 
                 return jsonRpcResponse;
@@ -501,7 +491,7 @@ namespace Nethermind.EngineApiProxy
             catch (Exception ex)
             {
                 _logger.Error($"Error forwarding request to EC: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Error communicating with EC: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error communicating with EC: {ex.Message}");
             }
         }
 
@@ -558,7 +548,7 @@ namespace Nethermind.EngineApiProxy
             catch (Exception ex)
             {
                 _logger.Error($"Error processing test request: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Internal error: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Engine API Proxy error: {ex.Message}");
             }
         }
     }
