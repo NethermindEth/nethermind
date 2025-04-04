@@ -94,6 +94,15 @@ namespace Nethermind.Init.Steps
 
             IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
 
+            ILogIndexStorage logIndexStorage = _set.LogIndexStorage = new LogIndexStorage(
+                _get.DbProvider.LogIndexDb,
+                _get.LogManager.GetClassLogger<LogIndexStorage>(),
+                initConfig.BaseDbPath,
+                receiptConfig.ReceiptsMigrationIOParallelism
+            );
+
+            _get.DisposeStack.Push(logIndexStorage);
+
             LogFinder logFinder = new(
                 blockTree,
                 receiptFinder,
@@ -101,6 +110,7 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
+                logIndexStorage,
                 receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
