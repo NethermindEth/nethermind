@@ -439,8 +439,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.Root,
                     processingBranch.BlocksToProcess,
                     options,
-                    blockTracer,
-                    default);
+                    blockTracer);
             }
             catch (InvalidBlockException ex)
             {

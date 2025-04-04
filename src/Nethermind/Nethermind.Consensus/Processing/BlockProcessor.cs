@@ -81,7 +81,7 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token)
+    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
