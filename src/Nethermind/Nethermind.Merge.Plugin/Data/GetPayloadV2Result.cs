@@ -15,7 +15,7 @@ public class GetPayloadV2Result<TVersionedExecutionPayload>(Block block, UInt256
 
     public virtual TVersionedExecutionPayload ExecutionPayload { get; } = TVersionedExecutionPayload.Create(block);
 
-    public bool ValidateFork(ISpecProvider specProvider) => ExecutionPayload.ValidateFork(specProvider);
+    public virtual bool ValidateFork(ISpecProvider specProvider) => ExecutionPayload.ValidateFork(specProvider);
 
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}}}";
 }

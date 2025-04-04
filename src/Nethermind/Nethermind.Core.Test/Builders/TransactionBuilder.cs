@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
@@ -161,10 +163,10 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithShardBlobTxTypeAndFieldsIfBlobTx(int blobCount = 1, bool isMempoolTx = true)
-            => TestObjectInternal.Type == TxType.Blob ? WithShardBlobTxTypeAndFields(blobCount, isMempoolTx) : this;
+        public TransactionBuilder<T> WithShardBlobTxTypeAndFieldsIfBlobTx(int blobCount = 1, bool isMempoolTx = true, IReleaseSpec? spec = null)
+            => TestObjectInternal.Type == TxType.Blob ? WithShardBlobTxTypeAndFields(blobCount, isMempoolTx, spec) : this;
 
-        public TransactionBuilder<T> WithShardBlobTxTypeAndFields(int blobCount = 1, bool isMempoolTx = true)
+        public TransactionBuilder<T> WithShardBlobTxTypeAndFields(int blobCount = 1, bool isMempoolTx = true, IReleaseSpec? spec = null)
         {
             if (blobCount is 0)
             {
@@ -176,33 +178,24 @@ namespace Nethermind.Core.Test.Builders
 
             if (isMempoolTx)
             {
-                TestObjectInternal.BlobVersionedHashes = new byte[blobCount][];
-                ShardBlobNetworkWrapper wrapper = new(
-                    blobs: new byte[blobCount][],
-                    commitments: new byte[blobCount][],
-                    proofs: new byte[blobCount][]
-                    );
+                IBlobProofsManager proofsManager = IBlobProofsManager.For(spec?.GetBlobProofVersion() ?? ProofVersion.V1);
+
+                ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([.. Enumerable.Range(1, blobCount).Select(i =>
+                {
+                    byte[] blob = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    blob[0] = (byte)(i % 256);
+                    return blob;
+                })]);
+
 
                 if (!KzgPolynomialCommitments.IsInitialized)
                 {
                     KzgPolynomialCommitments.InitializeAsync().Wait();
                 }
 
-                for (int i = 0; i < blobCount; i++)
-                {
-                    TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
-                    wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
-                    wrapper.Blobs[i][0] = (byte)(i % 256);
-                    wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                    wrapper.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+                proofsManager.ComputeProofsAndCommitments(wrapper);
 
-                    KzgPolynomialCommitments.KzgifyBlob(
-                        wrapper.Blobs[i],
-                        wrapper.Commitments[i],
-                        wrapper.Proofs[i],
-                        TestObjectInternal.BlobVersionedHashes[i].AsSpan());
-                }
-
+                TestObjectInternal.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
                 TestObjectInternal.NetworkWrapper = wrapper;
             }
             else
@@ -212,6 +205,7 @@ namespace Nethermind.Core.Test.Builders
 
             return this;
         }
+
 
         public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
         {

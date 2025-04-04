@@ -1474,7 +1474,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
@@ -1514,7 +1514,7 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV3),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
             nameof(IEngineRpcModule.engine_newPayloadV3),
-            nameof(IEngineRpcModule.engine_getBlobsV1)
+            nameof(IEngineRpcModule.engine_getBlobsV1),
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

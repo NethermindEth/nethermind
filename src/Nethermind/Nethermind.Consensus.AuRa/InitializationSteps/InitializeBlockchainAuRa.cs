@@ -244,7 +244,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return CreateTxPoolTxComparer();
     }
 
-    protected override TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+    protected override TxPool.TxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
         TxPriorityContract txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
@@ -260,7 +260,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return new TxPool.TxPool(
             _api.EthereumEcdsa!,
             _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-            new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
+            chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             _api.TxValidator!,
             _api.LogManager,

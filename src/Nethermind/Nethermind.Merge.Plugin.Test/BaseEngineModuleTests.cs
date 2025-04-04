@@ -119,6 +119,10 @@ public partial class BaseEngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
+            new GetPayloadV5Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
@@ -154,6 +158,7 @@ public partial class BaseEngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetBlobsHandlerV2(chain.TxPool),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);

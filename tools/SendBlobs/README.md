@@ -22,6 +22,7 @@ Options:
   --maxfeeperblobgas <maxFeePerBlobGas>  (Optional) Set the maximum fee per blob data.
   --feemultiplier <feeMultiplier>        (Optional) A multiplier to use for gas fees.
   --maxpriorityfee <maxPriorityFee>      (Optional) The maximum priority fee for each transaction.
+  --fork <fork>                          (Optional) Fork rules: Cancun/Prague/Osaka
 
 Commands:
   distribute  Distribute funds from an address to a number of new addresses.
@@ -87,8 +88,8 @@ sh
 <<BrokenTxs
 Issues/Options that can be intentionally added:
   1    = 0 blobs
-  2    = 1st blob is of wrong size
-  3    = 7 blobs
+  2    = 1st blob has more blobs than allowed
+  3    = 1st blob is shorten
   4    = 1st blob's wrong proof
   5    = 1st blob's wrong commitment
   6    = 1st blob with a modulo correct, but > modulo value
