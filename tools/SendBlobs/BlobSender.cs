@@ -115,7 +115,7 @@ internal class BlobSender
                 switch (@break)
                 {
                     case "1": blobCount = 0; break;
-                    case "2": blobCount = 7; break;
+                    case "2": blobCount = (int)spec.MaxBlobCount + 1; break;
                     case "14": blobCount = 100; break;
                     case "15": blobCount = 1000; break;
                 }
@@ -161,12 +161,12 @@ internal class BlobSender
 
                 switch (@break)
                 {
-                    case "3": blobs[0] = blobs[0].Take(blobs.Length - 2).ToArray(); break;
+                    case "3": blobsContainer.Blobs[0] = blobsContainer.Blobs[0].Take(blobsContainer.Blobs[0].Length - 2).ToArray(); break;
                     case "4": blobsContainer.Proofs[0][2] = (byte)~blobsContainer.Proofs[0][2]; break;
                     case "5": blobsContainer.Commitments[0][2] = (byte)~blobsContainer.Commitments[0][2]; break;
                     case "6":
-                        Array.Copy(KzgPolynomialCommitments.BlsModulus.ToBigEndian(), blobs[0], 32);
-                        blobs[0][31] += 1;
+                        Array.Copy(KzgPolynomialCommitments.BlsModulus.ToBigEndian(), blobsContainer.Blobs[0], 32);
+                        blobsContainer.Blobs[0][31] += 1;
                         break;
                     case "7": maxFeePerBlobGas = UInt256.MaxValue; break;
                     //case "8": maxFeePerBlobGas = 42_000_000_000; break;

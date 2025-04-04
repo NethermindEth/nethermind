@@ -88,8 +88,8 @@ sh
 <<BrokenTxs
 Issues/Options that can be intentionally added:
   1    = 0 blobs
-  2    = 1st blob is of wrong size
-  3    = 7 blobs
+  2    = 1st blob has more blobs than allowed
+  3    = 1st blob is shorten
   4    = 1st blob's wrong proof
   5    = 1st blob's wrong commitment
   6    = 1st blob with a modulo correct, but > modulo value
