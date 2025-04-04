@@ -20,10 +20,12 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using DotNetty.Buffers;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -37,8 +39,20 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly IBlockchainBridge _blockchainBridge;
     private readonly ulong _secondsPerSlot;
     private readonly IBlockFinder _blockFinder;
+    private readonly IStateReader _stateReader;
+    private readonly IReceiptFinder _receiptFinder;
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot, IBlockFinder? blockFinder)
+    public DebugRpcModule(
+        ILogManager logManager,
+        IDebugBridge debugBridge,
+        IJsonRpcConfig jsonRpcConfig,
+        ISpecProvider specProvider,
+        IBlockchainBridge? blockchainBridge,
+        ulong? secondsPerSlot,
+        IBlockFinder? blockFinder,
+        IStateReader stateReader,
+        IReceiptFinder receiptFinder
+        )
     {
         _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -48,6 +62,8 @@ public class DebugRpcModule : IDebugRpcModule
         _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
         _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -67,6 +83,28 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+        SearchResult<Hash256> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(transactionHash);
+        if (blockHashSearch.IsError)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(blockHashSearch);
+        }
+
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!));
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(block.Header);
+        }
+        // HasStateForBlocks End
+
         GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -99,6 +137,22 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockhash));
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(block.Header);
+        }
+        // HasStateForBlocks End
+
         var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -113,6 +167,22 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(blockParameter);
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(block.Header);
+        }
+        // HasStateForBlocks End
+
         long? blockNo = blockParameter.BlockNumber;
         if (!blockNo.HasValue)
         {
@@ -133,6 +203,18 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(blockRlp);
+
+        if (!_stateReader.HasStateForBlock(blockHeader))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(blockHeader);
+        }
+
+        // HasStateForBlocks End
+
         var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -146,6 +228,18 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(blockRlp);
+
+        if (!_stateReader.HasStateForBlock(blockHeader))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(blockHeader);
+        }
+
+        // HasStateForBlocks End
+
         var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
         var transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
         if (transactionTrace is null)
@@ -169,6 +263,18 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(blockRlp);
+
+        if (!_stateReader.HasStateForBlock(blockHeader))
+        {
+            return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(blockHeader);
+        }
+
+        // HasStateForBlocks End
+
         try
         {
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
@@ -194,6 +300,24 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(blockNumber);
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(block.Header);
+        }
+
+        // HasStateForBlocks End
+
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
         try
@@ -215,6 +339,24 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // HasStateForBlocks Start
+
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(block.Header);
+        }
+
+        // HasStateForBlocks End
+
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
         try
@@ -369,6 +511,22 @@ public class DebugRpcModule : IDebugRpcModule
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
+        // HasStateForBlocks Start
+
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<IEnumerable<string>>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<IEnumerable<string>>(block.Header);
+        }
+        // HasStateForBlocks End
+
         IEnumerable<string>? files = _debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBlockToFile)} request {blockHash}, result: {files}");
@@ -380,6 +538,22 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource cancellationTokenSource = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        // HasStateForBlocks Start
+
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        if (blockSearch.IsError)
+        {
+            return ResultWrapper<IEnumerable<string>>.Fail(blockSearch);
+        }
+
+        Block block = blockSearch.Object!;
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<IEnumerable<string>>(block.Header);
+        }
+        // HasStateForBlocks End
 
         IEnumerable<string>? files = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
 
@@ -400,7 +574,39 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        // HasStateForBlocks Start
+        Block block;
+
+        if (blockParameter == null)
+        {
+            block = _blockFinder.FindHeadBlock();
+            if (block == null)
+            {
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>.Fail("Block parameter is null and no Head Block found");
+            }
+        }
+        else
+        {
+            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(blockParameter);
+            if (blockSearch.IsError)
+            {
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>.Fail(blockSearch);
+            }
+            block = blockSearch.Object!;
+        }
+
+        if (!_stateReader.HasStateForBlock(block.Header))
+        {
+            return GetStateFailureResult<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>(block.Header);
+        }
+
+        // HasStateForBlocks End
+
         return new SimulateTxExecutor<GethLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
     }
+
+    private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
+        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+
 }

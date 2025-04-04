@@ -42,6 +42,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
     private readonly IWorldStateManager _worldStateManager;
+    private readonly IStateReader _stateReader;
+    private readonly IReceiptFinder _receiptFinder;
 
     public DebugModuleFactory(
         IWorldStateManager worldStateManager,
@@ -60,7 +62,11 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
-        ILogManager logManager)
+        ILogManager logManager,
+        IStateReader stateReader,
+        IReceiptFinder receiptFinder
+
+        )
     {
         _worldStateManager = worldStateManager;
         _dbProvider = dbProvider.AsReadOnly(false);
@@ -79,6 +85,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     }
 
     public override IDebugRpcModule Create()
@@ -114,7 +122,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _syncModeSelector,
             _badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree, _stateReader, _receiptFinder);
     }
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
