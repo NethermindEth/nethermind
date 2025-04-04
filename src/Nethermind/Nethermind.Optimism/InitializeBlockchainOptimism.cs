@@ -8,11 +8,9 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -86,7 +84,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            new OptimismWithdrawals.Processor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
             preWarmer: preWarmer);
     }
 
