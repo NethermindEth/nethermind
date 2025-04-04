@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -74,9 +75,10 @@ public class SyncDispatcherTests
         {
         }
 
-        public int GetCurrentRequestLimit(PeerInfo peerInfo, RequestType requestType)
+        public Task<int?> EstimateRequestLimit(RequestType bodies, FastBlocksAllocationStrategy approximateAllocationStrategy,
+            AllocationContexts blocks, CancellationToken token)
         {
-            return 1024;
+            return Task.FromResult<int?>(null);
         }
 
         public void WakeUpAll()

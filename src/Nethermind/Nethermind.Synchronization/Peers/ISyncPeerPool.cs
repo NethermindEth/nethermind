@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
@@ -31,7 +32,15 @@ namespace Nethermind.Synchronization.Peers
 
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
-        int GetCurrentRequestLimit(PeerInfo peerInfo, RequestType requestType);
+        /// <summary>
+        /// Estimate the request limit for a specific request type for the peer which get allocated next based
+        /// on the allocation strategy and context. May not be accurate as different peer may get allocated.
+        /// </summary>
+        Task<int?> EstimateRequestLimit(
+            RequestType bodies,
+            FastBlocksAllocationStrategy approximateAllocationStrategy,
+            AllocationContexts blocks,
+            CancellationToken token);
 
         /// <summary>
         /// Wakes up all the sleeping peers.

@@ -133,17 +133,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockInfo?[] infos = null;
 
-                int requestSize = GethSyncLimits.MaxBodyFetch;
-
                 // Set the request size depending on the approximate allocation strategy.
-                SyncPeerAllocation syncPeerAllocation = await _syncPeerPool.Allocate(_approximateAllocationStrategy, AllocationContexts.Blocks, 1000, token);
-                if (syncPeerAllocation is not null && syncPeerAllocation.HasPeer)
-                {
-                    requestSize = _syncPeerPool.GetCurrentRequestLimit(
-                        syncPeerAllocation.Current!,
-                        RequestType.Bodies);
-                    _syncPeerPool.Free(syncPeerAllocation);
-                }
+                int requestSize =
+                    (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _approximateAllocationStrategy, AllocationContexts.Blocks, token))
+                    ?? GethSyncLimits.MaxBodyFetch;
 
                 while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>
                        {

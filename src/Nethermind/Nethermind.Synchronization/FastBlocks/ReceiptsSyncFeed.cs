@@ -133,17 +133,10 @@ namespace Nethermind.Synchronization.FastBlocks
             ReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                int requestSize = GethSyncLimits.MaxReceiptFetch;
-
                 // Set the request size depending on the approximate allocation strategy.
-                SyncPeerAllocation syncPeerAllocation = await _syncPeerPool.Allocate(_approximateAllocationStrategy, AllocationContexts.Receipts, 1000, token);
-                if (syncPeerAllocation is not null && syncPeerAllocation.HasPeer)
-                {
-                    requestSize = _syncPeerPool.GetCurrentRequestLimit(
-                        syncPeerAllocation.Current!,
-                        RequestType.Receipts);
-                    _syncPeerPool.Free(syncPeerAllocation);
-                }
+                int requestSize =
+                    (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, _approximateAllocationStrategy, AllocationContexts.Receipts, token))
+                    ?? GethSyncLimits.MaxReceiptFetch;
 
                 BlockInfo?[] infos = null;
                 while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>

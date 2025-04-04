@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -125,9 +126,15 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public int GetCurrentRequestLimit(PeerInfo peerInfo, RequestType requestType)
+        public async Task<int?> EstimateRequestLimit(RequestType requestType, FastBlocksAllocationStrategy allocationStrategy, AllocationContexts context, CancellationToken token)
         {
-            return _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+            // So, to know which peer is next, we just try to allocate it, and then free it back.
+            SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
+            if (!syncPeerAllocation.HasPeer) return null;
+
+            int requestSize = _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+            Free(syncPeerAllocation);
+            return requestSize;
         }
 
         public void Start()

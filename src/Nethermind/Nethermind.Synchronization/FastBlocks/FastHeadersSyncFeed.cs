@@ -345,19 +345,11 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    int requestSize = GethSyncLimits.MaxHeaderFetch;
-
                     // Set the request size depending on the approximate allocation strategy.
                     // NOTE: Cannot async because of the lock.
-                    SyncPeerAllocation syncPeerAllocation = _syncPeerPool.Allocate(_approximateAllocationStrategy,
-                        AllocationContexts.Headers, 1000, cancellationToken).Result;
-                    if (syncPeerAllocation is not null && syncPeerAllocation.HasPeer)
-                    {
-                        requestSize = _syncPeerPool.GetCurrentRequestLimit(
-                            syncPeerAllocation.Current!,
-                            RequestType.Headers);
-                        _syncPeerPool.Free(syncPeerAllocation);
-                    }
+                    int requestSize =
+                        _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Receipts, cancellationToken).Result
+                        ?? GethSyncLimits.MaxHeaderFetch;
 
                     batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
