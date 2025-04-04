@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Init;
 using Nethermind.State;
@@ -19,6 +20,7 @@ public class WorldStateModule : Module
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
             .Map<INodeStorage, PruningTrieStateFactoryOutput>((m) => m.NodeStorage)
+            .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
 
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
             ;

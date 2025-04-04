@@ -37,6 +37,8 @@ using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
 using System.IO.Abstractions;
+using Autofac;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -50,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IBlockchainBridge Bridge { get; private set; } = null!;
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
-        public IReceiptFinder ReceiptFinder { get; private set; } = null!;
+        public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
 
@@ -72,6 +74,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             private readonly TestRpcBlockchain _blockchain = blockchain;
 
+            private IBlockFinder? _blockFinderOverride = null;
+            private IReceiptFinder? _receiptFinderOverride = null;
+
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
                 _blockchain.Bridge = blockchainBridge;
@@ -86,13 +91,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             public Builder<T> WithBlockFinder(IBlockFinder blockFinder)
             {
-                _blockchain.BlockFinder = blockFinder;
+                _blockFinderOverride = blockFinder;
                 return this;
             }
 
             public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
             {
-                _blockchain.ReceiptFinder = receiptFinder;
+                _receiptFinderOverride = receiptFinder;
                 return this;
             }
             public Builder<T> WithTxSender(ITxSender txSender)
@@ -125,9 +130,38 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+            public Task<T> Build()
             {
-                return (T)await _blockchain.Build(specProvider, initialValues, addBlockOnStart);
+                return Build((ISpecProvider?)null);
+            }
+
+            public Task<T> Build(ISpecProvider? specProvider)
+            {
+                return Build((builder) =>
+                {
+                    if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                });
+            }
+
+            public Task<T> Build(UInt256 initialValues)
+            {
+                return Build((builder) =>
+                {
+                    builder.ConfigureTestConfiguration(conf =>
+                    {
+                        conf.AccountInitialValue = initialValues;
+                    });
+                });
+            }
+
+            public async Task<T> Build(Action<ContainerBuilder> configurer)
+            {
+                return (T)await _blockchain.Build(configurer: (builder) =>
+                {
+                    configurer?.Invoke(builder);
+                    if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
+                    if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
+                });
             }
         }
 
@@ -183,14 +217,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.LogManager
         ).Create();
 
-        protected override async Task<TestBlockchain> Build(
-            ISpecProvider? specProvider = null,
-            UInt256? initialValues = null,
-            bool addBlockOnStart = true,
-            long slotTime = 1)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
-            specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
+            await base.Build(builder =>
+            {
+                builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                configurer?.Invoke(builder);
+            });
+
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
@@ -209,14 +243,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SimulateTransactionProcessorFactory.Instance,
                 LimboLogs.Instance);
 
-            ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
-            BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
-            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
+            ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);
-            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
             EthRpcModule = _ethRpcModuleBuilder(this);

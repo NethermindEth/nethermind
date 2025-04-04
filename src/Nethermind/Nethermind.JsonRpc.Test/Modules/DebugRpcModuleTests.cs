@@ -42,9 +42,9 @@ public partial class DebugRpcModuleTests
             Blockchain = blockchain;
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
+        public static async Task<Context> Create(bool isAura = false)
         {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();

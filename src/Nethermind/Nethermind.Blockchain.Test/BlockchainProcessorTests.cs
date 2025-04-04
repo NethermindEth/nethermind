@@ -7,17 +7,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -506,7 +511,24 @@ public class BlockchainProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_process_fast_sync()
     {
-        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
+        {
+            // Need the release spec to be fixed
+            builder.AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
+            {
+                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                IReadOnlyStateProvider readOnlyState = ctx.Resolve<IReadOnlyStateProvider>();
+                return new ChainHeadInfoProvider(
+                    new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
+                    blockTree,
+                    readOnlyState,
+                    new CodeInfoRepository())
+                {
+                    HasSynced = true
+                };
+            });
+        });
         await testBlockchain.BuildSomeBlocks(5);
 
         When.ProcessingBlocks

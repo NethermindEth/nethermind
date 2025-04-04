@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -503,8 +504,13 @@ public partial class EngineModuleTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
+            builder
+                .AddSingleton<IBlockTree>(blockTree)
+                .AddSingleton(new TestBlockchain.Configuration()
+                {
+                    SuggestGenesisOnStart = false,
+                }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
@@ -522,8 +528,12 @@ public partial class EngineModuleTests
             .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton(new TestBlockchain.Configuration()
+            {
+                SuggestGenesisOnStart = false,
+            }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
