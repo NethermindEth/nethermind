@@ -197,7 +197,7 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, state, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, state, LogManager), SpecProvider, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, state, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);

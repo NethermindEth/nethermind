@@ -77,7 +77,7 @@ public class MultipleUnsignedOperations
 
         Console.WriteLine(MuirGlacier.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
+        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
 
         _environment = new ExecutionEnvironment
         (
@@ -97,7 +97,7 @@ public class MultipleUnsignedOperations
     [Benchmark]
     public void ExecuteCode()
     {
-        _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+        _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
         _stateProvider.Reset();
     }
 

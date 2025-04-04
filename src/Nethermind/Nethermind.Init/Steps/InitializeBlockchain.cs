@@ -185,7 +185,6 @@ namespace Nethermind.Init.Steps
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
-                codeInfoRepository,
                 _api.LogManager);
 
             return virtualMachine;
