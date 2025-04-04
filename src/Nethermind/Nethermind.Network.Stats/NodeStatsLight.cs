@@ -419,4 +419,13 @@ public class NodeStatsLight : INodeStats
 
         throw new ArgumentException($"Unsupported request type: {requestType}");
     }
+
+    public int GetCurrentRequestLimit(RequestType requestType)
+    {
+        if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
+        if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
+        if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
+    }
 }

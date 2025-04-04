@@ -19,6 +19,7 @@ public class LatencyAndMessageSizeBasedRequestSizer
     private readonly TimeSpan _lowerLatencyWatermark;
     private readonly long _maxResponseSize;
     private readonly AdaptiveRequestSizer _requestSizer;
+    public int RequestSize => _requestSizer.RequestSize;
 
     public LatencyAndMessageSizeBasedRequestSizer(
         int minRequestLimit,

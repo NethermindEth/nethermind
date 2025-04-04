@@ -46,5 +46,10 @@ namespace Nethermind.Stats
         /// Depending on the latency, the limit will be adjusted for subsequent calls.
         /// </summary>
         Task<TResponse> RunLatencyRequestSizer<TResponse>(RequestType requestType, Func<int, Task<TResponse>> func);
+
+        /// <summary>
+        /// Get the current request limit for the specific request type.
+        /// </summary>
+        int GetCurrentRequestLimit(RequestType requestType);
     }
 }
