@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (currentTx.SpentGas > gasRemaining)
+                if (currentTx.GasLimit > gasRemaining)
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
                 }
