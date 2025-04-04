@@ -74,6 +74,11 @@ public class SyncDispatcherTests
         {
         }
 
+        public int GetCurrentRequestLimit(PeerInfo peerInfo, RequestType requestType)
+        {
+            return 1024;
+        }
+
         public void WakeUpAll()
         {
             throw new NotImplementedException();

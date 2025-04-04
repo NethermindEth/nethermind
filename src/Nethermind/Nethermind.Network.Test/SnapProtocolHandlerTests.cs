@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,7 +48,20 @@ public class SnapProtocolHandlerTests
             set => _messageSerializationService = value;
         }
 
-        public INodeStatsManager NodeStatsManager { get; set; } = Substitute.For<INodeStatsManager>();
+        private INodeStatsManager? _nodeStatsManager;
+        public INodeStatsManager NodeStatsManager
+        {
+            get
+            {
+                if (_nodeStatsManager is null)
+                {
+                    _nodeStatsManager = Substitute.For<INodeStatsManager>();
+                    _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
+                }
+                return _nodeStatsManager;
+            }
+            set => _nodeStatsManager = value;
+        }
 
 
         private SnapProtocolHandler? _snapProtocolHandler;
@@ -68,6 +82,7 @@ public class SnapProtocolHandlerTests
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
         private readonly List<long> _recordedResponseBytesLength = new();
+
         public Context WithResponseBytesRecorder
         {
             get

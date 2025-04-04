@@ -425,6 +425,19 @@ public class NodeStatsLight : INodeStats
         if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
         if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
         if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+        if (requestType == RequestType.Headers)
+        {
+            switch (Node.ClientType)
+            {
+                // TODO: Find out other clients limit
+                case NodeClientType.Nethermind:
+                    return 1024;
+                case NodeClientType.Geth:
+                    return 192;
+                default:
+                    return 192;
+            }
+        }
 
         throw new ArgumentException($"Unsupported request type: {requestType}");
     }
