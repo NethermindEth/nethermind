@@ -75,6 +75,12 @@ public class SyncDispatcherTests
         {
         }
 
+        public Task<int?> EstimateRequestLimit(RequestType bodies, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts blocks,
+            CancellationToken token)
+        {
+            return Task.FromResult<int?>(null);
+        }
+
         public Task<int?> EstimateRequestLimit(RequestType bodies, FastBlocksAllocationStrategy approximateAllocationStrategy,
             AllocationContexts blocks, CancellationToken token)
         {

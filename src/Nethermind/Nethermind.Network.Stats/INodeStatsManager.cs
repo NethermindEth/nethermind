@@ -22,7 +22,6 @@ namespace Nethermind.Stats
         void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent);
         bool HasFailedValidation(Node node);
         void ReportTransferSpeedEvent(Node node, TransferSpeedType transferSpeedType, long value);
-        int GetCurrentRequestLimit(Node node, RequestType requestType);
     }
 
     public enum TransferSpeedType
