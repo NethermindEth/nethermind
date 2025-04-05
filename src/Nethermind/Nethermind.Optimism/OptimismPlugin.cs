@@ -198,20 +198,14 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         var beaconSync = _api.Context.Resolve<BeaconSync>();
-        var simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
 
         IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
-        IEngineRpcModule engineRpcModule = new EngineRpcModule(
-            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new NewPayloadHandler(
+
+        NewPayloadHandler newPayloadHandler = new(
                 _api.BlockValidator,
                 _api.BlockTree,
                 posSwitcher,
-                payloadPreparationService,
                 beaconSync,
                 beaconPivot,
                 _blockCacheService,
@@ -220,8 +214,15 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts,
-                simulateBlockProduction: simulateBlockProduction),
+                _api.Config<IReceiptConfig>().StoreReceipts);
+        newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+
+        IEngineRpcModule engineRpcModule = new EngineRpcModule(
+            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            newPayloadHandler,
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,
@@ -236,7 +237,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
-                simulateBlockProduction),
+                _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),

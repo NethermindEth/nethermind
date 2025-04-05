@@ -123,7 +123,6 @@ public partial class BaseEngineModuleTests
                 chain.BlockValidator,
                 chain.BlockTree,
                 chain.PoSSwitcher,
-                chain.PayloadPreparationService!,
                 chain.BeaconSync,
                 chain.BeaconPivot,
                 blockCacheService,

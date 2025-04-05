@@ -372,4 +372,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _timer.Stop();
         _shutdown.Cancel();
     }
+
+    public void CancelBlockProductionForParent(object? sender, BlockHeader parentHeader)
+    {
+        PayloadAttributes payloadAttributes = parentHeader.GenerateSimulatedPayload();
+        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
+        // GetPayload cancels the request
+        _ = GetPayload(payloadId);
+    }
 }
