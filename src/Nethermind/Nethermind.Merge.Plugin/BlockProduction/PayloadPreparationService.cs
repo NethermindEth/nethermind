@@ -116,8 +116,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 else
                 {
                     newContext.Dispose();
+                    return currentContext;
                 }
-                return currentContext;
             });
 
 
