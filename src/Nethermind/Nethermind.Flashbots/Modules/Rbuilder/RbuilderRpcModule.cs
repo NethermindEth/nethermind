@@ -30,13 +30,13 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
     {
+        var stopwatch = Stopwatch.StartNew();
         BlockHeader? blockHeader = blockFinder.FindHeader(blockParam);
         if (blockHeader is null)
         {
             return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        var stopwatch = Stopwatch.StartNew();
         IOverridableWorldScope worldScope = _overridableWorldScopePool.Get();
         try
         {
