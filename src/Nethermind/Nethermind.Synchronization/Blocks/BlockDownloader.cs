@@ -52,6 +52,10 @@ namespace Nethermind.Synchronization.Blocks
         // This var is updated as blocks get downloaded.
         private int _estimateTxPerBlock = 100;
 
+        // On the off chance that something goes wrong somewhere, request completely hang for example. Retry
+        // the request.
+        private static readonly TimeSpan RequestHardTimeout = TimeSpan.FromSeconds(30);
+
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the current batch
         // size of batch size and number of desired concurrent peer. It is capped because of memory limit and to
         // reduce workload by `_forwardHeaderProvider`.
@@ -221,7 +225,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (!_downloadRequests.TryGetValue(blockHeader.Hash!, out BlockEntry? entry))
                 {
                     blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
-                    entry = new BlockEntry(parentHeader, blockHeader, null, null, null, false, false);
+                    entry = new BlockEntry(parentHeader, blockHeader, null, null, null);
                     _downloadRequests.TryAdd(blockHeader.Hash, entry);
                 }
                 parentHeader = blockHeader;
@@ -623,37 +627,34 @@ namespace Nethermind.Synchronization.Blocks
             BlockHeader Header,
             Block? Block,
             TxReceipt[]? Receipts,
-            PeerInfo? PeerInfo,
-            bool BlockRequestSent,
-            bool ReceiptRequestSent
+            PeerInfo? PeerInfo
         )
         {
             public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
-            private bool BlockRequestSent { get; set; } = BlockRequestSent;
-            public bool NeedBodyDownload => Block is null && !BlockRequestSent;
+            private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
+            public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
             public void MarkBlockRequestSent()
             {
-                BlockRequestSent = true;
+                _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
             }
             public void RetryBlockRequest()
             {
-                BlockRequestSent = false;
+                _blockRequestDeadline = DateTimeOffset.MinValue;
             }
 
-            private bool ReceiptRequestSent { get; set; } = ReceiptRequestSent;
-
+            private DateTimeOffset _receiptRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedReceiptDownload =>
                 Block is not null &&
                 !HasReceipt &&
-                !ReceiptRequestSent;
+                _receiptRequestDeadline < DateTimeOffset.Now;
 
             public void MarkReceiptRequestSent()
             {
-                ReceiptRequestSent = true;
+                _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
             }
             public void RetryReceiptRequest()
             {
-                ReceiptRequestSent = false;
+                _receiptRequestDeadline = DateTimeOffset.MinValue;
             }
 
             public PeerInfo? PeerInfo { get; set; } = PeerInfo;
