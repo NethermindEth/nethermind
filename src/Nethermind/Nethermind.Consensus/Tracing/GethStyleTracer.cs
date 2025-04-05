@@ -112,7 +112,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, worldState, specProvider);
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
+            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken), cancellationToken);
             return blockTracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -151,7 +151,7 @@ public class GethStyleTracer(
 
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
     }
@@ -168,7 +168,7 @@ public class GethStyleTracer(
 
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
     }
@@ -183,7 +183,7 @@ public class GethStyleTracer(
 
         try
         {
-            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
+            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -220,7 +220,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, worldState, specProvider);
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
             return new GethLikeTxTraceCollection(tracer.BuildResult());
         }
         catch

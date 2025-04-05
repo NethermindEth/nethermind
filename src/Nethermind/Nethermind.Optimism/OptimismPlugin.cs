@@ -52,6 +52,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
+    private OptimismPayloadPreparationService? _payloadPreparationService;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -190,6 +191,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.TimerFactory,
             _api.LogManager,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        _payloadPreparationService = payloadPreparationService;
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -199,15 +201,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
-        IEngineRpcModule engineRpcModule = new EngineRpcModule(
-            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new NewPayloadHandler(
+
+        NewPayloadHandler newPayloadHandler = new(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 posSwitcher,
                 beaconSync,
                 beaconPivot,
@@ -217,7 +214,19 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts),
+                _api.Config<IReceiptConfig>().StoreReceipts);
+        bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+        if (simulateBlockProduction)
+        {
+            newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+        }
+
+        IEngineRpcModule engineRpcModule = new EngineRpcModule(
+            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            newPayloadHandler,
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,
@@ -232,8 +241,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
+                simulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
@@ -277,7 +285,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             blockProducer);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize => true;
 

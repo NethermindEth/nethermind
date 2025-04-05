@@ -15,5 +15,5 @@ public interface IBlockProducer
         BlockHeader? parentHeader = null,
         IBlockTracer? blockTracer = null,
         PayloadAttributes? payloadAttributes = null,
-        CancellationToken? cancellationToken = null);
+        CancellationToken cancellationToken = default);
 }

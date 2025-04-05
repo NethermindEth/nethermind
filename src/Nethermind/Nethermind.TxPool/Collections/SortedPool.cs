@@ -134,14 +134,14 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
             using var lockRelease = Lock.Acquire();
 
             IEnumerable<KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>>> buckets = _buckets;
             if (where is not null)
             {
-                buckets = buckets.Where(kvp => where(kvp.Key));
+                buckets = buckets.Where(kvp => kvp.Value.Count > 0 && where.Invoke((kvp.Key, kvp.Value.Min!)));
             }
             return buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }

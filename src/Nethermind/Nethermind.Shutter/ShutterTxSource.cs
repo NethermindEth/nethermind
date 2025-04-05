@@ -30,7 +30,7 @@ public class ShutterTxSource(
 
     public bool SupportsBlobs => false;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (!shutterConfig.Validator)
         {
@@ -87,14 +87,17 @@ public class ShutterTxSource(
 
     private void CancelWaitForTransactions(ulong slot, ulong taskId)
     {
-        if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
+        lock (_syncObject)
         {
-            if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+            if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
             {
-                waitTask.Tcs.TrySetException(new OperationCanceledException());
-                waitTask.Ctr.Dispose();
+                if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+                {
+                    waitTask.Tcs.TrySetException(new OperationCanceledException());
+                    waitTask.Ctr.Dispose();
+                }
+                slotWaitTasks.Remove(taskId);
             }
-            slotWaitTasks.Remove(taskId);
         }
     }
 
@@ -124,5 +127,10 @@ public class ShutterTxSource(
     }
 
     public void Dispose()
-        => _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
+    {
+        lock (_syncObject)
+        {
+            _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
+        }
+    }
 }
