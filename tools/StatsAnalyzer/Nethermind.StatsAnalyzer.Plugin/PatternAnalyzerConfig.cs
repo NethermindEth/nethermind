@@ -1,4 +1,5 @@
 using Nethermind.Evm;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
@@ -22,9 +23,9 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
     public string ProcessingMode { get; set; } = "sequential";
     public string Sort { get; set; } = "ascending";
 
-    public StatsAnalyzerConfig GetStatsAnalyzerConfig()
+    public PatternStatsAnalyzerConfig GetStatsAnalyzerConfig()
     {
-        var config = new StatsAnalyzerConfig
+        var config = new PatternStatsAnalyzerConfig
         {
             Sketch = GetSketchConfig(),
             TopN = AnalyzerTopN,

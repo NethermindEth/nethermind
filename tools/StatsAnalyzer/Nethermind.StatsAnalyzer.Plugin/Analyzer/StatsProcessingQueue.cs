@@ -2,9 +2,9 @@ using Nethermind.Core.Resettables;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
-public sealed class StatsProcessingQueue<T,U>(
-    DisposableResettableList<T> buffer,
-    IStatsAnalyzer<T,U> statsAnalyzer,
+public sealed class StatsProcessingQueue<TData,TStat>(
+    DisposableResettableList<TData> buffer,
+    IStatsAnalyzer<TData,TStat> statsAnalyzer,
     CancellationToken ct)
     : IDisposable
 {
@@ -16,7 +16,7 @@ public sealed class StatsProcessingQueue<T,U>(
         GC.SuppressFinalize(this);
     }
 
-    public void Enqueue(T item)
+    public void Enqueue(TData item)
     {
         buffer.Add(item);
     }

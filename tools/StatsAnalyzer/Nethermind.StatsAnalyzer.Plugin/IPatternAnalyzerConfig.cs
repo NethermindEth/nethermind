@@ -1,5 +1,6 @@
 using Nethermind.Config;
 using Nethermind.Evm;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin;
@@ -81,7 +82,7 @@ public interface IPatternAnalyzerConfig : IConfig
 
     HashSet<Instruction> GetIgnoreSet();
 
-    StatsAnalyzerConfig GetStatsAnalyzerConfig();
+    PatternStatsAnalyzerConfig GetStatsAnalyzerConfig();
 
     CmSketchConfig GetSketchConfig();
 }

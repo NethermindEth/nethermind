@@ -1,8 +1,9 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Evm;
 using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
 public readonly record struct Stat(NGram Ngram, ulong Count);
 
@@ -17,7 +18,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction,ulong,Stat>
     private NGram _ngram;
     private double _sketchResetError;
 
-    public PatternStatsAnalyzer(StatsAnalyzerConfig config) : this(config.TopN,
+    public PatternStatsAnalyzer(PatternStatsAnalyzerConfig config) : this(config.TopN,
         new CmSketchBuilder().Build(config.Sketch),
         config.Capacity, config.MinSupport, config.BufferSizeForSketches, config.SketchResetOrReuseThreshold)
     {

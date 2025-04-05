@@ -10,7 +10,7 @@ public abstract class TopNAnalyzer<TData, TEncoding, TStat> : IStatsAnalyzer<TDa
 
         protected readonly object Lock = new();
         protected readonly int TopN;
-        protected readonly Dictionary<TEncoding, ulong> TopNMap = new();
+        protected readonly Dictionary<TEncoding, ulong> TopNMap;
         protected readonly PriorityQueue<TEncoding, ulong> TopNQueue;
         protected ulong MinSupport = 1;
         protected ulong Max = 1;

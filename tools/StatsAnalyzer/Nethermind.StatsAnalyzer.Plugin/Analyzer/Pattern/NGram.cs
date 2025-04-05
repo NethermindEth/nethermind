@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Evm;
 
-namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
 public readonly struct NGram : IEquatable<NGram>
 {

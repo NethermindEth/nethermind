@@ -1,6 +1,6 @@
-namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
-public class StatsAnalyzerConfig
+public class PatternStatsAnalyzerConfig
 {
     public required CmSketchConfig Sketch { get; set; }
     public int TopN { get; set; }

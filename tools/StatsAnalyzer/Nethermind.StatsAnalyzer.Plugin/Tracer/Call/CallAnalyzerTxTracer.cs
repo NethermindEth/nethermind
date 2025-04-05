@@ -6,6 +6,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
 using Nethermind.PatternAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 

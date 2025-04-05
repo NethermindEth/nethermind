@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.PatternAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
