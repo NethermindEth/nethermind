@@ -339,14 +339,20 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 {
                     // Inform current improvement that we need results now
                     if (!skipCancel)
+                    {
                         blockContext.CancelOngoingImprovements();
 
-                    using CancellationTokenSource cts = new();
-                    Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
-                    Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
-                    if (completedTask != timeout)
+                        using CancellationTokenSource cts = new();
+                        Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
+                        Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
+                        if (completedTask != timeout)
+                        {
+                            cts.Cancel();
+                        }
+                    }
+                    else
                     {
-                        cts.Cancel();
+                        await blockContext.ImprovementTask;
                     }
                 }
                 else

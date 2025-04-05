@@ -491,7 +491,7 @@ public class CliqueBlockProducer : IBlockProducer
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 
-        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit);
+        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
         Block block = new BlockToProduce(
             header,
             selectedTxs,

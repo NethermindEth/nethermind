@@ -137,7 +137,7 @@ public partial class EngineModuleTests
     {
         public bool SupportsBlobs { get; }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             foreach (var item in transactions)
             {
