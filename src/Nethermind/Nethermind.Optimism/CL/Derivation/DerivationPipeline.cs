@@ -26,7 +26,6 @@ public class DerivationPipeline(
 
     public async Task<PayloadAttributesRef[]> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch, CancellationToken token)
     {
-        // TODO: propagate CancellationToken
         if (logger.IsInfo) logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
         ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
@@ -83,7 +82,7 @@ public class DerivationPipeline(
 
     private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch, CancellationToken token)
     {
-        ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
+        ulong numberOfL1Origins = (ulong)BigInteger.PopCount(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
         L1Block lastL1Origin = await l1Bridge.GetBlock(lastL1OriginNum, token);
         if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck))

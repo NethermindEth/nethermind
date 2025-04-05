@@ -46,13 +46,6 @@ public class Driver : IDisposable
 
     public async Task Run(CancellationToken token)
     {
-        await Task.WhenAll(
-            MainLoop(token)
-        );
-    }
-
-    private async Task MainLoop(CancellationToken token)
-    {
         while (!token.IsCancellationRequested)
         {
             BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
