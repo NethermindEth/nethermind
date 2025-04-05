@@ -60,6 +60,7 @@ namespace Nethermind.TxPool
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
+        private readonly Task _headProcessing;
 
         public event EventHandler<Block>? TxPoolHeadChanged;
 
@@ -175,7 +176,7 @@ namespace Nethermind.TxPool
                 _timer.Start();
             }
 
-            ProcessNewHeads();
+            _headProcessing = ProcessNewHeads();
         }
 
         public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
@@ -222,63 +223,71 @@ namespace Nethermind.TxPool
                         $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
-
-        private void ProcessNewHeads()
+        
+        private async Task ProcessNewHeads()
         {
-            Task.Factory.StartNew(async () =>
+            try
             {
-                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                await Task.Run(ProcessNewHeadLoop);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", ex);
+            }
+        }
+
+        private async Task ProcessNewHeadLoop()
+        {
+            while (await _headBlocksChannel.Reader.WaitToReadAsync())
+            {
+                while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                 {
-                    _hashCache.ClearCurrentBlockCache();
-                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
+                    // Clear snapshot
+                    _transactionSnapshot = null;
+                    _blobTransactionSnapshot = null;
+                    try
                     {
-                        // Clear snapshot
-                        _transactionSnapshot = null;
-                        _blobTransactionSnapshot = null;
-                        try
+                        ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
+                        if (!CanUseCache(args.Block, accountChanges))
                         {
-                            ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                            if (!CanUseCache(args.Block, accountChanges))
-                            {
-                                // Not sequential block, reset cache
-                                _accountCache.Reset();
-                            }
-                            else
-                            {
-                                // Sequential block, just remove changed accounts from cache
-                                _accountCache.RemoveAccounts(accountChanges);
-                            }
-                            args.Block.AccountChanges = null;
-                            accountChanges?.Dispose();
-
-                            _lastBlockNumber = args.Block.Number;
-                            _lastBlockHash = args.Block.Hash;
-
-                            ReAddReorganisedTransactions(args.PreviousBlock);
-                            RemoveProcessedTransactions(args.Block);
-                            UpdateBuckets();
-                            TxPoolHeadChanged?.Invoke(this, args.Block);
-                            Metrics.TransactionCount = _transactions.Count;
-                            Metrics.BlobTransactionCount = _blobTransactions.Count;
+                            // Not sequential block, reset cache
+                            _accountCache.Reset();
                         }
-                        catch (Exception e)
+                        else
                         {
-                            if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                            // Sequential block, just remove changed accounts from cache
+                            _accountCache.RemoveAccounts(accountChanges);
                         }
+                        args.Block.AccountChanges = null;
+                        accountChanges?.Dispose();
+
+                        _lastBlockNumber = args.Block.Number;
+                        _lastBlockHash = args.Block.Hash;
+
+                        ReAddReorganisedTransactions(args.PreviousBlock);
+                        RemoveProcessedTransactions(args.Block);
+
+                        if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced)
+                        {
+                            _hashCache.ClearCurrentBlockCache();
+                        }
+
+                        UpdateBuckets();
+                        TxPoolHeadChanged?.Invoke(this, args.Block);
+                        Metrics.TransactionCount = _transactions.Count;
+                        Metrics.BlobTransactionCount = _blobTransactions.Count;
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                     }
                 }
+            }
 
-                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
-                {
-                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
-                }
-            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
             {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", t.Exception);
-                }
-            });
+                return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+            }
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
