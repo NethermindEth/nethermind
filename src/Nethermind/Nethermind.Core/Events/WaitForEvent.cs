@@ -18,11 +18,7 @@ public static class Wait
         TaskCompletionSource completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void handler(object? sender, T t)
         {
-            if (sender is Exception ex)
-            {
-                completion.TrySetException(ex);
-            }
-            else if (condition(t))
+            if (condition(t))
             {
                 completion.TrySetResult();
             }
