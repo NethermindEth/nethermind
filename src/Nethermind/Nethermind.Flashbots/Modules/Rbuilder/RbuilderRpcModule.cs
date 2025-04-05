@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -34,6 +35,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
+        var stopwatch = Stopwatch.StartNew();
         IOverridableWorldScope worldScope = _overridableWorldScopePool.Get();
         try
         {
@@ -105,6 +107,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
             worldState.Commit(releaseSpec);
             worldState.CommitTree(blockHeader.Number + 1);
+            stopwatch.Stop();
+            Console.WriteLine($"RootHash {stopwatch.ElapsedMilliseconds}");
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally

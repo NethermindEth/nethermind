@@ -101,8 +101,8 @@ public class ValidateSubmissionHandler
 
         string payloadStr = $"BuilderBlock: {payload}";
 
-        if (_logger.IsInfo)
-            _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
+        // if (_logger.IsInfo)
+        //     _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
         if (!payload.TryGetBlock(out Block? block))
         {
@@ -162,7 +162,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        _logger.Info($"Validated block Hash: {block.Header.Hash} Number: {block.Header.Number} ParentHash: {block.Header.ParentHash}");
+        //_logger.Info($"Validated block Hash: {block.Header.Hash} Number: {block.Header.Number} ParentHash: {block.Header.ParentHash}");
 
         return true;
     }
@@ -198,7 +198,7 @@ public class ValidateSubmissionHandler
 
         error = null;
 
-        _logger.Info($"Validated blobs bundle with {totalBlobsLength} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
+        //_logger.Info($"Validated blobs bundle with {totalBlobsLength} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
 
         return true;
     }
