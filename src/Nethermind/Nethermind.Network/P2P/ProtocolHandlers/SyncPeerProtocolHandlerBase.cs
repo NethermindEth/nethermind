@@ -57,23 +57,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
-        private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
-            minRequestLimit: 1,
-            maxRequestLimit: 128,
-
-            // In addition to the byte limit, we also try to keep the latency of the get block bodies between these two
-            // watermark. This reduce timeout rate, and subsequently disconnection rate.
-            lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
-            upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
-
-            // When the bodies message size exceed this, we try to reduce the maximum number of block for this peer.
-            // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
-            // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
-            // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
-            maxResponseSize: 3_000_000,
-            initialRequestSize: 4
-        );
-
         protected ClockKeyCache<ValueHash256>? _notifiedTransactions;
         protected ClockKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
 
@@ -90,7 +73,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
-
         }
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -106,7 +88,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return new OwnedBlockBodies([]);
             }
 
-            OwnedBlockBodies blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+            OwnedBlockBodies blocks = await _nodeStats.RunSizeAndLatencyRequestSizer<OwnedBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
             return blocks;

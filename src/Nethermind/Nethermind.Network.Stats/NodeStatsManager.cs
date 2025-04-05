@@ -171,6 +171,11 @@ namespace Nethermind.Stats
             stats.AddTransferSpeedCaptureEvent(type, value);
         }
 
+        public int GetCurrentRequestLimit(Node node, RequestType requestType)
+        {
+            return GetOrAdd(node).GetCurrentRequestLimit(requestType);
+        }
+
         public void Dispose()
         {
             _cleanupTimer.Dispose();
