@@ -16,20 +16,21 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.SyncLimits;
 using NonBlocking;
+using Prometheus;
 
 namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloader : IForwardSyncController
     {
-        // This includes both body and receipt
-        public static readonly TimeSpan SyncBatchDownloadTimeUpperBound = TimeSpan.FromMilliseconds(8000);
-        public static readonly TimeSpan SyncBatchDownloadTimeLowerBound = TimeSpan.FromMilliseconds(5000);
-        public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
+        private readonly BlocksSyncPeerAllocationStrategy _estimatedAllocationStrategy = new(0);
 
         private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
 
@@ -44,15 +45,17 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ILogger _logger;
 
-        // These are rough estimate as per-peer the batch size is different. This is mainly used to adjust the batch
-        // size between start of chain where block size is small and end of chain where block size is large.
-        private SyncBatchSize _syncBatchSize;
-        private SyncBatchSize _receiptBatchSize;
+        // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
+        private const int MaxTxInBuffer = 200000;
+        private const int MinEstimateTxPerBlock = 10;
+
+        // This var is updated as blocks get downloaded.
+        private int _estimateTxPerBlock = 100;
 
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the current batch
         // size of batch size and number of desired concurrent peer. It is capped because of memory limit and to
         // reduce workload by `_forwardHeaderProvider`.
-        private int HeaderLookupSize => Math.Min(Math.Max(_syncBatchSize.Current, _receiptBatchSize.Current) * 10, 1024);
+        private int HeaderLookupSize => MaxTxInBuffer / _estimateTxPerBlock;
 
         private ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
@@ -83,8 +86,6 @@ namespace Nethermind.Synchronization.Blocks
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
-            _syncBatchSize = syncBatchSize ?? new SyncBatchSize(logManager);
-            _receiptBatchSize = new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -172,7 +173,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (satisfiedEntry.Count == 0) // Nothing left to process
                 {
-                    return AssembleRequest(headers, downloadReceipts);
+                    return await AssembleRequest(headers, downloadReceipts, cancellation);
                 }
             }
         }
@@ -200,12 +201,19 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private BlocksRequest? AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldDownloadReceipt)
+        private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
             bool? bodiesOnly = null; // Otherwise receipts only
 
             IList<BlockHeader> receiptsToDownload = new List<BlockHeader>();
             IList<BlockHeader> bodiesToDownload = new List<BlockHeader>();
+
+            int bodiesRequestSize =
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                ?? GethSyncLimits.MaxBodyFetch;
+            int receiptsRequestSize =
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, _estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                ?? GethSyncLimits.MaxReceiptFetch;
 
             BlockHeader parentHeader = headers[0];
             foreach (var blockHeader in headers.Skip(1))
@@ -237,11 +245,11 @@ namespace Nethermind.Synchronization.Blocks
                     bodiesOnly = false;
                 }
 
-                if (bodiesToDownload.Count >= _syncBatchSize.Current)
+                if (bodiesToDownload.Count >= bodiesRequestSize)
                 {
                     break;
                 }
-                if (receiptsToDownload.Count >= _receiptBatchSize.Current)
+                if (receiptsToDownload.Count >= receiptsRequestSize)
                 {
                     break;
                 }
@@ -286,6 +294,8 @@ namespace Nethermind.Synchronization.Blocks
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            string resultStr = string.Empty;
+            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int receiptsCount = 0;
 
@@ -320,6 +330,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
+                    resultStr = " invalid block";
                     entry.BlockRequestSent = false;
                     continue;
                 }
@@ -327,7 +338,21 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
                 entry.Block = block;
                 entry.PeerInfo = peer;
+                blocks.Add(block);
                 bodiesCount++;
+            }
+
+            if (result == SyncResponseHandlingResult.OK)
+            {
+                if (bodiesCount > 0)
+                {
+                    long txCount = 0;
+                    foreach (var block in blocks)
+                    {
+                        txCount += block.Transactions?.Length ?? 0;
+                    }
+                    _estimateTxPerBlock = (int)Math.Max(txCount / blocks.Count, MinEstimateTxPerBlock);
+                }
             }
 
             for (int i = 0; i < response.ReceiptsRequests.Count; i++)
@@ -353,12 +378,20 @@ namespace Nethermind.Synchronization.Blocks
 
                 Block block = entry.Block!;
 
+                if (block is null)
+                {
+                    entry.BlockRequestSent = false;
+                    entry.ReceiptRequestSent = false;
+                    continue;
+                }
+
                 if (_receiptsRecovery.TryRecover(block, receipts, false) == ReceiptsRecoveryResult.Fail)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "receipt recovery failed");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.ReceiptRequestSent = false;
+                    resultStr = " failed recovery";
                     continue;
                 }
                 if (!ValidateReceiptsRoot(block, receipts))
@@ -368,6 +401,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipt root");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.BlockRequestSent = false;
+                    resultStr = " invalid receipt";
                     continue;
                 }
 
@@ -384,50 +418,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
-                }
-
-                if (bodiesCount > 0)
-                {
-                    if (bodiesCount <= _syncBatchSize.Current / 2)
-                    {
-                        _syncBatchSize.Shrink();
-                        if (_logger.IsTrace && bodiesCount != _syncBatchSize.Current)
-                            _logger.Trace($"Bodies shrink to {_syncBatchSize.Current}");
-                    }
-                    else if (bodiesCount >= _syncBatchSize.Current)
-                    {
-                        _syncBatchSize.Expand();
-                        if (_logger.IsTrace && bodiesCount != _syncBatchSize.Current)
-                            _logger.Trace($"Bodies expand to {_syncBatchSize.Current}");
-                    }
-                }
-
-                if (receiptsCount > 0)
-                {
-                    if (receiptsCount <= _receiptBatchSize.Current / 2)
-                    {
-                        _receiptBatchSize.Shrink();
-                        if (_logger.IsTrace && receiptsCount != _receiptBatchSize.Current)
-                            _logger.Trace($"Receipts shrink to {_receiptBatchSize.Current}");
-                    }
-                    else if (receiptsCount >= _receiptBatchSize.Current)
-                    {
-                        _receiptBatchSize.Expand();
-                        if (_logger.IsTrace && receiptsCount != _receiptBatchSize.Current)
-                            _logger.Trace($"Receipts expand to {_receiptBatchSize.Current}");
-                    }
-                }
-            }
-
-            if (receiptsCount + bodiesCount == 0)
-            {
-                if (response.ReceiptsRequests.Count > 0)
-                {
-                    _receiptBatchSize.Shrink();
-                }
-                if (response.BodiesRequests.Count > 0)
-                {
-                    _syncBatchSize.Shrink();
+                    resultStr = " empty response";
                 }
             }
 
