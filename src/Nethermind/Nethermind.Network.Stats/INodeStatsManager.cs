@@ -36,7 +36,6 @@ namespace Nethermind.Stats
 
     public enum RequestType
     {
-        NodeData,
         Headers,
         Bodies,
         Receipts,

@@ -81,12 +81,6 @@ public class SyncDispatcherTests
             return Task.FromResult<int?>(null);
         }
 
-        public Task<int?> EstimateRequestLimit(RequestType bodies, FastBlocksAllocationStrategy approximateAllocationStrategy,
-            AllocationContexts blocks, CancellationToken token)
-        {
-            return Task.FromResult<int?>(null);
-        }
-
         public void WakeUpAll()
         {
             throw new NotImplementedException();
