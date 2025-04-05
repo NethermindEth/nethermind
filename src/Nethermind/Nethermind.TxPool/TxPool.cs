@@ -223,7 +223,7 @@ namespace Nethermind.TxPool
                         $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
-        
+
         private async Task ProcessNewHeads()
         {
             try
