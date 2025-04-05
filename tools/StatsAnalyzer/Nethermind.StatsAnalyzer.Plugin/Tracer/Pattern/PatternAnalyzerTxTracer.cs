@@ -17,7 +17,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
     private readonly HashSet<Instruction> _ignoreSet;
     private readonly PatternStatsAnalyzer _patternStatsAnalyzer;
     private readonly SortOrder _sort;
-    private StatsProcessingQueue<Instruction,Stat>? _queue;
+    private StatsProcessingQueue<Instruction, Stat>? _queue;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
         PatternStatsAnalyzer patternStatsAnalyzer, SortOrder sort, CancellationToken ct)
@@ -25,7 +25,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         _ignoreSet = ignoreSet;
         _patternStatsAnalyzer = patternStatsAnalyzer;
         _buffer = buffer;
-        _queue = new StatsProcessingQueue<Instruction,Stat>(buffer, patternStatsAnalyzer, ct);
+        _queue = new StatsProcessingQueue<Instruction, Stat>(buffer, patternStatsAnalyzer, ct);
         _ct = ct;
         _sort = sort;
         IsTracingInstructions = true;
@@ -42,7 +42,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new StatsProcessingQueue<Instruction,Stat>(_buffer, _patternStatsAnalyzer, _ct);
+            _queue = new StatsProcessingQueue<Instruction, Stat>(_buffer, _patternStatsAnalyzer, _ct);
             q?.Dispose();
         }
     }

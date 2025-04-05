@@ -4,16 +4,14 @@
 using System.Collections.Generic;
 using System.IO.Abstractions.TestingHelpers;
 using System.Threading;
+using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.PatternAnalyzer.Plugin.Types;
-using Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 using Nethermind.Specs;
-using Nethermind.StatsAnalyzer.Plugin.Analyzer;
-using Nethermind.StatsAnalyzer.Plugin.Tracer;
 using NUnit.Framework;
 using PatternAnalyzerFileTracer = Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern.PatternAnalyzerFileTracer;
 
@@ -51,12 +49,15 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
         var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
-        _patternStatsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
+        _patternStatsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
+            .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
 
-        _tracer = new PatternAnalyzerFileTracer(new(), 1, 100, _patternStatsAnalyzer, new HashSet<Instruction>(), _fileSystem,
+        _tracer = new PatternAnalyzerFileTracer(new DisposableResettableList<Instruction>(), 1, 100,
+            _patternStatsAnalyzer, new HashSet<Instruction>(), _fileSystem,
             _logger, 1, ProcessingMode.Sequential, SortOrder.Descending, _testFileName, CancellationToken.None);
-        _tracerIgnore = new PatternAnalyzerFileTracer(new(), 1, 100, _patternStatsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
+        _tracerIgnore = new PatternAnalyzerFileTracer(new DisposableResettableList<Instruction>(), 1, 100,
+            _patternStatsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
             ProcessingMode.Sequential,
             SortOrder.Descending, _testIgnoreFileName, CancellationToken.None);
     }
@@ -193,6 +194,5 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             },
             """{"initialBlockNumber":15537396,"currentBlockNumber":15537396,"errorPerItem":0.03,"confidence":0.9375,"stats":[{"pattern":"PUSH1 PUSH1","bytes":[96,96],"count":5},{"pattern":"PUSH1 PUSH1 PUSH1","bytes":[96,96,96],"count":4},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96],"count":3},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96,96],"count":2},{"pattern":"PUSH1 PUSH1 PUSH1 PUSH1 PUSH1 PUSH1","bytes":[96,96,96,96,96,96],"count":1}]}"""
         );
-
     }
 }

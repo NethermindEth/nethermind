@@ -3,7 +3,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Evm;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
-using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 using NUnit.Framework;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Test;

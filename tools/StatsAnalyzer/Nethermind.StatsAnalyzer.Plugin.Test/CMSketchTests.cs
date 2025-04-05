@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using FluentAssertions;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
-using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 using NUnit.Framework;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Test;

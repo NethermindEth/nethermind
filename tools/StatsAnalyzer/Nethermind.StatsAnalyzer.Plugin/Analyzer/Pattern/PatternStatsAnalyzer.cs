@@ -7,7 +7,7 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
 public readonly record struct Stat(NGram Ngram, ulong Count);
 
-public class PatternStatsAnalyzer : TopNAnalyzer<Instruction,ulong,Stat>
+public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
 {
     private readonly int _currentSketch = 0;
 
@@ -36,8 +36,6 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction,ulong,Stat>
 
     public double Error => _sketchBuffer.Sum(sketch => sketch?.ErrorPerItem ?? 0);
     public double Confidence => _sketchBuffer[0].Confidence;
-
-
 
 
     private void ResetSketchAtError()
@@ -130,36 +128,28 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction,ulong,Stat>
 
     public override IEnumerable<Stat> Stats(SortOrder order)
     {
-
         lock (Lock)
         {
-            switch(order)
+            switch (order)
             {
-                case SortOrder.Unordered :
-                        foreach (var (ngram, count) in TopNQueue.UnorderedItems)
-                        yield return new Stat(new NGram(ngram), count);
-                        break;
-                case SortOrder.Ascending :
-                        var queue = new PriorityQueue<ulong, ulong>(TopN);
-                        while (queue.Count > 0)
-                        {
-                            if (queue.TryDequeue(out var ngram, out var count))
-                    yield return new Stat(new NGram(ngram), count);
-                        }
-                        break;
-                case SortOrder.Descending :
-                    var queueDecending = new PriorityQueue<ulong, ulong>(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
+                case SortOrder.Unordered:
                     foreach (var (ngram, count) in TopNQueue.UnorderedItems)
-                    {
-                        queueDecending.Enqueue(ngram, count);
-                    }
-                    while (queueDecending.Count > 0)
-                    {
-                        if (queueDecending.TryDequeue(out var ngram, out var count))
-                    yield return new Stat(new NGram(ngram), count);
-                    }
+                        yield return new Stat(new NGram(ngram), count);
                     break;
-
+                case SortOrder.Ascending:
+                    var queue = new PriorityQueue<ulong, ulong>(TopN);
+                    while (queue.Count > 0)
+                        if (queue.TryDequeue(out var ngram, out var count))
+                            yield return new Stat(new NGram(ngram), count);
+                    break;
+                case SortOrder.Descending:
+                    var queueDecending =
+                        new PriorityQueue<ulong, ulong>(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
+                    foreach (var (ngram, count) in TopNQueue.UnorderedItems) queueDecending.Enqueue(ngram, count);
+                    while (queueDecending.Count > 0)
+                        if (queueDecending.TryDequeue(out var ngram, out var count))
+                            yield return new Stat(new NGram(ngram), count);
+                    break;
             }
         }
     }

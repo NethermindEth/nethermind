@@ -23,7 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Core.Test\Nethermind.Core.Test.csproj"/>
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj"/>
-    <ProjectReference Include="..\Nethermind.StatsAnalyzer.Plugin\Nethermind.StatsAnalyzer.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.StatsAnalyzer.Plugin\Nethermind.StatsAnalyzer.Plugin.csproj"/>
   </ItemGroup>
 
 </Project>

@@ -18,14 +18,14 @@ public sealed class CallAnalyzerTxTracer : TxTracer
     private readonly CallStatsAnalyzer _callStatsAnalyzer;
     private readonly CancellationToken _ct;
     private readonly SortOrder _sort;
-    private StatsProcessingQueue<Address,CallStat>? _queue;
+    private StatsProcessingQueue<Address, CallStat>? _queue;
 
     public CallAnalyzerTxTracer(DisposableResettableList<Address> buffer,
         CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct)
     {
         _callStatsAnalyzer = callStatsAnalyzer;
         _buffer = buffer;
-        _queue = new StatsProcessingQueue<Address,CallStat>(buffer, (CallStatsAnalyzer)callStatsAnalyzer, ct);
+        _queue = new StatsProcessingQueue<Address, CallStat>(buffer, (CallStatsAnalyzer)callStatsAnalyzer, ct);
         _ct = ct;
         _sort = sort;
         IsTracingActions = true;
@@ -37,7 +37,7 @@ public sealed class CallAnalyzerTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new StatsProcessingQueue<Address,CallStat>(_buffer, _callStatsAnalyzer, _ct);
+            _queue = new StatsProcessingQueue<Address, CallStat>(_buffer, _callStatsAnalyzer, _ct);
             q?.Dispose();
         }
     }
