@@ -260,7 +260,7 @@ public class EthereumL1Bridge : IL1Bridge
     public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash, CancellationToken token)
     {
         ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
-        while (result is null )
+        while (result is null)
         {
             token.ThrowIfCancellationRequested();
             if (_logger.IsWarn) _logger.Warn($"Unable to get L1 receipts by hash({blockHash})");
