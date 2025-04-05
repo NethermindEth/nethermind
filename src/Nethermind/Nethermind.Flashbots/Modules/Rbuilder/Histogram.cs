@@ -70,7 +70,7 @@ internal class Histogram
         // Using Ceiling ensures that for p=1.0 we target the last element.
         var targetRank = (long)Math.Ceiling(_totalCount * percentile);
         long currentCumulativeCount = 0;
-        
+
         for (var value = MinValue; value <= MaxValue; value++)
         {
             currentCumulativeCount += _buckets[value];
@@ -89,4 +89,5 @@ internal class Histogram
     public int GetP50() => GetPercentile(0.50);
     public int GetP90() => GetPercentile(0.90);
     public int GetP99() => GetPercentile(0.99);
+    public long Count() => _totalCount;
 }
