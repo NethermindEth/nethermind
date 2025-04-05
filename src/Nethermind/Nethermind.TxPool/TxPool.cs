@@ -32,7 +32,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IDisposable
+    public class TxPool : ITxPool, IAsyncDisposable
     {
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
@@ -61,6 +61,7 @@ namespace Nethermind.TxPool
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
         private readonly Task _headProcessing;
+        private readonly CancellationTokenSource _cts;
 
         public event EventHandler<Block>? TxPoolHeadChanged;
 
@@ -111,6 +112,7 @@ namespace Nethermind.TxPool
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
+            _cts = new();
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
@@ -230,6 +232,7 @@ namespace Nethermind.TxPool
             {
                 await Task.Run(ProcessNewHeadLoop);
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", ex);
@@ -238,7 +241,7 @@ namespace Nethermind.TxPool
 
         private async Task ProcessNewHeadLoop()
         {
-            while (await _headBlocksChannel.Reader.WaitToReadAsync())
+            while (await _headBlocksChannel.Reader.WaitToReadAsync(_cts.Token))
             {
                 while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                 {
@@ -825,16 +828,19 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs>? RemovedPending;
         public event EventHandler<TxEventArgs>? EvictedPending;
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             if (_isDisposed) return;
             _isDisposed = true;
             _timer?.Dispose();
+            _cts.Cancel();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
             _transactions.Removed -= OnRemovedTx;
+
+            await _headProcessing;
         }
 
         private void TimerOnElapsed(object? sender, EventArgs e)
