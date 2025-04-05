@@ -49,6 +49,9 @@ namespace Nethermind.Synchronization.Blocks
         private const int MaxTxInBuffer = 200000;
         private const int MinEstimateTxPerBlock = 10;
 
+        // Header lookup need to be limited, because `IForwardHeaderProvider.GetBlockHeaders` can be slow.
+        private const int MaxHeaderLookup = 4 * 1024;
+
         // This var is updated as blocks get downloaded.
         private int _estimateTxPerBlock = 100;
 
@@ -59,7 +62,7 @@ namespace Nethermind.Synchronization.Blocks
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the current batch
         // size of batch size and number of desired concurrent peer. It is capped because of memory limit and to
         // reduce workload by `_forwardHeaderProvider`.
-        private int HeaderLookupSize => MaxTxInBuffer / _estimateTxPerBlock;
+        private int HeaderLookupSize => Math.Min(MaxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
 
         private ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
@@ -296,7 +299,6 @@ namespace Nethermind.Synchronization.Blocks
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
-            string resultStr = string.Empty;
             using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int receiptsCount = 0;
@@ -332,7 +334,6 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
-                    resultStr = " invalid block";
                     entry.RetryBlockRequest();
                     continue;
                 }
@@ -394,7 +395,6 @@ namespace Nethermind.Synchronization.Blocks
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "receipt recovery failed");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryReceiptRequest();
-                    resultStr = " failed recovery";
                     continue;
                 }
                 if (!ValidateReceiptsRoot(block, receipts))
@@ -404,7 +404,6 @@ namespace Nethermind.Synchronization.Blocks
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipt root");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryReceiptRequest();
-                    resultStr = " invalid receipt";
                     continue;
                 }
 
@@ -421,7 +420,6 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
-                    resultStr = " empty response";
                 }
             }
 
