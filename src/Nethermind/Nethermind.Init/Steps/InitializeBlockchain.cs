@@ -301,7 +301,8 @@ namespace Nethermind.Init.Steps
                     {
                         Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
                         ValueHash256 codeHash = new ValueHash256(assembly.GetName().Name!);
-                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly.GetName().Name!) as IPrecompiledContract;
+                        MethodInfo method = ;
+                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly!.GetType("ContractType")!.FullName!) as IPrecompiledContract;
                         IlAnalyzer.AddIledCode(codeHash, precompiledContract!);
                     }
                 }
