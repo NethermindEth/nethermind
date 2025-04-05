@@ -215,7 +215,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts);
-        newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+        bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+        if (simulateBlockProduction)
+        {
+            newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+        }
 
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -237,7 +241,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
+                simulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
