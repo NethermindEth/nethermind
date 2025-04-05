@@ -85,6 +85,8 @@ public class VirtualMachine : IVirtualMachine
             IlEvmAnalysisThreshold = 4,
             IsIlEvmAggressiveModeEnabled = true,
             IlEvmAnalysisMaxTasksCount = 8,
+            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmPrecompiledContractsPath = "E:\\ILVM\\database\\contractsIL\\",
         };
 
         switch (_vmConfig.IlEvmEnabledMode)

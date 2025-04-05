@@ -58,14 +58,13 @@ internal static class Precompiler
         if(config.IlEvmPersistPrecompiledContractsOnDisk)
         {
             var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(contractName));
-            var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
+            using var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
             fileStream.SetLength(0); // Clear the file
             ((PersistedAssemblyBuilder)asmBuilder).Save(fileStream);  // or pass filename to save into a file
 
             fileStream.Seek(0, SeekOrigin.Begin);
             var assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
             finalizedType = assembly.GetType("ContractType");
-            fileStream.Close();
         }
 
         IPrecompiledContract contract = (IPrecompiledContract)Activator.CreateInstance(finalizedType);
