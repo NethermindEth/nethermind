@@ -226,9 +226,9 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 parentHeader = blockHeader;
 
-                if ((bodiesOnly ?? true) && entry.Block is null && !entry.BlockRequestSent)
+                if ((bodiesOnly ?? true) && entry.NeedBodyDownload)
                 {
-                    entry.BlockRequestSent = true;
+                    entry.MarkBlockRequestSent();
                     bodiesToDownload.Add(blockHeader);
                     bodiesOnly = true;
                 }
@@ -236,11 +236,9 @@ namespace Nethermind.Synchronization.Blocks
                 if (
                     shouldDownloadReceipt &&
                     !(bodiesOnly ?? false) &&
-                    entry.Block is not null &&
-                    !entry.HasReceipt &&
-                    !entry.ReceiptRequestSent)
+                    entry.NeedReceiptDownload)
                 {
-                    entry.ReceiptRequestSent = true;
+                    entry.MarkReceiptRequestSent();
                     receiptsToDownload.Add(blockHeader);
                     bodiesOnly = false;
                 }
@@ -309,14 +307,14 @@ namespace Nethermind.Synchronization.Blocks
 
                 if ((response.Bodies?.Length ?? 0) <= i)
                 {
-                    entry.BlockRequestSent = false;
+                    entry.RetryBlockRequest();
                     continue;
                 }
 
                 BlockBody? body = response.Bodies[i];
                 if (body is null)
                 {
-                    entry.BlockRequestSent = false;
+                    entry.RetryBlockRequest();
                     continue;
                 }
 
@@ -331,7 +329,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
                     resultStr = " invalid block";
-                    entry.BlockRequestSent = false;
+                    entry.RetryBlockRequest();
                     continue;
                 }
 
@@ -365,14 +363,14 @@ namespace Nethermind.Synchronization.Blocks
 
                 if ((response.Receipts?.Count ?? 0) <= i)
                 {
-                    entry.ReceiptRequestSent = false;
+                    entry.RetryReceiptRequest();
                     continue;
                 }
 
                 TxReceipt[]? receipts = response.Receipts[i];
                 if (receipts is null)
                 {
-                    entry.ReceiptRequestSent = false;
+                    entry.RetryReceiptRequest();
                     continue;
                 }
 
@@ -380,8 +378,9 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (block is null)
                 {
-                    entry.BlockRequestSent = false;
-                    entry.ReceiptRequestSent = false;
+                    // Could happen if the buffer is reduced and then reenlarged.
+                    entry.RetryBlockRequest();
+                    entry.RetryReceiptRequest();
                     continue;
                 }
 
@@ -390,7 +389,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "receipt recovery failed");
                     result = SyncResponseHandlingResult.LesserQuality;
-                    entry.ReceiptRequestSent = false;
+                    entry.RetryReceiptRequest();
                     resultStr = " failed recovery";
                     continue;
                 }
@@ -400,7 +399,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipt root");
                     result = SyncResponseHandlingResult.LesserQuality;
-                    entry.BlockRequestSent = false;
+                    entry.RetryReceiptRequest();
                     resultStr = " invalid receipt";
                     continue;
                 }
@@ -630,8 +629,33 @@ namespace Nethermind.Synchronization.Blocks
         )
         {
             public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
-            public bool BlockRequestSent { get; set; } = BlockRequestSent;
-            public bool ReceiptRequestSent { get; set; } = ReceiptRequestSent;
+            private bool BlockRequestSent { get; set; } = BlockRequestSent;
+            public bool NeedBodyDownload => Block is null && !BlockRequestSent;
+            public void MarkBlockRequestSent()
+            {
+                BlockRequestSent = true;
+            }
+            public void RetryBlockRequest()
+            {
+                BlockRequestSent = false;
+            }
+
+            private bool ReceiptRequestSent { get; set; } = ReceiptRequestSent;
+
+            public bool NeedReceiptDownload =>
+                Block is not null &&
+                !HasReceipt &&
+                !ReceiptRequestSent;
+
+            public void MarkReceiptRequestSent()
+            {
+                ReceiptRequestSent = true;
+            }
+            public void RetryReceiptRequest()
+            {
+                ReceiptRequestSent = false;
+            }
+
             public PeerInfo? PeerInfo { get; set; } = PeerInfo;
             public Block? Block { get; set; } = Block;
             public TxReceipt[]? Receipts { get; set; } = Receipts;
