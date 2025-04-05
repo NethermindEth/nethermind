@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Nethermind.Evm;
+using Nethermind.PatternAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 using NUnit.Framework;
 
@@ -199,7 +200,7 @@ public class PatternStatsAnalyzerTests
 
         _patternStatsAnalyzer.Add(executionOpCodes);
 
-        foreach (var stat in _patternStatsAnalyzer.Stats)
+        foreach (var stat in _patternStatsAnalyzer.Stats(SortOrder.Unordered))
         {
             var ulong0 = stat.Ngram.Ulong0;
             Assert.That(counts[ulong0] == stat.Count);

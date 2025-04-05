@@ -1,24 +1,19 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Evm;
+using Nethermind.PatternAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 public readonly record struct Stat(NGram Ngram, ulong Count);
 
-public class PatternStatsAnalyzer : StatsAnalyzer<Instruction>
+public class PatternStatsAnalyzer : TopNAnalyzer<Instruction,ulong,Stat>
 {
     private readonly int _currentSketch = 0;
-    private readonly object _lock = new();
 
     private readonly CmSketch _sketch;
     private readonly CmSketch[] _sketchBuffer;
 
-    private readonly int _topN;
-    private readonly Dictionary<ulong, ulong> _topNMap;
-    private readonly PriorityQueue<ulong, ulong> _topNQueue;
     private int _currentSketchBufferSize;
-    private ulong _max = 1;
-    private ulong _minSupport;
     private NGram _ngram;
     private double _sketchResetError;
 
@@ -29,52 +24,24 @@ public class PatternStatsAnalyzer : StatsAnalyzer<Instruction>
     }
 
     public PatternStatsAnalyzer(int topN, CmSketch sketch, int capacity, ulong minSupport, int sketchBufferSize,
-        double sketchResetError)
+        double sketchResetError) : base(topN)
     {
-        _topN = topN;
         _sketch = sketch;
         _sketchResetError = sketchResetError;
         _sketchBuffer = new CmSketch[sketchBufferSize];
         _sketchBuffer[0] = sketch;
-        _topNQueue = new PriorityQueue<ulong, ulong>(_topN);
-        _topNMap = new Dictionary<ulong, ulong>(capacity);
-        _minSupport = minSupport;
+        MinSupport = minSupport;
     }
 
     public double Error => _sketchBuffer.Sum(sketch => sketch?.ErrorPerItem ?? 0);
     public double Confidence => _sketchBuffer[0].Confidence;
 
-    public IEnumerable<Stat> Stats
-    {
-        get
-        {
-            lock (_lock)
-            {
-                foreach (var (topN, count) in _topNQueue.UnorderedItems) yield return new Stat(new NGram(topN), count);
-            }
-        }
-    }
 
-    public IEnumerable<Stat> StatsAscending
-    {
-        get
-        {
-            lock (_lock)
-            {
-                var queue = new PriorityQueue<ulong, ulong>(_topN);
-                while (queue.Count > 0)
-                {
-                    queue.TryDequeue(out var ngram, out var count);
-                    yield return new Stat(new NGram(ngram), count);
-                }
-            }
-        }
-    }
 
 
     private void ResetSketchAtError()
     {
-        if (_max <= _minSupport || !(_sketch.ErrorPerItem / _max >= _sketchResetError)) return;
+        if (Max <= MinSupport || !(_sketch.ErrorPerItem / Max >= _sketchResetError)) return;
         if (_currentSketchBufferSize < _sketchBuffer.Length - 1)
         {
             ++_currentSketchBufferSize;
@@ -90,19 +57,19 @@ public class PatternStatsAnalyzer : StatsAnalyzer<Instruction>
 
     public override unsafe void Add(IEnumerable<Instruction> instructions)
     {
-        lock (_lock)
+        lock (Lock)
         {
             ResetSketchAtError();
 
-            _topNQueue.Clear();
+            TopNQueue.Clear();
             foreach (var instruction in instructions)
             {
                 _ngram = _ngram.ShiftAdd(instruction);
                 delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
                     PriorityQueue<ulong, ulong>, ulong> ptr = &ProcessNGram;
-                _max = NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _currentSketchBufferSize, _minSupport,
-                    _max, _topN, _sketchBuffer,
-                    _topNMap, _topNQueue);
+                Max = NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _currentSketchBufferSize, MinSupport,
+                    Max, TopN, _sketchBuffer,
+                    TopNMap, TopNQueue);
             }
 
             _ngram = _ngram.ShiftAdd(NGram.Reset);
@@ -114,17 +81,17 @@ public class PatternStatsAnalyzer : StatsAnalyzer<Instruction>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override unsafe void Add(Instruction instruction)
     {
-        lock (_lock)
+        lock (Lock)
         {
             ResetSketchAtError();
             _ngram = _ngram.ShiftAdd(instruction);
             delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
                 PriorityQueue<ulong, ulong>, ulong> ptr = &ProcessNGram;
-            _max = NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _currentSketchBufferSize, _minSupport,
-                _max, _topN, _sketchBuffer,
-                _topNMap, _topNQueue);
-            _topNQueue.TryPeek(out _, out var min);
-            _minSupport = Math.Max(min, _minSupport);
+            Max = NGram.ProcessEachSubsequence(_ngram, ptr, _currentSketch, _currentSketchBufferSize, MinSupport,
+                Max, TopN, _sketchBuffer,
+                TopNMap, TopNQueue);
+            TopNQueue.TryPeek(out _, out var min);
+            MinSupport = Math.Max(min, MinSupport);
         }
     }
 
@@ -160,22 +127,39 @@ public class PatternStatsAnalyzer : StatsAnalyzer<Instruction>
     }
 
 
-    private void ProcessTopN()
+    public override IEnumerable<Stat> Stats(SortOrder order)
     {
-        _topNQueue.Clear();
 
-        foreach (var kvp in _topNMap)
+        lock (Lock)
         {
-            _max = Math.Max(_max, kvp.Value);
+            switch(order)
+            {
+                case SortOrder.Unordered :
+                        foreach (var (ngram, count) in TopNQueue.UnorderedItems)
+                        yield return new Stat(new NGram(ngram), count);
+                        break;
+                case SortOrder.Ascending :
+                        var queue = new PriorityQueue<ulong, ulong>(TopN);
+                        while (queue.Count > 0)
+                        {
+                            if (queue.TryDequeue(out var ngram, out var count))
+                    yield return new Stat(new NGram(ngram), count);
+                        }
+                        break;
+                case SortOrder.Descending :
+                    var queueDecending = new PriorityQueue<ulong, ulong>(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
+                    foreach (var (ngram, count) in TopNQueue.UnorderedItems)
+                    {
+                        queueDecending.Enqueue(ngram, count);
+                    }
+                    while (queueDecending.Count > 0)
+                    {
+                        if (queueDecending.TryDequeue(out var ngram, out var count))
+                    yield return new Stat(new NGram(ngram), count);
+                    }
+                    break;
 
-            if (_topNQueue.Count < _topN)
-                _topNQueue.Enqueue(kvp.Key, kvp.Value);
-
-            if (_topNQueue.Count < _topN) continue;
-            _topNQueue.TryPeek(out _, out var min);
-            if (min < kvp.Value) _topNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
-            //Queue has filled up, we update min support to filter out lower count updates
-            _topNQueue.TryPeek(out _, out _minSupport);
+            }
         }
     }
 }

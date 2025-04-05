@@ -4,6 +4,7 @@
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.PatternAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
@@ -15,7 +16,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
     private readonly HashSet<Instruction> _ignoreSet;
     private readonly PatternStatsAnalyzer _patternStatsAnalyzer;
     private readonly SortOrder _sort;
-    private StatsProcessingQueue<Instruction>? _queue;
+    private StatsProcessingQueue<Instruction,Stat>? _queue;
 
     public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
         PatternStatsAnalyzer patternStatsAnalyzer, SortOrder sort, CancellationToken ct)
@@ -23,7 +24,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         _ignoreSet = ignoreSet;
         _patternStatsAnalyzer = patternStatsAnalyzer;
         _buffer = buffer;
-        _queue = new StatsProcessingQueue<Instruction>(buffer, (PatternStatsAnalyzer)patternStatsAnalyzer, ct);
+        _queue = new StatsProcessingQueue<Instruction,Stat>(buffer, patternStatsAnalyzer, ct);
         _ct = ct;
         _sort = sort;
         IsTracingInstructions = true;
@@ -40,7 +41,7 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new StatsProcessingQueue<Instruction>(_buffer, _patternStatsAnalyzer, _ct);
+            _queue = new StatsProcessingQueue<Instruction,Stat>(_buffer, _patternStatsAnalyzer, _ct);
             q?.Dispose();
         }
     }
@@ -51,10 +52,9 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
         PatternAnalyzerTxTrace trace = new();
         trace.Confidence = _patternStatsAnalyzer.Confidence;
         trace.ErrorPerItem = _patternStatsAnalyzer.Error;
-        var stats = _patternStatsAnalyzer.Stats;
-        if (_sort == SortOrder.Ascending) stats = _patternStatsAnalyzer.StatsAscending;
+        var stats = _patternStatsAnalyzer.Stats(_sort);
 
-        foreach (var stat in _patternStatsAnalyzer.Stats)
+        foreach (var stat in stats)
         {
             var entry = new PatternAnalyzerTraceEntry
             {
@@ -63,13 +63,6 @@ public sealed class PatternAnalyzerTxTracer : TxTracer
                 Count = stat.Count
             };
             trace.Entries.Add(entry);
-        }
-
-
-        if (_sort == SortOrder.Descending)
-        {
-            var sortedEntries = trace.Entries.OrderByDescending(e => e.Count).ToList();
-            trace.Entries = sortedEntries;
         }
 
         return trace;

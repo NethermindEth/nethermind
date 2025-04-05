@@ -1,4 +1,4 @@
-namespace Nethermind.StatsAnalyzer.Plugin.Tracer;
+namespace Nethermind.PatternAnalyzer.Plugin.Types;
 
 public enum SortOrder
 {

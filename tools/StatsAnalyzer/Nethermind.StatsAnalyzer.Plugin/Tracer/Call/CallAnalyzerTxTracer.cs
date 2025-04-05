@@ -6,6 +6,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.PatternAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
@@ -16,14 +17,14 @@ public sealed class CallAnalyzerTxTracer : TxTracer
     private readonly CallStatsAnalyzer _callStatsAnalyzer;
     private readonly CancellationToken _ct;
     private readonly SortOrder _sort;
-    private StatsProcessingQueue<Address>? _queue;
+    private StatsProcessingQueue<Address,CallStat>? _queue;
 
     public CallAnalyzerTxTracer(DisposableResettableList<Address> buffer,
         CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct)
     {
         _callStatsAnalyzer = callStatsAnalyzer;
         _buffer = buffer;
-        _queue = new StatsProcessingQueue<Address>(buffer, (CallStatsAnalyzer)callStatsAnalyzer, ct);
+        _queue = new StatsProcessingQueue<Address,CallStat>(buffer, (CallStatsAnalyzer)callStatsAnalyzer, ct);
         _ct = ct;
         _sort = sort;
         IsTracingActions = true;
@@ -35,7 +36,7 @@ public sealed class CallAnalyzerTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new StatsProcessingQueue<Address>(_buffer, _callStatsAnalyzer, _ct);
+            _queue = new StatsProcessingQueue<Address,CallStat>(_buffer, _callStatsAnalyzer, _ct);
             q?.Dispose();
         }
     }
@@ -44,10 +45,9 @@ public sealed class CallAnalyzerTxTracer : TxTracer
     {
         DisposeQueue();
         CallAnalyzerTxTrace trace = new();
-        var stats = _callStatsAnalyzer.Stats;
-        if (_sort == SortOrder.Ascending) stats = _callStatsAnalyzer.StatsAscending;
+        var stats = _callStatsAnalyzer.Stats(_sort);
 
-        foreach (var stat in _callStatsAnalyzer.Stats)
+        foreach (var stat in stats)
         {
             var entry = new CallAnalyzerTraceEntry
             {
@@ -57,12 +57,6 @@ public sealed class CallAnalyzerTxTracer : TxTracer
             trace.Entries.Add(entry);
         }
 
-
-        if (_sort == SortOrder.Descending)
-        {
-            var sortedEntries = trace.Entries.OrderByDescending(e => e.Count).ToList();
-            trace.Entries = sortedEntries;
-        }
 
         return trace;
     }

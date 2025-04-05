@@ -6,6 +6,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.PatternAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer;
 

@@ -1,3 +1,5 @@
+namespace Nethermind.PatternAnalyzer.Plugin.Types;
+
 public enum ProcessingMode
 {
     Sequential,
