@@ -14,13 +14,13 @@ namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 
 public sealed class CallAnalyzerTxTracer : TxTracer
 {
-    private readonly DisposableResettableList<Address> _buffer;
+    private readonly ResettableList<Address> _buffer;
     private readonly CallStatsAnalyzer _callStatsAnalyzer;
     private readonly CancellationToken _ct;
     private readonly SortOrder _sort;
     private StatsProcessingQueue<Address, CallStat>? _queue;
 
-    public CallAnalyzerTxTracer(DisposableResettableList<Address> buffer,
+    public CallAnalyzerTxTracer(ResettableList<Address> buffer,
         CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct)
     {
         _callStatsAnalyzer = callStatsAnalyzer;

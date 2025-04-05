@@ -3,7 +3,7 @@ using Nethermind.Core.Resettables;
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 public sealed class StatsProcessingQueue<TData, TStat>(
-    DisposableResettableList<TData> buffer,
+    ResettableList<TData> buffer,
     IStatsAnalyzer<TData, TStat> statsAnalyzer,
     CancellationToken ct)
     : IDisposable

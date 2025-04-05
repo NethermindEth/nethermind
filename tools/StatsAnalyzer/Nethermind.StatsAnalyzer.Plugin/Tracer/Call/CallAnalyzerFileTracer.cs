@@ -14,9 +14,9 @@ namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrace, CallAnalyzerTxTracer>
 {
     private readonly CallStatsAnalyzer _callStatsAnalyzer;
-    private DisposableResettableList<Address> _buffer;
+    private ResettableList<Address> _buffer;
 
-    public CallAnalyzerFileTracer(DisposableResettableList<Address> buffer, int processingQueueSize,
+    public CallAnalyzerFileTracer(ResettableList<Address> buffer, int processingQueueSize,
         CallStatsAnalyzer callStatsAnalyzer,
         IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
         SortOrder sort,
@@ -41,7 +41,7 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         var initialBlockNumber = InitialBlock;
         var currentBlockNumber = CurrentBlock;
 
-        _buffer = new DisposableResettableList<Address>();
+        _buffer = new ResettableList<Address>(_buffer.Count);
         Tracer = new CallAnalyzerTxTracer(_buffer, _callStatsAnalyzer, Sort,
             Ct);
 

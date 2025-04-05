@@ -16,10 +16,10 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
     private readonly HashSet<Instruction> _ignore;
     private readonly PatternStatsAnalyzer _patternStatsAnalyzer;
 
-    private DisposableResettableList<Instruction> _buffer = new();
+    private ResettableList<Instruction> _buffer = new();
     //private PatternAnalyzerTxTracer _tracer;
 
-    public PatternAnalyzerFileTracer(DisposableResettableList<Instruction> buffer, int processingQueueSize,
+    public PatternAnalyzerFileTracer(ResettableList<Instruction> buffer, int processingQueueSize,
         int bufferSize, PatternStatsAnalyzer patternStatsAnalyzer,
         HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
         SortOrder sort,
@@ -46,7 +46,7 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
         var initialBlockNumber = InitialBlock;
         var currentBlockNumber = CurrentBlock;
 
-        _buffer = new DisposableResettableList<Instruction>();
+        _buffer = new ResettableList<Instruction>();
         Tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _patternStatsAnalyzer, Sort,
             Ct);
 

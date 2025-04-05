@@ -53,10 +53,10 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
 
-        _tracer = new PatternAnalyzerFileTracer(new DisposableResettableList<Instruction>(), 1, 100,
+        _tracer = new PatternAnalyzerFileTracer(new ResettableList<Instruction>(), 1, 100,
             _patternStatsAnalyzer, new HashSet<Instruction>(), _fileSystem,
             _logger, 1, ProcessingMode.Sequential, SortOrder.Descending, _testFileName, CancellationToken.None);
-        _tracerIgnore = new PatternAnalyzerFileTracer(new DisposableResettableList<Instruction>(), 1, 100,
+        _tracerIgnore = new PatternAnalyzerFileTracer(new ResettableList<Instruction>(), 1, 100,
             _patternStatsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
             ProcessingMode.Sequential,
             SortOrder.Descending, _testIgnoreFileName, CancellationToken.None);
