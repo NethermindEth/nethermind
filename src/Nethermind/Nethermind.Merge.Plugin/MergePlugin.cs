@@ -291,7 +291,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
             IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
 
-            NewPayloadHandler newPayloadHandler = new (
+            NewPayloadHandler newPayloadHandler = new(
                     _api.BlockValidator,
                     _api.BlockTree,
                     _poSSwitcher,
