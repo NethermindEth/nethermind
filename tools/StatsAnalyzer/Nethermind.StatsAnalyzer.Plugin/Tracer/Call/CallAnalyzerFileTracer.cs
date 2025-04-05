@@ -11,7 +11,7 @@ using Nethermind.PatternAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 
-public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrace, CallAnalyzerTxTracer>
+public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrace, CallStatsAnalyzerTxTracer>
 {
     private readonly CallStatsAnalyzer _callStatsAnalyzer;
     private ResettableList<Address> _buffer;
@@ -20,7 +20,7 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         CallStatsAnalyzer callStatsAnalyzer,
         IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
         SortOrder sort,
-        string fileName, CancellationToken ct) : base(new CallAnalyzerTxTracer(buffer, callStatsAnalyzer, sort, ct),
+        string fileName, CancellationToken ct) : base(new CallStatsAnalyzerTxTracer(buffer, callStatsAnalyzer, sort, ct),
         "call-analyzer.json",
         processingQueueSize, fileSystem, logger, writeFreq, mode,
         sort,
@@ -35,54 +35,11 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
     }
 
 
-    public override void EndBlockTrace()
+    public override void ResetBufferAndTracer()
     {
-        var tracer = Tracer;
-        var initialBlockNumber = InitialBlock;
-        var currentBlockNumber = CurrentBlock;
 
         _buffer = new ResettableList<Address>(_buffer.Count);
-        Tracer = new CallAnalyzerTxTracer(_buffer, _callStatsAnalyzer, Sort,
+        Tracer = new CallStatsAnalyzerTxTracer(_buffer, _callStatsAnalyzer, Sort,
             Ct);
-
-        var semaphore = WriteLock;
-
-        CurrentTask = new Task(() =>
-        {
-            Ct.ThrowIfCancellationRequested();
-            WriteTrace(initialBlockNumber, currentBlockNumber, tracer, FileName, FileSystem, SerializerOptions, Ct,
-                semaphore);
-        }, Ct);
-
-        base.EndBlockTrace();
-    }
-
-
-    private static void WriteTrace(long initialBlockNumber, long currentBlockNumber, CallAnalyzerTxTracer tracer,
-        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct,
-        Semaphore semaphore)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var trace = tracer.BuildResult();
-        trace.InitialBlockNumber = initialBlockNumber;
-        trace.CurrentBlockNumber = currentBlockNumber;
-
-        ct.ThrowIfCancellationRequested();
-
-        semaphore.WaitOne();
-        try
-        {
-            File.WriteAllText(fileName, string.Empty);
-            using (var file = fileSystem.File.OpenWrite(fileName))
-            using (var jsonWriter = new Utf8JsonWriter(file))
-            {
-                JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
-            }
-        }
-        finally
-        {
-            semaphore.Release();
-        }
     }
 }

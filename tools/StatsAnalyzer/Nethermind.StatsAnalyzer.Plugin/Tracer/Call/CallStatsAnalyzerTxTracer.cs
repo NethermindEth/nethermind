@@ -12,41 +12,26 @@ using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 
-public sealed class CallAnalyzerTxTracer : TxTracer
-{
-    private readonly ResettableList<Address> _buffer;
-    private readonly CallStatsAnalyzer _callStatsAnalyzer;
-    private readonly CancellationToken _ct;
-    private readonly SortOrder _sort;
-    private StatsProcessingQueue<Address, CallStat>? _queue;
+public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address,CallStat,CallAnalyzerTxTrace>
 
-    public CallAnalyzerTxTracer(ResettableList<Address> buffer,
-        CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct)
+{
+
+    public CallStatsAnalyzerTxTracer(ResettableList<Address> buffer,
+        CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct) : base(buffer, callStatsAnalyzer, sort, ct)
+
     {
-        _callStatsAnalyzer = callStatsAnalyzer;
-        _buffer = buffer;
-        _queue = new StatsProcessingQueue<Address, CallStat>(buffer, (CallStatsAnalyzer)callStatsAnalyzer, ct);
-        _ct = ct;
-        _sort = sort;
         IsTracingActions = true;
     }
 
 
-    private void DisposeQueue()
-    {
-        using (var q = _queue)
-        {
-            _queue = null;
-            _queue = new StatsProcessingQueue<Address, CallStat>(_buffer, _callStatsAnalyzer, _ct);
-            q?.Dispose();
-        }
-    }
 
-    public CallAnalyzerTxTrace BuildResult()
+    public override CallAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)
     {
-        DisposeQueue();
+        Build();
         CallAnalyzerTxTrace trace = new();
-        var stats = _callStatsAnalyzer.Stats(_sort);
+        trace.InitialBlockNumber = fromBlock;
+        trace.CurrentBlockNumber = toBlock;
+        var stats = StatsAnalyzer.Stats(Sort);
 
         foreach (var stat in stats)
         {
@@ -68,6 +53,6 @@ public sealed class CallAnalyzerTxTracer : TxTracer
     {
         if (!isPrecompileCall && new[]
                     { ExecutionType.CALL, ExecutionType.STATICCALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL }
-                .Contains(callType)) _queue?.Enqueue(to);
+                .Contains(callType)) Queue?.Enqueue(to);
     }
 }

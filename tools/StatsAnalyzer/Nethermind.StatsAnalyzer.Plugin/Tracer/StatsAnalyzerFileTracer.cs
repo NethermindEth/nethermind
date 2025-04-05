@@ -10,8 +10,8 @@ using Nethermind.PatternAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer;
 
-public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrace, TXTracer>
-    where TXTracer : class, ITxTracer
+public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBase<TxTrace, TxTracer>
+    where TxTracer : class, ITxTracer, IStatsAnalyzerTxTracer<TxTrace>
 
 {
     private readonly List<Task> _fileTracingQueue = new();
@@ -30,9 +30,9 @@ public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrac
     protected Task CurrentTask = Task.CompletedTask;
     protected long InitialBlock;
     protected Task LastTask = Task.CompletedTask;
-    protected TXTracer Tracer;
+    protected TxTracer Tracer;
 
-    protected StatsAnalyzerFileTracer(TXTracer tracer, string defaultFile, int processingQueueSize,
+    protected StatsAnalyzerFileTracer(TxTracer tracer, string defaultFile, int processingQueueSize,
         IFileSystem fileSystem,
         ILogger logger, int writeFreq, ProcessingMode mode,
         SortOrder sort,
@@ -50,7 +50,28 @@ public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrac
     }
 
 
+    public abstract void ResetBufferAndTracer();
+
     public override void EndBlockTrace()
+    {
+        var tracer = Tracer;
+        var initialBlockNumber = InitialBlock;
+        var currentBlockNumber = CurrentBlock;
+
+        ResetBufferAndTracer();
+
+        var semaphore = WriteLock;
+
+        Enqueue(new Task(() =>
+        {
+            Ct.ThrowIfCancellationRequested();
+            WriteTrace(initialBlockNumber, currentBlockNumber, tracer, FileName, FileSystem, SerializerOptions, Ct,
+                semaphore);
+        }, Ct));
+
+        base.EndBlockTrace();
+    }
+    public void Enqueue(Task task)
     {
         if (_fileTracingQueueSize < 1) return;
 
@@ -58,7 +79,7 @@ public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrac
         if (_pos != 0) return;
 
 
-        var task = CurrentTask;
+       // var task = CurrentTask;
         LastTask = LastTask.ContinueWith(t =>
         {
             if (t.Exception != null)
@@ -94,7 +115,7 @@ public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrac
     }
 
 
-    public TXTracer StartNewTxTrace(Transaction? tx)
+    public TxTracer StartNewTxTrace(Transaction? tx)
     {
         return Tracer;
     }
@@ -115,7 +136,7 @@ public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrac
         Task.WaitAll(_fileTracingQueue.ToArray(), Ct);
     }
 
-    protected override TXTracer OnStart(Transaction? tx)
+    protected override TxTracer OnStart(Transaction? tx)
     {
         return Tracer;
     }
@@ -124,8 +145,34 @@ public class StatsAnalyzerFileTracer<TXTrace, TXTracer> : BlockTracerBase<TXTrac
     {
     }
 
-    protected override TXTrace OnEnd(TXTracer txTracer)
+    protected override TxTrace OnEnd(TxTracer txTracer)
     {
         throw new NotImplementedException();
+    }
+
+    protected static void WriteTrace(long initialBlockNumber, long currentBlockNumber, IStatsAnalyzerTxTracer<TxTrace> tracer,
+        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct,
+        Semaphore semaphore)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
+
+        ct.ThrowIfCancellationRequested();
+
+        semaphore.WaitOne();
+        try
+        {
+            File.WriteAllText(fileName, string.Empty);
+            using (var file = fileSystem.File.OpenWrite(fileName))
+            using (var jsonWriter = new Utf8JsonWriter(file))
+            {
+                JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
+            }
+        }
+        finally
+        {
+            semaphore.Release();
+        }
     }
 }
