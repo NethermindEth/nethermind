@@ -144,6 +144,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         var peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
         var beaconSync = _api.Context.Resolve<BeaconSync>();
+        var simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
 
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -164,7 +165,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts,
-                simulateBlockProduction: _api.Config<IMergeConfig>().SimulateBlockProduction),
+                simulateBlockProduction: simulateBlockProduction),
             new TaikoForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 (ManualBlockFinalizationManager)_api.FinalizationManager,
@@ -179,7 +180,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool,
                 _api.LogManager,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
+                simulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
