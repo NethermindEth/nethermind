@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
