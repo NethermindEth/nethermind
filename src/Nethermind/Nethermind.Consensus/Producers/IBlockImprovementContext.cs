@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
@@ -15,5 +14,4 @@ public interface IBlockImprovementContext : IBlockProductionContext, IDisposable
     DateTimeOffset StartDateTime { get; }
 
     void CancelOngoingImprovements();
-    CancellationTokenSource CancellationTokenSource { get; }
 }

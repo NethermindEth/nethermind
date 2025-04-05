@@ -53,8 +53,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    public CancellationTokenSource CancellationTokenSource { get; }
-
+    private readonly CancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private readonly ILogger _logger;
     private readonly IBlockProducer _blockProducer;
@@ -86,7 +85,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         _slotTimestampMs = payloadAttributes.Timestamp * 1000;
 
-        CancellationTokenSource = cts;
+        _improvementCancellation = cts;
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger();
@@ -101,7 +100,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         ImprovementTask = Task.Run(ImproveBlock);
     }
 
-    public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
+    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
 
     public void Dispose()
     {
@@ -143,7 +142,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         using var txTimeout = new CancellationTokenSource((int)waitTime);
-        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource!.Token, txTimeout.Token);
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_improvementCancellation.Token, txTimeout.Token);
 
         try
         {

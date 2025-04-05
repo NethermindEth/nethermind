@@ -35,6 +35,7 @@ public partial class EngineModuleTests
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
+        private readonly CancellationTokenSource _improvementCancellation;
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
@@ -49,7 +50,7 @@ public partial class EngineModuleTests
         {
             CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
-            CancellationTokenSource = cts;
+            _improvementCancellation = cts;
             _timeOutCancellation = new CancellationTokenSource(timeout);
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
             ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _linkedCancellation.Token);
@@ -77,9 +78,8 @@ public partial class EngineModuleTests
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
-        public CancellationTokenSource CancellationTokenSource { get; }
 
-        public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
+        public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
 
         public void Dispose()
         {

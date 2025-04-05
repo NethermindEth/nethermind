@@ -12,23 +12,21 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class NoBlockImprovementContext : NoBlockProductionContext, IBlockImprovementContext
 {
-    public NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFees, DateTimeOffset startDateTime, CancellationTokenSource cts)
+    public NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFees, DateTimeOffset startDateTime)
         : base(currentBestBlock, blockFees)
     {
         StartDateTime = startDateTime;
 
         Disposed = true;
         ImprovementTask = Task.FromResult(currentBestBlock);
-        CancellationTokenSource = cts;
     }
 
     void IDisposable.Dispose() { }
 
-    public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
+    public void CancelOngoingImprovements() { }
 
     public bool Disposed { get; }
 
     public Task<Block?> ImprovementTask { get; }
     public DateTimeOffset StartDateTime { get; }
-    public CancellationTokenSource CancellationTokenSource { get; }
 }

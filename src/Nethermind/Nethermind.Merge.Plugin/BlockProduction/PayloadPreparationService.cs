@@ -130,7 +130,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         blockImprovementContext.ImprovementTask.ContinueWith(
             (b) =>
             {
-                if (!blockImprovementContext.CancellationTokenSource.IsCancellationRequested)
+                if (!cts.IsCancellationRequested)
                 {
                     LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
                 }
@@ -138,7 +138,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             TaskContinuationOptions.RunContinuationsAsynchronously);
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
-            CancellationToken token = blockImprovementContext.CancellationTokenSource.Token;
+            CancellationToken token = cts.Token;
             if (token.IsCancellationRequested)
             {
                 return;
@@ -243,7 +243,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
                 Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, blockImprovementContext.CancellationTokenSource);
+                ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, cts);
             }
             else
             {

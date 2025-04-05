@@ -21,6 +21,6 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
         UInt256 currentBlockFees,
         CancellationTokenSource cts)
     {
-        return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime, cts);
+        return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime);
     }
 }

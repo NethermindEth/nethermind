@@ -20,6 +20,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
+    private readonly CancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
 
@@ -35,7 +36,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
-        CancellationTokenSource = cts;
+        _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
         CurrentBestBlock = currentBestBlock;
@@ -70,7 +71,6 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public UInt256 BlockFees { get; private set; }
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
-    public CancellationTokenSource CancellationTokenSource { get; }
 
     public void Dispose()
     {
@@ -79,5 +79,5 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
 
-    public void CancelOngoingImprovements() => CancellationTokenSource.Cancel();
+    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
 }
