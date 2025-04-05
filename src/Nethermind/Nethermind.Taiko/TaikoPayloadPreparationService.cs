@@ -143,7 +143,7 @@ public class TaikoPayloadPreparationService(
         return new BlockToProduce(header, transactions, [], payloadAttributes.Withdrawals);
     }
 
-    public ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
+    public ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
         if (_payloadStorage.TryRemove(payloadId, out IBlockProductionContext? blockContext))
             return ValueTask.FromResult<IBlockProductionContext?>(blockContext);

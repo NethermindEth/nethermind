@@ -391,7 +391,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             });
             payloadId.Should().NotBeNullOrEmpty();
 
-            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!);
+            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
             blockProductionContext.Should().NotBeNull();
             blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
 

@@ -328,7 +328,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
+    public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
         if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
         {
@@ -338,7 +338,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
                     // Inform current improvement that we need results now
-                    blockContext.CancelOngoingImprovements();
+                    if (!skipCancel)
+                        blockContext.CancelOngoingImprovements();
 
                     using CancellationTokenSource cts = new();
                     Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);

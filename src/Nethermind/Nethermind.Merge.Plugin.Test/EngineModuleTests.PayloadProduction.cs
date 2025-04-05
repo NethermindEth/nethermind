@@ -235,7 +235,7 @@ public partial class EngineModuleTests
             Build.A.Transaction.WithTo(TestItem.AddressD).WithType(TxType.EIP1559).WithMaxFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject).TestObject;
         IBlockProductionContext improvementContext = Substitute.For<IBlockProductionContext>();
         improvementContext.CurrentBestBlock.Returns(block);
-        payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(improvementContext);
+        payloadPreparationService.GetPayload(Arg.Any<string>(), Arg.Any<bool>()).Returns(improvementContext);
         using MergeTestBlockchain chain = await CreateBlockchain(null, null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
