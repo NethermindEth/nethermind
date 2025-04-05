@@ -3,20 +3,18 @@
 
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.PatternAnalyzer.Plugin.Types;
-using Nethermind.StatsAnalyzer.Plugin.Analyzer;
-using Nethermind.StatsAnalyzer.Plugin.Tracer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 
-public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruction,Stat,PatternAnalyzerTxTrace>
+public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruction, Stat, PatternAnalyzerTxTrace>
 {
     private readonly HashSet<Instruction> _ignoreSet;
 
     public PatternStatsAnalyzerTxTracer(ResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet,
-        PatternStatsAnalyzer patternStatsAnalyzer, SortOrder sort, CancellationToken ct) : base(buffer, patternStatsAnalyzer, sort, ct)
+        PatternStatsAnalyzer patternStatsAnalyzer, SortOrder sort, CancellationToken ct) : base(buffer,
+        patternStatsAnalyzer, sort, ct)
     {
         _ignoreSet = ignoreSet;
         IsTracingInstructions = true;

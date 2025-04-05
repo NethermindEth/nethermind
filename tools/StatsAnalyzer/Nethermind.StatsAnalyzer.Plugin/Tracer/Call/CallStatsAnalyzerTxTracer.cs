@@ -4,25 +4,22 @@
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
 using Nethermind.PatternAnalyzer.Plugin.Types;
-using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 
-public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address,CallStat,CallAnalyzerTxTrace>
+public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, CallStat, CallAnalyzerTxTrace>
 
 {
-
     public CallStatsAnalyzerTxTracer(ResettableList<Address> buffer,
-        CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct) : base(buffer, callStatsAnalyzer, sort, ct)
+        CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct) : base(buffer, callStatsAnalyzer,
+        sort, ct)
 
     {
         IsTracingActions = true;
     }
-
 
 
     public override CallAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)

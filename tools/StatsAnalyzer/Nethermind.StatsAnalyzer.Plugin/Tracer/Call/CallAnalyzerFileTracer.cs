@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
@@ -20,7 +19,8 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         CallStatsAnalyzer callStatsAnalyzer,
         IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
         SortOrder sort,
-        string fileName, CancellationToken ct) : base(new CallStatsAnalyzerTxTracer(buffer, callStatsAnalyzer, sort, ct),
+        string fileName, CancellationToken ct) : base(
+        new CallStatsAnalyzerTxTracer(buffer, callStatsAnalyzer, sort, ct),
         "call-analyzer.json",
         processingQueueSize, fileSystem, logger, writeFreq, mode,
         sort,
@@ -37,7 +37,6 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
 
     public override void ResetBufferAndTracer()
     {
-
         _buffer = new ResettableList<Address>(_buffer.Count);
         Tracer = new CallStatsAnalyzerTxTracer(_buffer, _callStatsAnalyzer, Sort,
             Ct);

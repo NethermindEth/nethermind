@@ -71,6 +71,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
 
         base.EndBlockTrace();
     }
+
     public void Enqueue(Task task)
     {
         if (_fileTracingQueueSize < 1) return;
@@ -79,7 +80,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
         if (_pos != 0) return;
 
 
-       // var task = CurrentTask;
+        // var task = CurrentTask;
         LastTask = LastTask.ContinueWith(t =>
         {
             if (t.Exception != null)
@@ -150,7 +151,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
         throw new NotImplementedException();
     }
 
-    protected static void WriteTrace(long initialBlockNumber, long currentBlockNumber, IStatsAnalyzerTxTracer<TxTrace> tracer,
+    protected static void WriteTrace(long initialBlockNumber, long currentBlockNumber,
+        IStatsAnalyzerTxTracer<TxTrace> tracer,
         string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct,
         Semaphore semaphore)
     {

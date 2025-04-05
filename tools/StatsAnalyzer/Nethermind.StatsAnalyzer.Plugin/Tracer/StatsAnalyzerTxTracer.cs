@@ -1,17 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Resettables;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
-using Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
 using Nethermind.PatternAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer;
-
 
 public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
     ResettableList<TData> buffer,
@@ -20,11 +15,13 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
     CancellationToken ct)
     : TxTracer, IStatsAnalyzerTxTracer<TTrace>
 {
-    protected readonly IStatsAnalyzer<TData,TStat>  StatsAnalyzer = statsAnalyzer;
     protected readonly ResettableList<TData> Buffer = buffer;
     protected readonly CancellationToken Ct = ct;
-    protected StatsProcessingQueue<TData, TStat>? Queue = new(buffer, statsAnalyzer, ct);
     protected readonly SortOrder Sort = sort;
+    protected readonly IStatsAnalyzer<TData, TStat> StatsAnalyzer = statsAnalyzer;
+    protected StatsProcessingQueue<TData, TStat>? Queue = new(buffer, statsAnalyzer, ct);
+
+    public abstract TTrace BuildResult(long fromBlock = 0, long toBlock = 0);
 
     protected void Build()
     {
@@ -35,8 +32,4 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
             q?.Dispose();
         }
     }
-
-    public abstract TTrace BuildResult(long fromBlock = 0, long toBlock = 0);
-
-
 }
