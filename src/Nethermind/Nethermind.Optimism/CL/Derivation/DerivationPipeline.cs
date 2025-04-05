@@ -35,7 +35,7 @@ public class DerivationPipeline(
             throw new ArgumentException("Old batch");
         }
 
-        (L1Block[]? l1Origins, ReceiptForRpc[][]? l1Receipts) = await GetL1Origins(batch);
+        (L1Block[]? l1Origins, ReceiptForRpc[][]? l1Receipts) = await GetL1Origins(batch, token);
         if (l1Origins is null || l1Receipts is null)
         {
             if (logger.IsWarn) logger.Warn($"Unable to get L1 Origins for span batch. RelTimestamp: {batch.RelTimestamp}");
@@ -81,11 +81,11 @@ public class DerivationPipeline(
         return result.ToArray();
     }
 
-    private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch)
+    private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch, CancellationToken token)
     {
         ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
-        L1Block lastL1Origin = await l1Bridge.GetBlock(lastL1OriginNum);
+        L1Block lastL1Origin = await l1Bridge.GetBlock(lastL1OriginNum, token);
         if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck))
         {
             logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Hash}");
@@ -94,13 +94,13 @@ public class DerivationPipeline(
         var l1Origins = new L1Block[numberOfL1Origins];
         var l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
         l1Origins[numberOfL1Origins - 1] = lastL1Origin;
-        ReceiptForRpc[] lastReceipts = await l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Hash);
+        ReceiptForRpc[] lastReceipts = await l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Hash, token);
         l1Receipts[numberOfL1Origins - 1] = lastReceipts;
         Hash256 parentHash = lastL1Origin.ParentHash;
         for (ulong i = 1; i < numberOfL1Origins; i++)
         {
-            L1Block l1Origin = await l1Bridge.GetBlockByHash(parentHash);
-            ReceiptForRpc[] receipts = await l1Bridge.GetReceiptsByBlockHash(parentHash);
+            L1Block l1Origin = await l1Bridge.GetBlockByHash(parentHash, token);
+            ReceiptForRpc[] receipts = await l1Bridge.GetReceiptsByBlockHash(parentHash, token);
             l1Origins[numberOfL1Origins - i - 1] = l1Origin;
             l1Receipts[numberOfL1Origins - i - 1] = receipts;
             parentHash = l1Origin.ParentHash;

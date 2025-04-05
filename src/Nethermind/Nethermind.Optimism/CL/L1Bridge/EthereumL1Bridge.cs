@@ -65,7 +65,7 @@ public class EthereumL1Bridge : IL1Bridge
                 // if _currentHead was not reorged => we need blocks from _currentHead up to newHead
                 // if _currentHead was reorged => we need to re-run all blocks from _currentFinalized up to newHead
                 L1Block newFinalized = await GetFinalized();
-                L1Block currentHeadBlock = await GetBlock(_currentHeadNumber);
+                L1Block currentHeadBlock = await GetBlock(_currentHeadNumber, token);
                 if (currentHeadBlock.Hash != _currentHeadHash)
                 {
                     // Reorg currentHead
@@ -199,7 +199,7 @@ public class EthereumL1Bridge : IL1Bridge
         for (int i = chainSegment.Length - 1; i >= 0; i--)
         {
             _logger.Info($"Rolling back L1 head. {i} to go. Block {currentHash}");
-            chainSegment[i] = await GetBlockByHash(currentHash);
+            chainSegment[i] = await GetBlockByHash(currentHash, cancellationToken);
             currentHash = chainSegment[i].ParentHash;
             if (cancellationToken.IsCancellationRequested)
             {
@@ -218,11 +218,11 @@ public class EthereumL1Bridge : IL1Bridge
     {
         for (ulong i = from + 1; i < to; i++)
         {
-            await ProcessBlock(await GetBlock(i), cancellationToken);
+            await ProcessBlock(await GetBlock(i, cancellationToken), cancellationToken);
         }
     }
 
-    public async Task<L1Block> GetBlock(ulong blockNumber)
+    public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token)
     {
         L1Block? result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
         while (result is null)
@@ -234,7 +234,7 @@ public class EthereumL1Bridge : IL1Bridge
         return result.Value;
     }
 
-    public async Task<L1Block> GetBlockByHash(Hash256 blockHash)
+    public async Task<L1Block> GetBlockByHash(Hash256 blockHash, CancellationToken token)
     {
         L1Block? result = await _ethL1Api.GetBlockByHash(blockHash, true);
         while (result is null)
@@ -246,7 +246,7 @@ public class EthereumL1Bridge : IL1Bridge
         return result.Value;
     }
 
-    public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash)
+    public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash, CancellationToken token)
     {
         ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
         while (result is null)
