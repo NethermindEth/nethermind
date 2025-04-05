@@ -19,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -37,10 +38,10 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
+        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Headers, 0, false);
 
         private readonly Lock _handlerLock = new();
 
-        private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         private readonly ulong _fastHeadersMemoryBudget;
         protected long _lowestRequestedHeaderNumber;
 
@@ -166,11 +167,6 @@ namespace Nethermind.Synchronization.FastBlocks
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
-
-            if (!_syncConfig.UseGethLimitsInFastBlocks)
-            {
-                _headersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
-            }
 
             if (!_syncConfig.FastSync && !alwaysStartHeaderSync)
             {
@@ -349,7 +345,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    batch = ProcessPersistedHeadersOrBuildNewBatch(cancellationToken);
+                    // Set the request size depending on the approximate allocation strategy.
+                    // NOTE: Cannot async because of the lock.
+                    int requestSize =
+                        _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Receipts, cancellationToken).Result
+                        ?? GethSyncLimits.MaxHeaderFetch;
+
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -372,12 +374,12 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(CancellationToken cancellationToken)
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(int requestSize, CancellationToken cancellationToken)
         {
             HeadersSyncBatch? batch = null;
             do
             {
-                batch = BuildNewBatch();
+                batch = BuildNewBatch(requestSize);
                 batch = ProcessPersistedPortion(batch);
 
                 if (batch is null)
@@ -394,11 +396,11 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        private HeadersSyncBatch BuildNewBatch()
+        private HeadersSyncBatch BuildNewBatch(int requestSize)
         {
             HeadersSyncBatch batch = new();
-            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - requestSize);
+            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, requestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
