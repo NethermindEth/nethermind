@@ -21,6 +21,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 {
 
     private readonly ObjectPool<IOverridableWorldScope> _overridableWorldScopePool = new DefaultObjectPool<IOverridableWorldScope>(new PooledIWorldStatePolicy(worldStateManager));
+    private Histogram _histogram = new Histogram();
 
     public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
     {
@@ -108,7 +109,9 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             worldState.Commit(releaseSpec);
             worldState.CommitTree(blockHeader.Number + 1);
             stopwatch.Stop();
-            Console.WriteLine($"RootHash {stopwatch.ElapsedMilliseconds}");
+            //Console.WriteLine($"RootHash {stopwatch.ElapsedMilliseconds}");
+            _histogram.Add((int)stopwatch.ElapsedMilliseconds);
+            Console.WriteLine($"RootHash p50: {_histogram.GetP50()}, p90: ${_histogram.GetP90()}, p99: ${_histogram.GetP99()}");
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
