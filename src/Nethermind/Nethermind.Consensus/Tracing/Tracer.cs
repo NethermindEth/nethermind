@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Tracing
             try
             {
                 blockTracer.StartNewBlockTrace(block);
-                processor.Process(block, options, blockTracer, token: default);
+                processor.Process(block, options, blockTracer);
                 blockTracer.EndBlockTrace();
             }
             finally

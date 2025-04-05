@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Int256;
-
-using System;
-using System.Threading;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 

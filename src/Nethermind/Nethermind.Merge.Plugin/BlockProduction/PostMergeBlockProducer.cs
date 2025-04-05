@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 {
                     if (TrySetState(parent.StateRoot))
                     {
-                        return ProcessPreparedBlock(block, null, default) ?? throw new EmptyBlockProductionException("Block processing failed");
+                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
                     }
                 }
                 finally

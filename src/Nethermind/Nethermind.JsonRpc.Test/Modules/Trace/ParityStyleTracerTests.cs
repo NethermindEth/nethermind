@@ -85,7 +85,7 @@ public class ParityStyleTracerTests
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         _blockTree.SuggestBlock(genesis);
-        _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance, default);
+        _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
         _tracer = new Tracer(new ReadOnlyTxProcessingScope(transactionProcessor, stateProvider, stateProvider.StateRoot), _processor, _processor);
