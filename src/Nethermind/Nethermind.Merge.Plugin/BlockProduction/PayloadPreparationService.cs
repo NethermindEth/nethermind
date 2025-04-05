@@ -145,7 +145,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             }
 
             TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime);
-
             TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
             // We don't want to keep improving a block too far beyond the slot duration.
