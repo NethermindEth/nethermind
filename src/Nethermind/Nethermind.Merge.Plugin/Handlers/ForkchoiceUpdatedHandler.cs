@@ -307,7 +307,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_simulateBlockProduction)
         {
-            payloadAttributes ??= PayloadAttributes.GenerateSimulatedPayload(newHeadBlock.Header);
+            payloadAttributes ??= newHeadBlock.Header.GenerateSimulatedPayload();
         }
 
         if (payloadAttributes is not null)

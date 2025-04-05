@@ -157,16 +157,6 @@ public class PayloadAttributes
                 .ExpectedPayloadAttributesVersion(),
             "PayloadAttributesV",
             out error);
-
-    public static PayloadAttributes GenerateSimulatedPayload(BlockHeader parentHeader) =>
-        new()
-        {
-            Timestamp = parentHeader.Timestamp + 12,
-            ParentBeaconBlockRoot = parentHeader.ParentHash, // it doesn't matter
-            PrevRandao = parentHeader.ParentHash ?? Keccak.Zero, // it doesn't matter
-            Withdrawals = [],
-            SuggestedFeeRecipient = Address.Zero
-        };
 }
 
 public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, InvalidPayloadAttributes, UnsupportedFork };

@@ -250,7 +250,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         async Task CancelSimulation(BlockHeader parentHeader)
         {
-            PayloadAttributes payloadAttributes = PayloadAttributes.GenerateSimulatedPayload(parentHeader);
+            PayloadAttributes payloadAttributes = parentHeader.GenerateSimulatedPayload();
             string payloadId = payloadAttributes.GetPayloadId(parentHeader);
             await _payloadPreparationService.GetPayload(payloadId);
         }
