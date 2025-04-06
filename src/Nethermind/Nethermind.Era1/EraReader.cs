@@ -69,7 +69,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
     public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, CancellationToken cancellation = default)
     {
-        if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+        ArgumentNullException.ThrowIfNull(specProvider);
 
         ValueHash256 accumulator = ReadAccumulator();
 

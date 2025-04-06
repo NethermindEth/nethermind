@@ -202,7 +202,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (!hasEngineApiConfigured)
         {
             throw new InvalidConfigurationException(
-                "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples",
+                "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/interacting/json-rpc-server/#engine-api",
                 ExitCodes.NoEngineModule);
         }
     }
@@ -216,9 +216,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         if (MergeEnabled)
         {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
+            ArgumentNullException.ThrowIfNull(_api.BlockTree);
+            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+            ArgumentNullException.ThrowIfNull(_api.UnclesValidator);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
@@ -244,16 +244,16 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         if (MergeEnabled)
         {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
-            if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
-            if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
-            if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-            if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
-            if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
+            ArgumentNullException.ThrowIfNull(_api.BlockTree);
+            ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
+            ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
+            ArgumentNullException.ThrowIfNull(_api.Sealer);
+            ArgumentNullException.ThrowIfNull(_api.BlockValidator);
+            ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
+            ArgumentNullException.ThrowIfNull(_api.TxPool);
+            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+            ArgumentNullException.ThrowIfNull(_api.StateReader);
+            ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
             while (!_api.BlockProcessingQueue.IsEmpty)
