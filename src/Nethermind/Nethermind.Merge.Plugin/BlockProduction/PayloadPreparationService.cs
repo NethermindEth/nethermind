@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -76,17 +77,39 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
         }
-        else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+        else if (_logger.IsInfo)
+        {
+            // Shouldn't really happen so move string construction code out of hot method
+            LogMultiStartRequest(payloadId);
+        }
 
         return payloadId;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void LogMultiStartRequest(string payloadId)
+        {
+            _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+        }
     }
 
     protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
-        if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+        bool isTrace = _logger.IsTrace;
+        if (isTrace) TraceBefore(payloadId, parentHeader);
+
         Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
-        if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+
+        if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
+
+        // Rarely in Trace so move string construction code out of hot method
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceBefore(string payloadId, BlockHeader parentHeader)
+            => _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceAfter(string payloadId, Block emptyBlock)
+            => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
     protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts) =>
