@@ -56,7 +56,6 @@ using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Evm.Config;
 using Nethermind.Consensus.Processing.CensorshipDetector;
-using Nethermind.Era1;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
@@ -102,6 +101,7 @@ namespace Nethermind.Api
                     readOnlyTree,
                     DbProvider!,
                     SpecProvider!,
+                    SimulateTransactionProcessorFactory,
                     LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
@@ -131,7 +131,7 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner? BlockProducerRunner { get; set; }
         public IBlockTree? BlockTree { get; set; }
-        public IBlockValidator? BlockValidator { get; set; }
+        public IBlockValidator? BlockValidator => Context.Resolve<IBlockValidator>();
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
@@ -147,9 +147,9 @@ namespace Nethermind.Api
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
-        public IUnclesValidator? UnclesValidator { get; set; }
+        public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
-        public IHeaderValidator? HeaderValidator { get; set; }
+        public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
@@ -221,7 +221,7 @@ namespace Nethermind.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
-        public TxValidator? TxValidator { get; set; }
+        public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
@@ -252,6 +252,7 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory { get; set; } = Nethermind.Facade.Simulate.SimulateTransactionProcessorFactory.Instance;
         public ILifetimeScope Context => _dependencies.Context;
     }
 }

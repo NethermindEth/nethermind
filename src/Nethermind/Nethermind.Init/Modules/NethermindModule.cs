@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -13,6 +14,7 @@ using Nethermind.Era1;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -39,6 +41,12 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
+
+            .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
+            .Bind<ITxValidator, TxValidator>()
+            .AddSingleton<IBlockValidator, BlockValidator>()
+            .AddSingleton<IHeaderValidator, HeaderValidator>()
+            .AddSingleton<IUnclesValidator, UnclesValidator>()
             ;
     }
 
