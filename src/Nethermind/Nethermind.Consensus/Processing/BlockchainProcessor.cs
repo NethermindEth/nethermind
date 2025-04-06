@@ -665,7 +665,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Hash256 stateRoot = branchingPoint?.StateRoot;
         if (isTrace) TraceStateRootLookup(stateRoot);
 
-        if (blocksToBeAddedToMain.Count > 0)
+        if (blocksToBeAddedToMain.Count > 1)
             blocksToBeAddedToMain.Reverse();
 
         return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
