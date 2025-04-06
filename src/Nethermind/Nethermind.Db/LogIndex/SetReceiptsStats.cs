@@ -22,6 +22,7 @@ public class SetReceiptsStats
     public ExecTimeStats CompactingDbs { get; } = new();
     public ExecTimeStats FlushingDbs { get; } = new();
     public ExecTimeStats PostMergeProcessing { get; } = new();
+    public ExecTimeStats InMemoryMerging { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
     public ExecTimeStats WaitingBatch { get; } = new();
@@ -44,6 +45,7 @@ public class SetReceiptsStats
         CompactingDbs.Combine(other.CompactingDbs);
         FlushingDbs.Combine(other.FlushingDbs);
         PostMergeProcessing.Combine(other.PostMergeProcessing);
+        InMemoryMerging.Combine(other.InMemoryMerging);
         KeysCount.Combine(other.KeysCount);
         LastBlockNumber = Math.Max(LastBlockNumber, other.LastBlockNumber);
         WaitingBatch.Combine(other.WaitingBatch);

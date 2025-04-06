@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -179,6 +180,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tCompacting DBs: {last.CompactingDbs} ( {total.CompactingDbs} on average )" +
                     $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
                     $"\n\t\tPost-merge processing: {last.PostMergeProcessing} ( {total.PostMergeProcessing} in total )" +
+                    $"\n\t\tIn-memory merging: {last.InMemoryMerging} ( {total.InMemoryMerging} in total )" +
                     $"\n\t\tCompressed keys: {last.CompressedAddressKeys:N0} address, {last.CompressedTopicKeys:N0} topic ( {total.CompressedAddressKeys:N0} address, {total.CompressedTopicKeys:N0} topic in total )" +
                     $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndexStorage))}"
                 );
@@ -299,7 +301,8 @@ namespace Nethermind.Init.Steps.Migrations
                     if (token.IsCancellationRequested)
                         return;
 
-                    SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
+                    var runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
+                    runStats.Combine(DbOnTheRocks.CustomMergeOperators.GetAndResetStats());
                     runStats.WaitingBatch.Include(readElapsed);
                     migrated += batch.Length;
 

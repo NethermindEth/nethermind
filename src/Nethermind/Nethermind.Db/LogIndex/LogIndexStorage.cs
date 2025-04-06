@@ -383,14 +383,18 @@ namespace Nethermind.Db
             stats.FlushingDbs.Include(watch.Elapsed);
 
             // TODO: try keep writing during compaction
+            //Console.WriteLine("_db.Compact starting");
             watch.Restart();
             _addressDb.Compact();
             _topicsDb.Compact();
             stats.CompactingDbs.Include(watch.Elapsed);
+            //Console.WriteLine("_db.Compact completed");
 
+            //Console.WriteLine("CompressPostMerge starting");
             watch.Restart();
             CompressPostMerge(CompressKeysChannel.Reader, stats);
             stats.PostMergeProcessing.Include(watch.Elapsed);
+            //Console.WriteLine("CompressPostMerge completed");
 
             _logger.Info("Log index compaction completed");
         }
@@ -511,6 +515,7 @@ namespace Nethermind.Db
                 SetKeyBlockNum(dbKeyComp, blockNum);
 
                 // Put compressed value at a new key and clear uncompressed one
+                // TODO: reading and clearing the value is not atomic, find a fix
                 dbValue = CompressDbValue(dbValue);
                 batch.PutSpan(dbKeyComp, dbValue);
                 batch.PutSpan(dbKey, Array.Empty<byte>());

@@ -1841,50 +1841,72 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     }
 
     // TODO: move to LogIndexStorage!
-    private static class CustomMergeOperators
+    public static class CustomMergeOperators
     {
+        private static SetReceiptsStats _stats = new();
+
+        public static SetReceiptsStats GetAndResetStats()
+        {
+            // Not atomic, but good enough
+            var stats = _stats;
+            _stats = new();
+            return stats;
+        }
+
         public static readonly IReadOnlyDictionary<string, MergeOperator> All = new Dictionary<string, MergeOperator>(StringComparer.OrdinalIgnoreCase)
         {
             { "LogIndexStorage.Merge", MergeOperators.Create("LogIndexStorage.Merge", ConcatenatePartialMerge, ConcatenateFullMerge) }
         };
 
+        // TODO: inherit MergeOperator instead, to improve performance and minimize allocations
         private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
         {
-            success = true;
+            var watch = Stopwatch.StartNew();
 
-            // TODO: avoid array copying
-            if (existingValue.IsEmpty && operands.Count == 1)
-                return operands.Get(0).ToArray();
-
-            // TODO: does Get involve IO request? if yes - use single Get per operand
-            var resultLength = existingValue.Length;
-            for (int i = 0; i < operands.Count; i++)
+            try
             {
-                resultLength += operands.Get(i).Length;
+                success = true;
+
+                // TODO: avoid array copying
+                if (existingValue.IsEmpty && operands.Count == 1)
+                    return operands.Get(0).ToArray();
+
+                // TODO: does Get involve IO request? if yes - use single Get per operand
+                var resultLength = existingValue.Length;
+                for (int i = 0; i < operands.Count; i++)
+                {
+                    resultLength += operands.Get(i).Length;
+                }
+
+                // TODO: can ArrayPool be used?
+                var result = new byte[resultLength];
+                existingValue.CopyTo(result);
+
+                var shift = existingValue.Length;
+                for (int i = 0; i < operands.Count; i++)
+                {
+                    ReadOnlySpan<byte> operand = operands.Get(i);
+                    operand.CopyTo(result.AsSpan(shift..));
+                    shift += operand.Length;
+                }
+
+                if (result.Length > LogIndexStorage.MaxUncompressedLength)
+                {
+                    LogIndexStorage.CompressKeys.TryWrite(key.ToArray());
+                }
+
+                return result;
             }
-
-            // TODO: can ArrayPool be used?
-            var result = new byte[resultLength];
-            existingValue.CopyTo(result);
-
-            var shift = existingValue.Length;
-            for (int i = 0; i < operands.Count; i++)
+            finally
             {
-                ReadOnlySpan<byte> operand = operands.Get(i);
-                operand.CopyTo(result.AsSpan(shift..));
-                shift += operand.Length;
+                _stats.InMemoryMerging.Include(watch.Elapsed);
             }
-
-            if (result.Length > LogIndexStorage.MaxUncompressedLength)
-            {
-                LogIndexStorage.CompressKeys.TryWrite(key.ToArray());
-            }
-
-            return result;
         }
 
         private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
         {
+            //Console.WriteLine($"Merging (full) {operands.Count + (hasExistingValue ? 1 : 0)} operands for {Convert.ToHexString(key)}");
+
             if (!hasExistingValue)
                 existingValue = ReadOnlySpan<byte>.Empty;
 
@@ -1893,6 +1915,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         private static byte[] ConcatenatePartialMerge(ReadOnlySpan<byte> key, MergeOperators.OperandsEnumerator operands, out bool success)
         {
+            //Console.WriteLine($"Merging (partial) {operands.Count} operands for {Convert.ToHexString(key)}");
+
             return ConcatenateMerge(key, ReadOnlySpan<byte>.Empty, operands, out success);
         }
     }
