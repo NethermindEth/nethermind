@@ -74,7 +74,7 @@ public class JsonConfigSource : IConfigSource
     {
         var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
-        foreach (var configItem in configItems.EnumerateObject())
+        foreach (var configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
         {
             var key = configItem.Name;
             if (!itemsDict.ContainsKey(key))
