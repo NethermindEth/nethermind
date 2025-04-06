@@ -99,11 +99,11 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
                     _fileTracingQueue.Clear();
                     break;
                 case ProcessingMode.Sequential:
-                {
-                    var firstUnfinishedTask = _fileTracingQueue.FirstOrDefault(t => !t.IsCompleted);
-                    if (firstUnfinishedTask != null) firstUnfinishedTask.Wait(Ct);
-                    break;
-                }
+                    {
+                        var firstUnfinishedTask = _fileTracingQueue.FirstOrDefault(t => !t.IsCompleted);
+                        if (firstUnfinishedTask != null) firstUnfinishedTask.Wait(Ct);
+                        break;
+                    }
             }
 
         CleanUpCompletedTasks();

@@ -72,38 +72,38 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-            var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+        var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
-            foreach (var configItem in configItems.EnumerateObject())
+        foreach (var configItem in configItems.EnumerateObject())
+        {
+            var key = configItem.Name;
+            if (!itemsDict.ContainsKey(key))
             {
-                var key = configItem.Name;
-                if (!itemsDict.ContainsKey(key))
+                var value = configItem.Value;
+                if (value.ValueKind == JsonValueKind.Number)
                 {
-                    var value = configItem.Value;
-                    if (value.ValueKind == JsonValueKind.Number)
-                    {
-                            itemsDict[key] = ParseNumber(value);
-                    }
-                    else if (value.ValueKind == JsonValueKind.True)
-                    {
-                        itemsDict[key] = "true";
-                    }
-                    else if (value.ValueKind == JsonValueKind.False)
-                    {
-                        itemsDict[key] = "false";
-                    }
-                    else
-                    {
-                        itemsDict[key] = configItem.Value.ToString();
-                    }
+                    itemsDict[key] = ParseNumber(value);
+                }
+                else if (value.ValueKind == JsonValueKind.True)
+                {
+                    itemsDict[key] = "true";
+                }
+                else if (value.ValueKind == JsonValueKind.False)
+                {
+                    itemsDict[key] = "false";
                 }
                 else
                 {
-                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
+                    itemsDict[key] = configItem.Value.ToString();
                 }
             }
+            else
+            {
+                throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
+            }
+        }
 
-            ApplyConfigValues(moduleName, itemsDict);
+        ApplyConfigValues(moduleName, itemsDict);
     }
 
     private readonly Dictionary<string, Dictionary<string, string>> _values = new(StringComparer.InvariantCultureIgnoreCase);
@@ -161,7 +161,7 @@ public class JsonConfigSource : IConfigSource
 
     private string ParseNumber(JsonElement value)
     {
-       if (value.TryGetInt64(out long result))
+        if (value.TryGetInt64(out long result))
         {
             return result.ToString();
         }
@@ -171,7 +171,7 @@ public class JsonConfigSource : IConfigSource
         }
         else
         {
-          throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
+            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
         }
     }
 }
