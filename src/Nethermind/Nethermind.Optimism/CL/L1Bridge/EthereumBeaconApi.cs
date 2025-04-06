@@ -63,7 +63,7 @@ public class EthereumBeaconApi : IBeaconApi
     {
         try
         {
-            HttpResponseMessage response = await _client.GetAsync(uri, cancellationToken);
+            using HttpResponseMessage response = await _client.GetAsync(uri, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -91,10 +91,8 @@ public class EthereumBeaconApi : IBeaconApi
         return default;
     }
 
-#pragma warning disable 0649
     private struct GetBlobSidecarsResponse
     {
-        public BlobSidecar[] Data;
+        public BlobSidecar[] Data { get; init; }
     }
-#pragma warning restore 0649
 }
