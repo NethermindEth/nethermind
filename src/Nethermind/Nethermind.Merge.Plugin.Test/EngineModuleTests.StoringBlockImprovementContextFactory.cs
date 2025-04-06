@@ -49,23 +49,14 @@ public partial class BaseEngineModuleTests
             return blockImprovementContext;
         }
 
-        private void LogProductionResult(Task<Block?> t)
+        private Block? LogProductionResult(Task<Block?> t)
         {
             if (t.IsCompletedSuccessfully)
             {
                 BlockImproved?.Invoke(this, new BlockEventArgs(t.Result!));
             }
-            else
-            {
-                try
-                {
-                    t.GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    BlockImproved?.Invoke(ex, new BlockEventArgs(null!));
-                }
-            }
+
+            return t.Result;
         }
 
         public Task WaitForImprovedBlockWithCondition(CancellationToken cancellationToken, Func<Block, bool> cond)
