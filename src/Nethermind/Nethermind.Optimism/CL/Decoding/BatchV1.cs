@@ -158,7 +158,6 @@ public sealed class BatchV1
     {
         // 0x01 ++ rlp_encode(value, gasPrice, data, accessList)
         Rlp.ValueDecoderContext decoder = new(encoded);
-        decoder.ReadByte(); // type
         int length = decoder.ReadSequenceLength();
         UInt256 value = decoder.DecodeUInt256();
         UInt256 gasPrice = decoder.DecodeUInt256();
@@ -171,7 +170,6 @@ public sealed class BatchV1
     {
         // 0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)
         Rlp.ValueDecoderContext decoder = new(encoded);
-        byte type = decoder.ReadByte(); // type
         int length = decoder.ReadSequenceLength();
         UInt256 value = decoder.DecodeUInt256();
         UInt256 maxPriorityFeePerGas = decoder.DecodeUInt256();
