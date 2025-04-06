@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -99,7 +100,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (args.Action != TxAction.Add)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+                    if (_logger.IsDebug) DebugSkipReason(currentTx, args);
                 }
                 else
                 {
@@ -121,6 +122,10 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 return args.Action;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
+                    => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
             }
 
             protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
