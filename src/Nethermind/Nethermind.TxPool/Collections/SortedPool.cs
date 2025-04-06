@@ -153,7 +153,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            if (group is null) throw new ArgumentNullException(nameof(group));
+            ArgumentNullException.ThrowIfNull(group);
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : [];
         }
 
@@ -164,7 +164,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            if (group is null) throw new ArgumentNullException(nameof(group));
+            ArgumentNullException.ThrowIfNull(group);
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.Count : 0;
         }
 
@@ -592,7 +592,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
