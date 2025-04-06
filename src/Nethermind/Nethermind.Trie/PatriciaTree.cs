@@ -19,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 namespace Nethermind.Trie
 {
@@ -138,6 +139,8 @@ namespace Nethermind.Trie
                 ThrowReadOnlyTrieException();
             }
 
+            long sw = Stopwatch.GetTimestamp();
+
             int maxLevelForConcurrentCommit = _writeBeforeCommit switch
             {
                 > 4 * 16 * 16 => 2, // we separate at three top levels
@@ -158,7 +161,12 @@ namespace Nethermind.Trie
                 RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
                 SetRootHash(RootRef.Keccak!, true);
             }
+
+            CommitTime.Inc(Stopwatch.GetTimestamp() - sw);
         }
+
+        private Counter CommitTime = Prometheus.Metrics.CreateCounter("patriciatree_commit_time", "Update roothash time");
+        private Counter CommitGenerateKey = Prometheus.Metrics.CreateCounter("patriciatree_commit_generate_tree_time", "Update roothash time");
 
         private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
@@ -255,7 +263,9 @@ namespace Nethermind.Trie
                 path.TruncateMut(previousPathLength);
             }
 
+            long sw = Stopwatch.GetTimestamp();
             node.ResolveKey(TrieStore, ref path, nodeCommitInfo.IsRoot, bufferPool: _bufferPool);
+            CommitGenerateKey.Inc(Stopwatch.GetTimestamp() - sw);
             node.Seal();
 
             if (node.FullRlp.Length >= 32)
@@ -297,10 +307,14 @@ namespace Nethermind.Trie
             }
         }
 
+        private Counter UpdateRootHashTime = Prometheus.Metrics.CreateCounter("patriciatree_update_roothash", "Update roothash time");
+
         public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
+            long sw = Stopwatch.GetTimestamp();
             RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
+            UpdateRootHashTime.Inc(Stopwatch.GetTimestamp() - sw);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 

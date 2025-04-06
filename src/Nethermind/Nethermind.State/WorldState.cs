@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -13,6 +14,8 @@ using Nethermind.Logging;
 using Nethermind.State.Tracing;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
@@ -172,14 +175,17 @@ namespace Nethermind.State
             _stateProvider.DecrementNonce(address, delta);
         }
 
+        private Counter CommitTreeTime = Metrics.CreateCounter("world_state_commit_tree_time", "commit time");
         public void CommitTree(long blockNumber)
         {
+            long sw = Stopwatch.GetTimestamp();
             using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
             {
                 _persistentStorageProvider.CommitTrees(committer);
                 _stateProvider.CommitTree();
             }
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
+            CommitTreeTime.Inc(Stopwatch.GetTimestamp() - sw);
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
@@ -224,17 +230,23 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
+        private Counter CommitTime = Metrics.CreateCounter("world_state_commit_time", "commit time");
+
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
+            long sw = Stopwatch.GetTimestamp();
             _persistentStorageProvider.Commit(commitRoots);
             _transientStorageProvider.Commit(commitRoots);
             _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
+            CommitTime.Inc(Stopwatch.GetTimestamp() - sw);
         }
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
+            long sw = Stopwatch.GetTimestamp();
             _persistentStorageProvider.Commit(tracer, commitRoots);
             _transientStorageProvider.Commit(tracer, commitRoots);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+            CommitTime.Inc(Stopwatch.GetTimestamp() - sw);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

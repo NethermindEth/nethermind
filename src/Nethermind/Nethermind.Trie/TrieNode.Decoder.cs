@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -164,30 +165,57 @@ namespace Nethermind.Trie
                     : GetChildrenRlpLengthForBranchNonRlpParallel(tree, path, item, bufferPool);
             }
 
-            private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool)
+            private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath path, TrieNode item, ICappedArrayPool bufferPool)
             {
+                ArrayPoolList<(TrieNode, TreePath)>? toResolve = null;
+
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                    (local: 0, item, tree, bufferPool, rootPath),
-                    static (i, state) =>
+                for (int i = 0; i < BranchesCount; i++)
+                {
+                    object? data = item._nodeData[i];
+                    if (ReferenceEquals(data, _nullNode) || data is null)
                     {
-                        object? data = state.item._nodeData[i];
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        totalLength++;
+                    }
+                    else if (data is Hash256)
+                    {
+                        totalLength += Rlp.LengthOfKeccakRlp;
+                    }
+                    else
+                    {
+                        TrieNode childNode = Unsafe.As<TrieNode>(data);
+                        if (childNode.Keccak is null)
                         {
-                            state.local++;
-                        }
-                        else if (data is Hash256)
-                        {
-                            state.local += Rlp.LengthOfKeccakRlp;
+                            path.AppendMut(i);
+                            (toResolve ??= new ArrayPoolList<(TrieNode, TreePath)>(16)).Add((childNode, path));
+                            path.TruncateOne();
                         }
                         else
                         {
-                            TreePath path = state.rootPath;
-                            path.AppendMut(i);
-                            TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, isRoot: false, bufferPool: state.bufferPool);
-                            state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
+                    }
+                }
+
+                if ((toResolve?.Count ?? 0) == 0) return totalLength;
+                if (toResolve.Count == 1)
+                {
+                    (TrieNode childNode, TreePath childPath) = toResolve[0];
+                    childNode.ResolveKey(tree, ref childPath, isRoot: false, bufferPool: bufferPool);
+                    totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+
+                    toResolve.Dispose();
+
+                    return totalLength;
+                }
+
+                ParallelUnbalancedWork.For(0, toResolve.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                    (local: 0, toResolve, tree, bufferPool),
+                    static (i, state) =>
+                    {
+                        (TrieNode childNode, TreePath path) = state.toResolve[i];
+                        childNode.ResolveKey(state.tree, ref path, isRoot: false, bufferPool: state.bufferPool);
+                        state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
 
                         return state;
                     },
@@ -196,6 +224,7 @@ namespace Nethermind.Trie
                         Interlocked.Add(ref totalLength, state.local);
                     });
 
+                toResolve.Dispose();
                 return totalLength;
             }
 
@@ -225,37 +254,68 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
-            private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
+            private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
             {
+                ArrayPoolList<(TrieNode, TreePath)>? toResolve = null;
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                    (local: 0, item, tree, bufferPool, rootPath),
-                    static (i, state) =>
+                ValueRlpStream rlpStream = item.RlpStream;
+                item.SeekChild(ref rlpStream, 0);
+                for (int i = 0; i < BranchesCount; i++)
+                {
+                    object data = item._nodeData[i];
+                    if (data is null)
                     {
-                        ValueRlpStream rlpStream = state.item.RlpStream;
-                        state.item.SeekChild(ref rlpStream, i);
-                        object? data = state.item._nodeData[i];
-                        if (data is null)
+                        int length = rlpStream.PeekNextRlpLength();
+                        totalLength += length;
+                        rlpStream.SkipBytes(length);
+                    }
+                    else
+                    {
+                        if (ReferenceEquals(data, _nullNode) || data is null)
                         {
-                            state.local += rlpStream.PeekNextRlpLength();
-                        }
-                        else if (ReferenceEquals(data, _nullNode))
-                        {
-                            state.local++;
+                            totalLength++;
                         }
                         else if (data is Hash256)
                         {
-                            state.local += Rlp.LengthOfKeccakRlp;
+                            totalLength += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
-                            TreePath path = state.rootPath;
-                            path.AppendMut(i);
-                            Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, isRoot: false, bufferPool: state.bufferPool);
-                            state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            if (childNode.Keccak is null)
+                            {
+                                path.AppendMut(i);
+                                (toResolve ??= new ArrayPoolList<(TrieNode, TreePath)>(16)).Add((childNode, path));
+                                path.TruncateOne();
+                            }
+                            else
+                            {
+                                totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            }
                         }
+
+                        rlpStream.SkipItem();
+                    }
+                }
+
+                if ((toResolve?.Count ?? 0) == 0) return totalLength;
+                if (toResolve.Count == 1)
+                {
+                    (TrieNode childNode, TreePath childPath) = toResolve[0];
+                    childNode.ResolveKey(tree, ref childPath, isRoot: false, bufferPool: bufferPool);
+                    totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+
+                    toResolve.Dispose();
+                    return totalLength;
+                }
+
+                ParallelUnbalancedWork.For(0, toResolve.Count, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                    (local: 0, toResolve, tree, bufferPool),
+                    static (i, state) =>
+                    {
+                        (TrieNode childNode, TreePath path) = state.toResolve[i];
+                        childNode.ResolveKey(state.tree, ref path, isRoot: false, bufferPool: state.bufferPool);
+                        state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
 
                         return state;
                     },
@@ -264,6 +324,7 @@ namespace Nethermind.Trie
                         Interlocked.Add(ref totalLength, state.local);
                     });
 
+                toResolve.Dispose();
                 return totalLength;
             }
 

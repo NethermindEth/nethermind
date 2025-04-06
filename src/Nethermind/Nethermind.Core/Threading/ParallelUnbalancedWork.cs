@@ -40,6 +40,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
     {
         int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+        threads = Math.Min(threads, toExclusive - fromInclusive);
 
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
@@ -261,6 +262,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             var threads = parallelOptions.MaxDegreeOfParallelism > 0
                 ? parallelOptions.MaxDegreeOfParallelism
                 : Environment.ProcessorCount;
+
+            threads = Math.Min(threads, toExclusive - fromInclusive);
 
             // Create shared data with thread-local initializers and finalizers
             var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);

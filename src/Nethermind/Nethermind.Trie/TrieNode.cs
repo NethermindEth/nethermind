@@ -14,7 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
-
+using Prometheus;
 using static Nethermind.Trie.BranchData;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
@@ -522,6 +522,8 @@ namespace Nethermind.Trie
             Keccak = GenerateKey(tree, ref path, isRoot, bufferPool, canBeParallel);
         }
 
+        static Counter TrieKeccakComputeTime = Prometheus.Metrics.CreateCounter("trienode_keccak_compute_time", "Compute time");
+
         public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             RlpFactory rlp = _rlp;
@@ -545,7 +547,10 @@ namespace Nethermind.Trie
             if (rlp.Data.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.Data.AsSpan());
+                long sw = Stopwatch.GetTimestamp();
+                var res = Nethermind.Core.Crypto.Keccak.Compute(rlp.Data.AsSpan());
+                TrieKeccakComputeTime.Inc(Stopwatch.GetTimestamp() - sw);
+                return res;
             }
 
             return null;
