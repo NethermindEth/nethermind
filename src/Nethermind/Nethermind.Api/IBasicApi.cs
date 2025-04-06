@@ -60,8 +60,5 @@ namespace Nethermind.Api
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
-
-        public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
-            Plugins.OfType<ISynchronizationPlugin>();
     }
 }

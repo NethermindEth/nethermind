@@ -56,10 +56,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             // Validators
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
-            .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
-            .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
-            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
@@ -67,12 +63,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
-
-            .AddSingleton<IPeerRefresher, PeerRefresher>()
-            .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
-
-            .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()

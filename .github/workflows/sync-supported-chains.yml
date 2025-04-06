@@ -172,11 +172,11 @@ jobs:
             fi
 
             if [[ "$network" == base-* ]]; then
-              extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
+              extra_param="--chain base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
             fi
 
             if [[ "$network" == world-* ]]; then
-              extra_param="--world"
+              extra_param="--chain worldchain"
             fi
 
             stripped_network="${network#base-}"
