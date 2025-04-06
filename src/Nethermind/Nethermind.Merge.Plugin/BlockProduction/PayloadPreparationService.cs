@@ -167,14 +167,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 return;
             }
 
-            TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime);
-            TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
-            DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
-            // We don't want to keep improving a block too far beyond the slot duration.
-            // Specifically, we allow ourselves at most 30% extra of the nominal slot time.
-            // This is just a break in case the improvement is never cancelled.
-            DateTimeOffset slotPlusThirdFinishTime = startDateTime + _timePerSlot * 1.3;
-            if (whenWeCouldFinishNextProduction > slotPlusThirdFinishTime)
+            TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp);
+            if (dynamicDelay == Timeout.InfiniteTimeSpan)
             {
                 // If we can't finish before that cutoff, skip the improvement
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
@@ -207,7 +201,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return blockImprovementContext;
     }
 
-    private TimeSpan CalculateImprovementDelay(DateTimeOffset startDateTime)
+    private TimeSpan CalculateImprovementDelay(DateTimeOffset startDateTime, long startTimestamp)
     {
         // We want to keep building better blocks throughout this slot so that when 
         // the consensus client requests the block, we have the best version ready.
@@ -221,6 +215,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         // being asked for a block is highest; so where the improvements will
         // likely have highest impact.
 
+        TimeSpan dynamicDelay;
         if (!_improvementDelay.HasValue)
         {
             // Calculate how much time is left in the slot:
@@ -266,13 +261,27 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             // Dynamic delay = currentFraction * (remaining slot time)
             // So near the start: delay is bigger (slower improvement)
             // Near the end: delay shrinks, allowing more frequent improvements
-            return TimeSpan.FromSeconds(timeRemainingInSlot.TotalSeconds * currentFraction);
+            dynamicDelay = TimeSpan.FromSeconds(timeRemainingInSlot.TotalSeconds * currentFraction);
         }
         else
         {
             // In tests, we override the dynamic strategy with a fixed delay
-            return _improvementDelay.Value;
+            dynamicDelay = _improvementDelay.Value;
         }
+
+        TimeSpan lastBuildTime = Stopwatch.GetElapsedTime(startTimestamp);
+        DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + dynamicDelay + lastBuildTime;
+        // We don't want to keep improving a block too far beyond the slot duration.
+        // Specifically, we allow ourselves at most 30% extra of the nominal slot time.
+        // This is just a break in case the improvement is never cancelled.
+        DateTimeOffset slotPlusThirdFinishTime = startDateTime + _timePerSlot * 1.3;
+        if (whenWeCouldFinishNextProduction > slotPlusThirdFinishTime)
+        {
+            // If we can't finish before that cutoff, skip the improvement
+            dynamicDelay = Timeout.InfiniteTimeSpan;
+        }
+
+        return dynamicDelay;
     }
 
     private void CleanupOldPayloads(object? sender, EventArgs e)
