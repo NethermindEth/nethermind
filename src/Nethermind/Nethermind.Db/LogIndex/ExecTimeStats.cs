@@ -9,16 +9,16 @@ namespace Nethermind.Db;
 // TODO: get rid of after testing
 public class ExecTimeStats
 {
-    private long _totalMicroseconds;
+    private long _totalTicks;
     private int _count;
 
     public void Include(TimeSpan elapsed)
     {
-        Interlocked.Add(ref _totalMicroseconds, (long)elapsed.TotalMicroseconds);
+        Interlocked.Add(ref _totalTicks, elapsed.Ticks);
         Interlocked.Increment(ref _count);
     }
 
-    public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromMicroseconds((double)_totalMicroseconds / _count);
+    public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromTicks((long)((double)_totalTicks / _count));
 
     public override string ToString()
     {
@@ -38,7 +38,7 @@ public class ExecTimeStats
 
     public void Combine(ExecTimeStats stats)
     {
-        _totalMicroseconds += stats._totalMicroseconds;
+        _totalTicks += stats._totalTicks;
         _count += stats._count;
     }
 }
