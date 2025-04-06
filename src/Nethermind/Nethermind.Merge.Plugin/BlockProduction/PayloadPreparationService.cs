@@ -359,7 +359,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     blockContext.CancelOngoingImprovements();
                 }
 
-
                 return blockContext;
             }
         }
