@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -64,7 +66,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -73,11 +75,12 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
                 {
+                    // Check if we have gone over time or the payload has been requested
+                    if (token.IsCancellationRequested) break;
+
                     TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
                 }
-
-                stateProvider.Commit(spec, receiptsTracer);
 
                 SetTransactions(block, transactionsInBlock);
                 return receiptsTracer.TxReceipts.ToArray();
@@ -97,7 +100,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (args.Action != TxAction.Add)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+                    if (_logger.IsDebug) DebugSkipReason(currentTx, args);
                 }
                 else
                 {
@@ -119,6 +122,10 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 return args.Action;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
+                    => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
             }
 
             protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();

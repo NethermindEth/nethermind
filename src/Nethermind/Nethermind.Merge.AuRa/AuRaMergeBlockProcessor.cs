@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
+using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -58,8 +58,8 @@ public class AuRaMergeBlockProcessor(
         preWarmer,
         executionRequestsProcessor)
 {
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token) =>
         block.IsPostMerge
-            ? PostMergeProcessBlock(block, blockTracer, options)
-            : base.ProcessBlock(block, blockTracer, options);
+            ? PostMergeProcessBlock(block, blockTracer, options, token)
+            : base.ProcessBlock(block, blockTracer, options, token);
 }

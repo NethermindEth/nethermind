@@ -197,8 +197,9 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-            new TxPool.TxPool(_api.EthereumEcdsa!,
+        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+        {
+            TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
                 _api.Config<ITxPoolConfig>(),
@@ -206,6 +207,10 @@ namespace Nethermind.Init.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy);
+
+            _api.DisposeStack.Push(txPool);
+            return txPool;
+        }
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 

@@ -122,7 +122,6 @@ public partial class BaseEngineModuleTests
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
-                synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
                 chain.BeaconPivot,
@@ -147,8 +146,7 @@ public partial class BaseEngineModuleTests
                 peerRefresher,
                 chain.SpecProvider,
                 chain.SyncPeerPool,
-                chain.LogManager,
-                new BlocksConfig().SecondsPerSlot),
+                chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
