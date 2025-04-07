@@ -50,7 +50,7 @@ internal static class Precompiler
         typeBuilder.AddInterfaceImplementation(typeof(IPrecompiledContract));
 
         // Define the MoveNext method
-        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true), codeInfo, metadata, config).CreateMethod();
+        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true, doVerify: false), codeInfo, metadata, config).CreateMethod();
 
         // Finalize the type
         var finalizedType = typeBuilder.CreateType();
