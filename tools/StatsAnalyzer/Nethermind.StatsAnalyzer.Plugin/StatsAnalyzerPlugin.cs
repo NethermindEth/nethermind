@@ -40,7 +40,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
     {
         if (Enabled)
         {
-            if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
+            if (_logger.IsInfo) _logger.Info("Setting up Stats Analyzer");
 
             if (patternAnalyzerConfig.Enabled) SetupPatternAnalyzer();
             if (callAnalyzerConfig.Enabled) SetupCallAnalyzer();
@@ -58,7 +58,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 
     private void SetupCallAnalyzer()
     {
-        if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
+        if (_logger.IsInfo) _logger.Info("Setting up Call Analyzer tracer");
 
         var analyzer = new CallStatsAnalyzer(callAnalyzerConfig.TopN);
         CallAnalyzerFileTracer callAnalyzerFileTracer = new(new ResettableList<Address>(),
@@ -73,7 +73,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 
     private void SetupPatternAnalyzer()
     {
-        if (_logger.IsInfo) _logger.Info("Setting up OpcodeStats tracer");
+        if (_logger.IsInfo) _logger.Info("Setting up Pattern Analyzer tracer");
 
         var analyzer = new PatternStatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
         PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(new ResettableList<Instruction>(),
