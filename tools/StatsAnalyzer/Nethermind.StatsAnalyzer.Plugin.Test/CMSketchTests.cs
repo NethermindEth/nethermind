@@ -206,8 +206,6 @@ public class CmSketchTests
 
         var observedFreqOfBreaches = countOfGreaterThanExpectedError / (double)actualCounts.Count;
         // if the freq of false results is not accounted by the confidence return false
-        if (!(observedFreqOfBreaches <= 1.0d - confidence))
-            return false;
-        return true;
+        return observedFreqOfBreaches <= 1.0d - confidence;
     }
 }
