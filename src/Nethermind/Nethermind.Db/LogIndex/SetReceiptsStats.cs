@@ -16,12 +16,10 @@ public class SetReceiptsStats
     public ExecTimeStats BuildingDictionary { get; } = new();
     public ExecTimeStats Processing { get; } = new();
 
-    public long CompressedAddressKeys { get; set; }
-    public long CompressedTopicKeys { get; set; }
     public ExecTimeStats CallingMerge { get; } = new();
     public ExecTimeStats CompactingDbs { get; } = new();
     public ExecTimeStats FlushingDbs { get; } = new();
-    public ExecTimeStats PostMergeProcessing { get; } = new();
+    public PostMergeProcessingStats PostMergeProcessing { get; } = new();
     public ExecTimeStats InMemoryMerging { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
@@ -36,8 +34,6 @@ public class SetReceiptsStats
         TxAdded += other.TxAdded;
         LogsAdded += other.LogsAdded;
         TopicsAdded += other.TopicsAdded;
-        CompressedAddressKeys += other.CompressedAddressKeys;
-        CompressedTopicKeys += other.CompressedTopicKeys;
 
         BuildingDictionary.Combine(other.BuildingDictionary);
         Processing.Combine(other.Processing);

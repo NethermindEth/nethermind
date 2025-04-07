@@ -21,7 +21,7 @@ public interface ILogIndexStorage : IAsyncDisposable
     Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
     SetReceiptsStats Compact();
-    SetReceiptsStats CompressAndCompact(int maxUncompressedLength = LogIndexStorage.MaxUncompressedLength);
+    SetReceiptsStats Recompact(int maxUncompressedLength = LogIndexStorage.MaxUncompressedLength);
     Task StopAsync();
 
     PagesStats PagesStats => default;

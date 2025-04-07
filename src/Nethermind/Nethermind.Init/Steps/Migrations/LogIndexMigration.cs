@@ -170,18 +170,22 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded:N0} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
-
+                    "\n" +
                     $"\n\t\tWaiting batch: {last.WaitingBatch} ( {total.WaitingBatch} on average )" +
                     $"\n\t\tKeys per batch: {last.KeysCount:N0} ( {total.KeysCount:N0} on average )" +
                     $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average )" +
                     $"\n\t\tProcessing: {last.Processing} ( {total.Processing} on average )" +
-
                     $"\n\t\tMerge call: {last.CallingMerge} ( {total.CallingMerge} on average )" +
-                    $"\n\t\tCompacting DBs: {last.CompactingDbs} ( {total.CompactingDbs} on average )" +
-                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
-                    $"\n\t\tPost-merge processing: {last.PostMergeProcessing} ( {total.PostMergeProcessing} in total )" +
                     $"\n\t\tIn-memory merging: {last.InMemoryMerging} ( {total.InMemoryMerging} in total )" +
-                    $"\n\t\tCompressed keys: {last.CompressedAddressKeys:N0} address, {last.CompressedTopicKeys:N0} topic ( {total.CompressedAddressKeys:N0} address, {total.CompressedTopicKeys:N0} topic in total )" +
+                    "\n" +
+                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
+                    $"\n\t\tCompacting DBs: {last.CompactingDbs} ( {total.CompactingDbs} on average )" +
+                    $"\n\t\tPost-merge processing: {last.PostMergeProcessing.Execution} ( {total.PostMergeProcessing.Execution} in total )" +
+                    $"\n\t\t\tDB getting: {last.PostMergeProcessing.GettingValue} ( {total.PostMergeProcessing.GettingValue} in total )" +
+                    $"\n\t\t\tCompressing: {last.PostMergeProcessing.CompressingValue} ( {total.PostMergeProcessing.CompressingValue} in total )" +
+                    $"\n\t\t\tPutting: {last.PostMergeProcessing.PuttingValues} ( {total.PostMergeProcessing.PuttingValues} in total )" +
+                    $"\n\t\t\tCommiting: {last.PostMergeProcessing.CommitingBatch} ( {total.PostMergeProcessing.CommitingBatch} in total )" +
+                    $"\n\t\t\tCompressed keys: {last.PostMergeProcessing.CompressedAddressKeys:N0} address, {last.PostMergeProcessing.CompressedTopicKeys:N0} topic ( {total.PostMergeProcessing.CompressedAddressKeys:N0} address, {total.PostMergeProcessing.CompressedTopicKeys:N0} topic in total )" +
                     $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndexStorage))}"
                 );
             }
@@ -223,6 +227,8 @@ namespace Nethermind.Init.Steps.Migrations
                 var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
 
+                _logIndexStorage.Compact();
+
                 // await Task.CompletedTask;
                 // var stats = _logIndexStorage.CompressAndCompact(LogIndexStorage.MaxUncompressedLength / 4);
                 // _logger.Info($"LogIndexMigration" +
@@ -252,12 +258,14 @@ namespace Nethermind.Init.Steps.Migrations
             try
             {
                 var startFrom = 0;
-                // const int startFrom = 750_000; // Holesky: Just before slowdown
+                // var startFrom = 750_000; // Holesky: Just before slowdown
                 // var startFrom = 750_000 + 18_000 + 33_000; // Holesky: Where slowdown starts
-                // const int startFrom = 2_000_000; // Holesky: Average blocks
-                // const int startFrom = 2_000_000 + 180_000; // Holesky: Very log-dense blocks
+                // var startFrom = 2_000_000; // Holesky: Average blocks
+                // var startFrom = 2_000_000 + 180_000; // Holesky: Very log-dense blocks
                 // var startFrom =  4_750_000; // 0x487AB0 // Ethereum: Where slowdown starts
                 // var startFrom = 11_000_000; // Ethereum: ~50%
+                // var startFrom = 18_000_000; // Ethereum: ~4M to finish
+                // var startFrom = 20_000_000; // Ethereum: ~2M to finish
 
                 // TODO: move to chain configuration
                 startFrom = Math.Max(startFrom, 52_029); // Ethereum: fist block with logs

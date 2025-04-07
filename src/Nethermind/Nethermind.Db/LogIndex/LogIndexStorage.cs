@@ -292,7 +292,7 @@ namespace Nethermind.Db
             return stats;
         }
 
-        public SetReceiptsStats CompressAndCompact(int maxUncompressedLength = MaxUncompressedLength)
+        public SetReceiptsStats Recompact(int maxUncompressedLength = MaxUncompressedLength)
         {
             var stats = new SetReceiptsStats();
             var watch = Stopwatch.StartNew();
@@ -307,9 +307,7 @@ namespace Nethermind.Db
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
 
-            watch.Restart();
-            CompressPostMerge(CompressKeysChannel.Reader, stats);
-            stats.PostMergeProcessing.Include(watch.Elapsed);
+            CompressPostMerge(CompressKeysChannel.Reader, stats.PostMergeProcessing);
 
             watch.Restart();
             _addressDb.Flush();
@@ -392,29 +390,26 @@ namespace Nethermind.Db
         private void Compact(SetReceiptsStats stats)
         {
             // TODO: log as Debug
-            _logger.Info("Log index compaction started");
             var watch = new Stopwatch();
 
+            _logger.Warn("Log index flushing starting");
             watch.Restart();
             _addressDb.Flush();
             _topicsDb.Flush();
             stats.FlushingDbs.Include(watch.Elapsed);
+            _logger.Warn("Log index flushing completed");
 
             // TODO: try keep writing during compaction
-            //Console.WriteLine("_db.Compact starting");
+            _logger.Warn("Log index compaction starting");
             watch.Restart();
             _addressDb.Compact();
             _topicsDb.Compact();
             stats.CompactingDbs.Include(watch.Elapsed);
-            //Console.WriteLine("_db.Compact completed");
+            _logger.Warn("Log index compaction completed");
 
-            //Console.WriteLine("CompressPostMerge starting");
-            watch.Restart();
-            CompressPostMerge(CompressKeysChannel.Reader, stats);
-            stats.PostMergeProcessing.Include(watch.Elapsed);
-            //Console.WriteLine("CompressPostMerge completed");
-
-            _logger.Info("Log index compaction completed");
+            _logger.Warn("Log index post-merge processing starting");
+            CompressPostMerge(CompressKeysChannel.Reader, stats.PostMergeProcessing);
+            _logger.Warn("Log index post-merge processing completed");
         }
 
         // TODO: optimize allocations
@@ -512,8 +507,11 @@ namespace Nethermind.Db
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
         // TODO: optimize allocations
-        private void CompressPostMerge(ChannelReader<byte[]> newKeysReader, SetReceiptsStats stats)
+        private void CompressPostMerge(ChannelReader<byte[]> newKeysReader, PostMergeProcessingStats stats)
         {
+            var watch = new Stopwatch();
+            var execWatch = Stopwatch.StartNew();
+
             using var addressWriteBatch = _addressDb.StartWriteBatch();
             using var topicsWriteBatch = _topicsDb.StartWriteBatch();
 
@@ -526,7 +524,10 @@ namespace Nethermind.Db
                     var size => throw ValidationException($"Unexpected index size of {size} bytes.")
                 };
 
-                var dbValue = db.Get(dbKey) ?? throw new ValidationException("Empty value in the post-merge compression queue.");
+                watch.Restart();
+                var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
+                stats.GettingValue.Include(watch.Elapsed);
+
                 var blockNum = ReadValBlockNum(dbValue);
 
                 var dbKeyComp = (byte[])dbKey.Clone();
@@ -534,13 +535,24 @@ namespace Nethermind.Db
 
                 // Put compressed value at a new key and clear uncompressed one
                 // TODO: reading and clearing the value is not atomic, find a fix
+
+                watch.Restart();
                 dbValue = CompressDbValue(dbValue);
+                stats.CompressingValue.Include(watch.Elapsed);
+
+                watch.Restart();
                 batch.PutSpan(dbKeyComp, dbValue);
                 batch.PutSpan(dbKey, Array.Empty<byte>());
+                stats.PuttingValues.Include(watch.Elapsed);
 
                 if (db == _addressDb) stats.CompressedAddressKeys++;
                 else if (db == _topicsDb) stats.CompressedTopicKeys++;
+
+                watch.Restart();
             }
+
+            stats.CommitingBatch.Include(watch.Elapsed);
+            stats.Execution.Include(execWatch.Elapsed);
         }
 
         public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
