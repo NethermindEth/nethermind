@@ -47,7 +47,7 @@ public class BlobsBundleV2
                 {
                     Commitments[blockIndex] = wrapper.Commitments[txIndex];
                     Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                    Array.Copy(wrapper.Proofs, 0, Proofs, blockIndex * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.CellsPerExtBlob);
+                    Array.Copy(wrapper.Proofs, txIndex * Ckzg.Ckzg.CellsPerExtBlob, Proofs, blockIndex * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.CellsPerExtBlob);
                 }
             }
         }
