@@ -10,8 +10,8 @@ public class PostMergeProcessingStats
     public ExecTimeStats PuttingValues { get; set; } = new();
     public ExecTimeStats CommitingBatch { get; set; } = new();
 
-    public long CompressedAddressKeys { get; set; }
-    public long CompressedTopicKeys { get; set; }
+    public long CompressedAddressKeys;
+    public long CompressedTopicKeys;
 
     public ExecTimeStats Execution { get; } = new();
 
