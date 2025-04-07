@@ -56,7 +56,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
 
     public override unsafe void Add(IEnumerable<Instruction> instructions)
     {
-        lock (Lock)
+        lock (LockObj)
         {
             ResetSketchAtError();
 
@@ -80,7 +80,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override unsafe void Add(Instruction instruction)
     {
-        lock (Lock)
+        lock (LockObj)
         {
             ResetSketchAtError();
             _ngram = _ngram.ShiftAdd(instruction);
@@ -128,7 +128,8 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
 
     public override IEnumerable<Stat> Stats(SortOrder order)
     {
-        lock (Lock)
+        LockObj.Enter();
+        try
         {
             switch (order)
             {
@@ -152,5 +153,6 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
                     break;
             }
         }
+        finally { LockObj.Exit(); }
     }
 }

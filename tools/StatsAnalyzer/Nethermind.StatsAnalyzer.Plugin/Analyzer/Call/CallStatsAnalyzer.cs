@@ -21,7 +21,7 @@ public class CallStatsAnalyzer : TopNAnalyzer<Address, Address, CallStat>
 
     public override void Add(IEnumerable<Address> calls)
     {
-        lock (Lock)
+        lock (LockObj)
         {
             TopNQueue.Clear();
             foreach (var address in calls)
@@ -46,7 +46,9 @@ public class CallStatsAnalyzer : TopNAnalyzer<Address, Address, CallStat>
 
     public override IEnumerable<CallStat> Stats(SortOrder order)
     {
-        lock (Lock)
+
+        LockObj.Enter();
+        try
         {
             switch (order)
             {
@@ -70,5 +72,6 @@ public class CallStatsAnalyzer : TopNAnalyzer<Address, Address, CallStat>
                     break;
             }
         }
+        finally { LockObj.Exit(); }
     }
 }

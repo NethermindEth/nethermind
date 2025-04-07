@@ -5,7 +5,7 @@ namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 public abstract class TopNAnalyzer<TData, TEncoding, TStat> : IStatsAnalyzer<TData, TStat>
     where TEncoding : notnull
 {
-    protected readonly object Lock = new();
+    protected readonly Lock LockObj = new();
     protected readonly int TopN;
     protected readonly Dictionary<TEncoding, ulong> TopNMap;
     protected readonly PriorityQueue<TEncoding, ulong> TopNQueue;
