@@ -18,7 +18,7 @@ public partial class BaseEngineModuleTests
     {
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly bool _skipDuplicatedContext;
-        public IList<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
+        public List<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
 
         public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 
@@ -30,9 +30,9 @@ public partial class BaseEngineModuleTests
             _skipDuplicatedContext = skipDuplicatedContext;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees)
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
         {
-            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
+            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
             if (_skipDuplicatedContext
                 && CreatedContexts.Count > 0
                 && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)

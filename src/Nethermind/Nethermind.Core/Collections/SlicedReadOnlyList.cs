@@ -61,6 +61,11 @@ public static class ReadOnlyListExtensions
         return new SlicedReadOnlyList<T>(list, start, count);
     }
 
+    public static IReadOnlyList<T> Clamp<T>(this IReadOnlyList<T> list, int limit)
+    {
+        return new SlicedReadOnlyList<T>(list, 0, Math.Min(limit, list.Count));
+    }
+
     // Extension method that slices from the start index to the end of the list
     public static IReadOnlyList<T> Slice<T>(this IReadOnlyList<T> list, int start)
     {

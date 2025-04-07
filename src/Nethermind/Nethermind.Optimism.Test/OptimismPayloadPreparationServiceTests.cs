@@ -24,6 +24,7 @@ using Nethermind.Config;
 using Nethermind.Blockchain;
 using FluentAssertions;
 using Nethermind.Crypto;
+using System.Threading;
 
 namespace Nethermind.Optimism.Test;
 
@@ -59,7 +60,7 @@ public class OptimismPayloadPreparationServiceTests
             .WithExtraData([])
             .TestObject;
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
-        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(block);
+        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(block);
 
         var service = new OptimismPayloadPreparationService(
             blockProducer: new PostMergeBlockProducer(

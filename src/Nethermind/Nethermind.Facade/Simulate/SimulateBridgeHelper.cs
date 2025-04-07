@@ -132,7 +132,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 suggestedBlocks[0] = currentBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, cancellationBlockTracer)[0];
+                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
 

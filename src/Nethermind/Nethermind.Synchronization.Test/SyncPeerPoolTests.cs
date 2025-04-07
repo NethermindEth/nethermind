@@ -23,6 +23,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -721,6 +722,22 @@ public class SyncPeerPoolTests
             // no peer assigned any more after calling free
             Assert.That(allocation.Current, Is.Null, "null A");
         }
+    }
+
+    [Test]
+    public async Task Return_request_limit()
+    {
+        await using Context ctx = new();
+        await SetupPeers(ctx, 1);
+
+        var thePeer = ctx.Pool.InitializedPeers.First();
+        INodeStats nodeStat = Substitute.For<INodeStats>();
+        ctx.Stats.GetOrAdd(thePeer.SyncPeer.Node).Returns(nodeStat);
+        nodeStat.GetCurrentRequestLimit(RequestType.Headers).Returns(999);
+
+        var limit = await ctx.Pool.EstimateRequestLimit(RequestType.Headers, new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, default);
+
+        limit.Should().Be(999);
     }
 
     private int _pendingRequests;
