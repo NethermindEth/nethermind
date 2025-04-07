@@ -22,7 +22,7 @@ public static class FrameDecoder
                 case 0:
                     int bytesRead = Frame.FromBytes(source.Span[1..], out Frame frame);
                     yield return frame;
-                    source = source[bytesRead..];
+                    source = source[(1 + bytesRead)..];
                     break;
                 default:
                     throw new Exception($"Frame Decoder version {version} is not supported.");
