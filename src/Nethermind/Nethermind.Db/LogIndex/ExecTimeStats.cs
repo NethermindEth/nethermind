@@ -18,23 +18,21 @@ public class ExecTimeStats
         Interlocked.Increment(ref _count);
     }
 
+    public TimeSpan Total => TimeSpan.FromTicks(_totalTicks);
     public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromTicks((long)((double)_totalTicks / _count));
 
-    public override string ToString()
+    private string Format(TimeSpan value) => value switch
     {
-        var timeStr = Average switch
-        {
-            { TotalDays: >= 1 } x => $"{x.TotalDays:F2}d",
-            { TotalHours: >= 1 } x => $"{x.TotalHours:F2}h",
-            { TotalMinutes: >= 1 } x => $"{x.TotalMinutes:F2}m",
-            { TotalSeconds: >= 1 } x => $"{x.TotalSeconds:F2}s",
-            { TotalMilliseconds: >= 1 } x => $"{x.TotalMilliseconds:F1}ms",
-            { TotalMicroseconds: >= 1 } x => $"{x.TotalMicroseconds:F1}μs",
-            var x => $"{x.TotalNanoseconds:F1}ns"
-        };
+        { TotalDays: >= 1 } x => $"{x.TotalDays:F2}d",
+        { TotalHours: >= 1 } x => $"{x.TotalHours:F2}h",
+        { TotalMinutes: >= 1 } x => $"{x.TotalMinutes:F2}m",
+        { TotalSeconds: >= 1 } x => $"{x.TotalSeconds:F2}s",
+        { TotalMilliseconds: >= 1 } x => $"{x.TotalMilliseconds:F1}ms",
+        { TotalMicroseconds: >= 1 } x => $"{x.TotalMicroseconds:F1}μs",
+        var x => $"{x.TotalNanoseconds:F1}ns"
+    };
 
-        return $"{timeStr} ({_count:N0})";
-    }
+    public override string ToString() => $"{Format(Average)} ({_count:N0}) [{Format(Total)}]";
 
     public void Combine(ExecTimeStats stats)
     {
