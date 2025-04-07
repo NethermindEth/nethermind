@@ -50,9 +50,6 @@ namespace Nethermind.Db
             _addressDb = columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = columnsDb.GetColumnDb(LogIndexColumns.Topics);
             _defaultDb = columnsDb.GetColumnDb(LogIndexColumns.Default);
-
-            _cancellationToken = _cancellationTokenSource.Token;
-            _lazyCompactionTask = new(DoCompact);
         }
 
         // TODO: remove if unused
@@ -69,10 +66,7 @@ namespace Nethermind.Db
         public async Task StopAsync()
         {
             //Console.WriteLine("!!!!!!!!!! StopAsync !!!!!!!!!!");
-            await _cancellationTokenSource.CancelAsync();
-            await _setReceiptsSemaphore.WaitAsync(CancellationToken.None);
-
-            await _lazyCompactionTask.Value.IgnoreException();
+            await _setReceiptsSemaphore.WaitAsync();
 
             // TODO: check if needed
             _addressDb.Flush();
@@ -329,6 +323,8 @@ namespace Nethermind.Db
             return counter;
         }
 
+        private int? _lastCompactionAt;
+
         // batch is expected to be sorted
         public async Task<SetReceiptsStats> SetReceiptsAsync(
             BlockReceipts[] batch, bool isBackwardSync
@@ -337,10 +333,6 @@ namespace Nethermind.Db
             //Console.WriteLine("!!!!!!!!!! SetReceiptsAsync !!!!!!!!!!");
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
-
-            _ = _lazyCompactionTask.Value;
-
-            await _mergeSemaphore.WaitAsync(_cancellationToken);
 
             var stats = new SetReceiptsStats();
 
@@ -360,56 +352,29 @@ namespace Nethermind.Db
             }
             finally
             {
+                _lastCompactionAt ??= batch[0].BlockNumber - 1;
+                if (batch[^1].BlockNumber - _lastCompactionAt >= CompactionDistance)
+                {
+                    Compact(stats);
+                    _lastCompactionAt = batch[^1].BlockNumber;
+                }
+
                 if (_lastKnownBlock < batch[^1].BlockNumber)
                     WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
 
                 stats.LastBlockNumber = _lastKnownBlock;
 
-                _mergeSemaphore.Release();
                 _setReceiptsSemaphore.Release();
+                //Console.WriteLine("!!!!!!!!!! _setReceiptsSemaphore.Release() !!!!!!!!!!");
             }
 
             return stats;
         }
 
-        private static SetReceiptsStats _compactStats = new();
-        public static SetReceiptsStats GetAndResetCompactStats()
-        {
-            return Interlocked.Exchange(ref _compactStats, new());
-        }
-
-        private int? _lastCompactionAt;
-        private readonly SemaphoreSlim _mergeSemaphore = new(1, 1);
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly CancellationToken _cancellationToken;
-        private readonly Lazy<Task> _lazyCompactionTask;
-
-        private async Task DoCompact()
-        {
-            try
-            {
-                while (!_cancellationToken.IsCancellationRequested)
-                {
-                    if (_lastCompactionAt == null && _lastKnownBlock >= 0)
-                        _lastCompactionAt = _lastKnownBlock;
-
-                    if (_lastKnownBlock - _lastCompactionAt >= CompactionDistance)
-                    {
-                        Compact(_compactStats);
-                        _lastCompactionAt = _lastKnownBlock;
-                    }
-
-                    await Task.Delay(1_000, _cancellationToken);
-                }
-            }
-            catch(Exception exception)
-            {
-                _logger.Error("Log index compaction task failed", exception);
-            }
-        }
-
         private void Compact(SetReceiptsStats stats)
         {
+            // TODO: log as Debug
+            _logger.Info("Log index compaction started");
             var watch = new Stopwatch();
 
             watch.Restart();
@@ -417,15 +382,21 @@ namespace Nethermind.Db
             _topicsDb.Flush();
             stats.FlushingDbs.Include(watch.Elapsed);
 
-            // TODO: log as Debug
-            _logger.Warn("Log index compaction starting");;
+            // TODO: try keep writing during compaction
+            //Console.WriteLine("_db.Compact starting");
             watch.Restart();
             _addressDb.Compact();
             _topicsDb.Compact();
             stats.CompactingDbs.Include(watch.Elapsed);
-            _logger.Warn("Log index compaction completed");
+            //Console.WriteLine("_db.Compact completed");
 
+            //Console.WriteLine("CompressPostMerge starting");
+            watch.Restart();
             CompressPostMerge(CompressKeysChannel.Reader, stats);
+            stats.PostMergeProcessing.Include(watch.Elapsed);
+            //Console.WriteLine("CompressPostMerge completed");
+
+            _logger.Info("Log index compaction completed");
         }
 
         // TODO: optimize allocations
@@ -525,48 +496,32 @@ namespace Nethermind.Db
         // TODO: optimize allocations
         private void CompressPostMerge(ChannelReader<byte[]> newKeysReader, SetReceiptsStats stats)
         {
-            _logger.Warn("Log index post-merge processing waiting");
-            _mergeSemaphore.Wait(_cancellationToken);
+            using var addressWriteBatch = _addressDb.StartWriteBatch();
+            using var topicsWriteBatch = _topicsDb.StartWriteBatch();
 
-            _logger.Warn("Log index post-merge processing starting");
-            var watch = Stopwatch.StartNew();
-
-            try
+            while (newKeysReader.TryRead(out var dbKey))
             {
-                using var addressWriteBatch = _addressDb.StartWriteBatch();
-                using var topicsWriteBatch = _topicsDb.StartWriteBatch();
-
-                while (newKeysReader.TryRead(out var dbKey))
+                var (db, batch) = (dbKey.Length - BlockNumSize) switch
                 {
-                    var (db, batch) = (dbKey.Length - BlockNumSize) switch
-                    {
-                        Address.Size => (_addressDb, addressWriteBatch),
-                        Hash256.Size => (_topicsDb, topicsWriteBatch),
-                        var size => throw ValidationException($"Unexpected index size of {size} bytes.")
-                    };
+                    Address.Size => (_addressDb, addressWriteBatch),
+                    Hash256.Size => (_topicsDb, topicsWriteBatch),
+                    var size => throw ValidationException($"Unexpected index size of {size} bytes.")
+                };
 
-                    var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
-                    var blockNum = ReadValBlockNum(dbValue);
+                var dbValue = db.Get(dbKey) ?? throw new ValidationException("Empty value in the post-merge compression queue.");
+                var blockNum = ReadValBlockNum(dbValue);
 
-                    var dbKeyComp = (byte[])dbKey.Clone();
-                    SetKeyBlockNum(dbKeyComp, blockNum);
+                var dbKeyComp = (byte[])dbKey.Clone();
+                SetKeyBlockNum(dbKeyComp, blockNum);
 
-                    // Put compressed value at a new key and clear uncompressed one
-                    // TODO: reading and clearing the value is not atomic, find a fix
-                    dbValue = CompressDbValue(dbValue);
-                    batch.PutSpan(dbKeyComp, dbValue);
-                    batch.PutSpan(dbKey, Array.Empty<byte>());
+                // Put compressed value at a new key and clear uncompressed one
+                // TODO: reading and clearing the value is not atomic, find a fix
+                dbValue = CompressDbValue(dbValue);
+                batch.PutSpan(dbKeyComp, dbValue);
+                batch.PutSpan(dbKey, Array.Empty<byte>());
 
-                    if (db == _addressDb) stats.CompressedAddressKeys++;
-                    else if (db == _topicsDb) stats.CompressedTopicKeys++;
-                }
-            }
-            finally
-            {
-                _mergeSemaphore.Release();
-
-                _logger.Warn("Log index post-merge processing completed");
-                stats.PostMergeProcessing.Include(watch.Elapsed);
+                if (db == _addressDb) stats.CompressedAddressKeys++;
+                else if (db == _topicsDb) stats.CompressedTopicKeys++;
             }
         }
 
