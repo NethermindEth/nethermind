@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Benchmark
 
             _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
-            var address = InsertCode(bytecode);
+            var (address, codeHash) = InsertCode(bytecode);
 
             var driver =
                 Prepare.EvmCode
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Benchmark
                 .STOP()
                 .Done;
 
-            var driverCodeinfo = new CodeInfo(driver, Address.FromNumber(23));
+            var driverCodeinfo = new CodeInfo(driver, codeHash);
             var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
 
             if (vmConfig.IsILEvmEnabled)
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Benchmark
 
             driverCodeInfo = driverCodeinfo;
         }
-        private Address InsertCode(byte[] bytecode, Address target = null)
+        private (Address, ValueHash256) InsertCode(byte[] bytecode, Address target = null)
         {
             var hashcode = Keccak.Compute(bytecode);
             var address = target ?? new Address(hashcode);
@@ -122,7 +122,7 @@ namespace Nethermind.Evm.Benchmark
             var spec = Prague.Instance;
             _stateProvider.CreateAccount(address, 1_000_000_000);
             _stateProvider.InsertCode(address, bytecode, spec);
-            return address;
+            return (address, hashcode);
         }
 
         public void Setup()
