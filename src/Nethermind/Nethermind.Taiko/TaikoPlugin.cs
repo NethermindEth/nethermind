@@ -154,7 +154,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 poSSwitcher,
                 beaconSync,
                 beaconPivot,
@@ -179,7 +178,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
