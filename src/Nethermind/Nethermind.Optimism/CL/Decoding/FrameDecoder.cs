@@ -36,10 +36,10 @@ public static class FrameDecoder
 /// </remarks>
 public readonly struct Frame : IEquatable<Frame>
 {
-    public readonly UInt128 ChannelId { get; init; }
-    public readonly UInt16 FrameNumber { get; init; }
-    public readonly byte[] FrameData { get; init; }
-    public readonly bool IsLast { get; init; }
+    public UInt128 ChannelId { get; init; }
+    public UInt16 FrameNumber { get; init; }
+    public byte[] FrameData { get; init; }
+    public bool IsLast { get; init; }
 
     public int Size
     {
@@ -50,31 +50,6 @@ public readonly struct Frame : IEquatable<Frame>
                 return sizeof(UInt128) + sizeof(UInt16) + sizeof(UInt32) + FrameData.Length + sizeof(byte);
             }
         }
-    }
-
-    public bool Equals(Frame other)
-    {
-        return ChannelId.Equals(other.ChannelId) && FrameNumber == other.FrameNumber && FrameData.SequenceEqual(other.FrameData) && IsLast == other.IsLast;
-    }
-
-    public override bool Equals(object? obj)
-    {
-        return obj is Frame other && Equals(other);
-    }
-
-    public static bool operator ==(Frame left, Frame right)
-    {
-        return left.Equals(right);
-    }
-
-    public static bool operator !=(Frame left, Frame right)
-    {
-        return !(left == right);
-    }
-
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(ChannelId, FrameNumber, FrameData, IsLast);
     }
 
     public static int FromBytes(ReadOnlySpan<byte> buffer, out Frame frame)
@@ -118,4 +93,18 @@ public readonly struct Frame : IEquatable<Frame>
 
         return initialLength - span.Length;
     }
+
+    public bool Equals(Frame other) =>
+        ChannelId.Equals(other.ChannelId) &&
+        FrameNumber == other.FrameNumber &&
+        FrameData.SequenceEqual(other.FrameData) &&
+        IsLast == other.IsLast;
+
+    public override bool Equals(object? obj) => obj is Frame other && Equals(other);
+
+    public static bool operator ==(Frame left, Frame right) => left.Equals(right);
+
+    public static bool operator !=(Frame left, Frame right) => !(left == right);
+
+    public override int GetHashCode() => HashCode.Combine(ChannelId, FrameNumber, FrameData, IsLast);
 }
