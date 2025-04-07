@@ -51,6 +51,6 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
 
     public HashSet<Instruction> GetIgnoreSet()
     {
-        return Ignore.AsSpan().Split(',').Select(item => (Instruction)Enum.Parse(typeof(Instruction), item)).ToHashSet();
+        return Ignore.Split(',').Select(item => (Instruction)Enum.Parse(typeof(Instruction), item)).ToHashSet();
     }
 }
