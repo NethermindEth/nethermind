@@ -16,11 +16,11 @@ public static class FrameDecoder
     {
         while (source.Length != 0)
         {
-            byte version = source.TakeAndMove(1).Span[0];
+            byte version = source.Span[0];
             switch (version)
             {
                 case 0:
-                    int bytesRead = Frame.FromBytes(source.Span, out Frame frame);
+                    int bytesRead = Frame.FromBytes(source.Span[1..], out Frame frame);
                     yield return frame;
                     source = source[bytesRead..];
                     break;
