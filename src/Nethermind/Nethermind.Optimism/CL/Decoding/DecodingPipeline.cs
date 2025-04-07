@@ -10,20 +10,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class DecodingPipeline : IDecodingPipeline
+public class DecodingPipeline(ILogger logger) : IDecodingPipeline
 {
     private readonly Channel<byte[]> _inputChannel = Channel.CreateBounded<byte[]>(9);
     private readonly Channel<BatchV1> _outputChannel = Channel.CreateBounded<BatchV1>(3);
-    private readonly IFrameQueue _frameQueue = new FrameQueue();
-    private readonly ILogger _logger;
+    private readonly IFrameQueue _frameQueue = new FrameQueue(logger);
 
     public ChannelWriter<byte[]> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<BatchV1> DecodedBatchesReader => _outputChannel.Reader;
-
-    public DecodingPipeline(ILogger logger)
-    {
-        _logger = logger;
-    }
 
     public async Task Run(CancellationToken token)
     {
@@ -38,15 +32,13 @@ public class DecodingPipeline : IDecodingPipeline
                 var read = BlobDecoder.DecodeBlob(blob, buffer.Span);
                 foreach (var frame in FrameDecoder.DecodeFrames(buffer[..read]))
                 {
-                    _frameQueue.ConsumeFrame(frame);
-                }
-
-                var batches = _frameQueue.GetReadyBatches();
-                if (batches is not null)
-                {
-                    foreach (var batch in batches)
+                    var batches = _frameQueue.ConsumeFrame(frame);
+                    if (batches is not null)
                     {
-                        await _outputChannel.Writer.WriteAsync(batch, token);
+                        foreach (var batch in batches)
+                        {
+                            await _outputChannel.Writer.WriteAsync(batch, token);
+                        }
                     }
                 }
             }
@@ -56,7 +48,7 @@ public class DecodingPipeline : IDecodingPipeline
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
+                if (logger.IsWarn) logger.Warn($"Unhandled exception in decoding pipeline: {e}");
             }
         }
     }

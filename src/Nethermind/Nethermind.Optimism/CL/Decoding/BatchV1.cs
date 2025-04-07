@@ -49,23 +49,25 @@ public sealed class BatchV1
         ulong txIdx = 0;
         for (int i = 0; i < (int)BlockCount; i++)
         {
-            SingularBatch batch = new();
+
             bool isNewOrigin = ((OriginBits >> i) & 1) == 1;
             if (isNewOrigin)
             {
                 currentL1OriginNum++;
             }
 
-            batch.IsFirstBlockInEpoch = isNewOrigin;
-            batch.EpochNumber = currentL1OriginNum;
-            batch.Timestamp = currentTimestamp;
-            currentTimestamp += blockTime;
             (Transaction[] userTransactions, tosFrom, legacyTxFrom) = BuildUserTransactions(chainId, txIdx, BlockTxCounts[i], tosFrom, legacyTxFrom);
+            yield return new()
+            {
+                IsFirstBlockInEpoch = isNewOrigin,
+                EpochNumber = currentL1OriginNum,
+                Timestamp = currentTimestamp,
+                Transactions = userTransactions
+                    .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+                    .ToArray()
+            };
             txIdx += BlockTxCounts[i];
-            batch.Transactions = userTransactions
-                .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-                .ToArray();
-            yield return batch;
+            currentTimestamp += blockTime;
         }
     }
 

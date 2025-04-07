@@ -19,6 +19,4 @@ public struct BlobSidecar
 
     [JsonPropertyName("kzg_commitment")]
     public byte[] KzgCommitment;
-
-    public byte[] BlobVersionedHash;
 }

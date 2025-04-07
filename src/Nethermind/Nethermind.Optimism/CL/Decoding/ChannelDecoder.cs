@@ -60,24 +60,10 @@ public class ChannelDecoder
     }
 }
 
-public struct SingularBatch
+public readonly struct SingularBatch
 {
-    public bool IsFirstBlockInEpoch;
-    public ulong EpochNumber;
-    public ulong Timestamp;
-    public byte[][] Transactions;
-}
-
-public struct BatchV1Transactions
-{
-    public BigInteger ContractCreationBits;
-    public BigInteger YParityBits;
-    public (UInt256 R, UInt256 S)[] Signatures;
-    public Address[] Tos;
-    public byte[][] Datas;
-    public ulong[] Nonces;
-    public ulong[] Gases;
-    public BigInteger ProtectedBits;
-
-    public TxType[] Types;
+    public bool IsFirstBlockInEpoch { get; init; }
+    public ulong EpochNumber { get; init; }
+    public ulong Timestamp { get; init; }
+    public byte[][] Transactions { get; init; }
 }

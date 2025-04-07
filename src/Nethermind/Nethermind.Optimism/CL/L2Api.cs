@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
@@ -39,7 +40,7 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
         };
     }
 
-    private PayloadAttributesRef PayloadAttributesFromBlockForRpc(BlockForRpc block)
+    private PayloadAttributesRef PayloadAttributesFromBlockForRpc(BlockForRpc? block)
     {
         ArgumentNullException.ThrowIfNull(block);
         OptimismPayloadAttributes payloadAttributes = new()
@@ -53,18 +54,14 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()
         };
-        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t =>
-        {
-            Transaction nativeTx = t.ToTransaction();
-            return nativeTx;
-        }).ToArray();
+        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t => t.ToTransaction()).ToArray();
 
         payloadAttributes.SetTransactions(txs);
 
         L1BlockInfo l1BlockInfo =
-            L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data!.Value.ToArray(), block.ExtraData);
+            L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data!.Value.Span, block.ExtraData);
         SystemConfig systemConfig =
-            systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data!.Value.ToArray(), block.ExtraData, (ulong)block.GasLimit);
+            systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data!.Value.Span, block.ExtraData, (ulong)block.GasLimit);
         PayloadAttributesRef result = new()
         {
             PayloadAttributes = payloadAttributes,
@@ -148,7 +145,7 @@ public class L2Api(IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule l2En
 
     public async Task<OptimismGetPayloadV3Result> GetPayloadV3(string payloadId)
     {
-        byte[] payloadIdBytes = Convert.FromHexString(payloadId.Substring(2));
+        byte[] payloadIdBytes = Bytes.FromHexString(payloadId);
         var getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
         while (getPayloadResult.Result.ResultType != ResultType.Success)
         {

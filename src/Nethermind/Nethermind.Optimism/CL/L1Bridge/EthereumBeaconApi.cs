@@ -47,15 +47,9 @@ public class EthereumBeaconApi : IBeaconApi
         }
         if (indexTo - indexFrom + 1 != data.Value.Data.Length)
         {
-            _logger.Warn($"Invalid number of blobs in slot {slot}. Expected {indexTo - indexFrom + 1}. Got {data.Value.Data.Length}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid number of blobs in slot {slot}. Expected {indexTo - indexFrom + 1}. Got {data.Value.Data.Length}");
             throw new Exception($"Blob sidecars are unavailable");
         }
-        for (int i = 0; i < data.Value.Data.Length; ++i)
-        {
-            data.Value.Data[i].BlobVersionedHash = (new byte[] { 1 })
-                .Concat(SHA256.HashData(data.Value.Data[i].KzgCommitment)[1..]).ToArray();
-        }
-
         return data.Value.Data;
     }
 
