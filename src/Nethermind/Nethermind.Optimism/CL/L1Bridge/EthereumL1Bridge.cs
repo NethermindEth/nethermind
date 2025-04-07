@@ -25,10 +25,8 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ILogger _logger;
 
-    private ulong _currentHeadNumber = 0;
-    private Hash256? _currentHeadHash = null;
-    private ulong _currentFinalizedNumber;
-    private Hash256? _currentFinalizedHash = null;
+    private BlockId _currentHead;
+    private BlockId _currentFinalized;
 
     private readonly Address _batchSubmitter;
     private readonly Address _batcherInboxAddress;
@@ -64,39 +62,39 @@ public class EthereumL1Bridge : IL1Bridge
             L1Block newHead = await GetFinalized(token);
             ulong newHeadNumber = newHead.Number;
 
-            int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHeadNumber - 1;
+            int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHead.Number - 1;
             if (numberOfMissingBlocks > 64)
             {
                 if (_logger.IsInfo) _logger.Info(
-                    $"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHeadNumber}, new head number: {newHeadNumber}");
+                    $"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHead.Number}, new head number: {newHeadNumber}");
                 // Try to build up instead of rolling back
                 // At this point we already got blocks up until _currentHead.
                 // if _currentHead was not reorged => we need blocks from _currentHead up to newHead
                 // if _currentHead was reorged => we need to re-run all blocks from _currentFinalized up to newHead
                 L1Block newFinalized = await GetFinalized(token);
-                L1Block currentHeadBlock = await GetBlock(_currentHeadNumber, token);
-                if (currentHeadBlock.Hash != _currentHeadHash)
+                L1Block currentHeadBlock = await GetBlock(_currentHead.Number, token);
+                if (currentHeadBlock.Hash != _currentHead.Hash)
                 {
                     // Reorg currentHead
-                    await BuildUp(_currentFinalizedNumber, newFinalized.Number, token);
+                    await BuildUp(_currentFinalized.Number, newFinalized.Number, token);
                     await RollBack(newHead.Hash, newHeadNumber, newFinalized.Number, token);
                 }
                 else
                 {
                     // CurrentHead is ok
-                    await BuildUp(_currentHeadNumber, newFinalized.Number, token); // Will build up if _currentHead < newFinalized
-                    await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber, token);
+                    await BuildUp(_currentHead.Number, newFinalized.Number, token); // Will build up if _currentHead < newFinalized
+                    await RollBack(newHead.Hash, newHeadNumber, _currentHead.Number, token);
                 }
 
                 SetFinalized(newFinalized);
             }
             else if (numberOfMissingBlocks > 0)
             {
-                await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber, token);
+                await RollBack(newHead.Hash, newHeadNumber, _currentHead.Number, token);
             }
 
-            _currentHeadNumber = newHeadNumber;
-            _currentHeadHash = newHead.Hash;
+            _currentHead = BlockId.FromL1Block(newHead);
+
             await ProcessBlock(newHead, token);
             await TryUpdateFinalized(token);
 
@@ -108,8 +106,6 @@ public class EthereumL1Bridge : IL1Bridge
     {
         try
         {
-            ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
-
             if (_logger.IsTrace) _logger.Trace($"New L1 Block. Number {block.Number}");
             int startingBlobIndex = 0;
             // Filter batch submitter transaction
@@ -187,7 +183,7 @@ public class EthereumL1Bridge : IL1Bridge
 
     private async Task TryUpdateFinalized(CancellationToken token)
     {
-        if (_currentHeadNumber - _currentFinalizedNumber >= 64)
+        if (_currentHead.Number - _currentFinalized.Number >= 64)
         {
             L1Block newFinalized = await GetFinalized(token);
             SetFinalized(newFinalized);
@@ -196,15 +192,14 @@ public class EthereumL1Bridge : IL1Bridge
 
     private void SetFinalized(L1Block newFinalized)
     {
-        if (newFinalized.Hash != _currentFinalizedHash)
+        if (newFinalized.Hash != _currentFinalized.Hash)
         {
             if (_logger.IsInfo) _logger.Info($"New finalized head signal. Number: {newFinalized.Number}, Hash: {newFinalized.Hash}");
-            _currentFinalizedHash = newFinalized.Hash;
-            _currentFinalizedNumber = newFinalized.Number;
+            _currentFinalized = BlockId.FromL1Block(newFinalized);
         }
     }
 
-    // Gets all blocks from range [{segmentStartNumber}, {headNumber})
+    /// <remarks> Gets all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
     private async Task RollBack(Hash256 headHash, ulong headNumber, ulong segmentStartNumber, CancellationToken cancellationToken)
     {
         Hash256 currentHash = headHash;
@@ -226,7 +221,7 @@ public class EthereumL1Bridge : IL1Bridge
         }
     }
 
-    // Gets all blocks from range ({from}, {to}). It's safe only if {to} is finalized
+    /// <remarks> Gets all blocks from range ({from}, {to}). It's safe only if {to} is finalized </remarks>
     private async Task BuildUp(ulong from, ulong to, CancellationToken cancellationToken)
     {
         for (ulong i = from + 1; i < to; i++)
@@ -303,9 +298,7 @@ public class EthereumL1Bridge : IL1Bridge
     public void Reset(L1BlockInfo highestFinalizedOrigin)
     {
         if (_logger.IsInfo) _logger.Info($"Resetting L1 bridge. New head number: {highestFinalizedOrigin.Number}, new head hash {highestFinalizedOrigin.BlockHash}");
-        _currentFinalizedNumber = highestFinalizedOrigin.Number;
-        _currentHeadNumber = highestFinalizedOrigin.Number;
-        _currentHeadHash = highestFinalizedOrigin.BlockHash;
-        _currentFinalizedHash = highestFinalizedOrigin.BlockHash;
+        _currentHead = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
+        _currentFinalized = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
     }
 }
