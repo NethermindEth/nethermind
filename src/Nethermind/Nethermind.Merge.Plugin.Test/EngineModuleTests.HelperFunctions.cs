@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
-            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
+            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
         {
             Transaction BuildTransaction(uint index, AccountStruct senderAccount)
             {
@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
 
                 if (blobCountPerTx != 0)
                 {
-                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx, spec: spec ?? null);
                 }
                 else
                 {

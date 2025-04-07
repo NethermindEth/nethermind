@@ -129,20 +129,19 @@ public partial class EngineModuleTests
         responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    public async Task GetPayloadV3_should_return_all_the_blobs(int blobTxCount)
+    [Test]
+    public async Task GetPayloadV3_should_return_all_the_blobs([Values (0, 1, 2, 3, 4)] int blobTxCount, [Values (true, false)] bool oneBlobPerTx)
     {
-        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
+        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
         ResultWrapper<GetPayloadV3Result?> result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
+        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
+            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
+        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
     }
 
     [TestCase(false, PayloadStatus.Valid)]
@@ -907,7 +906,7 @@ public partial class EngineModuleTests
     }
 
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
-        IReleaseSpec spec, int transactionCount = 0)
+        IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
@@ -921,7 +920,7 @@ public partial class EngineModuleTests
 
         if (transactionCount is not 0)
         {
-            txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
+            txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, oneBlobPerTx ? (uint)transactionCount : 1, 0, out _, out _, oneBlobPerTx ? 1 : transactionCount, spec);
             chain.AddTransactions(txs);
         }
 
