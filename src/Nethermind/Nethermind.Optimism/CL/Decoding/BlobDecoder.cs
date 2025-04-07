@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
@@ -57,20 +58,14 @@ public static class BlobDecoder
             outputPos = ReassembleBytes(outputPos, encodedByte, output);
         }
 
-        for (int i = length; i < MaxBlobDataSize; i++)
+        if (!output[length..].IsZero())
         {
-            if (output[i] != 0)
-            {
-                throw new FormatException("Wrong output");
-            }
+            throw new FormatException("Wrong blob output");
         }
 
-        for (; blobPos < BlobSize; blobPos++)
+        if (!blob[blobPos..].IsZero())
         {
-            if (blob[blobPos] != 0)
-            {
-                throw new FormatException("Blob excess data");
-            }
+            throw new FormatException("Blob excess data");
         }
 
         return length;

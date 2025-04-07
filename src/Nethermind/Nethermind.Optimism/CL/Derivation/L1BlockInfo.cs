@@ -16,15 +16,15 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public class L1BlockInfo
 {
-    public required uint BaseFeeScalar;
-    public required uint BlobBaseFeeScalar;
-    public required ulong SequenceNumber;
-    public required ulong Timestamp;
-    public required ulong Number;
-    public required UInt256 BaseFee;
-    public required UInt256 BlobBaseFee;
-    public required Hash256 BlockHash;
-    public required Address BatcherAddress;
+    public required uint BaseFeeScalar { get; init; }
+    public required uint BlobBaseFeeScalar { get; init; }
+    public required ulong SequenceNumber { get; init; }
+    public required ulong Timestamp { get; init; }
+    public required ulong Number { get; init; }
+    public required UInt256 BaseFee { get; init; }
+    public required UInt256 BlobBaseFee { get; init; }
+    public required Hash256 BlockHash { get; init; }
+    public required Address BatcherAddress { get; init; }
 
     public override string ToString()
     {
@@ -39,7 +39,6 @@ public class L1BlockInfoBuilder
     public const UInt32 L1InfoTransactionMethodId = 1141530144;
 
     private const int SystemTxDataLengthEcotone = 164;
-    private static readonly byte[] ExpectedAddressPadding = new byte[12];
 
     public static L1BlockInfo FromL2DepositTxDataAndExtraData(ReadOnlySpan<byte> depositTxData, ReadOnlySpan<byte> extraData)
     {
@@ -62,7 +61,7 @@ public class L1BlockInfoBuilder
         UInt256 blobBaseFee = new(depositTxData.TakeAndMove(32), true);
         Hash256 blockHash = new(depositTxData.TakeAndMove(32));
         ReadOnlySpan<byte> addressPadding = depositTxData.TakeAndMove(12);
-        if (!addressPadding.SequenceEqual(ExpectedAddressPadding))
+        if (!addressPadding.IsZero())
         {
             throw new ArgumentException("Address padding mismatch");
         }
@@ -92,7 +91,7 @@ public class L1BlockInfoBuilder
             BlobBaseFeeScalar = config.BlobBaseFeeScalar,
             SequenceNumber = sequenceNumber,
             Timestamp = block.Timestamp.ToUInt64(null),
-            Number = (ulong)block.Number,
+            Number = block.Number,
             BaseFee = block.BaseFeePerGas!.Value,
             BlobBaseFee = feePerBlobGas,
             BlockHash = block.Hash,

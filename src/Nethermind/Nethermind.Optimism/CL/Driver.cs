@@ -53,9 +53,11 @@ public class Driver : IDisposable
             ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
             L2Block l2Parent = await _l2Api.GetBlockByNumber(parentNumber);
 
-            PayloadAttributesRef[] derivedPayloadAttributes = await _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token);
-            foreach (PayloadAttributesRef payloadAttributes in derivedPayloadAttributes)
+            var derivedPayloadAttributes = _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token)
+                .GetAsyncEnumerator(token);
+            while (await derivedPayloadAttributes.MoveNextAsync())
             {
+                PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
                 bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
                 if (!valid)
                 {
@@ -63,7 +65,6 @@ public class Driver : IDisposable
                     break;
                 }
             }
-
         }
     }
 

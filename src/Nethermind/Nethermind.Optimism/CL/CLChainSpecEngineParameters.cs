@@ -8,42 +8,42 @@ namespace Nethermind.Optimism.CL;
 
 public class CLChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public Address? BatcherInboxAddress { get; set; }
-    public ulong? L2BlockTime { get; set; }
-    public ulong? SeqWindowSize { get; set; }
-    public ulong? MaxSequencerDrift { get; set; }
+    public Address? BatcherInboxAddress { get; init; }
+    public ulong? L2BlockTime { get; init; }
+    public ulong? SeqWindowSize { get; init; }
+    public ulong? MaxSequencerDrift { get; init; }
 
     // roles
-    public Address? SystemConfigOwner { get; set; }
-    public Address? ProxyAdminOwner { get; set; }
-    public Address? Guardian { get; set; }
-    public Address? Challenger { get; set; }
-    public Address? Proposer { get; set; }
-    public Address? UnsafeBlockSigner { get; set; }
-    public Address? BatchSubmitter { get; set; }
+    public Address? SystemConfigOwner { get; init; }
+    public Address? ProxyAdminOwner { get; init; }
+    public Address? Guardian { get; init; }
+    public Address? Challenger { get; init; }
+    public Address? Proposer { get; init; }
+    public Address? UnsafeBlockSigner { get; init; }
+    public Address? BatchSubmitter { get; init; }
 
     // addresses
-    public Address? AddressManager { get; set; }
-    public Address? L1CrossDomainMessengerProxy { get; set; }
-    public Address? L1ERC721BridgeProxy { get; set; }
-    public Address? L1StandardBridgeProxy { get; set; }
-    public Address? L2OutputOracleProxy { get; set; }
-    public Address? OptimismMintableERC20FactoryProxy { get; set; }
-    public Address? OptimismPortalProxy { get; set; }
-    public Address? SystemConfigProxy { get; set; }
-    public Address? ProxyAdmin { get; set; }
-    public Address? SuperchainConfig { get; set; }
-    public Address? AnchorStateRegistryProxy { get; set; }
-    public Address? DelayedWETHProxy { get; set; }
-    public Address? DisputeGameFactoryProxy { get; set; }
-    public Address? MIPS { get; set; }
-    public Address? PermissionedDisputeGame { get; set; }
-    public Address? PreimageOracle { get; set; }
+    public Address? AddressManager { get; init; }
+    public Address? L1CrossDomainMessengerProxy { get; init; }
+    public Address? L1ERC721BridgeProxy { get; init; }
+    public Address? L1StandardBridgeProxy { get; init; }
+    public Address? L2OutputOracleProxy { get; init; }
+    public Address? OptimismMintableERC20FactoryProxy { get; init; }
+    public Address? OptimismPortalProxy { get; init; }
+    public Address? SystemConfigProxy { get; init; }
+    public Address? ProxyAdmin { get; init; }
+    public Address? SuperchainConfig { get; init; }
+    public Address? AnchorStateRegistryProxy { get; init; }
+    public Address? DelayedWETHProxy { get; init; }
+    public Address? DisputeGameFactoryProxy { get; init; }
+    public Address? MIPS { get; init; }
+    public Address? PermissionedDisputeGame { get; init; }
+    public Address? PreimageOracle { get; init; }
 
-    public Address SystemTransactionSender { get; set; } = new("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001");
-    public Address SystemTransactionTo { get; set; } = new("0x4200000000000000000000000000000000000015");
-    public string[]? Nodes { get; set; }
-    public ulong? L1BeaconGenesisSlotTime { get; set; }
+    public Address SystemTransactionSender { get; init; } = new("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001");
+    public Address SystemTransactionTo { get; init; } = new("0x4200000000000000000000000000000000000015");
+    public string[]? Nodes { get; init; }
+    public ulong? L1BeaconGenesisSlotTime { get; init; }
     public string? EngineName => "OptimismCL";
     public string? SealEngineType => null;
 }

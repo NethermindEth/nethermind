@@ -136,9 +136,13 @@ public class EthereumL1Bridge : IL1Bridge
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+
+        }
         catch (Exception ex)
         {
-            _logger.Error($"Processing block failed: {ex.Message}");
+            if (_logger.IsError) _logger.Error($"Processing block failed: {ex.Message}");
             throw;
         }
     }

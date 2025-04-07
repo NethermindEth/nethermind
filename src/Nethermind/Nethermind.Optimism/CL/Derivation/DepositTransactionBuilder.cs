@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Abi;
@@ -27,15 +28,6 @@ public static class DepositEvent
         Upgrade = 2,
         AfterForceInclude = 3,
     }
-}
-
-public static class _L1BlockInfo
-{
-    public static readonly string DepositsCompleteSignature = "depositsComplete()";
-    public static readonly byte[] DepositsCompleteBytes4 = Keccak.Compute(DepositsCompleteSignature).Bytes[..4].ToArray();
-    // `DepositsCompleteGas` allocates 21k gas for intrinsic tx costs, and
-    // an additional 15k to ensure that the `DepositsComplete` call does not run out of gas.
-    public static readonly UInt64 DepositsCompleteGas = 21_000 + 15_000;
 }
 
 public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameters engineParameters)
@@ -131,14 +123,14 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             Span<byte> buffer = stackalloc byte[32 * 2];
             Span<byte> span = buffer;
             l1BlockHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
-            span.TakeAndMove(32 - 8); // skip 24 bytes
+            span.TakeAndMove(24); // skip 24 bytes
             BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), logIndex);
             var depositIdHash = Keccak.Compute(buffer);
 
             buffer.Clear();
             span = buffer;
 
-            span.TakeAndMove(32 - 8); // skip 24 bytes
+            span.TakeAndMove(24); // skip 24 bytes
             BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), (ulong)DepositEvent.SourceDomain.User);
             depositIdHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
 
@@ -188,9 +180,10 @@ public readonly ref struct DepositLogEventV0
         // TODO: We could even hand-roll the entire process using a single intermediate array (several copies here).
 
         // TODO: Can we `stackalloc`? What is `data.Length` max size?
-        var opaqueData = new byte[32 + 32 + 8 + 1 + Data.Length];
+        int opaqueDataLength = 32 + 32 + 8 + 1 + Data.Length;
+        var opaqueData = ArrayPool<byte>.Shared.Rent(opaqueDataLength);
         {
-            Span<byte> span = opaqueData;
+            Span<byte> span = opaqueData.AsSpan(0, opaqueDataLength);
 
             Mint.ToBigEndian(span.TakeAndMove(32));
             Value.ToBigEndian(span.TakeAndMove(32));

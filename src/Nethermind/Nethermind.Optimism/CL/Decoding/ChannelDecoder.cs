@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.IO.Compression;
 using System.Numerics;
@@ -15,7 +16,7 @@ public class ChannelDecoder
 {
     private const int MaxRlpBytesPerChannel = 100_000_000;
 
-    public static byte[] DecodeChannel(byte[] data)
+    public static ReadOnlyMemory<byte> DecodeChannel(byte[] data)
     {
         MemoryStream memoryStream = new();
         if ((data[0] & 0x0F) == 8 || (data[0] & 0x0F) == 15)
@@ -34,20 +35,27 @@ public class ChannelDecoder
         {
             throw new Exception($"Unsupported compression algorithm {data[0]}");
         }
-        return memoryStream.ToArray();
+        return memoryStream.GetBuffer();
     }
 
     private static void CopyDataWithLimit(Stream input, Stream output)
     {
-        byte[] buffer = new byte[4096];
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(4096);
         int bytesRead = 0;
         int totalRead = 0;
 
-        while (totalRead <= MaxRlpBytesPerChannel &&
-               (bytesRead = input.Read(buffer, 0, Math.Min(buffer.Length, MaxRlpBytesPerChannel - totalRead))) > 0)
+        try
         {
-            totalRead += bytesRead;
-            output.Write(buffer, 0, bytesRead);
+            while (totalRead <= MaxRlpBytesPerChannel &&
+                   (bytesRead = input.Read(buffer, 0, Math.Min(buffer.Length, MaxRlpBytesPerChannel - totalRead))) > 0)
+            {
+                totalRead += bytesRead;
+                output.Write(buffer, 0, bytesRead);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 }

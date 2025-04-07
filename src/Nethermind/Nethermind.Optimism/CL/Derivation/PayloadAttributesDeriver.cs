@@ -75,10 +75,12 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         SystemConfig systemConfig,
         Transaction systemTransaction)
     {
-        List<byte[]> transactions = new();
-        transactions.Add(Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes);
-        transactions.AddRange(batch.Transactions);
-        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions.ToArray());
+        byte[][] transactions =
+        [
+            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes,
+            .. batch.Transactions
+        ];
+        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions);
     }
 
     private OptimismPayloadAttributes BuildFirstBlockInEpoch(
@@ -88,12 +90,14 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         Transaction systemTransaction,
         ReceiptForRpc[] l1OriginReceipts)
     {
-        List<byte[]> transactions = new();
-        transactions.Add(Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes);
-        transactions.AddRange(_depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts)
-            .Select(x => Rlp.Encode(x, RlpBehaviors.SkipTypedWrapping).Bytes));
-        transactions.AddRange(batch.Transactions);
-        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions.ToArray());
+        byte[][] transactions =
+        [
+            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes,
+            .. _depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts)
+                    .Select(x => Rlp.Encode(x, RlpBehaviors.SkipTypedWrapping).Bytes),
+            .. batch.Transactions,
+        ];
+        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions);
     }
 
     private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong timestamp, SystemConfig systemConfig, byte[][] txs)

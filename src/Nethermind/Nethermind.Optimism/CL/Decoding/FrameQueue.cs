@@ -45,8 +45,7 @@ public class FrameQueue : IFrameQueue
             var decodedChannel = ChannelDecoder.DecodeChannel(_frameData.ToArray());
             _frameData.Clear();
 
-            var memory = new Memory<byte>(decodedChannel);
-            var rlp = new Rlp.ValueDecoderContext(memory);
+            var rlp = new Rlp.ValueDecoderContext(decodedChannel.Span);
             var batchData = rlp.DecodeByteArrayMemory()!.Value;
             var batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
 

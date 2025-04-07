@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -24,7 +25,8 @@ public class DerivationPipeline(
     ILogger logger) : IDerivationPipeline
 {
 
-    public async Task<PayloadAttributesRef[]> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch, CancellationToken token)
+    public async IAsyncEnumerable<PayloadAttributesRef> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch,
+        [EnumeratorCancellation] CancellationToken token)
     {
         if (logger.IsInfo) logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
         ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
@@ -48,36 +50,28 @@ public class DerivationPipeline(
             PayloadAttributes = l2Parent.PayloadAttributes,
             SystemConfig = l2Parent.SystemConfig
         };
-        List<PayloadAttributesRef> result = new((int)batch.BlockCount);
         int originIdx = 0;
-        try
+        foreach (var singularBatch in batch.ToSingularBatches(chainId, l2GenesisTimestamp, l2BlockTime))
         {
-            foreach (var singularBatch in batch.ToSingularBatches(chainId, l2GenesisTimestamp, l2BlockTime))
+            if (singularBatch.IsFirstBlockInEpoch) originIdx++;
+            var payloadAttributes = payloadAttributesDeriver.TryDerivePayloadAttributes(
+                singularBatch,
+                l2ParentPayloadAttributes,
+                l1Origins[originIdx],
+                l1Receipts[originIdx]);
+            if (payloadAttributes is null)
             {
-                if (singularBatch.IsFirstBlockInEpoch) originIdx++;
-                var payloadAttributes = payloadAttributesDeriver.TryDerivePayloadAttributes(
-                    singularBatch,
-                    l2ParentPayloadAttributes,
-                    l1Origins[originIdx],
-                    l1Receipts[originIdx]);
-                if (payloadAttributes is null)
-                {
-                    if (logger.IsWarn) logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
-                    return result.ToArray();
-                }
-                result.Add(payloadAttributes);
-
-                l2ParentPayloadAttributes = payloadAttributes;
+                if (logger.IsWarn)
+                    logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
+                yield break;
             }
-        }
-        catch (Exception e)
-        {
-            if (logger.IsError) logger.Error($"Exception occured while processing batch. RelTimestamp: {batch.RelTimestamp}, {e.Message}, {e.StackTrace}");
-            throw;
+
+            yield return payloadAttributes;
+
+            l2ParentPayloadAttributes = payloadAttributes;
         }
 
-        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}, Number of payload attributes: {result.Count}");
-        return result.ToArray();
+        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}");
     }
 
     private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch, CancellationToken token)
@@ -105,18 +99,5 @@ public class DerivationPipeline(
             parentHash = l1Origin.ParentHash;
         }
         return (l1Origins, l1Receipts);
-    }
-
-    private ulong GetNumberOfBits(BigInteger number)
-    {
-        ulong cnt = 0;
-        for (int i = 0; i < number.GetBitLength(); ++i)
-        {
-            if (((number >> i) & 1) == 1)
-            {
-                cnt++;
-            }
-        }
-        return cnt;
     }
 }
