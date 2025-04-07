@@ -61,13 +61,17 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
         if (_logger.IsInfo) _logger.Info("Setting up Call Analyzer tracer");
 
         var analyzer = new CallStatsAnalyzer(callAnalyzerConfig.TopN);
-        CallAnalyzerFileTracer callAnalyzerFileTracer = new(new ResettableList<Address>(),
+        CallAnalyzerFileTracer callAnalyzerFileTracer = new(
+            new ResettableList<Address>(),
             callAnalyzerConfig.ProcessingQueueSize,
             analyzer,
-            _api.FileSystem, _logger,
-            callAnalyzerConfig.WriteFrequency, ProcessingModeParser.Parse(callAnalyzerConfig.ProcessingMode),
+            _api.FileSystem,
+            _logger,
+            callAnalyzerConfig.WriteFrequency,
+            ProcessingModeParser.Parse(callAnalyzerConfig.ProcessingMode),
             SortOrderParser.Parse(callAnalyzerConfig.Sort),
-            callAnalyzerConfig.File!, _cancellationTokenSource.Token);
+            callAnalyzerConfig.File!,
+            _cancellationTokenSource.Token);
         _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(callAnalyzerFileTracer);
     }
 
@@ -76,13 +80,19 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
         if (_logger.IsInfo) _logger.Info("Setting up Pattern Analyzer tracer");
 
         var analyzer = new PatternStatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
-        PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(new ResettableList<Instruction>(),
+        PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(
+            new ResettableList<Instruction>(),
             patternAnalyzerConfig.ProcessingQueueSize,
-            patternAnalyzerConfig.InstructionsQueueSize, analyzer, patternAnalyzerConfig.GetIgnoreSet(),
-            _api.FileSystem, _logger,
-            patternAnalyzerConfig.WriteFrequency, ProcessingModeParser.Parse(patternAnalyzerConfig.ProcessingMode),
+            patternAnalyzerConfig.InstructionsQueueSize,
+            analyzer,
+            patternAnalyzerConfig.GetIgnoreSet(),
+            _api.FileSystem,
+            _logger,
+            patternAnalyzerConfig.WriteFrequency,
+            ProcessingModeParser.Parse(patternAnalyzerConfig.ProcessingMode),
             SortOrderParser.Parse(patternAnalyzerConfig.Sort),
-            patternAnalyzerConfig.File!, _cancellationTokenSource.Token);
+            patternAnalyzerConfig.File!,
+            _cancellationTokenSource.Token);
         _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
     }
 }

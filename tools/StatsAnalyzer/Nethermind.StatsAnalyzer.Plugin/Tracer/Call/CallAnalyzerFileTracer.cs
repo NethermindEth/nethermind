@@ -15,16 +15,27 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
     private readonly CallStatsAnalyzer _callStatsAnalyzer;
     private ResettableList<Address> _buffer;
 
-    public CallAnalyzerFileTracer(ResettableList<Address> buffer, int processingQueueSize,
+    public CallAnalyzerFileTracer(
+        ResettableList<Address> buffer,
+        int processingQueueSize,
         CallStatsAnalyzer callStatsAnalyzer,
-        IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
+        IFileSystem fileSystem,
+        ILogger logger,
+        int writeFreq,
+        ProcessingMode mode,
         SortOrder sort,
-        string fileName, CancellationToken ct) : base(
+        string fileName,
+        CancellationToken ct) : base(
         new CallStatsAnalyzerTxTracer(buffer, callStatsAnalyzer, sort, ct),
         "call-analyzer.json",
-        processingQueueSize, fileSystem, logger, writeFreq, mode,
+        processingQueueSize,
+        fileSystem,
+        logger,
+        writeFreq,
+        mode,
         sort,
-        fileName, ct)
+        fileName,
+        ct)
 
     {
         _callStatsAnalyzer = callStatsAnalyzer;

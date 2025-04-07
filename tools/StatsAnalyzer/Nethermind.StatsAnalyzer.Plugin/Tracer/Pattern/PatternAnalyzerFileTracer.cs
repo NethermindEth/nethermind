@@ -16,17 +16,30 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
     private readonly PatternStatsAnalyzer _patternStatsAnalyzer;
 
     private ResettableList<Instruction> _buffer = new();
-    //private PatternStatsAnalyzerTxTracer _tracer;
 
-    public PatternAnalyzerFileTracer(ResettableList<Instruction> buffer, int processingQueueSize,
-        int bufferSize, PatternStatsAnalyzer patternStatsAnalyzer,
-        HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, ProcessingMode mode,
+    public PatternAnalyzerFileTracer(
+        ResettableList<Instruction> buffer,
+        int processingQueueSize,
+        int bufferSize,
+        PatternStatsAnalyzer patternStatsAnalyzer,
+        HashSet<Instruction> ignore,
+        IFileSystem fileSystem,
+        ILogger logger,
+        int writeFreq,
+        ProcessingMode mode,
         SortOrder sort,
-        string fileName, CancellationToken ct) : base(
-        new PatternStatsAnalyzerTxTracer(buffer, ignore, patternStatsAnalyzer, sort, ct), "pattern-analyzer.json",
-        processingQueueSize, fileSystem, logger, writeFreq, mode,
+        string fileName,
+        CancellationToken ct) : base(
+        new PatternStatsAnalyzerTxTracer(buffer, ignore, patternStatsAnalyzer, sort, ct),
+        "pattern-analyzer.json",
+        processingQueueSize,
+        fileSystem,
+        logger,
+        writeFreq,
+        mode,
         sort,
-        fileName, ct)
+        fileName,
+        ct)
     {
         _buffer = buffer;
 
