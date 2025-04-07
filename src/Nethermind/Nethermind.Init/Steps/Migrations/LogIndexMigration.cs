@@ -303,6 +303,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                     var runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
                     runStats.Combine(DbOnTheRocks.CustomMergeOperators.GetAndResetStats());
+                    runStats.Combine(LogIndexStorage.GetAndResetCompactStats());
                     runStats.WaitingBatch.Include(readElapsed);
                     migrated += batch.Length;
 
