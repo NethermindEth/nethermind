@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+#pragma warning disable CS0162 // Unreachable code detected
 
 namespace Nethermind.Db
 {
@@ -183,6 +184,21 @@ namespace Nethermind.Db
             }
         }
 
+        private const bool IncludeTopicIndex = false;
+
+        private static byte[] BuildTopicKey(Hash256 topic, byte topicIndex)
+        {
+            var key = new byte[Hash256.Size + (IncludeTopicIndex ? 1 : 0)];
+            BuildTopicKey(topic, topicIndex, key);
+            return key;
+        }
+
+        private static void BuildTopicKey(Hash256 topic, byte topicIndex, byte[] buffer)
+        {
+            topic.Bytes.CopyTo(buffer);
+            if (IncludeTopicIndex) buffer[^1] = topicIndex;
+        }
+
         // TODO: optimize allocations
         private Dictionary<byte[], List<int>>? BuildProcessingDictionary(
             BlockReceipts[] batch, SetReceiptsStats stats
@@ -217,12 +233,14 @@ namespace Nethermind.Db
                         if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
                             addressNums.Add(blockNumber);
 
-                        foreach (Hash256 topic in log.Topics)
+                        for (byte i = 0; i < log.Topics.Length; i++)
                         {
                             stats.TopicsAdded++;
 
-                            List<int> topicNums = blockNumsByKey.GetOrAdd(topic.Bytes.ToArray(), _ => new(1));
+                            var topic = log.Topics[i];
+                            var topicKey = BuildTopicKey(topic, i);
 
+                            var topicNums = blockNumsByKey.GetOrAdd(topicKey, _ => new(1));
                             if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
                                 topicNums.Add(blockNumber);
                         }
