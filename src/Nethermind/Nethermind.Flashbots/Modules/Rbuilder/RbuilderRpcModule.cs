@@ -107,11 +107,15 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             }
 
             worldState.Commit(releaseSpec);
-            worldState.CommitTree(blockHeader.Number + 1);
+            worldState.RecalculateStateRoot();
+
             stopwatch.Stop();
-            //Console.WriteLine($"RootHash {stopwatch.ElapsedMilliseconds}");
             _histogram.Add((int)stopwatch.ElapsedMilliseconds);
+
             Console.WriteLine($"RootHash p50: {_histogram.GetP50()}, p90: {_histogram.GetP90()}, p99: {_histogram.GetP99()}, Count: {_histogram.Count()}");
+
+            worldState.CommitTree(blockHeader.Number + 1);
+
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
