@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/shape-mainnet.json.zst",
+    "GenesisHash": "0xf17c665ffdebe214ec214bcd798c725141e7b5c29799500abd6a8738d15bdebe",
+    "BaseDbPath": "nethermind_db/shape-mainnet",
+    "LogFileName": "shape-mainnet.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://shape-mainnet-sequencer.g.alchemy.com"
+  }
+}

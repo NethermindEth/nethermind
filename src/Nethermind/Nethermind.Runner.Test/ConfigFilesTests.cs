@@ -217,8 +217,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("sepolia.json", true)]
     [TestCase("gnosis.json", true)]
     [TestCase("chiado.json", true)]
-    [TestCase("energyweb.json", false)]
-    [TestCase("volta.json", false)]
+    [TestCase("energyweb.json", true)]
+    [TestCase("volta.json", true)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
     {
         Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);
@@ -296,7 +296,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Test<IInitConfig, bool>(configWildcard, static c => c.EnableUnsecuredDevWallet, false);
         }
 
-        Test<IInitConfig, string>(configWildcard, static c => c.LogFileName, static (cf, p) => p.Should().Be(cf.Replace("json", "logs.txt"), cf));
+        Test<IInitConfig, string>(configWildcard, static c => c.LogFileName, static (cf, p) => p.Should().Be(cf.Replace("json", "log"), cf));
     }
 
     [TestCase("*")]
@@ -347,8 +347,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
     [TestCase("mainnet", 36_000_000L)]
-    [TestCase("sepolia", 36_000_000L)]
-    [TestCase("holesky", 36_000_000L)]
+    [TestCase("sepolia", 60_000_000L)]
+    [TestCase("holesky", 60_000_000L)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
     public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
     {

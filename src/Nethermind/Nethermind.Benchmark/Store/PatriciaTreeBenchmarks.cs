@@ -284,7 +284,7 @@ namespace Nethermind.Benchmarks.Store
                 {
                     // Its an existing write
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         currentItems[(int)(rand.NextInt64() % currentItems.Count)],
                         new Account((UInt256)rand.NextInt64()));
                 }
@@ -294,7 +294,7 @@ namespace Nethermind.Benchmarks.Store
                     Hash256 newAccount = Keccak.Compute(i.ToBigEndianByteArray());
                     currentItems.Add(newAccount);
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         newAccount,
                         new Account((UInt256)rand.NextInt64()));
                 }
@@ -359,6 +359,31 @@ namespace Nethermind.Benchmarks.Store
                     tempTree.Get(address);
                 }
             }
+        }
+
+        [Benchmark]
+        public void LargeInsertAndCommit()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.Commit();
         }
 
         [Benchmark]

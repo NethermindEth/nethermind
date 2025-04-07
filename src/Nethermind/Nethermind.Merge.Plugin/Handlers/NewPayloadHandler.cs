@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -34,7 +33,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 {
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IBeaconPivot _beaconPivot;
@@ -53,7 +51,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     public NewPayloadHandler(
         IBlockValidator blockValidator,
         IBlockTree blockTree,
-        ISyncConfig syncConfig,
         IPoSSwitcher poSSwitcher,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBeaconPivot beaconPivot,
@@ -68,7 +65,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
-        _syncConfig = syncConfig;
         _poSSwitcher = poSSwitcher;
         _beaconSyncStrategy = beaconSyncStrategy;
         _beaconPivot = beaconPivot;
@@ -82,6 +78,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
+
+    public event EventHandler<BlockHeader>? NewPayloadForParentReceived;
 
     private string GetGasChange(long blockGasLimit)
     {
@@ -115,16 +113,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _lastBlockGasLimit = block.Header.GasLimit;
         }
 
-        if (!HeaderValidator.ValidateHash(block!.Header))
+        if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
-            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $"The last valid is {lastValidHash}");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $". The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 
@@ -134,7 +132,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // because blocks would be ignored with this check:
         // block.Header.Number <= _syncConfig.PivotNumberParsed
         bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
-        if (hasNeverBeenInSync && block.Header.Number <= _syncConfig.PivotNumberParsed)
+        if (hasNeverBeenInSync && block.Header.Number <= _blockTree.SyncPivot.BlockNumber)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;
@@ -163,6 +161,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
             return NewPayloadV1Result.Syncing;
         }
+
+        NewPayloadForParentReceived?.Invoke(this, parentHeader);
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
@@ -333,7 +333,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
                 if (e.ProcessingResult == ProcessingResult.Exception)
                 {
-                    BlockchainException? exception = new("Block processing threw exception.", e.Exception);
+                    BlockchainException? exception = new(e.Exception?.Message ?? "Block processing threw exception.", e.Exception);
                     blockProcessedTaskCompletionSource.SetException(exception);
                     return;
                 }

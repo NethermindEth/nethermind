@@ -22,21 +22,20 @@ namespace Nethermind.Merge.Plugin
         {
             if (MergeEnabled)
             {
-                if (_api.EngineSigner is null) throw new ArgumentNullException(nameof(_api.EngineSigner));
-                if (_api.ChainSpec is null) throw new ArgumentNullException(nameof(_api.ChainSpec));
-                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-                if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-                if (_api.RewardCalculatorSource is null) throw new ArgumentNullException(nameof(_api.RewardCalculatorSource));
-                if (_api.ReceiptStorage is null) throw new ArgumentNullException(nameof(_api.ReceiptStorage));
-                if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
-                if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
-                if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
-                if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
-                if (_mergeBlockProductionPolicy is null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
-                if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
-                if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
+                ArgumentNullException.ThrowIfNull(_api.EngineSigner);
+                ArgumentNullException.ThrowIfNull(_api.ChainSpec);
+                ArgumentNullException.ThrowIfNull(_api.BlockTree);
+                ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
+                ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+                ArgumentNullException.ThrowIfNull(_api.BlockValidator);
+                ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
+                ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
+                ArgumentNullException.ThrowIfNull(_api.TxPool);
+                ArgumentNullException.ThrowIfNull(_api.DbProvider);
+                ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
+                ArgumentNullException.ThrowIfNull(_mergeBlockProductionPolicy);
+                ArgumentNullException.ThrowIfNull(_api.SealValidator);
+                ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
@@ -56,17 +55,27 @@ namespace Nethermind.Merge.Plugin
             return _api.BlockProducer!;
         }
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner)
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunnerFactory baseRunnerFactory, IBlockProducer blockProducer)
         {
             if (MergeEnabled)
             {
-                // The trigger can be different, so need to stop the old block production runner at this point.
+                IMergeBlockProducer mergeBlockProducer = blockProducer as IMergeBlockProducer
+                    ?? throw new ArgumentException("Merge enabled, but block producer is not IMergeBlockProducer");
+
+                IBlockProducer? preMergeBlockProducer = mergeBlockProducer.PreMergeBlockProducer;
+                IBlockProducerRunner? preMergeRunner = preMergeBlockProducer is not null
+                    ? baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer)
+                    : null;
+
+                // IBlockProducer postMergeBlockProducer = mergeBlockProducer.PostMergeBlockProducer;
+                // TODO: Why is mergeBlockProducer used instead of postMergeBlockProducer?
                 StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
-                    _api.ManualBlockProductionTrigger, _api.BlockTree!, _api.BlockProducer!);
-                return new MergeBlockProducerRunner(baseRunner, postMergeRunner, _poSSwitcher);
+                    _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
+
+                return new MergeBlockProducerRunner(preMergeRunner, postMergeRunner, _poSSwitcher);
             }
 
-            return baseRunner;
+            return baseRunnerFactory.InitBlockProducerRunner(blockProducer);
         }
 
         // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin

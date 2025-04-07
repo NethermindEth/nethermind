@@ -8,6 +8,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -137,15 +139,15 @@ public class SnapServerTest
 
         accounts.Count.Should().Be(0);
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
-            context.Server.GetStorageRanges(context.Tree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
-                Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            context.Server.GetStorageRanges(context.Tree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
         storageSlots.Count.Should().Be(0);
 
         accounts.Dispose();
         accountProofs.Dispose();
-        proofs.Dispose();
+        proofs?.Dispose();
         storageSlots.DisposeRecursive();
     }
 
@@ -273,21 +275,25 @@ public class SnapServerTest
         using ProgressTracker progressTracker = new(dbProviderClient.StateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
-            server.GetStorageRanges(inputStateTree.RootHash, new[] { TestItem.Tree.AccountsWithPaths[0] },
-                Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
         try
         {
-            AddRangeResult result = snapProvider.AddStorageRange(1, TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, Keccak.Zero,
-                storageSlots[0], proofs);
+            var storageRangeRequest = new StorageRange()
+            {
+                StartingHash = Keccak.Zero,
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+            };
+            AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
             result.Should().Be(AddRangeResult.OK);
         }
         finally
         {
             storageSlots.DisposeRecursive();
-            proofs.Dispose();
+            proofs?.Dispose();
         }
     }
 
@@ -312,14 +318,18 @@ public class SnapServerTest
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
-                server.GetStorageRanges(inputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
-                    startRange, Keccak.MaxValue, 10000, CancellationToken.None);
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+                server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                    startRange, ValueKeccak.MaxValue, 10000, CancellationToken.None);
 
             try
             {
-                AddRangeResult result = snapProvider.AddStorageRange(1, TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, startRange,
-                    storageSlots[0], proofs);
+                var storageRangeRequest = new StorageRange()
+                {
+                    StartingHash = startRange,
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+                };
+                AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
                 result.Should().Be(AddRangeResult.OK);
                 if (startRange == storageSlots[0][^1].Path.ToCommitment())
@@ -332,7 +342,7 @@ public class SnapServerTest
             finally
             {
                 storageSlots.DisposeRecursive();
-                proofs.Dispose();
+                proofs?.Dispose();
             }
         }
     }
@@ -357,7 +367,7 @@ public class SnapServerTest
         for (int i = 1000; i < 10000; i += 1000)
         {
             Address address = TestItem.GetRandomAddress();
-            StorageTree storageTree = new(store.GetTrieStore(address.ToAccountPath), LimboLogs.Instance);
+            StorageTree storageTree = new(store.GetTrieStore(address), LimboLogs.Instance);
             for (int j = 0; j < i; j += 1)
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
@@ -405,49 +415,47 @@ public class SnapServerTest
         accountProofs.Dispose();
 
         var accountWithStorageArray = accountWithStorage.ToArray();
-        IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots;
-        IOwnedReadOnlyList<byte[]> proofs;
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IOwnedReadOnlyList<byte[]>? proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1);
         proofs.Should().NotBeNull();
 
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 1000000, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 1000000, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1000);
         proofs.Should().BeEmpty();
 
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1);
         proofs.Should().NotBeNull();
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 100000, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 100000, CancellationToken.None);
         slots.Count.Should().Be(2);
         slots[0].Count.Should().Be(1000);
         slots[1].Count.Should().Be(539);
         proofs.Should().NotBeNull();
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
 
         // incomplete tree will be returned as the hard limit is 2000000
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray, Keccak.Zero, Keccak.MaxValue, 3000000, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray, ValueKeccak.Zero, ValueKeccak.MaxValue, 3000000, CancellationToken.None);
         slots.Count.Should().Be(8);
         slots[^1].Count.Should().BeLessThan(8000);
         proofs.Should().NotBeEmpty();
 
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
     }
 
     private IStateReader CreateConstantStateRootTracker(bool available)

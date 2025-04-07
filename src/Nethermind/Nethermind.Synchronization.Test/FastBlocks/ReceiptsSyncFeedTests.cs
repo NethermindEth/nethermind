@@ -104,6 +104,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = new TestSyncConfig { FastSync = true };
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = Keccak.Zero.ToString();
+        _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
@@ -294,6 +295,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash!));
         _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(

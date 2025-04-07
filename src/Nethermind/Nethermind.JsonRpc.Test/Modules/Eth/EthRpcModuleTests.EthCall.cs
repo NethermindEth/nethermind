@@ -3,12 +3,14 @@
 
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -16,6 +18,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -57,7 +60,7 @@ public partial class EthRpcModuleTests
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"err: insufficient funds for transfer: address 0x0001020304050607080910111213141516171819 (supplied gas 100000000)\"},\"id\":67}"));
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
@@ -118,7 +121,7 @@ public partial class EthRpcModuleTests
         {
             To = TestItem.AddressB
         };
-        ctx.Test.State.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
+        ctx.Test.WorldStateManager.GlobalWorldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
@@ -181,7 +184,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.Create(configurer: builder => builder.ConfigureTrieStoreExposedWorldStateManager());
         LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
         {
             From = TestItem.AddressA,
@@ -189,7 +192,7 @@ public partial class EthRpcModuleTests
         };
 
         ctx.Test.StateDb.Clear();
-        ctx.Test.TrieStore.ClearCache();
+        ctx.Test.Container.Resolve<TrieStore>().ClearCache();
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
