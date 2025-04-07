@@ -48,6 +48,8 @@ namespace Nethermind.Db.Test
         [TearDown]
         public async Task TearDownAsync()
         {
+            await _logIndexStorage.StopAsync();
+
             await ((IAsyncDisposable)_logIndexStorage).DisposeAsync();
             _columnsDb.Dispose();
 

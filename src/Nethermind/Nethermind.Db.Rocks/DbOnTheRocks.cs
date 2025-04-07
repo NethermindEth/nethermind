@@ -1847,10 +1847,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         public static SetReceiptsStats GetAndResetStats()
         {
-            // Not atomic, but good enough
-            var stats = _stats;
-            _stats = new();
-            return stats;
+            return Interlocked.Exchange(ref _stats, new());
         }
 
         public static readonly IReadOnlyDictionary<string, MergeOperator> All = new Dictionary<string, MergeOperator>(StringComparer.OrdinalIgnoreCase)
