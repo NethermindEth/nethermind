@@ -191,7 +191,9 @@ public readonly ref struct DepositLogEventV0
             span.TakeAndMove(1)[0] = (byte)(IsCreation ? 1 : 0);
             Data.CopyTo(span.TakeAndMove(Data.Length));
         }
-        return AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData);
+        var result = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData[..opaqueDataLength]);
+        ArrayPool<byte>.Shared.Return(opaqueData);
+        return result;
     }
 
     public static DepositLogEventV0 FromBytes(byte[] source) // TODO: Add `ReadOnlySpan<byte>` overloads
