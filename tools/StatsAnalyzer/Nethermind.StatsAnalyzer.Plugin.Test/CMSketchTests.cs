@@ -28,10 +28,10 @@ public class CmSketchTests
     private CmSketch _error01Confidence99;
     private CmSketch _highAccuracyHighConfidence;
 
-    private readonly ulong _ulong0 = 0UL;
-    private readonly ulong _ulong1 = 234UL;
-    private readonly ulong _ulong2 = 1000000UL;
-    private readonly ulong _ulong3 = 999999999999UL;
+    private const ulong Ulong0 = 0UL;
+    private const ulong Ulong1 = 234UL;
+    private const ulong Ulong2 = 1000000UL;
+    private const ulong Ulong3 = 999999999999UL;
 
     // n updates of the same item
     public static void make_n_updates(ulong value, int numberOfUpdates, CmSketch sketch)
@@ -48,13 +48,13 @@ public class CmSketchTests
         // error = 2 / buckets;
         sketch.Error.Should().Be(2d);
 
-        sketch.Update(_ulong0);
-        sketch.Update(_ulong1);
+        sketch.Update(Ulong0);
+        sketch.Update(Ulong1);
 
         // we have made two updates error per item should be 4
         sketch.ErrorPerItem.Should().Be(4d);
         // querying an unseen item should give the total number of updates done;
-        sketch.Query(_ulong2).Should().Be(2);
+        sketch.Query(Ulong2).Should().Be(2);
     }
 
     [Test]
@@ -65,23 +65,23 @@ public class CmSketchTests
         // error = 2 / buckets;
         sketch.Error.Should().Be(1d);
 
-        sketch.Update(_ulong0);
+        sketch.Update(Ulong0);
 
-        sketch.Update(_ulong1);
-        sketch.Update(_ulong1);
-        sketch.Update(_ulong1);
+        sketch.Update(Ulong1);
+        sketch.Update(Ulong1);
+        sketch.Update(Ulong1);
 
         // we have made four updates error per item should be 4
         sketch.ErrorPerItem.Should().Be(4d);
 
-        sketch.Query(_ulong0).Should().BeGreaterThanOrEqualTo(1);
-        sketch.Query(_ulong0).Should().BeLessThanOrEqualTo(1 + 4);
+        sketch.Query(Ulong0).Should().BeGreaterThanOrEqualTo(1);
+        sketch.Query(Ulong0).Should().BeLessThanOrEqualTo(1 + 4);
 
-        sketch.Query(_ulong1).Should().BeGreaterThanOrEqualTo(3);
-        sketch.Query(_ulong1).Should().BeLessThanOrEqualTo(3 + 4);
+        sketch.Query(Ulong1).Should().BeGreaterThanOrEqualTo(3);
+        sketch.Query(Ulong1).Should().BeLessThanOrEqualTo(3 + 4);
 
         // unseen item error
-        sketch.Query(_ulong2).Should().BeLessThanOrEqualTo(4);
+        sketch.Query(Ulong2).Should().BeLessThanOrEqualTo(4);
     }
 
     [Test]
@@ -89,24 +89,24 @@ public class CmSketchTests
     {
         var sketch = _error01Confidence99;
         sketch.Error.Should().BeLessThanOrEqualTo(.01d);
-        sketch.Update(_ulong0);
-        make_n_updates(_ulong1, 40, sketch);
-        make_n_updates(_ulong2, 59, sketch);
+        sketch.Update(Ulong0);
+        make_n_updates(Ulong1, 40, sketch);
+        make_n_updates(Ulong2, 59, sketch);
 
         // we have made 100 (1 + 40 + 59) updates, expected max error per item should be 100 * 0.01
         sketch.ErrorPerItem.Should().BeLessThanOrEqualTo(1d);
 
-        sketch.Query(_ulong0).Should().BeGreaterThanOrEqualTo(1);
-        sketch.Query(_ulong0).Should().BeLessThanOrEqualTo(2);
+        sketch.Query(Ulong0).Should().BeGreaterThanOrEqualTo(1);
+        sketch.Query(Ulong0).Should().BeLessThanOrEqualTo(2);
 
-        sketch.Query(_ulong1).Should().BeGreaterThanOrEqualTo(40);
-        sketch.Query(_ulong1).Should().BeLessThanOrEqualTo(41);
+        sketch.Query(Ulong1).Should().BeGreaterThanOrEqualTo(40);
+        sketch.Query(Ulong1).Should().BeLessThanOrEqualTo(41);
 
-        sketch.Query(_ulong2).Should().BeGreaterThanOrEqualTo(59);
-        sketch.Query(_ulong2).Should().BeLessThanOrEqualTo(60);
+        sketch.Query(Ulong2).Should().BeGreaterThanOrEqualTo(59);
+        sketch.Query(Ulong2).Should().BeLessThanOrEqualTo(60);
 
         // unseen item error
-        sketch.Query(_ulong3).Should().BeLessThanOrEqualTo(1);
+        sketch.Query(Ulong3).Should().BeLessThanOrEqualTo(1);
     }
 
 
