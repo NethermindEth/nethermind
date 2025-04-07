@@ -15,13 +15,9 @@ public class ExecutionEngineManager : IExecutionEngineManager
     private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
     private readonly ILogger _logger;
 
-    private ulong _currentHead = 0;
-    private ulong _currentFinalizedHead = 0;
-    private ulong _currentSafeHead = 0;
-
-    private Hash256 _currentHeadHash = Hash256.Zero;
-    private Hash256 _currentFinalizedHash = Hash256.Zero;
-    private Hash256 _currentSafeHash = Hash256.Zero;
+    private BlockId _currentHead;
+    private BlockId _currentFinalizedHead;
+    private BlockId _currentSafeHead;
 
     public ExecutionEngineManager(IL2Api l2Api, ILogger logger)
     {
@@ -33,32 +29,29 @@ public class ExecutionEngineManager : IExecutionEngineManager
     public async Task Initialize()
     {
         var headBlock = await _l2Api.GetHeadBlock();
-        _currentHead = headBlock.Number;
-        _currentHeadHash = headBlock.Hash;
+        _currentHead = BlockId.FromL2Block(headBlock);
 
         var finalizedBlock = await _l2Api.GetFinalizedBlock();
-        _currentFinalizedHash = finalizedBlock.Hash;
-        _currentFinalizedHead = finalizedBlock.Number;
+        _currentFinalizedHead = BlockId.FromL2Block(finalizedBlock);
 
         var safeBlock = await _l2Api.GetSafeBlock();
-        _currentSafeHash = safeBlock.Hash;
-        _currentSafeHead = safeBlock.Number;
+        _currentSafeHead = BlockId.FromL2Block(safeBlock);
 
         if (_logger.IsInfo)
-            _logger.Info($"EL manager initialization complete: current head {_currentHead}, current finalized head hash {_currentFinalizedHash}, current safe hash {_currentSafeHash}");
+            _logger.Info($"EL manager initialization complete: current head {_currentHead}, current finalized head hash {_currentFinalizedHead.Hash}, current safe hash {_currentSafeHead.Hash}");
     }
 
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
-        if (_currentHead >= payloadAttributes.Number)
+        if (_currentHead.Number >= payloadAttributes.Number)
         {
             if (_logger.IsInfo) _logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
             L2Block actualBlock = await _l2Api.GetBlockByNumber(payloadAttributes.Number);
             if (_derivedBlocksVerifier.ComparePayloadAttributes(
                     actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
             {
-                return await SendForkChoiceUpdated(_currentHeadHash, actualBlock.Hash, actualBlock.Hash,
-                    _currentHead, payloadAttributes.Number, payloadAttributes.Number);
+                BlockId newFinalized = BlockId.FromL2Block(actualBlock);
+                return await SendForkChoiceUpdated(_currentHead, newFinalized, newFinalized);
             }
 
             return false;
@@ -71,21 +64,20 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return false;
         }
 
-        return await SendForkChoiceUpdated(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash,
-            payloadAttributes.Number, payloadAttributes.Number, payloadAttributes.Number);
+        BlockId newHead = BlockId.FromExecutionPayload(executionPayload);
+        return await SendForkChoiceUpdated(newHead, newHead, newHead);
     }
 
     public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3)
     {
         return await SendNewPayload(executionPayloadV3) &&
-               await SendForkChoiceUpdated(executionPayloadV3.BlockHash, _currentFinalizedHash, _currentSafeHash,
-                   (ulong)executionPayloadV3.BlockNumber, _currentFinalizedHead, _currentSafeHead);
+               await SendForkChoiceUpdated(BlockId.FromExecutionPayload(executionPayloadV3), _currentFinalizedHead, _currentSafeHead);
     }
 
     private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
         var fcuResult = await _l2Api.ForkChoiceUpdatedV3(
-            _currentHeadHash, _currentFinalizedHash, _currentSafeHash,
+            _currentHead.Hash, _currentFinalizedHead.Hash, _currentSafeHead.Hash,
             payloadAttributes.PayloadAttributes);
 
         if (fcuResult.PayloadStatus.Status != PayloadStatus.Valid)
@@ -123,54 +115,42 @@ public class ExecutionEngineManager : IExecutionEngineManager
     }
 
     private async Task<bool> SendForkChoiceUpdated(
-        Hash256 headBlockHash, Hash256 finalizedBlockHash, Hash256 safeBlockHash,
-        ulong head, ulong finalized, ulong safe)
+        BlockId headBlock, BlockId finalizedBlock, BlockId safeBlock)
     {
-        ulong newFinalized = _currentFinalizedHead;
-        Hash256 newFinalizedHash = _currentFinalizedHash;
-        if (_currentFinalizedHead < finalized)
-        {
-            newFinalized = finalized;
-            newFinalizedHash = finalizedBlockHash;
-        }
+        bool shouldUpdate = BlockId.ShouldUpdate(_currentHead, headBlock);
+        shouldUpdate |= BlockId.ShouldUpdate(_currentFinalizedHead, finalizedBlock);
+        shouldUpdate |= BlockId.ShouldUpdate(_currentSafeHead, safeBlock);
 
-        ulong newSafe = _currentSafeHead;
-        Hash256 newSafeHash = _currentSafeHash;
-        if (_currentSafeHead < safe)
-        {
-            newSafe = safe;
-            newSafeHash = safeBlockHash;
-        }
-
-        ulong newHead = _currentHead;
-        Hash256 newHeadHash = _currentHeadHash;
-        if (_currentHead < head)
-        {
-            newHead = head;
-            newHeadHash = headBlockHash;
-        }
-
-        if (_currentHeadHash == newHeadHash && _currentFinalizedHash == newFinalizedHash &&
-            _currentSafeHash == newSafeHash)
+        if (!shouldUpdate)
         {
             return true;
         }
 
-        var result = await _l2Api.ForkChoiceUpdatedV3(newHeadHash, newFinalizedHash, newSafeHash);
+        var result = await _l2Api.ForkChoiceUpdatedV3(headBlock.Hash, finalizedBlock.Hash, safeBlock.Hash);
 
         if (result.PayloadStatus.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdatedV3({newHeadHash}, {newFinalizedHash}, {newSafeHash}), Result: {result.PayloadStatus.Status}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdatedV3({headBlock.Hash}, {finalizedBlock.Hash}, {safeBlock.Hash}), Result: {result.PayloadStatus.Status}");
             return false;
         }
-        _currentHeadHash = newHeadHash;
-        _currentFinalizedHash = newFinalizedHash;
-        _currentSafeHash = newSafeHash;
-
-        _currentSafeHead = newHead;
-        _currentFinalizedHead = newFinalized;
-        _currentSafeHead = newSafe;
+        _currentHead = headBlock;
+        _currentFinalizedHead = finalizedBlock;
+        _currentSafeHead = safeBlock;
 
         return true;
+    }
+
+    private readonly record struct BlockId
+    {
+        public ulong Number { get; private init; }
+        public Hash256 Hash { get; private init; }
+
+        public static BlockId FromL2Block(L2Block block) => new() { Number = block.Number, Hash = block.Hash };
+
+        public static BlockId FromExecutionPayload(ExecutionPayloadV3 executionPayload) =>
+            new() { Number = (ulong)executionPayload.BlockNumber, Hash = executionPayload.BlockHash };
+
+        public static bool ShouldUpdate(BlockId currentBlockId, BlockId newBlockId) =>
+            currentBlockId.Number < newBlockId.Number;
     }
 }

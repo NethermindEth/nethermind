@@ -60,7 +60,7 @@ public readonly struct Frame : IEquatable<Frame>
             UInt16 frameNumber = BinaryPrimitives.ReadUInt16BigEndian(buffer.TakeAndMove(sizeof(UInt16)));
             UInt32 frameDataLength = BinaryPrimitives.ReadUInt32BigEndian(buffer.TakeAndMove(sizeof(UInt32)));
             ReadOnlySpan<byte> frameData = buffer.TakeAndMove((int)frameDataLength);
-            byte isLast = buffer.TakeAndMove(1)[0];
+            byte isLast = buffer[0];
             if (isLast != 0 && isLast != 1)
             {
                 throw new FormatException($"Invalid {nameof(IsLast)} flag");
