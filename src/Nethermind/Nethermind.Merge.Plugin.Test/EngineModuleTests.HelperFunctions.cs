@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
 
                 if (blobCountPerTx != 0)
                 {
-                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx, spec: spec ?? null);
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx, spec: spec);
                 }
                 else
                 {
