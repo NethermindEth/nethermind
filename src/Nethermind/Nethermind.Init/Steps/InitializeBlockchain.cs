@@ -246,9 +246,10 @@ namespace Nethermind.Init.Steps
         protected void LoadPrecompiledIlContracts()
         {
             if(!_api.VMConfig?.IsVmOptimizationEnabled ?? false) return;
+            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
             if (_api.VMConfig?.IlEvmPrecompiledContractsPath is null) return;
 
-            string path = _api.VMConfig.IlEvmPrecompiledContractsPath;
+            string path = _api.VMConfig!.IlEvmPrecompiledContractsPath;
             if (string.IsNullOrEmpty(path)) return;
 
             if(Directory.Exists(path))

@@ -19,7 +19,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int RequestQueueLimit { get; set; } = 500;
     public string RpcRecorderBaseFilePath { get; set; } = "E:\\ILVM\\database\\rpc\\rpc.{counter}.txt";
 
-    public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.All;
+    public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
 
     public int Port { get; set; } = 8545;
 
