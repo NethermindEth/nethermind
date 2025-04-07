@@ -119,8 +119,8 @@ namespace Nethermind.EngineApiProxy.Models
                     string messageId = message.Request.Id.ToString() ?? "null";
                     _messageById.TryRemove(messageId, out _);
                 }
-                
-                _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id}");
+                var host = message.Request.OriginalHeaders?.FirstOrDefault(h => h.Key == "Host").Value;
+                _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id} from {host}");
                 return message;
             }
             

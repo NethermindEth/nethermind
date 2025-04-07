@@ -48,6 +48,8 @@ namespace Nethermind.EngineApiProxy.Services
         public async Task<string> HandleFCUWithValidation(JsonRpcRequest originalRequest, string headBlockHash)
         {
             _logger.Debug($"Starting validation flow for head block: {headBlockHash}");
+            string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+            _logger.Debug($"Validation will use execution client at: {targetHost}");
             
             try
             {
@@ -183,6 +185,9 @@ namespace Nethermind.EngineApiProxy.Services
         {
             try
             {
+                string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+                _logger.Debug($"Getting payload from execution client at: {targetHost}");
+                
                 // Create getPayload request
                 var getPayloadRequest = new JsonRpcRequest(
                     "engine_getPayloadV3",
@@ -328,7 +333,9 @@ namespace Nethermind.EngineApiProxy.Services
             {
                 // Serialize request
                 var requestJson = JsonConvert.SerializeObject(request);
-                _logger.Info($"PR -> EC: {requestJson}");
+                string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+                _logger.Debug($"Forwarding validation request to EL at: {targetHost}");
+                _logger.Info($"PR (V) -> EL: {requestJson}");
                 var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
                 // Create a request message instead of using PostAsync
@@ -381,7 +388,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 // Send request
-                _logger.Debug($"Sending request with method: {request.Method}, HasAuth: {authHeaderAdded}");
+                _logger.Debug($"Sending request with method: {request.Method}, HasAuth: {authHeaderAdded}, Target: {targetHost}");
                 var response = await _httpClient.SendAsync(requestMessage);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -392,7 +399,8 @@ namespace Nethermind.EngineApiProxy.Services
                 
                 // Parse response
                 var responseJson = await response.Content.ReadAsStringAsync();
-                _logger.Info($"EC -> PR: {responseJson}");
+                _logger.Debug($"Received response from EL at: {targetHost}");
+                _logger.Info($"EL -> PR (V): {responseJson}");
                 
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 if (jsonRpcResponse == null)

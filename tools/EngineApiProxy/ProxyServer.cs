@@ -155,7 +155,9 @@ namespace Nethermind.EngineApiProxy
                 requestBody = await reader.ReadToEndAsync();
             }
             
-            _logger.Debug($"Received request: {requestBody}");
+            string sourceIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            string sourceHost = context.Request.Headers.ContainsKey("Host") ? context.Request.Headers["Host"].ToString() : "unknown";
+            _logger.Info($"CL -> PR (Source IP: {sourceIp}, Headers Host: {sourceHost}): {requestBody}");
             
             JsonRpcRequest? request;
             try
@@ -199,6 +201,7 @@ namespace Nethermind.EngineApiProxy
                     case "engine_forkchoiceUpdatedV3":
                     case "engine_forkChoiceUpdatedV4":
                         response = await HandleForkChoiceUpdated(request);
+                        
                         break;
                         
                     case "engine_newPayload":
@@ -211,6 +214,11 @@ namespace Nethermind.EngineApiProxy
 
                         // Always wait for the actual response from execution client
                         response = await responseTask;
+                        
+                        // Log the response received from the message queue
+                        _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
+                        
+                        // response = await HandleNewPayload(request);
                         break;
                         
                     case "engine_getPayloadV3":
@@ -231,12 +239,16 @@ namespace Nethermind.EngineApiProxy
             }
             
             context.Response.ContentType = "application/json";
+            string destinationIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            string destinationHost = context.Request.Headers.ContainsKey("Host") ? context.Request.Headers["Host"].ToString() : "unknown";
+            _logger.Info($"PR -> CL (Destination IP: {destinationIp}, Headers Host: {destinationHost}, Method: {request.Method}): {JsonConvert.SerializeObject(response)}");
             await context.Response.WriteAsync(JsonConvert.SerializeObject(response));
         }
 
         private async Task<JsonRpcResponse> HandleForkChoiceUpdated(JsonRpcRequest request)
         {
             // Log the forkChoiceUpdated request
+            _logger.Info($"--------------------------------");
             _logger.Debug($"Processing engine_forkChoiceUpdated: {request}");
             
             try
@@ -248,12 +260,19 @@ namespace Nethermind.EngineApiProxy
                                       (request.Params.Count == 1 || 
                                        request.Params[1] == null || 
                                        (request.Params[1] is Newtonsoft.Json.Linq.JValue jv && jv.Type == Newtonsoft.Json.Linq.JTokenType.Null) ||
-                                       (request.Params[1]?.Type == Newtonsoft.Json.Linq.JTokenType.Null));
+                                       (request.Params[1]?.Type == Newtonsoft.Json.Linq.JTokenType.Null)) &&
+                                      !(request.Params.Count > 1 && request.Params[1] is JObject);
                 
                 // Add detailed logging to show validation decision
                 if (_config.ValidateAllBlocks) 
                 {
                     _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
+                    
+                    if (request.Params?.Count > 1 && request.Params[1] is JObject)
+                    {
+                        _logger.Debug("Skipping validation because request already contains payload attributes");
+                    }
+                    
                     _logger.Info($"shouldValidate evaluated to: {shouldValidate}");
                 }
                 
@@ -279,23 +298,10 @@ namespace Nethermind.EngineApiProxy
                                     // Use the orchestrator to handle the validation flow
                                     string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
                                     
-                                    // Create a synthetic success response
-                                    var validationResponse = new JsonRpcResponse
-                                    {
-                                        Id = request.Id,
-                                        Result = new JObject
-                                        {
-                                            ["payloadStatus"] = new JObject
-                                            {
-                                                ["status"] = "VALID",
-                                                ["latestValidHash"] = headBlockHashStr,
-                                                ["validationError"] = null
-                                            },
-                                            ["payloadId"] = payloadId
-                                        }
-                                    };
-                                    
-                                    return validationResponse;
+                                    // Instead of creating a synthetic response with payloadId,
+                                    // forward the original request to EL and return that response to CL
+                                    _logger.Info($"Validation flow for payloadId {payloadId} completed successfully, forwarding original request to EL for actual response");
+                                    return await ForwardRequestToExecutionClient(request);
                                 }
                                 catch (Exception ex)
                                 {
@@ -407,7 +413,9 @@ namespace Nethermind.EngineApiProxy
             try
             {
                 string requestJson = JsonConvert.SerializeObject(request);
-                _logger.Info($"CL -> EL: {requestJson}");
+                string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+                _logger.Debug($"Forwarding request to EL at: {targetHost}");
+                _logger.Info($"PR -> EL: {requestJson}");
                 var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
                 // Create a request message instead of using PostAsync directly
@@ -472,26 +480,27 @@ namespace Nethermind.EngineApiProxy
                 
                 var response = await _httpClient.SendAsync(requestMessage);
                 string responseBody = await response.Content.ReadAsStringAsync();
-                _logger.Info($"EL -> CL: {responseBody}");
+                _logger.Debug($"Received response from EL at: {targetHost}");
+                _logger.Info($"EL -> PR: {responseBody}");
                 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.Error($"EC returned error: {response.StatusCode}, {responseBody}");
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"EC error: {response.StatusCode}");
+                    _logger.Error($"EL returned error: {response.StatusCode}, {responseBody}");
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"EL error: {response.StatusCode}");
                 }
                 
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseBody);
                 if (jsonRpcResponse == null)
                 {
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Proxy error: Invalid response from EC");
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Proxy error: Invalid response from EL");
                 }
                 
                 return jsonRpcResponse;
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error forwarding request to EC: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error communicating with EC: {ex.Message}");
+                _logger.Error($"Error forwarding request to EL: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error communicating with EL: {ex.Message}");
             }
         }
 
