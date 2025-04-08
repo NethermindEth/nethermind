@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -22,7 +26,10 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
@@ -72,6 +79,8 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
+
+            LoadPrecompiledIlContracts();
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
@@ -186,7 +195,8 @@ namespace Nethermind.Init.Steps
                 blockhashProvider,
                 _api.SpecProvider,
                 codeInfoRepository,
-                _api.LogManager);
+                _api.LogManager,
+                _api.VMConfig!);
 
             return virtualMachine;
         }
@@ -236,6 +246,34 @@ namespace Nethermind.Init.Steps
                 _api.LogManager,
                 preWarmer: preWarmer
             );
+        }
+
+        protected void LoadPrecompiledIlContracts()
+        {
+            if(!_api.VMConfig?.IsVmOptimizationEnabled ?? false) return;
+            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
+            if (_api.VMConfig?.IlEvmPrecompiledContractsPath is null) return;
+
+            string path = _api.VMConfig!.IlEvmPrecompiledContractsPath;
+            if (string.IsNullOrEmpty(path)) return;
+
+            if(Directory.Exists(path))
+            {
+                foreach (var file in Directory.GetFiles(path, ".Nethermind.g.c.dll"))
+                {
+                    using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
+                    {
+                        Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
+                        ValueHash256 codeHash = new ValueHash256(assembly.GetName().Name!);
+                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly!.GetType("ContractType")!.FullName!) as IPrecompiledContract;
+                        IlAnalyzer.AddIledCode(codeHash, precompiledContract!);
+                    }
+                }
+            }
+            else
+            {
+                Directory.CreateDirectory(path);
+            }
         }
 
         // TODO: remove from here - move to consensus?
