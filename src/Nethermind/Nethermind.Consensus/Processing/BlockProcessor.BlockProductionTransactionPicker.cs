@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -37,7 +38,7 @@ namespace Nethermind.Consensus.Processing
                 AddingTransaction?.Invoke(this, e);
             }
 
-            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+            public virtual AddingTxEventArgs CanAddTransaction(BlockToProduce block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
