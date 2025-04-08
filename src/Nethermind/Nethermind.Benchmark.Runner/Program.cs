@@ -12,7 +12,9 @@ using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
+using Nethermind.Benchmarks.Store;
 using Nethermind.Precompiles.Benchmark;
+using Nethermind.Trie;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -59,6 +61,8 @@ namespace Nethermind.Benchmark.Runner
                 // typeof(EthereumTests.Benchmark.EthereumTests).Assembly,
             ];
 
+            BenchmarkRunner.Run(typeof(PatriciaTreeBenchmarks), new DebugInProcessConfig());
+            /*
             if (Debugger.IsAttached)
             {
                 BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
@@ -77,6 +81,7 @@ namespace Nethermind.Benchmark.Runner
 
                 BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
             }
+            */
         }
     }
 }

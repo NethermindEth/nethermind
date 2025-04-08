@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -48,6 +49,8 @@ namespace Nethermind.Benchmarks.Store
 
         private const int _largerEntryCount = 1024 * 10 * 10;
         private (bool, Hash256, Account)[] _largerEntriesAccess;
+
+        private WorkStealingExecutor _executor;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -227,6 +230,7 @@ namespace Nethermind.Benchmarks.Store
         public void Setup()
         {
             _tree = new StateTree();
+            _executor = new WorkStealingExecutor(Environment.ProcessorCount, 16);
 
             _entries = new (Hash256, Account)[_entryCount];
             for (int i = 0; i < _entryCount; i++)
@@ -302,6 +306,13 @@ namespace Nethermind.Benchmarks.Store
 
         }
 
+        [GlobalCleanup]
+        public void Cleanup()
+        {
+            _executor.Dispose();
+        }
+
+        /*
         [Benchmark]
         public void Scenarios()
         {
@@ -360,6 +371,7 @@ namespace Nethermind.Benchmarks.Store
                 }
             }
         }
+        */
 
         [Benchmark]
         public void LargeInsertAndCommit()
@@ -386,6 +398,83 @@ namespace Nethermind.Benchmarks.Store
             tempTree.Commit();
         }
 
+        [Benchmark]
+        public void LargeInsertAndCommitWithExecutor()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.Commit(executor: _executor);
+        }
+
+        [Benchmark]
+        public void LargeInsertAndHash()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void LargeInsertAndHashWithExecutor()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.RecursiveResolveKey(_executor);
+            tempTree.UpdateRootHash(canBeParallel: false);
+        }
+
+        /*
         [Benchmark]
         public void ReadWithFullTree()
         {
@@ -436,5 +525,6 @@ namespace Nethermind.Benchmarks.Store
                 tempTree.Get(_entriesShuffled[i].Item1);
             }
         }
+        */
     }
 }

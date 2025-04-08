@@ -16,6 +16,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -132,7 +133,7 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
+        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None, WorkStealingExecutor? executor = null)
         {
             if (!_allowCommits)
             {
@@ -155,7 +156,21 @@ namespace Nethermind.Trie
             if (RootRef is not null && RootRef.IsDirty)
             {
                 TreePath path = TreePath.Empty;
-                Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+
+                if (executor is not null)
+                {
+                    executor.Execute(new CommitJob(
+                        committer,
+                        this,
+                        path,
+                        new NodeCommitInfo(RootRef),
+                        skipSelf: skipRoot
+                    ));
+                }
+                else
+                {
+                    Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                }
 
                 // reset objects
                 RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
@@ -166,7 +181,182 @@ namespace Nethermind.Trie
         }
 
         private Counter CommitTime = Prometheus.Metrics.CreateCounter("patriciatree_commit_time", "Update roothash time");
-        private Counter CommitGenerateKey = Prometheus.Metrics.CreateCounter("patriciatree_commit_generate_tree_time", "Update roothash time");
+        private static Counter CommitGenerateKey = Prometheus.Metrics.CreateCounter("patriciatree_commit_generate_tree_time", "Update roothash time");
+
+        private struct JobSpreader(ArrayPoolList<IJob> jobs, int startIdx, int endIdx): IJob
+        {
+            public void Execute(Context ctx)
+            {
+                if (endIdx == startIdx + 1)
+                {
+                    jobs[startIdx].Execute(ctx);
+                    return;
+                }
+
+                if (startIdx == endIdx)
+                {
+                    return;
+                }
+
+                int laterHalf = startIdx + (endIdx - startIdx) / 2;
+
+                ctx.Fork(
+                    new JobSpreader(jobs, startIdx, laterHalf),
+                    new JobSpreader(jobs, laterHalf, endIdx)
+                );
+            }
+        }
+
+        private struct CommitJob(
+            ICommitter committer,
+            PatriciaTree tree,
+            TreePath path,
+            NodeCommitInfo nodeCommitInfo,
+            bool skipSelf = false
+        ) : IJob
+        {
+            public void Execute(Context ctx)
+            {
+                TrieNode node = nodeCommitInfo.Node;
+                if (node!.IsBranch)
+                {
+
+                    if (path.Length > 30)
+                    {
+                        for (int i = 0; i < 16; i++)
+                        {
+                            if (node.IsChildDirty(i))
+                            {
+                                path.AppendMut(i);
+                                TrieNode childNode = node.GetChildWithChildPath(tree.TrieStore, ref path, i);
+                                new CommitJob(
+                                    committer,
+                                    tree,
+                                    path,
+                                    new NodeCommitInfo(childNode!, node, i)
+                                ).Execute(ctx);
+                                path.TruncateOne();
+                            }
+                            else
+                            {
+                                if (tree._logger.IsTrace)
+                                {
+                                    Trace(node, ref path, i);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        RefList16<IJob> jobs = new RefList16<IJob>(0);
+
+                        for (int i = 0; i < 16; i++)
+                        {
+                            if (node.IsChildDirty(i))
+                            {
+                                path.AppendMut(i);
+                                TrieNode childNode = node.GetChildWithChildPath(tree.TrieStore, ref path, i);
+                                jobs.Add(
+                                    new CommitJob(
+                                        committer,
+                                        tree,
+                                        path,
+                                        new NodeCommitInfo(childNode!, node, i)
+                                    )
+                                );
+                                path.TruncateOne();
+                            }
+                            else
+                            {
+                                if (tree._logger.IsTrace)
+                                {
+                                    Trace(node, ref path, i);
+                                }
+                            }
+                        }
+
+                        RefList16<ManualResetEventSlim> jobLatches = new RefList16<ManualResetEventSlim>(0);
+
+                        for (int i = 1; i < jobs.Count; i++)
+                        {
+                            jobLatches.Add(ctx.PushJob(jobs[i]));
+                        }
+                        jobs[0].Execute(ctx);
+                        for (int i = jobLatches.Count-1; i >= 0; i--)
+                        {
+                            ctx.WaitForJobOrKeepBusy(jobLatches[i]);
+                        }
+                    }
+                }
+                else if (node.NodeType == NodeType.Extension)
+                {
+                    int previousPathLength = node.AppendChildPath(ref path, 0);
+                    TrieNode extensionChild = node.GetChildWithChildPath(tree.TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
+
+                    if (extensionChild.IsDirty)
+                    {
+                        new CommitJob(
+                            committer,
+                            tree,
+                            path,
+                            new NodeCommitInfo(extensionChild, node, 0)
+                        ).Execute(ctx);
+                    }
+                    else
+                    {
+                        if (tree._logger.IsTrace) TraceExtensionSkip(extensionChild);
+                    }
+                    path.TruncateMut(previousPathLength);
+                }
+
+                long sw = Stopwatch.GetTimestamp();
+                node.ResolveKey(tree.TrieStore, ref path, nodeCommitInfo.IsRoot, bufferPool: tree._bufferPool);
+                CommitGenerateKey.Inc(Stopwatch.GetTimestamp() - sw);
+                node.Seal();
+
+                if (node.FullRlp.Length >= 32)
+                {
+                    if (!skipSelf)
+                    {
+                        committer.CommitNode(ref path, nodeCommitInfo);
+                    }
+                }
+                else
+                {
+                    if (tree._logger.IsTrace) TraceSkipInlineNode(node);
+                }
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(TrieNode node, ref TreePath path, int i)
+            {
+                TrieNode child = node.GetChild(tree.TrieStore, ref path, i);
+                if (child is not null)
+                {
+                    tree._logger.Trace($"Skipping commit of {child}");
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceExtensionSkip(TrieNode extensionChild)
+            {
+                tree._logger.Trace($"Skipping commit of {extensionChild}");
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceSkipInlineNode(TrieNode node)
+            {
+                tree._logger.Trace($"Skipping commit of an inlined {node}");
+            }
+        }
 
         private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
@@ -314,6 +504,21 @@ namespace Nethermind.Trie
             TreePath path = TreePath.Empty;
             long sw = Stopwatch.GetTimestamp();
             RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
+            UpdateRootHashTime.Inc(Stopwatch.GetTimestamp() - sw);
+            SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+        }
+
+        public void RecursiveResolveKey(WorkStealingExecutor executor)
+        {
+            TreePath path = TreePath.Empty;
+            long sw = Stopwatch.GetTimestamp();
+
+            if (RootRef is not null)
+            {
+                executor.Execute(new TrieNode.EnsureResolvedJob(_bufferPool, TrieStore, path, RootRef));
+            }
+
+            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, false);
             UpdateRootHashTime.Inc(Stopwatch.GetTimestamp() - sw);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }

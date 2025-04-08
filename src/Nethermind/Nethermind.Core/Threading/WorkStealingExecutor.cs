@@ -8,6 +8,7 @@ using System.Threading;
 
 namespace Nethermind.Core.Threading;
 
+// Its like rust's rayon, but worst.
 public class WorkStealingExecutor: IDisposable
 {
     // To randomize stealing. Not exactly random, but it should work.
@@ -139,10 +140,11 @@ public class WorkStealingExecutor: IDisposable
 public class Worker: IDisposable
 {
     private const int RoundUntilSleep = 32;
-    private const int LatchWaitMs = 1000;
+    private const int LatchWaitMs = 50;
     private readonly Context _context;
     private readonly Thread _thread;
     private ManualResetEventSlim _finishLatch;
+    private ManualResetEventSlim _sleepLatch;
     private bool _isAsleep = false;
     private int _waitRound = 0;
 
@@ -150,6 +152,7 @@ public class Worker: IDisposable
     {
         _context = context;
         _finishLatch = new ManualResetEventSlim(false);
+        _sleepLatch = new ManualResetEventSlim(false);
         _thread = new Thread(WorkerLoop);
     }
 
@@ -171,7 +174,8 @@ public class Worker: IDisposable
                     continue;
                 }
 
-                OnNoJob(_finishLatch);
+                _sleepLatch.Reset();
+                OnNoJob(_sleepLatch);
             }
         }
         catch (Exception ex)
@@ -190,7 +194,7 @@ public class Worker: IDisposable
     public bool TryWakeUp()
     {
         if (!_isAsleep) return false;
-        _thread.Interrupt();
+        _sleepLatch.Set();
         return true;
     }
 
@@ -265,7 +269,24 @@ public class Context: IDisposable
         WaitForJobOrKeepBusy(job2Ref.ResetEvent);
     }
 
-    private void WaitForJobOrKeepBusy(ManualResetEventSlim latch)
+    public ManualResetEventSlim PushJob(IJob job)
+    {
+        if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
+        {
+            resetEvent = new ManualResetEventSlim(false);
+        }
+        else
+        {
+            resetEvent.Reset();
+        }
+
+        JobRef jobRef = new(job, resetEvent);
+        Push(jobRef);
+
+        return resetEvent;
+    }
+
+    public void WaitForJobOrKeepBusy(ManualResetEventSlim latch)
     {
         // Announce looking here
         _worker.ResetWaitCounter();

@@ -471,5 +471,52 @@ namespace Nethermind.Trie
                 }
             }
         }
+
+        public struct EnsureResolvedJob(ICappedArrayPool? bufferPool, ITrieNodeResolver resolver, TreePath path, TrieNode item) : IJob
+        {
+            public void Execute(Context ctx)
+            {
+                if (item.IsBranch)
+                {
+                    RefList16<IJob> trieNodeToCheck = new RefList16<IJob>(0);
+
+                    for (int i = 0; i < BranchesCount; i++)
+                    {
+                        object data = item._nodeData[i];
+                        if (data is TrieNode childNode && childNode.Key is null)
+                        {
+                            trieNodeToCheck.Add(new EnsureResolvedJob(bufferPool, resolver, path.Append(i), childNode));
+                        }
+                    }
+
+                    RefList16<ManualResetEventSlim> latches = new RefList16<ManualResetEventSlim>(0);
+                    for (int i = 0; i < trieNodeToCheck.Count; i++)
+                    {
+                        if (i == trieNodeToCheck.Count - 1)
+                        {
+                            trieNodeToCheck[i].Execute(ctx); // inline
+                        }
+                        else
+                        {
+                            latches.Add(ctx.PushJob(trieNodeToCheck[i]));
+                        }
+                    }
+
+                    for (int i = latches.Count - 1; i >= 0; i--)
+                    {
+                        ctx.WaitForJobOrKeepBusy(latches[i]);
+                    }
+                }
+                else if (item.IsExtension)
+                {
+                    TreePath chPath = item.GetChildPath(path, 0);
+                    TrieNode nodeRef = item.GetChildWithChildPath(resolver, ref chPath, 0);
+                    new EnsureResolvedJob(bufferPool, resolver, chPath, nodeRef);
+                }
+
+                item.ResolveKey(resolver, ref path, isRoot: false, bufferPool: bufferPool, canBeParallel: false);
+            }
+        }
+
     }
 }
