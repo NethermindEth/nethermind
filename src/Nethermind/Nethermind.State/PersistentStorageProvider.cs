@@ -505,7 +505,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private StorageValue LoadFromTreeReadPreWarmCache(in StorageCell storageCell)
     {
-        if (_preBlockCache?.TryGetValue(storageCell, out StorageValue  value) ?? false)
+        if (_preBlockCache?.TryGetValue(storageCell, out StorageValue value) ?? false)
         {
             Db.Metrics.IncrementStorageTreeCache();
         }

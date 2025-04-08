@@ -30,7 +30,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         Hash256 parentBlockHash = blockHeader.ParentHash;
         var parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
-        worldState.Set(blockHashStoreCell, new (parentBlockHash!.Bytes));
+        worldState.Set(blockHashStoreCell, new StorageValue(parentBlockHash!.Bytes));
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)

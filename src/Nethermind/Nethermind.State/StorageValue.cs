@@ -11,13 +11,21 @@ using Nethermind.Int256;
 namespace Nethermind.State;
 
 /// <summary>
-/// Represents the storage value.
+/// Represents a storage value.
 /// </summary>
+/// <remarks>
+/// The storage value keeps the value as a 32-byte vector.
+/// This might introduce some memory overhead for small values, but should greatly increase locality
+/// and reduce littering with small byte[] arrays.
+/// </remarks>
 public readonly struct StorageValue : IEquatable<StorageValue>
 {
     private readonly Vector256<byte> _bytes;
     private const int MemorySize = 32;
 
+    /// <summary>
+    /// Creates a new storage value, ensuring proper endianess of the copied bytes.
+    /// </summary>
     public StorageValue(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length == MemorySize)
@@ -31,7 +39,10 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         }
     }
 
-    public StorageValue(UInt256 value)
+    /// <summary>
+    /// Creates a storage value out of the <paramref name="value"/>.
+    /// </summary>
+    public StorageValue(in UInt256 value)
     {
         value.ToBigEndian(BytesAsSpan);
     }

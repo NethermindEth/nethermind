@@ -15,18 +15,22 @@ using Nethermind.State;
 
 namespace Nethermind.Flashbots.Modules.Rbuilder;
 
-public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldStateManager worldStateManager)
+public class RbuilderRpcModule(
+    IBlockFinder blockFinder,
+    ISpecProvider specProvider,
+    IWorldStateManager worldStateManager)
     : IRbuilderRpcModule
 {
-
-    private readonly ObjectPool<IOverridableWorldScope> _overridableWorldScopePool = new DefaultObjectPool<IOverridableWorldScope>(new PooledIWorldStatePolicy(worldStateManager));
+    private readonly ObjectPool<IOverridableWorldScope> _overridableWorldScopePool =
+        new DefaultObjectPool<IOverridableWorldScope>(new PooledIWorldStatePolicy(worldStateManager));
 
     public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
     {
         return ResultWrapper<byte[]?>.Success(worldStateManager.GlobalStateReader.GetCode(hash));
     }
 
-    public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
+    public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam,
+        IDictionary<Address, AccountChange> accountDiff)
     {
         BlockHeader? blockHeader = blockFinder.FindHeader(blockParam);
         if (blockHeader is null)
@@ -71,14 +75,16 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         UInt256 originalBalance = account.Balance;
                         if (accountChange.Balance.Value > originalBalance)
                         {
-                            worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
+                            worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance,
+                                releaseSpec);
                         }
                         else if (accountChange.Balance.Value == originalBalance)
                         {
                         }
                         else
                         {
-                            worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
+                            worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value,
+                                releaseSpec);
                         }
                     }
                 }
@@ -98,7 +104,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
                         ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian();
-                        worldState.Set(new StorageCell(address, changedSlot.Key), new (bytes));
+                        worldState.Set(new StorageCell(address, changedSlot.Key), new StorageValue(bytes));
                     }
                 }
             }
@@ -134,7 +140,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     public ResultWrapper<Hash256?> rbuilder_getBlockHash(BlockParameter block)
     {
-
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         return ResultWrapper<Hash256?>.Success(blockHeader?.Hash);
     }

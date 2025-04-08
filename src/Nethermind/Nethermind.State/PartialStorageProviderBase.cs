@@ -29,7 +29,8 @@ namespace Nethermind.State
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ??
+                      throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>
@@ -81,7 +82,8 @@ namespace Nethermind.State
             int currentPosition = _changes.Count - 1;
             if (snapshot > currentPosition)
             {
-                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+                throw new InvalidOperationException(
+                    $"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
             }
 
             if (snapshot == currentPosition)
@@ -100,7 +102,8 @@ namespace Nethermind.State
                         int actualPosition = stack.Pop();
                         if (actualPosition != currentPosition - i)
                         {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+                            throw new InvalidOperationException(
+                                $"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
                         }
 
                         _keptInCache.Add(change);
@@ -112,7 +115,8 @@ namespace Nethermind.State
                 int forAssertion = stack.Pop();
                 if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    throw new InvalidOperationException(
+                        $"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
                 _changes[currentPosition - i] = default;
@@ -134,11 +138,11 @@ namespace Nethermind.State
 
             _keptInCache.Clear();
 
-            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) &&
+                   lastOriginalSnapshot > snapshot)
             {
                 _transactionChangesSnapshots.Pop();
             }
-
         }
 
         /// <summary>
@@ -156,7 +160,7 @@ namespace Nethermind.State
 
             public ChangeTrace(StorageValue before, StorageValue after)
             {
-                After = after ;
+                After = after;
                 Before = before;
             }
 
@@ -261,7 +265,8 @@ namespace Nethermind.State
         /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref StackList<int>? value =
+                ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             if (!exists)
             {
                 value = new StackList<int>();

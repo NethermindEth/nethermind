@@ -2546,9 +2546,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        StorageValue newValue = new StorageValue(stack.PopWord256());
+        bool newIsZero = newValue.IsZero;
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
 
@@ -2563,7 +2562,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero;
 
-        StorageValue newValue = new StorageValue(bytes);
         bool newSameAsCurrent = (newIsZero && currentIsZero) || currentValue.Equals(newValue);
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
