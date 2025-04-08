@@ -308,7 +308,7 @@ public partial class EngineModuleTests
         {
             while (!cts.IsCancellationRequested)
             {
-                TxPool.Metrics.PendingTransactionsAdded++;
+                Interlocked.Increment(ref TxPool.Metrics.PendingTransactionsAdded);
                 await Task.Delay(10);
             }
         });

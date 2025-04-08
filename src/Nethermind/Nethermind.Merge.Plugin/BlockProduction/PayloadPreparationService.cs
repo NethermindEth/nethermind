@@ -149,7 +149,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         long startTimestamp = Stopwatch.GetTimestamp();
-        long added = TxPool.Metrics.PendingTransactionsAdded;
+        long added = Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded);
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             (b) =>
@@ -187,7 +187,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                 // Loop the delay if no new txs have been added, and while not cancelled.
                 // Is no point in rebuilding an identical block.
-            } while (added == TxPool.Metrics.PendingTransactionsAdded);
+            } while (added == Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded));
 
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
