@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -36,7 +37,7 @@ namespace Nethermind.Consensus.Processing
                 IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
                 ILogManager logManager,
-                long maxTxLengthKilobytes = 9728)
+                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes)
                 : this(
                     readOnlyTxProcessingEnv.TransactionProcessor,
                     readOnlyTxProcessingEnv.WorldState,
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.Processing
                 IWorldState stateProvider,
                 ISpecProvider specProvider,
                 ILogManager logManager,
-                long maxTxLengthKilobytes = 9728) : this(transactionProcessor, stateProvider,
+                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes) : this(transactionProcessor, stateProvider,
                 new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
             {
             }
