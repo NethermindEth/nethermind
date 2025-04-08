@@ -232,7 +232,7 @@ public class SystemConfigDeriverTests
         var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
         var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
 
-        var receipts = BuildReceipts([..encodedData, 0x00], SystemConfigUpdate.FeeScalars);
+        var receipts = BuildReceipts([.. encodedData, 0x00], SystemConfigUpdate.FeeScalars);
 
         var deriver = new SystemConfigDeriver(SystemConfigProxy);
         var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);

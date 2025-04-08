@@ -99,20 +99,20 @@ public class SystemConfigDeriver(
             switch (data[0])
             {
                 case 0:
-                {
-                    break;
-                }
+                    {
+                        break;
+                    }
                 case 1:
-                {
-                    if (!data[1..24].IsZero())
-                        return systemConfig; // ignore
-                    break;
-                }
+                    {
+                        if (!data[1..24].IsZero())
+                            return systemConfig; // ignore
+                        break;
+                    }
                 default:
-                {
-                    // ignore invalid type
-                    return systemConfig;
-                }
+                    {
+                        // ignore invalid type
+                        return systemConfig;
+                    }
             }
             systemConfig = systemConfig with
             {
