@@ -59,9 +59,9 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibanocciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            var multithreadTimeAsleep = TimeSpan.FromSeconds(executor.CalculateTotalTimeAsleep() / (double)Stopwatch.Frequency);
-            var timeStealing = TimeSpan.FromSeconds(executor.CalculateTotalTimeStealing() / (double)Stopwatch.Frequency);
-            var timeNotifying = TimeSpan.FromSeconds(executor.CalculateTotalTimeNotifying() / (double)Stopwatch.Frequency);
+            var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
+            var timeStealing = executor.CalculateTotalTimeStealing();
+            var timeNotifying = executor.CalculateTotalTimeNotifying();
             TestContext.Error.WriteLine($"Time stealing {timeStealing}");
             TestContext.Error.WriteLine($"Time notifying {timeNotifying}");
             TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
@@ -106,9 +106,9 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibanocciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            var timeStealing = TimeSpan.FromSeconds(executor.CalculateTotalTimeStealing() / (double)Stopwatch.Frequency);
-            var timeNotifying = TimeSpan.FromSeconds(executor.CalculateTotalTimeNotifying() / (double)Stopwatch.Frequency);
-            var multithreadTimeAsleep = TimeSpan.FromSeconds(executor.CalculateTotalTimeAsleep() / (double)Stopwatch.Frequency);
+            var timeStealing = executor.CalculateTotalTimeStealing();
+            var timeNotifying = executor.CalculateTotalTimeNotifying();
+            var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
             TestContext.Error.WriteLine($"Time stealing {timeStealing}");
             TestContext.Error.WriteLine($"Time notifying {timeNotifying}");
             TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");

@@ -118,34 +118,34 @@ public class WorkStealingExecutor: IDisposable
         }
     }
 
-    public long CalculateTotalTimeAsleep()
+    public TimeSpan CalculateTotalTimeAsleep()
     {
         long totalTime = 0;
         for (int i = 0; i < _workerCount; i++)
         {
             totalTime += _workerContexts[i].TotalTimeAsleep;
         }
-        return totalTime;
+        return TimeSpan.FromTicks(totalTime);
     }
 
-    public long CalculateTotalTimeStealing()
+    public TimeSpan CalculateTotalTimeStealing()
     {
         long totalTime = 0;
         for (int i = 0; i < _workerCount; i++)
         {
             totalTime += _workerContexts[i]._totalTimeStealing;
         }
-        return totalTime;
+        return TimeSpan.FromTicks(totalTime);
     }
 
-    public long CalculateTotalTimeNotifying()
+    public TimeSpan CalculateTotalTimeNotifying()
     {
         long totalTime = 0;
         for (int i = 0; i < _workerCount; i++)
         {
             totalTime += _workerContexts[i]._totalTimeNotifying;
         }
-        return totalTime;
+        return TimeSpan.FromTicks(totalTime);
     }
 }
 
