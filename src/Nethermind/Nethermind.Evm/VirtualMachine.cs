@@ -77,17 +77,7 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = new VMConfig()
-        {
-            IsILEvmEnabled = true,
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmAnalysisQueueMaxSize = 8,
-            IlEvmAnalysisThreshold = 4,
-            IsIlEvmAggressiveModeEnabled = true,
-            IlEvmAnalysisMaxTasksCount = 8,
-            IlEvmPersistPrecompiledContractsOnDisk = false,
-            IlEvmPrecompiledContractsPath = "E:\\ILVM\\database\\contractsIL\\",
-        };
+        _vmConfig = vmConfig ?? new VMConfig();
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
