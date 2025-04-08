@@ -14,6 +14,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Processing
@@ -108,6 +109,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
+                        block.TxByteLength += currentTx.GetLength();
                         if (addToBlock)
                         {
                             transactionsInBlock.Add(currentTx);

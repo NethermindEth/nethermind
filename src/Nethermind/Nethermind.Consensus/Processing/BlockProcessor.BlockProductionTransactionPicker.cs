@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -16,6 +18,8 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
         {
+            private static readonly long _maxTxLengthBytes = 9728.KiB();
+
             protected readonly ISpecProvider _specProvider;
             private readonly bool _ignoreEip3607;
 
@@ -43,6 +47,14 @@ namespace Nethermind.Consensus.Processing
                 if (GasCostOf.Transaction > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
+                }
+
+                if (block.TxByteLength + currentTx.GetLength() > _maxTxLengthBytes)
+                {
+                    return args.Set(
+                        // If smallest tx is too large, stop picking
+                        currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
+                        "Too large for CL");
                 }
 
                 if (currentTx.SenderAddress is null)

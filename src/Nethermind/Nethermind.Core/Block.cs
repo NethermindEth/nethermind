@@ -122,6 +122,10 @@ public class Block
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+
+    [JsonIgnore]
+    public long TxByteLength { get; internal set; }
+
     [JsonIgnore]
     internal volatile int TransactionProcessed;
 
