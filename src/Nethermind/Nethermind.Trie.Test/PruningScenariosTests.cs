@@ -249,8 +249,8 @@ namespace Nethermind.Trie.Test
 
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
-                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index)).ToArray()
-                    .Should().BeEquivalentTo(((UInt256)value).ToBigEndian());
+                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
+                    .Should().Be(new StorageValue((UInt256)value));
                 return this;
             }
 
