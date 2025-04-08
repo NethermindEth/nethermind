@@ -19,32 +19,30 @@ public class CallAnalyzerTxTraceConvertor : JsonConverter<CallAnalyzerTxTrace>
             return;
         }
 
+        writer.WriteStartObject();
+        writer.WritePropertyName("initialBlockNumber"u8);
+        JsonSerializer.Serialize(writer, value.InitialBlockNumber, options);
+        writer.WritePropertyName("currentBlockNumber"u8);
+        JsonSerializer.Serialize(writer, value.CurrentBlockNumber, options);
+
+        if (value.Entries is not null)
         {
-            writer.WriteStartObject();
-            writer.WritePropertyName("initialBlockNumber"u8);
-            JsonSerializer.Serialize(writer, value.InitialBlockNumber, options);
-            writer.WritePropertyName("currentBlockNumber"u8);
-            JsonSerializer.Serialize(writer, value.CurrentBlockNumber, options);
-
-            if (value.Entries is not null)
+            writer.WritePropertyName("stats"u8);
+            writer.WriteStartArray();
+            foreach (var callStats in value.Entries)
             {
-                writer.WritePropertyName("stats"u8);
-                writer.WriteStartArray();
-                foreach (var callStats in value.Entries)
-                {
-                    writer.WriteStartObject();
-                    writer.WritePropertyName("address"u8);
-                    writer.WriteStringValue(callStats.Address);
+                writer.WriteStartObject();
+                writer.WritePropertyName("address"u8);
+                writer.WriteStringValue(callStats.Address);
 
-                    writer.WritePropertyName("count"u8);
-                    JsonSerializer.Serialize(writer, callStats.Count, options);
-                    writer.WriteEndObject();
-                }
-
-                writer.WriteEndArray();
+                writer.WritePropertyName("count"u8);
+                JsonSerializer.Serialize(writer, callStats.Count, options);
+                writer.WriteEndObject();
             }
 
-            writer.WriteEndObject();
+            writer.WriteEndArray();
         }
+
+        writer.WriteEndObject();
     }
 }
