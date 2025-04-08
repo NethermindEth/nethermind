@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -11,6 +12,8 @@ namespace Nethermind.Config
 {
     public class BlocksConfig : IBlocksConfig
     {
+        public static bool AddVersionToExtraData { get; set; }
+
         public const string DefaultExtraData = "Nethermind";
         private byte[] _extraDataBytes = [];
         private string _extraDataString;
@@ -22,7 +25,28 @@ namespace Nethermind.Config
             ExtraData = _extraDataString;
         }
 
-        private static string GetDefaultExtraData() => $"{DefaultExtraData} v{ProductInfo.Version.Replace("-unstable", "a")}";
+        private static string GetDefaultExtraData()
+        {
+            // Don't want block hashes in tests to change with every version
+            if (!AddVersionToExtraData) return DefaultExtraData;
+
+            ReadOnlySpan<char> version = ProductInfo.Version.AsSpan();
+            int index = version.IndexOfAny('+', '-');
+            string alpha = "";
+            if (index >= 0)
+            {
+                if (version[index] == '-')
+                {
+                    alpha = "a";
+                }
+            }
+            else
+            {
+                index = version.Length;
+            }
+
+            return $"{DefaultExtraData} v{version[..index]}{alpha}";
+        }
 
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;
