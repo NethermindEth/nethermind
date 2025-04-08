@@ -303,10 +303,10 @@ namespace Nethermind.Init.Steps.Migrations
                 var watch = Stopwatch.StartNew();
                 var prevElapsed = TimeSpan.Zero;
 
-                var readWatch = new Stopwatch();
+                var timestamp = Stopwatch.GetTimestamp();
                 await foreach (var batch in reader.ReadAllAsync(token))
                 {
-                    var readElapsed = readWatch.Elapsed;
+                    var readElapsed = Stopwatch.GetElapsedTime(timestamp);
 
                     if (token.IsCancellationRequested)
                         return;
@@ -328,7 +328,7 @@ namespace Nethermind.Init.Steps.Migrations
                     _lastStats.Combine(runStats);
                     _totalStats.Combine(runStats);
 
-                    readWatch.Restart();
+                    timestamp = Stopwatch.GetTimestamp();
                 }
             }
             catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == token)

@@ -1858,7 +1858,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         // TODO: inherit MergeOperator instead, to improve performance and minimize allocations
         private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
         {
-            var watch = Stopwatch.StartNew();
+            var timestamp = Stopwatch.GetTimestamp();
 
             try
             {
@@ -1896,7 +1896,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             }
             finally
             {
-                _stats.InMemoryMerging.Include(watch.Elapsed);
+                _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
             }
         }
 

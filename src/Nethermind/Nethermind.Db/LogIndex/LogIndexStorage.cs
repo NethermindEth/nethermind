@@ -105,7 +105,7 @@ namespace Nethermind.Db
 
         private IEnumerable<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
         {
-            var watch = Stopwatch.StartNew();
+            var timestamp = Stopwatch.GetTimestamp();
 
             bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
@@ -181,7 +181,7 @@ namespace Nethermind.Db
                 ArrayPool<byte>.Shared.Return(dbKeyBuffer);
 
                 // TODO: log in Debug
-                _logger.Info($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {watch.Elapsed}");
+                _logger.Info($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
             }
         }
 
@@ -208,7 +208,7 @@ namespace Nethermind.Db
             if (batch[^1].BlockNumber <= _lastKnownBlock)
                 return null;
 
-            var watch = Stopwatch.StartNew();
+            var timestamp = Stopwatch.GetTimestamp();
 
             var blockNumsByKey = new Dictionary<byte[], List<int>>(Bytes.EqualityComparer);
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
@@ -250,7 +250,7 @@ namespace Nethermind.Db
             }
 
             stats.KeysCount.Include(blockNumsByKey.Count);
-            stats.BuildingDictionary.Include(watch.Elapsed);
+            stats.BuildingDictionary.Include(Stopwatch.GetElapsedTime(timestamp));
 
             return blockNumsByKey;
         }
@@ -296,29 +296,28 @@ namespace Nethermind.Db
         public SetReceiptsStats Recompact(int maxUncompressedLength = MaxUncompressedLength)
         {
             var stats = new SetReceiptsStats();
-            var watch = Stopwatch.StartNew();
 
-            watch.Restart();
+            var timestamp = Stopwatch.GetTimestamp();
             var addressCount = QueueLargeKeysCompression(_addressDb, maxUncompressedLength);
-            stats.QueueingAddressCompression.Include(watch.Elapsed);
+            stats.QueueingAddressCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
-            watch.Restart();
+            timestamp = Stopwatch.GetTimestamp();
             var topicCount = QueueLargeKeysCompression(_topicsDb, maxUncompressedLength);
-            stats.QueueingTopicCompression.Include(watch.Elapsed);
+            stats.QueueingTopicCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
 
             CompressPostMerge(stats.PostMergeProcessing);
 
-            watch.Restart();
+            timestamp = Stopwatch.GetTimestamp();
             _addressDb.Flush();
             _topicsDb.Flush();
-            stats.FlushingDbs.Include(watch.Elapsed);
+            stats.FlushingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
 
-            watch.Restart();
+            timestamp = Stopwatch.GetTimestamp();
             _addressDb.Compact();
             _topicsDb.Compact();
-            stats.CompactingDbs.Include(watch.Elapsed);
+            stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
 
             return stats;
         }
@@ -359,12 +358,12 @@ namespace Nethermind.Db
 
                 if (dictionary is { Count: > 0 })
                 {
-                    var watch = Stopwatch.StartNew();
+                    var timestamp = Stopwatch.GetTimestamp();
                     Parallel.ForEach(
                         dictionary, new() { MaxDegreeOfParallelism = _ioParallelism },
                         pair => SaveBlockNumbersByKey(pair.Key, pair.Value, stats)
                     );
-                    stats.Processing.Include(watch.Elapsed);
+                    stats.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
                 }
             }
             finally
@@ -436,9 +435,9 @@ namespace Nethermind.Db
 
                 var newValue = CreateDbValue(blockNums);
 
-                var watch = Stopwatch.StartNew();
+                var timestamp = Stopwatch.GetTimestamp();
                 db.Merge(dbKey, newValue);
-                stats.CallingMerge.Include(watch.Elapsed);
+                stats.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
             }
             finally
             {
