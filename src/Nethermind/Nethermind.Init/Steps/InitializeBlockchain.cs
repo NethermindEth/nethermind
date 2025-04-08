@@ -246,21 +246,21 @@ namespace Nethermind.Init.Steps
         protected void LoadPrecompiledIlContracts()
         {
             if(!_api.VMConfig?.IsVmOptimizationEnabled ?? false) return;
+            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
             if (_api.VMConfig?.IlEvmPrecompiledContractsPath is null) return;
 
-            string path = _api.VMConfig.IlEvmPrecompiledContractsPath;
+            string path = _api.VMConfig!.IlEvmPrecompiledContractsPath;
             if (string.IsNullOrEmpty(path)) return;
 
             if(Directory.Exists(path))
             {
                 foreach (var file in Directory.GetFiles(path, ".Nethermind.g.c.dll"))
                 {
-
                     using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
                     {
                         Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
                         ValueHash256 codeHash = new ValueHash256(assembly.GetName().Name!);
-                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly.GetName().Name!) as IPrecompiledContract;
+                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly!.GetType("ContractType")!.FullName!) as IPrecompiledContract;
                         IlAnalyzer.AddIledCode(codeHash, precompiledContract!);
                     }
                 }

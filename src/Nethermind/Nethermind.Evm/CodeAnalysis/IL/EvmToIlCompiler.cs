@@ -51,7 +51,7 @@ internal static class Precompiler
         typeBuilder.AddInterfaceImplementation(typeof(IPrecompiledContract));
 
         // Define the MoveNext method
-        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true), codeInfo, metadata, config).CreateMethod();
+        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true, doVerify: false), codeInfo, metadata, config).CreateMethod();
 
         // Finalize the type
         var finalizedType = typeBuilder.CreateType();
@@ -59,14 +59,13 @@ internal static class Precompiler
         if(config.IlEvmPersistPrecompiledContractsOnDisk)
         {
             var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(contractName));
-            var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
+            using var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
             fileStream.SetLength(0); // Clear the file
             ((PersistedAssemblyBuilder)asmBuilder).Save(fileStream);  // or pass filename to save into a file
 
             fileStream.Seek(0, SeekOrigin.Begin);
             var assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
             finalizedType = assembly.GetType("ContractType");
-            fileStream.Close();
         }
 
         IPrecompiledContract contract = (IPrecompiledContract)Activator.CreateInstance(finalizedType);
