@@ -339,7 +339,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             foreach (var kvp in dict)
             {
                 StorageValue after = kvp.Value.After;
-                if (!kvp.Value.Before.Equals(after))
+                // Force the update if the change is to zero. This means a removal.
+                if (after.IsZero || !kvp.Value.Before.Equals(after))
                 {
                     dict[kvp.Key] = new(after, after);
                     storageTree.SetValue(kvp.Key, after);
