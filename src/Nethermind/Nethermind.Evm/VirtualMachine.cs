@@ -2651,19 +2651,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!newSameAsCurrent)
         {
-            _state.Set(in storageCell, new StorageValue(bytes));
+            _state.Set(in storageCell, newValue);
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
-                ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
                 byte[] storageBytes = new byte[32]; // do not stackalloc here
                 storageCell.Index.ToBigEndian(storageBytes);
-                _txTracer.ReportStorageChange(storageBytes, valueToStore);
+                _txTracer.ReportStorageChange(storageBytes, newValue.Bytes);
             }
 
             if (typeof(TTracingStorage) == typeof(IsTracing))
             {
-                _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue.BytesWithNoLeadingZeroes);
+                _txTracer.SetOperationStorage(storageCell.Address, result, newValue.BytesWithNoLeadingZeroes, currentValue.BytesWithNoLeadingZeroes);
             }
         }
 
