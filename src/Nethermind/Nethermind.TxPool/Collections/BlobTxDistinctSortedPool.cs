@@ -94,6 +94,21 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
+    public bool AreBlobsAvailable(byte[][] requestedBlobVersionedHashes)
+    {
+        using var lockRelease = Lock.Acquire();
+
+        foreach (byte[] requestedBlobVersionedHash in requestedBlobVersionedHashes)
+        {
+            if (!BlobIndex.TryGetValue(requestedBlobVersionedHash, out _))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
     {
         if (base.InsertCore(key, value, groupKey))
