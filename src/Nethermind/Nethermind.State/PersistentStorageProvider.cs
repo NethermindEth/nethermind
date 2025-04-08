@@ -91,10 +91,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override StorageValue GetCurrentValue(in StorageCell storageCell)
+    protected override ref readonly StorageValue GetCurrentValue(in StorageCell storageCell)
     {
         ref readonly var cached = ref TryGetCachedValue(storageCell);
-        return Unsafe.IsNullRef(in cached) ? LoadFromTree(storageCell) : cached;
+        if (!Unsafe.IsNullRef(in cached))
+            return ref cached;
+        return ref LoadFromTree(storageCell);
     }
 
     /// <summary>
@@ -102,9 +104,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    public StorageValue GetOriginal(in StorageCell storageCell)
+    public ref readonly StorageValue GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out var value))
+        ref var original = ref CollectionsMarshal.GetValueRefOrNullRef(_originalValues, storageCell);
+
+        if (Unsafe.IsNullRef(ref original))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -115,12 +119,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
+                    return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndexBeforeOriginalSnapshot].Value;
                 }
             }
         }
 
-        return value;
+        return ref original;
     }
 
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
@@ -457,7 +461,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private StorageValue LoadFromTree(in StorageCell storageCell)
+    private ref readonly StorageValue LoadFromTree(in StorageCell storageCell)
     {
         ref DefaultableDictionary? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, storageCell.Address, out bool exists);
         if (!exists)
@@ -480,7 +484,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         if (!storageCell.IsHash) PushToRegistryOnly(storageCell, valueChange.After);
-        return valueChange.After;
+        return ref valueChange.After;
     }
 
     private StorageValue LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)

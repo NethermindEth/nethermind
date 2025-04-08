@@ -20,13 +20,13 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool TryGetAccount(Address address, out AccountStruct account) => innerState.TryGetAccount(address, out account);
 
-    public StorageValue GetOriginal(in StorageCell storageCell) => innerState.GetOriginal(in storageCell);
+    public ref readonly StorageValue GetOriginal(in StorageCell storageCell) => ref innerState.GetOriginal(in storageCell);
 
-    public StorageValue Get(in StorageCell storageCell) => innerState.Get(in storageCell);
+    public ref readonly StorageValue Get(in StorageCell storageCell) => ref innerState.Get(in storageCell);
 
     public void Set(in StorageCell storageCell, in StorageValue newValue) => innerState.Set(in storageCell, newValue);
 
-    public StorageValue GetTransientState(in StorageCell storageCell) => innerState.GetTransientState(in storageCell);
+    public ref readonly StorageValue GetTransientState(in StorageCell storageCell) => ref innerState.GetTransientState(in storageCell);
 
     public void SetTransientState(in StorageCell storageCell, in StorageValue newValue) => innerState.SetTransientState(in storageCell, newValue);
 

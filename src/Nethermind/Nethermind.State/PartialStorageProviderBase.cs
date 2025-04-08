@@ -37,9 +37,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public StorageValue Get(in StorageCell storageCell)
+        public ref readonly StorageValue Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(in storageCell);
+            return ref GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -230,9 +230,7 @@ namespace Nethermind.State
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
-                {
-                    return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndex].Value;
-                }
+                return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndex].Value;
             }
 
             return ref Unsafe.NullRef<StorageValue>();
@@ -243,7 +241,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract StorageValue GetCurrentValue(in StorageCell storageCell);
+        protected abstract ref readonly StorageValue GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value

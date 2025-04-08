@@ -22,10 +22,12 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        protected override StorageValue GetCurrentValue(in StorageCell storageCell)
+        protected override ref readonly StorageValue GetCurrentValue(in StorageCell storageCell)
         {
             ref readonly var cached = ref TryGetCachedValue(storageCell);
-            return Unsafe.IsNullRef(in cached) ? StorageValue.Zero : cached;
+            if (Unsafe.IsNullRef(in cached))
+                return ref StorageValue.Zero;
+            return ref cached;
         }
     }
 }

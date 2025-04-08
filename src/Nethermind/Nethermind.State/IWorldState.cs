@@ -22,14 +22,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    StorageValue GetOriginal(in StorageCell storageCell);
+    ref readonly StorageValue GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    StorageValue Get(in StorageCell storageCell);
+    ref readonly StorageValue Get(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
@@ -43,7 +43,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    StorageValue GetTransientState(in StorageCell storageCell);
+    ref readonly StorageValue GetTransientState(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell

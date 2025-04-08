@@ -84,21 +84,21 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public StorageValue GetOriginal(in StorageCell storageCell)
+        public ref readonly StorageValue GetOriginal(in StorageCell storageCell)
         {
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            return ref _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public StorageValue Get(in StorageCell storageCell)
+        public ref readonly StorageValue Get(in StorageCell storageCell)
         {
-            return _persistentStorageProvider.Get(storageCell);
+            return ref _persistentStorageProvider.Get(storageCell);
         }
         public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public StorageValue GetTransientState(in StorageCell storageCell)
+        public ref readonly StorageValue GetTransientState(in StorageCell storageCell)
         {
-            return _transientStorageProvider.Get(storageCell);
+            return ref _transientStorageProvider.Get(storageCell);
         }
         public void SetTransientState(in StorageCell storageCell, in StorageValue newValue)
         {

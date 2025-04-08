@@ -1927,7 +1927,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         storageCell = new(env.ExecutingAccount, result);
 
-                        StorageValue value = _state.GetTransientState(in storageCell);
+                        ref readonly StorageValue value = ref _state.GetTransientState(in storageCell);
                         stack.PushBytes(value.Bytes);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
@@ -2516,7 +2516,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             StorageAccessType.SLOAD,
             spec)) return EvmExceptionType.OutOfGas;
 
-        StorageValue value = _state.Get(in storageCell);
+        ref readonly StorageValue value = ref _state.Get(in storageCell);
         stack.PushBytes(value.Bytes);
         if (typeof(TTracingStorage) == typeof(IsTracing))
         {
@@ -2559,12 +2559,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StorageAccessType.SSTORE,
                 spec)) return EvmExceptionType.OutOfGas;
 
-        StorageValue currentValue = _state.Get(in storageCell);
+        ref readonly StorageValue currentValue = ref _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero;
 
-        var bytesValue = new StorageValue(bytes);
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || currentValue.Equals(bytesValue);
+        StorageValue newValue = new StorageValue(bytes);
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || currentValue.Equals(newValue);
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
@@ -2590,7 +2590,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else // net metered, C != N
             {
-                StorageValue originalValue = _state.GetOriginal(in storageCell);
+                ref readonly StorageValue originalValue = ref _state.GetOriginal(in storageCell);
                 bool originalIsZero = originalValue.IsZero;
 
                 bool currentSameAsOriginal = originalValue.Equals(currentValue);
@@ -2631,7 +2631,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                     }
 
-                    bool newSameAsOriginal = originalValue.Equals(bytesValue);
+                    bool newSameAsOriginal = originalValue.Equals(newValue);
                     if (newSameAsOriginal)
                     {
                         long refundFromReversal;

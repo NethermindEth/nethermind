@@ -27,7 +27,7 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         else
         {
             _bytes = default;
-            bytes.CopyTo(BytesAsSpan.Slice(MemorySize));
+            bytes.CopyTo(BytesAsSpan.Slice(MemorySize - bytes.Length));
         }
     }
 
@@ -49,7 +49,7 @@ public readonly struct StorageValue : IEquatable<StorageValue>
 
     public override int GetHashCode() => Bytes.FastHash();
 
-    public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
+    private Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
 
     public ReadOnlySpan<byte> Bytes =>
         MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
