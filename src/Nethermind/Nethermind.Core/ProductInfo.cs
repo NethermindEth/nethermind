@@ -36,7 +36,7 @@ public static class ProductInfo
         if (index != -1)
         {
             Commit = Version[(index + 1)..];
-            Version = Version[..Math.Min(index + 9, Version.Length - 1)];
+            Version = Version[..index];
         }
 
         ClientIdParts = new()

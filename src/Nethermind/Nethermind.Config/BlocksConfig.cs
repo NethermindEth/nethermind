@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -11,8 +12,17 @@ namespace Nethermind.Config
     public class BlocksConfig : IBlocksConfig
     {
         public const string DefaultExtraData = "Nethermind";
-        private byte[] _extraDataBytes = Encoding.UTF8.GetBytes(DefaultExtraData);
-        private string _extraDataString = DefaultExtraData;
+        private byte[] _extraDataBytes = [];
+        private string _extraDataString;
+
+        public BlocksConfig()
+        {
+            _extraDataString = GetDefaultExtraData();
+            // Validate that it doesn't overflow when converted to bytes
+            ExtraData = _extraDataString;
+        }
+
+        private static string GetDefaultExtraData() => $"{DefaultExtraData} v{ProductInfo.Version.Replace("-unstable", "a")}";
 
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;
