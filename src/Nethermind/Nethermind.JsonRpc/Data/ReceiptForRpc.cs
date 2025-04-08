@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Data
             Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
-            Status = receipt.StatusCode;
+            // Status = receipt.StatusCode;
             Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
         }
