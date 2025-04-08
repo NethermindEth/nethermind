@@ -10,6 +10,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -78,8 +79,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         List<Transaction> result = [];
         foreach (var receipt in receipts)
         {
-            // Skip failed txs
-            if (receipt.Status != 1) continue;
+            if (receipt.Status != StatusCode.Success) continue;
             foreach (var log in receipt.Logs)
             {
                 if (log.Address != engineParameters.OptimismPortalProxy) continue;

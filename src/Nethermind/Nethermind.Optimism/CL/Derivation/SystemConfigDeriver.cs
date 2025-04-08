@@ -96,27 +96,11 @@ public class SystemConfigDeriver(
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
             if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
             var data = (byte[])decoded[2];
-            switch (data[0])
+            systemConfig = data[0] switch
             {
-                case 0:
-                    {
-                        break;
-                    }
-                case 1:
-                    {
-                        if (!data[1..24].IsZero())
-                            return systemConfig; // ignore
-                        break;
-                    }
-                default:
-                    {
-                        // ignore invalid type
-                        return systemConfig;
-                    }
-            }
-            systemConfig = systemConfig with
-            {
-                Scalar = data,
+                0 => systemConfig with { Scalar = data },
+                1 when data[1..24].IsZero() => systemConfig with { Scalar = data },
+                _ => systemConfig // ignore all other cases
             };
         }
         else if (updateType == SystemConfigUpdate.GasLimit)

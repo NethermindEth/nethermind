@@ -83,7 +83,7 @@ public class L1BlockInfoBuilder
 
     public static L1BlockInfo FromL1BlockAndSystemConfig(L1Block block, SystemConfig config, ulong sequenceNumber)
     {
-        // TODO: eip 7840
+        // TODO: fetch BlobBaseFeeUpdateFraction
         BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
         return new()
         {
