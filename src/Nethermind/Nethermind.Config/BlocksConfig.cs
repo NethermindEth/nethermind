@@ -58,5 +58,7 @@ namespace Nethermind.Config
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
+
+        public long BlockProductionMaxTxKilobytes { get; set; } = 9728;
     }
 }

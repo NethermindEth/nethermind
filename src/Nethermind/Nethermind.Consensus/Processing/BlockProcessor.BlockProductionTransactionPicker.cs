@@ -18,14 +18,15 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
         {
-            private static readonly long _maxTxLengthBytes = 9728.KiB();
+            private readonly long _maxTxLengthBytes;
 
             protected readonly ISpecProvider _specProvider;
             private readonly bool _ignoreEip3607;
 
-            public BlockProductionTransactionPicker(ISpecProvider specProvider, bool ignoreEip3607 = false)
+            public BlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes = 9728, bool ignoreEip3607 = false)
             {
                 _specProvider = specProvider;
+                _maxTxLengthBytes = maxTxLengthKilobytes.KiB();
                 _ignoreEip3607 = ignoreEip3607;
             }
 

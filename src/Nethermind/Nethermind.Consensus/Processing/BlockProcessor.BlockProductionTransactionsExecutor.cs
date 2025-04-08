@@ -34,12 +34,14 @@ namespace Nethermind.Consensus.Processing
             public BlockProductionTransactionsExecutor(
                 IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
-                ILogManager logManager)
+                ILogManager logManager,
+                long maxTxLengthKilobytes = 9728)
                 : this(
                     readOnlyTxProcessingEnv.TransactionProcessor,
                     readOnlyTxProcessingEnv.WorldState,
                     specProvider,
-                    logManager)
+                    logManager,
+                    maxTxLengthKilobytes)
             {
             }
 
@@ -47,8 +49,9 @@ namespace Nethermind.Consensus.Processing
                 ITransactionProcessor transactionProcessor,
                 IWorldState stateProvider,
                 ISpecProvider specProvider,
-                ILogManager logManager) : this(transactionProcessor, stateProvider,
-                new BlockProductionTransactionPicker(specProvider), logManager)
+                ILogManager logManager,
+                long maxTxLengthKilobytes = 9728) : this(transactionProcessor, stateProvider,
+                new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
             {
             }
 
