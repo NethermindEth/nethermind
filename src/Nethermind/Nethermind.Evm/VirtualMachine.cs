@@ -719,7 +719,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
-                Metrics.IncrementIlvmAotPrecompiledCalls(); // this will treat continuations as new calls 
+                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
                 ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
                 IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
@@ -731,7 +731,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     ref chunkExecutionState))
                 {
                     UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
-                    Metrics.DecrementIlvmAotPrecompiledCalls(); // this will treat continuations as new calls 
+                    Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
                     return new CallResult(chunkExecutionState.CallResult);
                 }
 

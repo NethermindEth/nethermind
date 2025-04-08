@@ -80,6 +80,8 @@ public static class IlAnalyzer
         }
     }
 
+    public static void ClearCache() => _processed.Clear();
+
     private static void AnalyzeQueue(IVMConfig config, ILogger logger)
     {
         int itemsLeft = _queue.Count;

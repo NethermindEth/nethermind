@@ -11,6 +11,7 @@ using Nethermind.State;
 using Org.BouncyCastle.Asn1.Cms;
 using Sigil;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;

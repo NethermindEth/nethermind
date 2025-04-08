@@ -1174,8 +1174,8 @@ internal static class OpcodeEmitter
                 method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.IsPostMerge), false, out _));
                 method.BranchIfFalse(isPostMergeBranch);
                 method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Random), false, out _));
-                method.LoadField(typeof(Hash256).GetField("_hash256", BindingFlags.Instance | BindingFlags.NonPublic));
-                method.Call(Word.SetKeccak);
+                method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
+                method.Call(Word.SetMutableSpan);
                 method.Branch(endOfOpcode);
 
                 method.MarkLabel(isPostMergeBranch);

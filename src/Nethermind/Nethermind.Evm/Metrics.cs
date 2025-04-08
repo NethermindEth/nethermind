@@ -126,17 +126,8 @@ public class Metrics
         Interlocked.Increment(ref _IlvmContractsAnalyzed);
     }
 
-    public static long _IlvmAotPrecompiledCalls;
     [Description("Number of Ilemv precompile calls.")]
-    public static long IlvmAotPrecompiledCalls => _IlvmAotPrecompiledCalls;
-    public static void IncrementIlvmAotPrecompiledCalls()
-    {
-        Interlocked.Increment(ref _IlvmAotPrecompiledCalls);
-    }
-    public static void DecrementIlvmAotPrecompiledCalls()
-    {
-        Interlocked.Decrement(ref _IlvmAotPrecompiledCalls);
-    }
+    public static long IlvmAotPrecompiledCalls { get; set; }
 
     public static long _IlvmAotQueueSize;
     [Description("Number of Ilemv precompile analysis queues.")]

@@ -40,9 +40,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     internal class TestBlockChain : VirtualMachineTestsBase
     {
         protected IVMConfig config;
-        public TestBlockChain(IVMConfig config)
+        public TestBlockChain(IVMConfig config, IReleaseSpec spec)
         {
             this.config = config;
+            SpecProvider = new TestSpecProvider(spec);
             Setup();
         }
 
@@ -54,6 +55,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public override void Setup()
         {
             base.Setup();
+
+            IlAnalyzer.ClearCache();
+            Metrics.IlvmAotPrecompiledCalls = 0;
 
             ILogManager logManager = GetLogManager();
 
@@ -80,19 +84,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             InsertCode(returningCode, Address.FromNumber((int)Instruction.RETURNDATASIZE));
         }
 
-        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000)
+        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 10_000_000, byte[][] blobVersionedHashes  = null)
             where T : ITxTracer
         {
-            var blobhashesCount = 10;
-            var blobVersionedHashes = new byte[blobhashesCount][];
-            for (int i = 0; i < blobhashesCount; i++)
-            {
-                blobVersionedHashes[i] = new byte[32];
-                for (int n = 0; n < blobhashesCount; n++)
-                {
-                    blobVersionedHashes[i][n] = (byte)((i * 3 + 10 * 7) % 256);
-                }
-            }
             Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable, blobVersionedHashes);
         }
 
@@ -101,9 +95,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var hashcode = Keccak.Compute(bytecode);
             var address = target ?? new Address(hashcode);
 
-            var spec = Prague.Instance;
             TestState.CreateAccount(address, 1_000_000_000);
-            TestState.InsertCode(address, bytecode, spec);
+            TestState.InsertCode(address, bytecode, Spec);
             return address;
         }
         public void ForceRunAnalysis(Address address, int mode)
@@ -136,7 +129,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     {
         private const string PatternField = "_patterns";
         private const int RepeatCount = 256;
-        public static IEnumerable<(string, Instruction[], byte[], EvmExceptionType, bool)> GetJitBytecodesSamples()
+        public static IEnumerable<(string, Instruction[], byte[], EvmExceptionType, bool, IReleaseSpec)> GetJitBytecodesSamples()
         {
             IEnumerable<(Instruction[], byte[], EvmExceptionType, bool)> GetJitBytecodesSamplesGenerator(bool turnOnAggressiveMode)
             {
@@ -1832,6 +1825,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 
             }
 
+            static IEnumerable<IReleaseSpec> GetAllFroksStarting<T>()
+            {
+                var baseType = typeof(T);
+                var assembly = Assembly.GetAssembly(baseType);
+
+                return assembly.GetTypes()
+                                .Where(t => t != baseType && baseType.IsAssignableFrom(t) && !t.IsAbstract)
+                                .Select(t => (IReleaseSpec)t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static).GetMethod.Invoke(null, []));
+            }
+
+            IEnumerable<IReleaseSpec> forks = GetAllFroksStarting<Olympic>();
+
             bool[] combinations = new[]
             {
                 true, false
@@ -1841,7 +1846,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 foreach (var sample in GetJitBytecodesSamplesGenerator(combination))
                 {
-                    yield return new($"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]", sample.Item1, sample.Item2, sample.Item3, sample.Item4);
+                    foreach (var fork in forks)
+                    {
+                        yield return new($"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]", sample.Item1, sample.Item2, sample.Item3, sample.Item4, fork);
+                    }
                 }
             }
         }
@@ -1875,7 +1883,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
-            });
+            }, Prague.Instance);
 
             byte[] bytecode =
                 Prepare.EvmCode
@@ -1899,11 +1907,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
+            ValueHash256 codehash = Keccak.Compute(bytecode);
+
             for (int i = 0; i < RepeatCount; i++)
             {
                 enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
             }
 
+            Assert.That(IlAnalyzer.TryGetIledCode(codehash, out var iledCode), Is.True);
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
         }
 
@@ -1918,11 +1929,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode) testcase)
+        public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode, IReleaseSpec spec) testcase)
         {
             Console.WriteLine(testcase.msg);
 
-            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig(), testcase.spec);
             Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContracts.dll");
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
@@ -1932,7 +1943,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmAnalysisQueueMaxSize = 1,
                 IsIlEvmAggressiveModeEnabled = testcase.enableAggressiveMode,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
-            });
+            }, testcase.spec);
 
 
             byte[][] blobVersionedHashes = null;
@@ -1963,7 +1974,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                     var callCode =
                         Prepare.EvmCode
-                            .Call(callAddress, 100000)
+                            .Call(callAddress, 10000)
                             .Done;
                     testcase.bytecode = Bytes.Concat(callCode, testcase.bytecode);
                     break;
@@ -1985,16 +1996,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .PushData(2) // offset
                 .PushData(0) // value
                 .PushData(address)
-                .PushData(750_000)
+                .PushData(50_000)
                 .Op(Instruction.CALL)
                 .STOP()
                 .Done;
 
-            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
+            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
+            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
@@ -2014,7 +2025,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsIlEvmAggressiveModeEnabled = true,
                 IlEvmPersistPrecompiledContractsOnDisk = true,
                 IlEvmPrecompiledContractsPath = Directory.GetCurrentDirectory(),
-            });
+            }, Prague.Instance);
 
             var bytecode = Prepare.EvmCode
                 .PushData(23)

@@ -50,7 +50,7 @@ public class VirtualMachineTestsBase
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
     protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
     protected virtual ulong Timestamp => 0UL;
-    protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+    protected virtual ISpecProvider SpecProvider { get; set; } = MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager()
