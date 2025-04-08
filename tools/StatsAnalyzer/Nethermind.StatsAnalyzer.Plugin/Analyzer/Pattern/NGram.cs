@@ -63,17 +63,31 @@ public readonly struct NGram : IEquatable<NGram>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe ulong ProcessEachSubsequence(NGram ngram,
-        delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>, PriorityQueue<ulong, ulong>,
-            ulong> action, int currentSketchPos,
-        int bufferSize, ulong minSupport, ulong max, int topN, CmSketch[] sketchBuffer,
-        Dictionary<ulong, ulong> topNMap, PriorityQueue<ulong, ulong> topNQueue)
+    public static unsafe ulong ProcessEachSubsequence(
+        NGram ngram,
+        delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>, PriorityQueue<ulong, ulong>, ulong> action,
+        int currentSketchPos,
+        int bufferSize,
+        ulong minSupport,
+        ulong max,
+        int topN,
+        CmSketch[] sketchBuffer,
+        Dictionary<ulong, ulong> topNMap,
+        PriorityQueue<ulong, ulong> topNQueue)
 
     {
         for (var i = 1; i < MaxSize; i++)
             if (byteIndexes[i - 1] < ngram.Ulong0)
-                max = action(ngram.Ulong0 & bitMasks[i], currentSketchPos, bufferSize, minSupport, max, topN,
-                    sketchBuffer, topNMap, topNQueue);
+                max = action(
+                        ngram.Ulong0 & bitMasks[i],
+                        currentSketchPos,
+                        bufferSize,
+                        minSupport,
+                        max,
+                        topN,
+                        sketchBuffer,
+                        topNMap,
+                        topNQueue);
         return max;
     }
 
