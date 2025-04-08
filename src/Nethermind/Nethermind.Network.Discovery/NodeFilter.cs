@@ -40,19 +40,23 @@ public class NodeFilter(int size)
         // Get the current UTC timestamp.
         DateTime now = DateTime.UtcNow;
 
-        // Try to retrieve a previously recorded timestamp for the IP address.
-        if (_nodesFilter.TryGet(ipAddress, out DateTime lastSeen) &&
-            // Check if the last seen time is still within the timeout window.
-            now - lastSeen < _timeOut)
+        // Non-atomic branching; so under lock in case two requests come in at same time
+        lock (_nodesFilter)
         {
-            // If yes, reject by returning false.
-            return false;
-        }
-        else
-        {
-            // Otherwise, update (or add) the IP address timestamp to the current time.
-            _nodesFilter.Set(ipAddress, now);
-            return true;
+            // Try to retrieve a previously recorded timestamp for the IP address.
+            if (_nodesFilter.TryGet(ipAddress, out DateTime lastSeen) &&
+                // Check if the last seen time is still within the timeout window.
+                now - lastSeen < _timeOut)
+            {
+                // If yes, reject by returning false.
+                return false;
+            }
+            else
+            {
+                // Otherwise, update (or add) the IP address timestamp to the current time.
+                _nodesFilter.Set(ipAddress, now);
+                return true;
+            }
         }
     }
 
