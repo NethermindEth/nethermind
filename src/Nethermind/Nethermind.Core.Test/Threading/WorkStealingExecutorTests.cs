@@ -15,24 +15,24 @@ namespace Nethermind.Core.Test.Threading;
 
 public class WorkStealingExecutorTests
 {
-    // private const long FibNum = 32;
-    // private const long FibResult = 2178309;
+    private const long FibNum = 32;
+    private const long FibResult = 2178309;
+
+    // Some other parameter for benchmarking
     // private const long FibNum = 34;
     // private const long FibResult = 5702887;
+    // private const long FibNum = 43;
+    // private const long FibResult = 433494437;
 
-    private const long FibNum = 43;
-    private const long FibResult = 433494437;
-
-    // [TestCase(1)]
-    // [TestCase(2)]
-    // [TestCase(16)]
-    [TestCase(8)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(16)]
     public void TestBasicFactorial(int workerCount)
     {
         using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
 
-        FibanocciResult result = new FibanocciResult();
-        executor.Execute(new FibanocciJob(FibNum, result));
+        FibonacciResult result = new FibonacciResult();
+        executor.Execute(new FibonacciJob(FibNum, result));
         result.Result.Should().Be(FibResult);
 
         TestContext.Error.WriteLine($"Time stealing {executor.CalculateTotalTimeStealing()}");
@@ -44,11 +44,42 @@ public class WorkStealingExecutorTests
     }
 
     [Test]
+    public void TestSingleThreadOverhead()
+    {
+        TimeSpan baselineTime = TimeSpan.Zero;
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            long ans = RecursiveFib(FibNum);
+            ans.Should().Be(FibResult);
+            baselineTime = sw.Elapsed;
+        }
+
+        TimeSpan executorTime = TimeSpan.Zero;
+        {
+            using WorkStealingExecutor executor = new(1, (int)FibNum);
+
+            Stopwatch sw = Stopwatch.StartNew();
+            FibonacciResult result = new FibonacciResult();
+            executor.Execute(new FibonacciJob(FibNum, result));
+            result.Result.Should().Be(FibResult);
+            executorTime = sw.Elapsed;
+            var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
+            var timeStealing = executor.CalculateTotalTimeStealing();
+            TestContext.Error.WriteLine($"Time stealing {timeStealing}");
+            TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
+        }
+
+        // should be no more than 10% slower.
+        TestContext.Error.WriteLine($"Time {baselineTime} vs {executorTime}");
+        executorTime.Should().BeLessThan(baselineTime * 1.1);
+    }
+
+    [Test]
     [Explicit]
     [Parallelizable(ParallelScope.None)]
     public async Task TestCompareWithTasks()
     {
-        FibanocciResult result = new FibanocciResult();
+        FibonacciResult result = new FibonacciResult();
 
         TimeSpan baselineTime = TimeSpan.Zero;
         {
@@ -63,7 +94,7 @@ public class WorkStealingExecutorTests
             using WorkStealingExecutor executor = new(Environment.ProcessorCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
-            executor.Execute(new FibanocciJob(FibNum, result));
+            executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
             var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
@@ -76,13 +107,13 @@ public class WorkStealingExecutorTests
         multithreadTime.Should().BeLessThan(baselineTime);
     }
 
-    // [TestCase(2)]
-    // [TestCase(4)]
-    // [TestCase(8)]
-    // [TestCase(16)]
-    [TestCase(32)]
+    [TestCase(2, 1.8)]
+    [TestCase(4, 3.5)]
+    [TestCase(8, 6.0)]
+    [TestCase(16, 8.0)]
+    [TestCase(32, 10.0)]
     [Parallelizable(ParallelScope.None)]
-    public void TestScalability(int workerCount)
+    public void TestScalability(int workerCount, double minimumSpeedup)
     {
         if (Environment.ProcessorCount < workerCount)
         {
@@ -90,14 +121,14 @@ public class WorkStealingExecutorTests
         }
 
         int baselineWorkerCount = 8; // mainly so that large fib number is easier to compare for profiling.
-        FibanocciResult result = new FibanocciResult();
+        FibonacciResult result = new FibonacciResult();
 
         TimeSpan baselineTime = TimeSpan.Zero;
         {
             using WorkStealingExecutor singleExecutor = new(baselineWorkerCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
-            singleExecutor.Execute(new FibanocciJob(FibNum, result));
+            singleExecutor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             result.Result = 0;
             baselineTime = sw.Elapsed;
@@ -108,7 +139,7 @@ public class WorkStealingExecutorTests
             using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
-            executor.Execute(new FibanocciJob(FibNum, result));
+            executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
             TestContext.Error.WriteLine($"Time stealing {executor.CalculateTotalTimeStealing()}");
@@ -120,15 +151,16 @@ public class WorkStealingExecutorTests
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
 
         double speedup = (baselineTime * baselineWorkerCount) / multithreadTime;
-        speedup.Should().BeGreaterThan(workerCount * 0.9);
+        TestContext.Error.WriteLine($"Speedup is {speedup}");
+        speedup.Should().BeGreaterThan(minimumSpeedup);
     }
 
-    internal class FibanocciResult
+    internal class FibonacciResult
     {
         internal long Result = 0;
     }
 
-    internal struct FibanocciJob(long currentValue, FibanocciResult result): IJob
+    internal struct FibonacciJob(long currentValue, FibonacciResult result): IJob
     {
         public void Execute(Context ctx)
         {
@@ -144,12 +176,11 @@ public class WorkStealingExecutorTests
                 return;
             }
 
-
-            FibanocciResult result1 = new FibanocciResult();
-            FibanocciResult result2 = new FibanocciResult();
+            FibonacciResult result1 = new FibonacciResult();
+            FibonacciResult result2 = new FibonacciResult();
             ctx.Fork(
-                new FibanocciJob(currentValue - 1, result1),
-                new FibanocciJob(currentValue - 2, result2)
+                new FibonacciJob(currentValue - 1, result1),
+                new FibonacciJob(currentValue - 2, result2)
             );
 
             long resultNum = result1.Result + result2.Result;
@@ -175,6 +206,23 @@ public class WorkStealingExecutorTests
         Task<long> t1 = TaskFib(currentValue - 1);
 
         long resultNum = await t2 + await t1;
+        Keccak.Compute(resultNum.ToBigEndianByteArray());
+        return resultNum;
+    }
+
+    static long RecursiveFib(long currentValue)
+    {
+        if (currentValue == 0)
+        {
+            return 0;
+        }
+
+        if (currentValue == 1)
+        {
+            return 1;
+        }
+
+        long resultNum = RecursiveFib(currentValue - 1) + RecursiveFib(currentValue - 2);
         Keccak.Compute(resultNum.ToBigEndianByteArray());
         return resultNum;
     }
