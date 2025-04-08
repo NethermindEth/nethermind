@@ -43,7 +43,7 @@ public class DepositTransactionBuilderTest
         ReceiptForRpc[] receipts = [];
         var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.ToArray().Length.Should().Be(0);
+        depositTransactions.Length.Should().Be(0);
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class DepositTransactionBuilderTest
         ];
         var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.ToArray().Length.Should().Be(0);
+        depositTransactions.Length.Should().Be(0);
     }
 
 
@@ -208,7 +208,7 @@ public class DepositTransactionBuilderTest
         ];
         var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.ToArray().Length.Should().Be(0);
+        depositTransactions.Length.Should().Be(0);
     }
 
     [Test]
