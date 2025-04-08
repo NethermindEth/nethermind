@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -21,7 +22,10 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : StorageTree.ZeroBytes;
+        protected override StorageValue GetCurrentValue(in StorageCell storageCell)
+        {
+            ref readonly var cached = ref TryGetCachedValue(storageCell);
+            return Unsafe.IsNullRef(in cached) ? StorageValue.Zero : cached;
+        }
     }
 }

@@ -73,7 +73,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        StorageValue cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
         Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
     }
@@ -154,7 +154,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        StorageValue cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
         Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes));
     }
@@ -636,7 +636,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
+        StorageValue actual = _stateProvider.Get(new StorageCell(codeSource, 0));
         Assert.That(actual.ToArray(), Is.EquivalentTo(expected));
     }
     public static IEnumerable<object[]> AccountAccessGasCases()

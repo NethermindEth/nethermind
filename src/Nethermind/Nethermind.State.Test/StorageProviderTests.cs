@@ -145,7 +145,7 @@ public class StorageProviderTests
         provider.Restore(Snapshot.Empty);
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero, Is.True);
     }
 
     [Test]
@@ -174,7 +174,7 @@ public class StorageProviderTests
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero, Is.True);
     }
 
     [Test]
@@ -229,14 +229,14 @@ public class StorageProviderTests
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
         // Should be 0 if not set
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero, Is.True);
 
         // Should be 0 if loading from the same contract but different index
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero, Is.True);
 
         // Should be 0 if loading from the same index but different contract
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero(), Is.True);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero, Is.True);
     }
 
     /// <summary>
@@ -295,7 +295,7 @@ public class StorageProviderTests
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
 
         provider.Commit(Frontier.Instance);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero, Is.True);
     }
 
     /// <summary>
@@ -311,7 +311,7 @@ public class StorageProviderTests
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
 
         provider.Reset();
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero, Is.True);
     }
 
     /// <summary>
@@ -377,16 +377,16 @@ public class StorageProviderTests
         snapshots[0] = (provider).TakeSnapshot();
 
         // Only update persistent
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new StorageValue(_values[1]));
         snapshots[1] = (provider).TakeSnapshot();
 
         // Update both
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[9]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new StorageValue(_values[2]));
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new StorageValue(_values[9]));
         snapshots[2] = (provider).TakeSnapshot();
 
         // Only update transient
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[8]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new StorageValue(_values[8]));
         snapshots[3] = (provider).TakeSnapshot();
 
         provider.Restore(snapshots[snapshot + 1]);
@@ -404,7 +404,7 @@ public class StorageProviderTests
             new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 1))
         );
 
-        _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
+        _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).BytesWithNoLeadingZeroes.ToArray());
     }
 
     /// <summary>
@@ -418,7 +418,7 @@ public class StorageProviderTests
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+        preBlockCaches.StorageCache[accessedStorageCell] = new StorageValue([1, 2, 3]);
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);

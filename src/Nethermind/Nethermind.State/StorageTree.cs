@@ -59,6 +59,7 @@ namespace Nethermind.State
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }
 
+
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
@@ -78,6 +79,19 @@ namespace Nethermind.State
             }
         }
 
+        [SkipLocalsInit]
+        public StorageValue GetValue(in UInt256 index, Hash256? storageRoot = null)
+        {
+            if (index < LookupSize)
+            {
+                return GetValue(Lookup[index], storageRoot);
+            }
+
+            Span<byte> key = stackalloc byte[32];
+            ComputeKey(index, key);
+            return GetValue(key, storageRoot);
+        }
+
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> value = Get(rawKey, rootHash);
@@ -89,6 +103,19 @@ namespace Nethermind.State
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
+        }
+
+        public StorageValue GetValue(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        {
+            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
+
+            if (value.IsEmpty)
+            {
+                return StorageValue.Zero;
+            }
+
+            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            return new StorageValue(rlp.DecodeByteArraySpan());
         }
 
         [SkipLocalsInit]
@@ -112,12 +139,33 @@ namespace Nethermind.State
             }
         }
 
+        [SkipLocalsInit]
+        public void SetValue(in UInt256 index, in StorageValue value)
+        {
+            if (index < LookupSize)
+            {
+                SetInternal(Lookup[index], value.BytesWithNoLeadingZeroes);
+            }
+            else
+            {
+                SetWithKeyGenerate(in index, value.BytesWithNoLeadingZeroes);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, ReadOnlySpan<byte> value)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                SetInternal(key, value);
+            }
+        }
+
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(ReadOnlySpan<byte> rawKey, ReadOnlySpan<byte> value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {
@@ -125,7 +173,7 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
+                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value.ToArray());
                 Set(rawKey, rlpEncoded);
             }
         }
