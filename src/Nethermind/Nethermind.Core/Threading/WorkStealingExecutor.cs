@@ -50,29 +50,28 @@ public class WorkStealingExecutor: IDisposable
         // TODO: Way to enroll current thread.
         JobRef jobRef = new JobRef(job, new ManualResetEventSlim());
         _incomingJob.Enqueue(jobRef);
+        NotifyNewJob();
         jobRef.ResetEvent.Wait();
     }
 
-    public bool TryStealJob(out JobRef job, int ctxToCheckFirst)
+    public bool TryStealJob(out JobRef job)
     {
         if (_incomingJob.TryDequeue(out job!))
         {
             return true;
         }
 
-        // Not exactly hot, but main bottleneck
         int activeContexts = _workerCount;
-        if (ctxToCheckFirst == -1)
+        int ctxToCheckFirst = Interlocked.Increment(ref _stealPartitionCounter);
+        if (ctxToCheckFirst > activeContexts)
         {
-            ctxToCheckFirst = Interlocked.Increment(ref _stealPartitionCounter);
-            if (ctxToCheckFirst > activeContexts)
-            {
-                Interlocked.Exchange(ref _stealPartitionCounter, ctxToCheckFirst % activeContexts);
-            }
+            Interlocked.Exchange(ref _stealPartitionCounter, ctxToCheckFirst % activeContexts);
         }
 
         long sw = Stopwatch.GetTimestamp();
         Interlocked.Increment(ref _stealAttempts);
+
+        // Main bottleneck
         for (int i = 0; i < activeContexts; i++)
         {
             int idx = (ctxToCheckFirst + i) % activeContexts;
@@ -95,7 +94,6 @@ public class WorkStealingExecutor: IDisposable
         {
             _sleepingWorkers.Enqueue(context.ContextIdx);
             Interlocked.Increment(ref _asleepWorker);
-            Console.Error.WriteLine($"Worker asleep. Total {_asleepWorker}");
         }
     }
 
@@ -117,14 +115,13 @@ public class WorkStealingExecutor: IDisposable
         }
     }
 
-    public void NotifyNewJob(int fromContext)
+    public void NotifyNewJob()
     {
         // HOT PATH
         // Tricky code...
 
         if (_asleepWorker == 0) return;
 
-        // TODO: Check if using a counter is faster
         while (true)
         {
             if (!_sleepingWorkers.TryDequeue(out int ctxId))
@@ -134,7 +131,7 @@ public class WorkStealingExecutor: IDisposable
 
             if (!Interlocked.Exchange(ref _sleepingWorkersAdded[ctxId], false)) continue; // Woke up on its own
 
-            if (_workerContexts[ctxId].TryWakeUp(fromContext))
+            if (_workerContexts[ctxId].TryWakeUp())
             {
                 return;
             }
@@ -250,7 +247,7 @@ public class Worker: IDisposable
             long start = Stopwatch.GetTimestamp();
             try
             {
-                // latch.Wait(LatchWaitMs);
+                latch.Wait(LatchWaitMs);
             }
             catch (ThreadInterruptedException)
             {
@@ -262,7 +259,7 @@ public class Worker: IDisposable
             return;
         }
 
-        // Thread.Yield();
+        Thread.Yield();
     }
 }
 
@@ -274,8 +271,6 @@ public class Context: IDisposable
     private readonly int _contextIdx;
     private readonly Worker _worker;
     internal long _totalTimeStealing = 0;
-
-    int _ctxToStealFrom = -1;
 
     public Context(WorkStealingExecutor executor, int contextIdx, int initialStackSize)
     {
@@ -331,7 +326,7 @@ public class Context: IDisposable
 
                 otherRef!.ExecuteNonInline(this);
             }
-            else if (_executor.TryStealJob(out otherRef, -1))
+            else if (_executor.TryStealJob(out otherRef))
             {
                 otherRef!.ExecuteNonInline(this);
             }
@@ -348,7 +343,7 @@ public class Context: IDisposable
     {
         // HOT PATH
         _jobStack.Push(jobRef);
-        _executor.NotifyNewJob(ContextIdx);
+        _executor.NotifyNewJob();
     }
 
     internal bool TryGetJob(out JobRef jobRef)
@@ -359,8 +354,7 @@ public class Context: IDisposable
         }
 
         long startTime = Stopwatch.GetTimestamp();
-        int ctxToStealFrom = Interlocked.Exchange(ref _ctxToStealFrom, -1);
-        if (_executor.TryStealJob(out jobRef, ctxToStealFrom))
+        if (_executor.TryStealJob(out jobRef))
         {
             _totalTimeStealing += Stopwatch.GetTimestamp() - startTime;
             return true;
@@ -375,9 +369,8 @@ public class Context: IDisposable
         return _jobStack.TryDequeue(out job!);
     }
 
-    public bool TryWakeUp(int hasJobFrom)
+    public bool TryWakeUp()
     {
-        _ctxToStealFrom = hasJobFrom;
         return _worker.TryWakeUp();
     }
 

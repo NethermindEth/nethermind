@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -17,43 +16,52 @@ namespace Nethermind.Core.Threading;
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private McsLock _locker = new McsLock(); // TODO: Benchmark if other lock is faster
+    private McsLock _locker = new McsLock();
 
-    private int _startIdx = -1;
-    private int _endIdx = -1;
+    private long _atomicEndAndStart;
     private T[] _buffer = new T[Math.Max(initialCapacity, 1)];
 
-    public int Count
-    {
-        get
-        {
-            using var _ = _locker.Acquire();
-            return _endIdx - _startIdx;
-        }
-    }
-
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryPop(out T? item)
     {
         using var _ = _locker.Acquire();
 
-        if (_endIdx == _startIdx)
+        (int startIdx, int endIdx) = GetStartAndEndIdx();
+        if (endIdx == startIdx)
         {
             item = default;
             return false;
         }
 
-        item = _buffer[_endIdx];
-        _buffer[_endIdx] = default!;
-        _endIdx--;
+        item = _buffer[endIdx];
+        _buffer[endIdx] = default!;
+        endIdx--;
 
-        if (_endIdx == _startIdx)
+        if (endIdx == startIdx)
         {
             // Reset the startidx to start of the buffer.
-            _startIdx = -1;
-            _endIdx = -1;
+            startIdx = -1;
+            endIdx = -1;
         }
 
+        SetStartAndEndIdxUnlocked(startIdx, endIdx);
         return true;
+    }
+
+    private (int startIdx, int endIdx) GetStartAndEndIdx()
+    {
+        long atomicValue = Interlocked.Read(ref _atomicEndAndStart);
+        int startIdx = (int)(atomicValue >> 32);
+        int endIdx = (int)(atomicValue & 0xFFFFFFFFL);
+        return (startIdx, endIdx);
+    }
+
+    private void SetStartAndEndIdxUnlocked(int startIdx, int endIdx)
+    {
+        long startAsLong = startIdx;
+        long endAsLong = endIdx;
+        long atomicValue = (startAsLong << 32) | endAsLong;
+        Interlocked.Exchange(ref _atomicEndAndStart, atomicValue);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -61,34 +69,44 @@ public class DStack<T>(int initialCapacity)
     {
         using var _ = _locker.Acquire();
 
-        int newEndIdx = _endIdx + 1;
+        (int startIdx, int endIdx) = GetStartAndEndIdx();
+
+        int newEndIdx = endIdx + 1;
         if (newEndIdx == _buffer.Length)
         {
             T[] newItems = new T[_buffer.Length * 2];
-            int count = _endIdx - _startIdx;
-            Array.Copy(_buffer, (_startIdx + 1), newItems, 0, count);
+            int count = endIdx - startIdx;
+            Array.Copy(_buffer, (startIdx + 1), newItems, 0, count);
             _buffer = newItems;
-            _startIdx = -1;
+            startIdx = -1;
             newEndIdx = count;
         }
 
         _buffer[newEndIdx] = item;
-        _endIdx = newEndIdx;
+        SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
     }
 
     public bool TryDequeue(out T? item)
     {
-        using var _ = _locker.Acquire();
+        item = default;
 
-        if (_endIdx == _startIdx)
+        (int startIdx, int endIdx) = GetStartAndEndIdx();
+        if (endIdx == startIdx)
         {
-            item = default;
             return false;
         }
 
-        item = _buffer[_startIdx + 1];
-        _buffer[_startIdx + 1] = default!;
-        _startIdx++;
+        using var _ = _locker.Acquire();
+
+        (startIdx, endIdx) = GetStartAndEndIdx();
+        if (endIdx == startIdx)
+        {
+            return false;
+        }
+
+        item = _buffer[startIdx + 1];
+        _buffer[startIdx + 1] = default!;
+        SetStartAndEndIdxUnlocked(startIdx+1, endIdx);
         return true;
     }
 }
