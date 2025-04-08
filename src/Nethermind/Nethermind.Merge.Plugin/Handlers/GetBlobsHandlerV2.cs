@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
@@ -31,7 +32,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             return ReturnEmptyArray();
         }
 
-        ArrayPoolList<BlobAndProofV2> response = new ArrayPoolList<BlobAndProofV2>(request.Length);
+        using ArrayPoolList<BlobAndProofV2> response = new(request.Length);
         foreach (byte[] requestedBlobVersionedHash in request)
         {
             if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
@@ -47,7 +48,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
 
         Metrics.NumberOfSentBlobs += request.Length;
         Metrics.NumberOfGetBlobsSuccesses++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response);
+        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response.ToList());
     }
 
     private ResultWrapper<IEnumerable<BlobAndProofV2>> ReturnEmptyArray()
