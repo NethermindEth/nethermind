@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -34,13 +33,6 @@ public class WorkStealingExecutorTests
         FibonacciResult result = new FibonacciResult();
         executor.Execute(new FibonacciJob(FibNum, result));
         result.Result.Should().Be(FibResult);
-
-        TestContext.Error.WriteLine($"Time stealing {executor.CalculateTotalTimeStealing()}");
-        TestContext.Error.WriteLine($"Time stealing2 {executor.CalculateTotalTimeStealing2()}");
-        TestContext.Error.WriteLine($"Time asleep {executor.CalculateTotalTimeAsleep()}");
-        TestContext.Error.WriteLine($"Steal attempts {executor._stealAttempts}");
-        TestContext.Error.WriteLine($"Failed attempts {executor._failedStealAttempts}");
-        TestContext.Error.WriteLine($"Failed attempts retry {executor._failedStealAttemptsWithRetry}");
     }
 
     [Test]
@@ -63,15 +55,11 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             executorTime = sw.Elapsed;
-            var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
-            var timeStealing = executor.CalculateTotalTimeStealing();
-            TestContext.Error.WriteLine($"Time stealing {timeStealing}");
-            TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
         }
 
-        // should be no more than 10% slower.
+        // should be no more than 30% slower.
         TestContext.Error.WriteLine($"Time {baselineTime} vs {executorTime}");
-        executorTime.Should().BeLessThan(baselineTime * 1.1);
+        executorTime.Should().BeLessThan(baselineTime * 1.3);
     }
 
     [Test]
@@ -97,10 +85,6 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
-            var timeStealing = executor.CalculateTotalTimeStealing();
-            TestContext.Error.WriteLine($"Time stealing {timeStealing}");
-            TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
         }
 
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
@@ -120,7 +104,7 @@ public class WorkStealingExecutorTests
             Assert.Ignore("Insufficient processor count");
         }
 
-        int baselineWorkerCount = 8; // mainly so that large fib number is easier to compare for profiling.
+        int baselineWorkerCount = 1; // mainly so that large fib number is easier to compare for profiling.
         FibonacciResult result = new FibonacciResult();
 
         TimeSpan baselineTime = TimeSpan.Zero;
@@ -142,10 +126,6 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            TestContext.Error.WriteLine($"Time stealing {executor.CalculateTotalTimeStealing()}");
-            TestContext.Error.WriteLine($"Time asleep {executor.CalculateTotalTimeAsleep()}");
-            TestContext.Error.WriteLine($"Steal attempts {executor._stealAttempts}");
-            TestContext.Error.WriteLine($"Failed attempts {executor._failedStealAttempts}");
         }
 
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");

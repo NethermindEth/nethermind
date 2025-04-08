@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -23,11 +21,6 @@ public class WorkStealingExecutor: IDisposable
     private bool[] _sleepingWorkersAdded; // Prevent duplicates in _sleepingContexts
     // fast pool of sleeping worker for waking up on new job.
     private ConcurrentQueue<int> _sleepingWorkers = new();
-
-    internal long _stealAttempts = 0;
-    internal long _failedStealAttempts = 0;
-    internal long _failedStealAttemptsWithRetry = 0;
-    internal long _timeSteal2 = 0;
 
     public WorkStealingExecutor(int workerCount, int initialStackSize)
     {
@@ -68,9 +61,6 @@ public class WorkStealingExecutor: IDisposable
             Interlocked.Exchange(ref _stealPartitionCounter, ctxToCheckFirst % activeContexts);
         }
 
-        long sw = Stopwatch.GetTimestamp();
-        Interlocked.Increment(ref _stealAttempts);
-
         // Main bottleneck
         for (int i = 0; i < activeContexts; i++)
         {
@@ -83,8 +73,6 @@ public class WorkStealingExecutor: IDisposable
             }
         }
 
-        Interlocked.Add(ref _timeSteal2, Stopwatch.GetTimestamp() - sw);
-        Interlocked.Increment(ref _failedStealAttempts);
         return false;
     }
 
@@ -146,31 +134,6 @@ public class WorkStealingExecutor: IDisposable
             _workerContexts[i].Dispose();
         }
     }
-
-    public TimeSpan CalculateTotalTimeAsleep()
-    {
-        long totalTime = 0;
-        for (int i = 0; i < _workerCount; i++)
-        {
-            totalTime += _workerContexts[i].TotalTimeAsleep;
-        }
-        return TimeSpan.FromTicks(totalTime);
-    }
-
-    public TimeSpan CalculateTotalTimeStealing()
-    {
-        long totalTime = 0;
-        for (int i = 0; i < _workerCount; i++)
-        {
-            totalTime += _workerContexts[i]._totalTimeStealing;
-        }
-        return TimeSpan.FromTicks(totalTime);
-    }
-
-    public TimeSpan CalculateTotalTimeStealing2()
-    {
-        return TimeSpan.FromTicks(_timeSteal2);
-    }
 }
 
 public class Worker: IDisposable
@@ -182,7 +145,6 @@ public class Worker: IDisposable
     private ManualResetEventSlim _finishLatch;
     private bool _isAsleep = false;
     private int _waitRound = 0;
-    internal long TotalTimeAsleep = 0;
 
     public Worker(Context context)
     {
@@ -244,7 +206,6 @@ public class Worker: IDisposable
         {
             _isAsleep = true;
             _context.NotifyWorkerAsleep();
-            long start = Stopwatch.GetTimestamp();
             try
             {
                 latch.Wait(LatchWaitMs);
@@ -253,7 +214,6 @@ public class Worker: IDisposable
             {
             }
             _context.NotifyWorkerAwake();
-            TotalTimeAsleep += Stopwatch.GetTimestamp() - start;
             _isAsleep = false;
             _waitRound = 0;
             return;
@@ -266,18 +226,17 @@ public class Worker: IDisposable
 public class Context: IDisposable
 {
     private DStack<JobRef> _jobStack;
-    private Stack<ManualResetEventSlim> _resetEventPool;
+    private Stack<ManualResetEventSlim> _latchPool;
     private readonly WorkStealingExecutor _executor;
     private readonly int _contextIdx;
     private readonly Worker _worker;
-    internal long _totalTimeStealing = 0;
 
     public Context(WorkStealingExecutor executor, int contextIdx, int initialStackSize)
     {
         _executor = executor;
         _contextIdx = contextIdx;
         _jobStack = new(initialStackSize);
-        _resetEventPool = new(initialStackSize);
+        _latchPool = new(initialStackSize);
         _worker = new Worker(this);
     }
 
@@ -287,11 +246,10 @@ public class Context: IDisposable
     }
 
     public int ContextIdx => _contextIdx;
-    public long TotalTimeAsleep => _worker.TotalTimeAsleep;
 
     public void Fork(IJob job1, IJob job2)
     {
-        if (!_resetEventPool.TryPop(out ManualResetEventSlim? resetEvent))
+        if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
         {
             resetEvent = new ManualResetEventSlim(false);
         }
@@ -320,7 +278,8 @@ public class Context: IDisposable
                 {
                     // Inline execute
                     otherRef.ExecuteInline(this);
-                    _resetEventPool.Push(latch);
+                    // Recycle latcch
+                    _latchPool.Push(latch);
                     return;
                 }
 
@@ -336,7 +295,8 @@ public class Context: IDisposable
             }
         }
 
-        _resetEventPool.Push(latch);
+        // Recycle latcch
+        _latchPool.Push(latch);
     }
 
     private void Push(JobRef jobRef)
@@ -353,13 +313,10 @@ public class Context: IDisposable
             return true;
         }
 
-        long startTime = Stopwatch.GetTimestamp();
         if (_executor.TryStealJob(out jobRef))
         {
-            _totalTimeStealing += Stopwatch.GetTimestamp() - startTime;
             return true;
         }
-        _totalTimeStealing += Stopwatch.GetTimestamp() - startTime;
 
         return false;
     }
