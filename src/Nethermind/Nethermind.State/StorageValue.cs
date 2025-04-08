@@ -77,5 +77,7 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public string ToHexString(bool withZeroX) => Bytes.WithoutLeadingZeros().ToHexString(withZeroX);
 
+    public override string ToString() => ToHexString(false);
+
     public byte[] ToArray() => BytesWithNoLeadingZeroes.ToArray();
 }
