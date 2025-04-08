@@ -375,7 +375,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private void SaveChange(HashSet<AddressAsKey> toUpdateRoots, Change change)
     {
         if (_originalValues.TryGetValue(change.StorageCell, out StorageValue initialValue) &&
-            initialValue.Equals(change.Value))
+            initialValue.Equals(in change.Value))
         {
             // no need to update the tree if the value is the same
             return;

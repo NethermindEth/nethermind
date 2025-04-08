@@ -51,6 +51,9 @@ public readonly struct StorageValue : IEquatable<StorageValue>
 
     public static readonly StorageValue Zero = default;
 
+    [OverloadResolutionPriority(1)]
+    public bool Equals(in StorageValue other) => _bytes.Equals(other._bytes);
+
     public bool Equals(StorageValue other) => _bytes.Equals(other._bytes);
 
     public override bool Equals(object? obj)
