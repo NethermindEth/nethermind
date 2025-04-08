@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -58,7 +59,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
-            .AddSingleton<IEthereumEcdsa>(new EthereumEcdsa(spec.ChainId))
+            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
             .AddSingleton<IEciesCipher, EciesCipher>()
             ;

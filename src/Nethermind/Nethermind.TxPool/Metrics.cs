@@ -104,7 +104,7 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of pending transactions added to transaction pool.")]
-        public static long PendingTransactionsAdded { get; set; }
+        public static long PendingTransactionsAdded;
 
         [CounterMetric]
         [Description("Number of pending 1559-type transactions added to transaction pool.")]

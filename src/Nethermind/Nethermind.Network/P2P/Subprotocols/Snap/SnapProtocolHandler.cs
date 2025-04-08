@@ -28,16 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
-        public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3500);
         private static readonly TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
-
-        private readonly LatencyBasedRequestSizer _requestSizer = new(
-            minRequestLimit: 50000,
-            maxRequestLimit: 3_000_000,
-            lowerWatermark: LowerLatencyThreshold,
-            upperWatermark: UpperLatencyThreshold
-        );
 
         private ISnapServer? SyncServer { get; }
         private BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
@@ -272,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
         {
-            AccountRangeMessage response = await _requestSizer.MeasureLatency(bytesLimit =>
+            AccountRangeMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetAccountRangeMessage()
                 {
                     AccountRange = range,
@@ -284,7 +275,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
         {
-            StorageRangeMessage response = await _requestSizer.MeasureLatency(bytesLimit =>
+            StorageRangeMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetStorageRangeMessage()
                 {
                     StorageRange = range,
@@ -296,7 +287,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
         {
-            ByteCodesMessage response = await _requestSizer.MeasureLatency(bytesLimit =>
+            ByteCodesMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetByteCodesMessage
                 {
                     Hashes = codeHashes.ToPooledList(),
@@ -320,7 +311,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private async Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {
-            TrieNodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
+            TrieNodesMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetTrieNodesMessage
                 {
                     RootHash = rootHash,
