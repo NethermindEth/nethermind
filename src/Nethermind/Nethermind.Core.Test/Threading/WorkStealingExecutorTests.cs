@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,23 +17,64 @@ public class WorkStealingExecutorTests
 {
     // private const long FibNum = 32;
     // private const long FibResult = 2178309;
-    private const long FibNum = 32;
-    private const long FibResult = 2178309;
+    // private const long FibNum = 34;
+    // private const long FibResult = 5702887;
 
-    [Test]
-    public void TestBasicFactorial()
+    private const long FibNum = 40;
+    private const long FibResult = 102334155;
+
+    // [TestCase(1)]
+    // [TestCase(2)]
+    // [TestCase(16)]
+    [TestCase(32)]
+    public void TestBasicFactorial(int workerCount)
     {
-        using WorkStealingExecutor executor = new(1);
+        using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
 
         FibanocciResult result = new FibanocciResult();
         executor.Execute(new FibanocciJob(FibNum, result));
         result.Result.Should().Be(FibResult);
     }
 
-    [TestCase(2)]
-    [TestCase(4)]
-    [TestCase(8)]
-    [TestCase(16)]
+    [Test]
+    [Explicit]
+    [Parallelizable(ParallelScope.None)]
+    public async Task TestCompareWithTasks()
+    {
+        FibanocciResult result = new FibanocciResult();
+
+        TimeSpan baselineTime = TimeSpan.Zero;
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            long ans = await TaskFib(FibNum);
+            ans.Should().Be(FibResult);
+            baselineTime = sw.Elapsed;
+        }
+
+        TimeSpan multithreadTime = TimeSpan.Zero;
+        {
+            using WorkStealingExecutor executor = new(Environment.ProcessorCount, (int)FibNum);
+
+            Stopwatch sw = Stopwatch.StartNew();
+            executor.Execute(new FibanocciJob(FibNum, result));
+            result.Result.Should().Be(FibResult);
+            multithreadTime = sw.Elapsed;
+            var multithreadTimeAsleep = TimeSpan.FromSeconds(executor.CalculateTotalTimeAsleep() / (double)Stopwatch.Frequency);
+            var timeStealing = TimeSpan.FromSeconds(executor.CalculateTotalTimeStealing() / (double)Stopwatch.Frequency);
+            var timeNotifying = TimeSpan.FromSeconds(executor.CalculateTotalTimeNotifying() / (double)Stopwatch.Frequency);
+            TestContext.Error.WriteLine($"Time stealing {timeStealing}");
+            TestContext.Error.WriteLine($"Time notifying {timeNotifying}");
+            TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
+        }
+
+        TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
+        multithreadTime.Should().BeLessThan(baselineTime);
+    }
+
+    // [TestCase(2)]
+    // [TestCase(4)]
+    // [TestCase(8)]
+    // [TestCase(16)]
     [TestCase(32)]
     [Parallelizable(ParallelScope.None)]
     public void TestScalability(int workerCount)
@@ -41,37 +83,40 @@ public class WorkStealingExecutorTests
         {
             Assert.Ignore("Insufficient processor count");
         }
+
+        int baselineWorkerCount = 4; // mainly so that large fib number is easier to compare for profiling.
         FibanocciResult result = new FibanocciResult();
 
         TimeSpan baselineTime = TimeSpan.Zero;
-        TimeSpan baselineTimeAsleep = TimeSpan.Zero;
         {
-            using WorkStealingExecutor singleExecutor = new(1);
+            using WorkStealingExecutor singleExecutor = new(baselineWorkerCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
             singleExecutor.Execute(new FibanocciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             result.Result = 0;
             baselineTime = sw.Elapsed;
-            baselineTimeAsleep = TimeSpan.FromSeconds(singleExecutor.CalculateTotalTimeAsleep() / (double)Stopwatch.Frequency);
         }
 
         TimeSpan multithreadTime = TimeSpan.Zero;
-        TimeSpan multithreadTimeAsleep = TimeSpan.Zero;
         {
-            using WorkStealingExecutor executor = new(workerCount);
+            using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
             executor.Execute(new FibanocciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            multithreadTimeAsleep = TimeSpan.FromSeconds(executor.CalculateTotalTimeAsleep() / (double)Stopwatch.Frequency);
+            var timeStealing = TimeSpan.FromSeconds(executor.CalculateTotalTimeStealing() / (double)Stopwatch.Frequency);
+            var timeNotifying = TimeSpan.FromSeconds(executor.CalculateTotalTimeNotifying() / (double)Stopwatch.Frequency);
+            var multithreadTimeAsleep = TimeSpan.FromSeconds(executor.CalculateTotalTimeAsleep() / (double)Stopwatch.Frequency);
+            TestContext.Error.WriteLine($"Time stealing {timeStealing}");
+            TestContext.Error.WriteLine($"Time notifying {timeNotifying}");
+            TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
         }
 
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
-        TestContext.Error.WriteLine($"Time asleep {baselineTimeAsleep} vs {multithreadTimeAsleep}");
 
-        double speedup = baselineTime / multithreadTime;
+        double speedup = (baselineTime * baselineWorkerCount) / multithreadTime;
         speedup.Should().BeGreaterThan(workerCount * 0.9);
     }
 
@@ -109,5 +154,25 @@ public class WorkStealingExecutorTests
 
             result.Result = resultNum;
         }
+    }
+
+    async Task<long> TaskFib(long currentValue)
+    {
+        if (currentValue == 0)
+        {
+            return 0;
+        }
+
+        if (currentValue == 1)
+        {
+            return 1;
+        }
+
+        Task<long> t2 = Task.Run(() => TaskFib(currentValue - 2));
+        Task<long> t1 = TaskFib(currentValue - 1);
+
+        long resultNum = await t2 + await t1;
+        Keccak.Compute(resultNum.ToBigEndianByteArray());
+        return resultNum;
     }
 }

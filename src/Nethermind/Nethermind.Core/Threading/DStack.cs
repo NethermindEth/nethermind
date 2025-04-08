@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Threading;
 
 namespace Nethermind.Core.Threading;
 
@@ -14,7 +16,7 @@ namespace Nethermind.Core.Threading;
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private readonly McsLock _locker = new McsLock(); // TODO: Benchmark if plain spinlock is faster
+    private SpinLock _locker = new SpinLock(); // TODO: Benchmark if other lock is faster
 
     private int _startIdx = -1;
     private int _endIdx = -1;
@@ -24,67 +26,103 @@ public class DStack<T>(int initialCapacity)
     {
         get
         {
-            using var _ = _locker.Acquire();
-            return _endIdx - _startIdx;
+            bool lockTaken = false;
+            _locker.Enter(ref lockTaken);
+            Debug.Assert(lockTaken);
+
+            var res = _endIdx - _startIdx;
+            _locker.Exit();
+            return res;
         }
     }
 
     public bool TryPop(out T? item)
     {
-        using var _ = _locker.Acquire();
+        bool lockTaken = false;
+        _locker.Enter(ref lockTaken);
+        Debug.Assert(lockTaken);
 
-        if (_endIdx == _startIdx)
+        try
         {
-            item = default;
-            return false;
+            if (_endIdx == _startIdx)
+            {
+                item = default;
+                return false;
+            }
+
+            item = _buffer[_endIdx];
+            _buffer[_endIdx] = default!;
+            _endIdx--;
+
+            if (_endIdx == _startIdx)
+            {
+                // Reset the startidx to start of the buffer.
+                _startIdx = -1;
+                _endIdx = -1;
+            }
+
+            return true;
         }
-
-        item = _buffer[_endIdx];
-        _buffer[_endIdx] = default!;
-        _endIdx--;
-
-        if (_endIdx == _startIdx)
+        finally
         {
-            // Reset the startidx to start of the buffer.
-            _startIdx = -1;
-            _endIdx = -1;
+            _locker.Exit();
         }
-        return true;
     }
 
     public void Push(T item)
     {
-        using var _ = _locker.Acquire();
+        bool lockTaken = false;
+        _locker.Enter(ref lockTaken);
+        Debug.Assert(lockTaken);
 
-        int newEndIdx = _endIdx + 1;
-        if (newEndIdx == _buffer.Length)
+        try
         {
-            T[] newItems = new T[_buffer.Length * 2];
-            int count = _endIdx - _startIdx;
-            Array.Copy(_buffer, (_startIdx + 1), newItems, 0, count);
-            _buffer = newItems;
-            _startIdx = -1;
-            newEndIdx = count;
-        }
+            int newEndIdx = _endIdx + 1;
+            if (newEndIdx == _buffer.Length)
+            {
+                T[] newItems = new T[_buffer.Length * 2];
+                int count = _endIdx - _startIdx;
+                Array.Copy(_buffer, (_startIdx + 1), newItems, 0, count);
+                _buffer = newItems;
+                _startIdx = -1;
+                newEndIdx = count;
+            }
 
-        _buffer[newEndIdx] = item;
-        _endIdx = newEndIdx;
+            _buffer[newEndIdx] = item;
+            _endIdx = newEndIdx;
+        }
+        finally
+        {
+            _locker.Exit();
+        }
     }
 
     public bool TryDequeue(out T? item)
     {
-        // Is there a `TryAcquire`?
-        using var _ = _locker.Acquire();
-
-        if (_endIdx == _startIdx)
+        bool lockTaken = false;
+        _locker.TryEnter(ref lockTaken);
+        if (!lockTaken)
         {
             item = default;
             return false;
         }
 
-        item = _buffer[_startIdx + 1];
-        _buffer[_startIdx + 1] = default!;
-        _startIdx++;
-        return true;
+        try
+        {
+            if (_endIdx == _startIdx)
+            {
+                item = default;
+                return false;
+            }
+
+            item = _buffer[_startIdx + 1];
+            _buffer[_startIdx + 1] = default!;
+            _startIdx++;
+            return true;
+        }
+        finally
+        {
+            _locker.Exit();
+        }
     }
 }
