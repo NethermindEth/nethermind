@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -89,24 +90,33 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
-            var signature = new AbiSignature(nameof(SystemConfigUpdate.FeeScalars), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32, AbiType.Bytes32);
+            var signature = new AbiSignature(nameof(SystemConfigUpdate.FeeScalars), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
             object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
 
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 64) throw new FormatException("Invalid length field");
-            var scalar = (byte[])decoded[3];
-            if (!ValidL1SystemConfigScalar(scalar))
+            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
+            var data = (byte[])decoded[2];
+            switch (data[0])
             {
-                // ignore invalid scalars, retain the old system-config scalar
-                return systemConfig;
+                case 0:
+                {
+                    break;
+                }
+                case 1:
+                {
+                    if (!data[1..24].IsZero())
+                        return systemConfig; // ignore
+                    break;
+                }
+                default:
+                {
+                    // ignore invalid type
+                    return systemConfig;
+                }
             }
-
             systemConfig = systemConfig with
             {
-                // retain the scalar data in encoded form
-                Scalar = scalar,
-                // zero out the overhead, it will not affect the state-transition after Ecotone
-                Overhead = new byte[32]
+                Scalar = data,
             };
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
@@ -148,18 +158,5 @@ public class SystemConfigDeriver(
         }
 
         return systemConfig;
-    }
-
-    private static bool ValidL1SystemConfigScalar(ReadOnlySpan<byte> scalar)
-    {
-        const byte L1ScalarEcotone = 1;
-
-        var versionByte = scalar[0];
-        return versionByte switch
-        {
-            L1ScalarEcotone => scalar[1..24].IsZero(),
-            // ignore the event if it's an unknown scalar format
-            _ => false,
-        };
     }
 }
