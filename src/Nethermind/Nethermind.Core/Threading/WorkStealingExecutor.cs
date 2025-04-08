@@ -48,8 +48,9 @@ public class WorkStealingExecutor: IDisposable
         jobRef.ResetEvent.Wait();
     }
 
-    public bool TryStealJob(out JobRef job)
+    public bool TryStealJob(out JobRef job, out bool shouldRetry)
     {
+        shouldRetry = false;
         if (_incomingJob.TryDequeue(out job!))
         {
             return true;
@@ -68,10 +69,12 @@ public class WorkStealingExecutor: IDisposable
             int idx = (ctxToCheckFirst + i) % activeContexts;
             Context context = _workerContexts[idx];
             // I guess hot path
-            if (context.TryStealFrom(out job!))
+            if (context.TryStealFrom(out job!, out bool contextSaidShouldRetry))
             {
                 return true;
             }
+
+            if (contextSaidShouldRetry) shouldRetry = true;
         }
 
         return false;
@@ -167,15 +170,18 @@ public class Worker: IDisposable
         {
             while (!_finishLatch.IsSet)
             {
-                if (_context.TryGetJob(out JobRef otherRef))
+                if (_context.TryGetJob(out JobRef otherRef, out bool shouldRetry))
                 {
                     ResetWaitCounter();
                     otherRef.ExecuteNonInline(_context);
                     continue;
                 }
 
-                _sleepLatch.Reset();
-                OnNoJob(_sleepLatch);
+                if (!shouldRetry)
+                {
+                    _sleepLatch.Reset();
+                    OnNoJob(_sleepLatch);
+                }
             }
         }
         catch (Exception ex)
@@ -306,13 +312,13 @@ public class Context: IDisposable
 
                 otherRef!.ExecuteNonInline(this);
             }
-            else if (_executor.TryStealJob(out otherRef))
+            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry))
             {
                 otherRef!.ExecuteNonInline(this);
             }
             else
             {
-                _worker.OnNoJob(latch);
+                if (!shouldRetry) _worker.OnNoJob(latch);
             }
         }
 
@@ -327,14 +333,15 @@ public class Context: IDisposable
         _executor.NotifyNewJob();
     }
 
-    internal bool TryGetJob(out JobRef jobRef)
+    internal bool TryGetJob(out JobRef jobRef, out bool shouldRetry)
     {
         if (_jobStack.TryPop(out jobRef))
         {
+            shouldRetry = false;
             return true;
         }
 
-        if (_executor.TryStealJob(out jobRef))
+        if (_executor.TryStealJob(out jobRef, out shouldRetry))
         {
             return true;
         }
@@ -342,9 +349,9 @@ public class Context: IDisposable
         return false;
     }
 
-    public bool TryStealFrom(out JobRef job)
+    public bool TryStealFrom(out JobRef job, out bool shouldRetry)
     {
-        return _jobStack.TryDequeue(out job!);
+        return _jobStack.TryDequeue(out job!, out shouldRetry);
     }
 
     public bool TryWakeUp()

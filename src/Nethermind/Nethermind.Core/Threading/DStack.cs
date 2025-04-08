@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -10,13 +11,13 @@ namespace Nethermind.Core.Threading;
 /// <summary>
 /// Like a concurrent stack, but also support dequeue.
 /// It will not reduce buffer size on dequeue/pop.
-/// The dequeue is expected to not be called often and may return false and not return item if blocked.
+/// The dequeue may return false and not return item if blocked.
 /// </summary>
 /// <param name="initialCapacity"></param>
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private McsLock _locker = new McsLock();
+    private SpinLock _locker = new SpinLock();
 
     private long _atomicEndAndStart;
     private T[] _buffer = new T[Math.Max(initialCapacity, 1)];
@@ -24,28 +25,37 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryPop(out T? item)
     {
-        using var _ = _locker.Acquire();
+        bool lockEntered = false;
+        _locker.Enter(ref lockEntered);
+        Debug.Assert(lockEntered);
 
-        (int startIdx, int endIdx) = GetStartAndEndIdx();
-        if (endIdx == startIdx)
+        try
         {
-            item = default;
-            return false;
+            (int startIdx, int endIdx) = GetStartAndEndIdx();
+            if (endIdx == startIdx)
+            {
+                item = default;
+                return false;
+            }
+
+            item = _buffer[endIdx];
+            _buffer[endIdx] = default!;
+            endIdx--;
+
+            if (endIdx == startIdx)
+            {
+                // Reset the startidx to start of the buffer.
+                startIdx = -1;
+                endIdx = -1;
+            }
+
+            SetStartAndEndIdxUnlocked(startIdx, endIdx);
+            return true;
         }
-
-        item = _buffer[endIdx];
-        _buffer[endIdx] = default!;
-        endIdx--;
-
-        if (endIdx == startIdx)
+        finally
         {
-            // Reset the startidx to start of the buffer.
-            startIdx = -1;
-            endIdx = -1;
+            _locker.Exit(false);
         }
-
-        SetStartAndEndIdxUnlocked(startIdx, endIdx);
-        return true;
     }
 
     private (int startIdx, int endIdx) GetStartAndEndIdx()
@@ -67,28 +77,38 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Push(T item)
     {
-        using var _ = _locker.Acquire();
+        bool lockEntered = false;
+        _locker.Enter(ref lockEntered);
+        Debug.Assert(lockEntered);
 
-        (int startIdx, int endIdx) = GetStartAndEndIdx();
-
-        int newEndIdx = endIdx + 1;
-        if (newEndIdx == _buffer.Length)
+        try
         {
-            T[] newItems = new T[_buffer.Length * 2];
-            int count = endIdx - startIdx;
-            Array.Copy(_buffer, (startIdx + 1), newItems, 0, count);
-            _buffer = newItems;
-            startIdx = -1;
-            newEndIdx = count;
-        }
+            (int startIdx, int endIdx) = GetStartAndEndIdx();
 
-        _buffer[newEndIdx] = item;
-        SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
+            int newEndIdx = endIdx + 1;
+            if (newEndIdx == _buffer.Length)
+            {
+                T[] newItems = new T[_buffer.Length * 2];
+                int count = endIdx - startIdx;
+                Array.Copy(_buffer, (startIdx + 1), newItems, 0, count);
+                _buffer = newItems;
+                startIdx = -1;
+                newEndIdx = count;
+            }
+
+            _buffer[newEndIdx] = item;
+            SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
+        }
+        finally
+        {
+            _locker.Exit(false);
+        }
     }
 
-    public bool TryDequeue(out T? item)
+    public bool TryDequeue(out T? item, out bool shouldRetry)
     {
         item = default;
+        shouldRetry = false;
 
         (int startIdx, int endIdx) = GetStartAndEndIdx();
         if (endIdx == startIdx)
@@ -96,17 +116,31 @@ public class DStack<T>(int initialCapacity)
             return false;
         }
 
-        using var _ = _locker.Acquire();
-
-        (startIdx, endIdx) = GetStartAndEndIdx();
-        if (endIdx == startIdx)
+        bool lockEntered = false;
+        _locker.TryEnter(ref lockEntered);
+        if (!lockEntered)
         {
+            shouldRetry = true;
             return false;
         }
+        Debug.Assert(lockEntered);
 
-        item = _buffer[startIdx + 1];
-        _buffer[startIdx + 1] = default!;
-        SetStartAndEndIdxUnlocked(startIdx+1, endIdx);
-        return true;
+        try
+        {
+            (startIdx, endIdx) = GetStartAndEndIdx();
+            if (endIdx == startIdx)
+            {
+                return false;
+            }
+
+            item = _buffer[startIdx + 1];
+            _buffer[startIdx + 1] = default!;
+            SetStartAndEndIdxUnlocked(startIdx+1, endIdx);
+            return true;
+        }
+        finally
+        {
+            _locker.Exit(false);
+        }
     }
 }

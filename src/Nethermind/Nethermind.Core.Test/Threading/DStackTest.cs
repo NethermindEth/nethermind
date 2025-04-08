@@ -18,7 +18,7 @@ public class DStackTest
         DStack<int> stack = new DStack<int>(0);
         int value = 0;
         stack.TryPop(out value).Should().BeFalse();
-        stack.TryDequeue(out value).Should().BeFalse();
+        stack.TryDequeue(out value, out _).Should().BeFalse();
 
         for (int i = 0; i < 10; i++)
         {
@@ -40,7 +40,7 @@ public class DStackTest
         DStack<int> stack = new DStack<int>(0);
         int value = 0;
         stack.TryPop(out value).Should().BeFalse();
-        stack.TryDequeue(out value).Should().BeFalse();
+        stack.TryDequeue(out value, out _).Should().BeFalse();
 
         for (int i = 0; i < 10; i++)
         {
@@ -49,11 +49,11 @@ public class DStackTest
 
         for (int i = 0; i < 10; i++)
         {
-            stack.TryDequeue(out value).Should().BeTrue();
+            stack.TryDequeue(out value, out _).Should().BeTrue();
             value.Should().Be(i);
         }
 
-        stack.TryDequeue(out value).Should().BeFalse();
+        stack.TryDequeue(out value, out _).Should().BeFalse();
     }
 
     [Test]
@@ -62,22 +62,22 @@ public class DStackTest
         DStack<int> stack = new DStack<int>(0);
         int value = 0;
         stack.TryPop(out value).Should().BeFalse();
-        stack.TryDequeue(out value).Should().BeFalse();
+        stack.TryDequeue(out value, out _).Should().BeFalse();
 
         for (int i = 0; i < 10; i++)
         {
             stack.Push(i);
         }
 
-        stack.TryDequeue(out value);
+        stack.TryDequeue(out value, out _);
         value.Should().Be(0);
         stack.TryPop(out value);
         value.Should().Be(9);
-        stack.TryDequeue(out value);
+        stack.TryDequeue(out value, out _);
         value.Should().Be(1);
         stack.TryPop(out value);
         value.Should().Be(8);
-        stack.TryDequeue(out value);
+        stack.TryDequeue(out value, out _);
         value.Should().Be(2);
         stack.TryPop(out value);
         value.Should().Be(7);
@@ -126,13 +126,13 @@ public class DStackTest
         {
             while (!enqueueFinished.IsSet)
             {
-                if (stack.TryDequeue(out int value))
+                if (stack.TryDequeue(out int value, out bool shouldRetry))
                 {
                     Interlocked.CompareExchange(ref wasRemoved[value], true, false).Should().BeFalse();
                 }
                 else
                 {
-                    Thread.Yield();
+                    if (!shouldRetry) Thread.Yield();
                 }
             }
         })).ToArray();
