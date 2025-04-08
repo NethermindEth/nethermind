@@ -1,14 +1,13 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
@@ -38,8 +37,9 @@ namespace Nethermind.Db
         private const int CompactionDistance = 262_144; // 2^18
 
         // TODO: get rid of static fields
-        private static readonly Channel<byte[]> CompressKeysChannel = Channel.CreateUnbounded<byte[]>();
-        public static readonly ChannelWriter<byte[]> CompressKeys = CompressKeysChannel.Writer;
+        // A lot of duplicates in case of regular Channel, TODO: find a better way to guarantee uniqueness
+        private static readonly ConcurrentDictionary<byte[], bool> CompressQueue = new(Bytes.EqualityComparer);
+        public static void EnqueueCompress(byte[] dbKey) => CompressQueue.TryAdd(dbKey, true);
 
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism)
@@ -308,7 +308,7 @@ namespace Nethermind.Db
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
 
-            CompressPostMerge(CompressKeysChannel.Reader, stats.PostMergeProcessing);
+            CompressPostMerge(stats.PostMergeProcessing);
 
             watch.Restart();
             _addressDb.Flush();
@@ -332,7 +332,7 @@ namespace Nethermind.Db
             {
                 if (GetKeyBlockNum(key) == BlockMaxVal && value.Length > maxUncompressedLength)
                 {
-                    CompressKeys.TryWrite(key.ToArray());
+                    EnqueueCompress(key);
                     counter++;
                 }
             }
@@ -409,7 +409,7 @@ namespace Nethermind.Db
             _logger.Warn("Log index compaction completed");
 
             _logger.Warn("Log index post-merge processing starting");
-            CompressPostMerge(CompressKeysChannel.Reader, stats.PostMergeProcessing);
+            CompressPostMerge(stats.PostMergeProcessing);
             _logger.Warn("Log index post-merge processing completed");
         }
 
@@ -508,65 +508,55 @@ namespace Nethermind.Db
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
         // TODO: optimize allocations
-        [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
-        private void CompressPostMerge(ChannelReader<byte[]> newKeysReader, PostMergeProcessingStats stats)
+        private void CompressPostMerge(PostMergeProcessingStats stats)
         {
-            long commitTimestamp;
             var execTimestamp = Stopwatch.GetTimestamp();
 
-            using (var addressWriteBatch = _addressDb.StartWriteBatch())
-            using (var topicsWriteBatch = _topicsDb.StartWriteBatch())
+            var block = new ActionBlock<byte[]>(dbKey =>
             {
-                var block = new ActionBlock<byte[]>(dbKey =>
+                var db = (dbKey.Length - BlockNumSize) switch
                 {
-                    try
-                    {
-                        var (db, batch) = (dbKey.Length - BlockNumSize) switch
-                        {
-                            Address.Size => (_addressDb, addressWriteBatch),
-                            Hash256.Size => (_topicsDb, topicsWriteBatch),
-                            var size => throw ValidationException($"Unexpected index size of {size} bytes.")
-                        };
+                    Address.Size => _addressDb,
+                    Hash256.Size => _topicsDb,
+                    var size => throw ValidationException($"Unexpected index size of {size} bytes.")
+                };
 
-                        var timestamp = Stopwatch.GetTimestamp();
-                        var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
-                        stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
+                var timestamp = Stopwatch.GetTimestamp();
+                var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
+                stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                        var blockNum = ReadValBlockNum(dbValue);
+                if (dbValue.Length < BlockNumSize)
+                    Debugger.Break();
 
-                        var dbKeyComp = (byte[])dbKey.Clone();
-                        SetKeyBlockNum(dbKeyComp, blockNum);
+                var blockNum = ReadValBlockNum(dbValue);
 
-                        // Put compressed value at a new key and clear uncompressed one
-                        // TODO: reading and clearing the value is not atomic, find a fix
-                        timestamp = Stopwatch.GetTimestamp();
-                        dbValue = CompressDbValue(dbValue);
-                        stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
+                var dbKeyComp = (byte[])dbKey.Clone();
+                SetKeyBlockNum(dbKeyComp, blockNum);
 
-                        timestamp = Stopwatch.GetTimestamp();
-                        batch.PutSpan(dbKeyComp, dbValue);
-                        batch.PutSpan(dbKey, Array.Empty<byte>());
-                        stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
+                // Put compressed value at a new key and clear uncompressed one
+                // TODO: reading and clearing the value is not atomic, find a fix
+                timestamp = Stopwatch.GetTimestamp();
+                dbValue = CompressDbValue(dbValue);
+                stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                        if (db == _addressDb) Interlocked.Increment(ref stats.CompressedAddressKeys);
-                        else if (db == _topicsDb) Interlocked.Increment(ref stats.CompressedTopicKeys);
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e);
-                    }
-                }, new() { MaxDegreeOfParallelism = _ioParallelism });
+                timestamp = Stopwatch.GetTimestamp();
+                db.PutSpan(dbKeyComp, dbValue);
+                db.PutSpan(dbKey, Array.Empty<byte>());
+                stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                while (newKeysReader.TryRead(out var dbKey)) block.Post(dbKey);
-                block.Complete();
+                if (db == _addressDb) Interlocked.Increment(ref stats.CompressedAddressKeys);
+                else if (db == _topicsDb) Interlocked.Increment(ref stats.CompressedTopicKeys);
+            }, new() { MaxDegreeOfParallelism = _ioParallelism });
 
-                // TODO: await?
-                block.Completion.Wait();
-
-                commitTimestamp = Stopwatch.GetTimestamp();
+            foreach (var dbKey in CompressQueue.Keys)
+            {
+                CompressQueue.TryRemove(dbKey, out _);
+                block.Post(dbKey);
             }
 
-            stats.CommitingBatch.Include(Stopwatch.GetElapsedTime(commitTimestamp));
+            block.Complete();
+            block.Completion.Wait(); // TODO: await?
+
             stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
         }
 

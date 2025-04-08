@@ -1889,7 +1889,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
                 if (result.Length > LogIndexStorage.MaxUncompressedLength)
                 {
-                    LogIndexStorage.CompressKeys.TryWrite(key.ToArray());
+                    LogIndexStorage.EnqueueCompress(key.ToArray());
                 }
 
                 return result;

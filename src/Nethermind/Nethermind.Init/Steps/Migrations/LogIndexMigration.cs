@@ -184,7 +184,6 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\t\tDB getting: {last.PostMergeProcessing.GettingValue} ( {total.PostMergeProcessing.GettingValue} in total )" +
                     $"\n\t\t\tCompressing: {last.PostMergeProcessing.CompressingValue} ( {total.PostMergeProcessing.CompressingValue} in total )" +
                     $"\n\t\t\tPutting: {last.PostMergeProcessing.PuttingValues} ( {total.PostMergeProcessing.PuttingValues} in total )" +
-                    $"\n\t\t\tCommiting: {last.PostMergeProcessing.CommitingBatch} ( {total.PostMergeProcessing.CommitingBatch} in total )" +
                     $"\n\t\t\tCompressed keys: {last.PostMergeProcessing.CompressedAddressKeys:N0} address, {last.PostMergeProcessing.CompressedTopicKeys:N0} topic ( {total.PostMergeProcessing.CompressedAddressKeys:N0} address, {total.PostMergeProcessing.CompressedTopicKeys:N0} topic in total )" +
                     $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndexStorage))}"
                 );
@@ -227,7 +226,10 @@ namespace Nethermind.Init.Steps.Migrations
                 var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
 
-                _logIndexStorage.Compact();
+                if (!token.IsCancellationRequested)
+                {
+                    _logIndexStorage.Compact();
+                }
 
                 // await Task.CompletedTask;
                 // var stats = _logIndexStorage.CompressAndCompact(LogIndexStorage.MaxUncompressedLength / 4);
