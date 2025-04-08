@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -24,7 +25,7 @@ namespace Nethermind.Consensus.Processing
             protected readonly ISpecProvider _specProvider;
             private readonly bool _ignoreEip3607;
 
-            public BlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes = 9728, bool ignoreEip3607 = false)
+            public BlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes, bool ignoreEip3607 = false)
             {
                 _specProvider = specProvider;
                 _maxTxLengthBytes = maxTxLengthKilobytes.KiB();
@@ -38,7 +39,7 @@ namespace Nethermind.Consensus.Processing
                 AddingTransaction?.Invoke(this, e);
             }
 
-            public virtual AddingTxEventArgs CanAddTransaction(BlockToProduce block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Stop, "Block full");
                 }
 
-                if (block.TxByteLength + currentTx.GetLength() > _maxTxLengthBytes)
+                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength() > _maxTxLengthBytes)
                 {
                     return args.Set(
                         // If smallest tx is too large, stop picking

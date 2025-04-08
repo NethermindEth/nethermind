@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -112,7 +113,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
-                        block.TxByteLength += currentTx.GetLength();
+                        if (block is BlockToProduce blockToProduce) blockToProduce.TxByteLength += currentTx.GetLength();
                         if (addToBlock)
                         {
                             transactionsInBlock.Add(currentTx);

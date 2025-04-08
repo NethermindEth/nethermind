@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State;
 
@@ -15,7 +14,7 @@ public partial class BlockProcessor
     {
         event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-        AddingTxEventArgs CanAddTransaction(BlockToProduce block, Transaction currentTx,
+        AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
             IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider);
     }
 }
