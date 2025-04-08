@@ -20,13 +20,13 @@ public class WorkStealingExecutorTests
     // private const long FibNum = 34;
     // private const long FibResult = 5702887;
 
-    private const long FibNum = 40;
-    private const long FibResult = 102334155;
+    private const long FibNum = 43;
+    private const long FibResult = 433494437;
 
     // [TestCase(1)]
     // [TestCase(2)]
     // [TestCase(16)]
-    [TestCase(32)]
+    [TestCase(8)]
     public void TestBasicFactorial(int workerCount)
     {
         using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
@@ -34,6 +34,13 @@ public class WorkStealingExecutorTests
         FibanocciResult result = new FibanocciResult();
         executor.Execute(new FibanocciJob(FibNum, result));
         result.Result.Should().Be(FibResult);
+
+        TestContext.Error.WriteLine($"Time stealing {executor.CalculateTotalTimeStealing()}");
+        TestContext.Error.WriteLine($"Time stealing2 {executor.CalculateTotalTimeStealing2()}");
+        TestContext.Error.WriteLine($"Time asleep {executor.CalculateTotalTimeAsleep()}");
+        TestContext.Error.WriteLine($"Steal attempts {executor._stealAttempts}");
+        TestContext.Error.WriteLine($"Failed attempts {executor._failedStealAttempts}");
+        TestContext.Error.WriteLine($"Failed attempts retry {executor._failedStealAttemptsWithRetry}");
     }
 
     [Test]
@@ -61,9 +68,7 @@ public class WorkStealingExecutorTests
             multithreadTime = sw.Elapsed;
             var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
             var timeStealing = executor.CalculateTotalTimeStealing();
-            var timeNotifying = executor.CalculateTotalTimeNotifying();
             TestContext.Error.WriteLine($"Time stealing {timeStealing}");
-            TestContext.Error.WriteLine($"Time notifying {timeNotifying}");
             TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
         }
 
@@ -84,7 +89,7 @@ public class WorkStealingExecutorTests
             Assert.Ignore("Insufficient processor count");
         }
 
-        int baselineWorkerCount = 4; // mainly so that large fib number is easier to compare for profiling.
+        int baselineWorkerCount = 8; // mainly so that large fib number is easier to compare for profiling.
         FibanocciResult result = new FibanocciResult();
 
         TimeSpan baselineTime = TimeSpan.Zero;
@@ -106,12 +111,10 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibanocciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            var timeStealing = executor.CalculateTotalTimeStealing();
-            var timeNotifying = executor.CalculateTotalTimeNotifying();
-            var multithreadTimeAsleep = executor.CalculateTotalTimeAsleep();
-            TestContext.Error.WriteLine($"Time stealing {timeStealing}");
-            TestContext.Error.WriteLine($"Time notifying {timeNotifying}");
-            TestContext.Error.WriteLine($"Time asleep {multithreadTimeAsleep}");
+            TestContext.Error.WriteLine($"Time stealing {executor.CalculateTotalTimeStealing()}");
+            TestContext.Error.WriteLine($"Time asleep {executor.CalculateTotalTimeAsleep()}");
+            TestContext.Error.WriteLine($"Steal attempts {executor._stealAttempts}");
+            TestContext.Error.WriteLine($"Failed attempts {executor._failedStealAttempts}");
         }
 
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
