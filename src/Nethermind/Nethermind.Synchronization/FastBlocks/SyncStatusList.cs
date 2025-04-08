@@ -112,11 +112,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 // already exist. We switch to a bigger array to improve parallelization throughput
                 if (workingArray.Count < ParallelExistCheckSize)
                 {
+                    workingArray.Dispose();
                     workingArray = new ArrayPoolList<BlockInfo?>(ParallelExistCheckSize, ParallelExistCheckSize);
                 }
             }
 
             infos = [];
+            workingArray.Dispose();
             return false;
 
             (bool, bool) ClearExistingBlock()
