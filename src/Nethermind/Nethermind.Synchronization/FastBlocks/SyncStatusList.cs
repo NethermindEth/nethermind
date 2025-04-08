@@ -105,6 +105,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (hasNonNull || !hasInserted)
                 {
                     CompileOutput(out infos);
+                    workingArray.Dispose();
                     return true;
                 }
 
