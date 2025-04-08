@@ -18,6 +18,7 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 public class EthereumL1Bridge : IL1Bridge
 {
     private const int L1SlotTimeMilliseconds = 12000;
+    private const int L1BlocksUntilFinalization = 64;
 
     private readonly ICLConfig _config;
     private readonly IEthApi _ethL1Api;
@@ -63,7 +64,7 @@ public class EthereumL1Bridge : IL1Bridge
             ulong newHeadNumber = newHead.Number;
 
             int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHead.Number - 1;
-            if (numberOfMissingBlocks > 64)
+            if (numberOfMissingBlocks > L1BlocksUntilFinalization)
             {
                 if (_logger.IsInfo) _logger.Info(
                     $"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHead.Number}, new head number: {newHeadNumber}");
@@ -230,31 +231,11 @@ public class EthereumL1Bridge : IL1Bridge
         }
     }
 
-    public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token)
-    {
-        L1Block? result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
-        while (result is null)
-        {
-            token.ThrowIfCancellationRequested();
-            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 block by block number({blockNumber})");
-            result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
-        }
+    public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token) =>
+        await RetryGetBlock(async () => await _ethL1Api.GetBlockByNumber(blockNumber, true), token);
 
-        return result.Value;
-    }
-
-    public async Task<L1Block> GetBlockByHash(Hash256 blockHash, CancellationToken token)
-    {
-        L1Block? result = await _ethL1Api.GetBlockByHash(blockHash, true);
-        while (result is null)
-        {
-            token.ThrowIfCancellationRequested();
-            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 block by hash({blockHash})");
-            result = await _ethL1Api.GetBlockByHash(blockHash, true);
-        }
-
-        return result.Value;
-    }
+    public async Task<L1Block> GetBlockByHash(Hash256 blockHash, CancellationToken token) =>
+        await RetryGetBlock(async () => await _ethL1Api.GetBlockByHash(blockHash, true), token);
 
     public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash, CancellationToken token)
     {
@@ -269,29 +250,21 @@ public class EthereumL1Bridge : IL1Bridge
         return result;
     }
 
-    private async Task<L1Block> GetHead(CancellationToken token)
+    private async Task<L1Block> GetHead(CancellationToken token) =>
+        await RetryGetBlock(async () => await _ethL1Api.GetHead(true), token);
+
+    private async Task<L1Block> GetFinalized(CancellationToken token) =>
+        await RetryGetBlock(async () => await _ethL1Api.GetFinalized(true), token);
+
+    private async Task<L1Block> RetryGetBlock(Func<Task<L1Block?>> getBlock, CancellationToken token)
     {
-        L1Block? result = await _ethL1Api.GetHead(true);
+        L1Block? result = await getBlock();
         while (result is null)
         {
             token.ThrowIfCancellationRequested();
-            _logger.Warn($"Unable to get L1 head");
-            result = await _ethL1Api.GetHead(true);
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 block.");
+            result = await getBlock();
         }
-
-        return result.Value;
-    }
-
-    private async Task<L1Block> GetFinalized(CancellationToken token)
-    {
-        L1Block? result = await _ethL1Api.GetFinalized(true);
-        while (result is null)
-        {
-            token.ThrowIfCancellationRequested();
-            _logger.Warn($"Unable to get finalized L1 block");
-            result = await _ethL1Api.GetFinalized(true);
-        }
-
         return result.Value;
     }
 

@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -72,11 +73,12 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         };
     }
 
-    public List<Transaction> BuildUserDepositTransactions(ReceiptForRpc[] receipts)
+    public IEnumerable<Transaction> BuildUserDepositTransactions(ReceiptForRpc[] receipts)
     {
         List<Transaction> result = [];
         foreach (var receipt in receipts)
         {
+            // Skip failed txs
             if (receipt.Status != 1) continue;
             foreach (var log in receipt.Logs)
             {

@@ -117,9 +117,9 @@ public class ExecutionEngineManager : IExecutionEngineManager
     private async Task<bool> SendForkChoiceUpdated(
         BlockId headBlock, BlockId finalizedBlock, BlockId safeBlock)
     {
-        bool shouldUpdate = BlockId.ShouldUpdate(_currentHead, headBlock);
-        shouldUpdate |= BlockId.ShouldUpdate(_currentFinalizedHead, finalizedBlock);
-        shouldUpdate |= BlockId.ShouldUpdate(_currentSafeHead, safeBlock);
+        bool shouldUpdate = _currentHead.IsNewerThen(headBlock) ||
+                            _currentFinalizedHead.IsNewerThen(finalizedBlock) ||
+                            _currentSafeHead.IsNewerThen(safeBlock);
 
         if (!shouldUpdate)
         {

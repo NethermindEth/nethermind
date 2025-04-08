@@ -25,6 +25,6 @@ public readonly record struct BlockId
 
     public static BlockId FromL1BlockInfo(L1BlockInfo blockInfo) => new() { Number = blockInfo.Number, Hash = blockInfo.BlockHash };
 
-    public static bool ShouldUpdate(BlockId currentBlockId, BlockId newBlockId) =>
-        currentBlockId.Number < newBlockId.Number;
+    public bool IsNewerThen(BlockId newBlockId) =>
+        Number < newBlockId.Number;
 }

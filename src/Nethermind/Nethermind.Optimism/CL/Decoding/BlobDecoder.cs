@@ -6,6 +6,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
+/// <summary>
+/// https://specs.optimism.io/protocol/ecotone/derivation.html#blob-encoding
+/// </summary>
 public static class BlobDecoder
 {
     public const int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;

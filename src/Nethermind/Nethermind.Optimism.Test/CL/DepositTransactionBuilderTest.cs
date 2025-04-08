@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -40,9 +41,9 @@ public class DepositTransactionBuilderTest
     public void DeriveUserDeposits_NoDeposits()
     {
         ReceiptForRpc[] receipts = [];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Count.Should().Be(0);
+        depositTransactions.ToArray().Length.Should().Be(0);
     }
 
     [Test]
@@ -64,9 +65,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = SomeHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Count.Should().Be(0);
+        depositTransactions.ToArray().Length.Should().Be(0);
     }
 
 
@@ -158,7 +159,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = SomeHash,
             },
         ];
-        Action build = () => _builder.BuildUserDepositTransactions(receipts);
+        Action build = () => _builder.BuildUserDepositTransactions(receipts).ToArray();
         build.Should().Throw<ArgumentException>();
     }
 
@@ -205,9 +206,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Count.Should().Be(0);
+        depositTransactions.ToArray().Length.Should().Be(0);
     }
 
     [Test]
@@ -253,7 +254,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         var expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -269,7 +270,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Count.Should().Be(1);
+        depositTransactions.Length.Should().Be(1);
         // NOTE: Check if we can simplify this assertion
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
         depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
@@ -317,7 +318,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         var expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -333,7 +334,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Count.Should().Be(1);
+        depositTransactions.Length.Should().Be(1);
 
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
         depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
@@ -405,7 +406,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         var expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -421,7 +422,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Count.Should().Be(1);
+        depositTransactions.Length.Should().Be(1);
 
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
         depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
@@ -494,7 +495,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         var expectedTransaction_0 = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -524,7 +525,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_1.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Count.Should().Be(2);
+        depositTransactions.Length.Should().Be(2);
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
         depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data?.ToArray());
 
@@ -599,9 +600,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Count.Should().Be(0);
+        depositTransactions.Length.Should().Be(0);
     }
 
     [Test]
@@ -682,7 +683,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         var expectedTransaction_0 = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -712,7 +713,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_1.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Count.Should().Be(2);
+        depositTransactions.Length.Should().Be(2);
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
         depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data?.ToArray());
 
