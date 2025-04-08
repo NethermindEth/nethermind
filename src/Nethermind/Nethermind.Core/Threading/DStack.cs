@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -16,7 +17,7 @@ namespace Nethermind.Core.Threading;
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private SpinLock _locker = new SpinLock(); // TODO: Benchmark if other lock is faster
+    private McsLock _locker = new McsLock(); // TODO: Benchmark if other lock is faster
 
     private int _startIdx = -1;
     private int _endIdx = -1;
@@ -26,103 +27,68 @@ public class DStack<T>(int initialCapacity)
     {
         get
         {
-            bool lockTaken = false;
-            _locker.Enter(ref lockTaken);
-            Debug.Assert(lockTaken);
-
-            var res = _endIdx - _startIdx;
-            _locker.Exit();
-            return res;
+            using var _ = _locker.Acquire();
+            return _endIdx - _startIdx;
         }
     }
 
     public bool TryPop(out T? item)
     {
-        bool lockTaken = false;
-        _locker.Enter(ref lockTaken);
-        Debug.Assert(lockTaken);
+        using var _ = _locker.Acquire();
 
-        try
-        {
-            if (_endIdx == _startIdx)
-            {
-                item = default;
-                return false;
-            }
-
-            item = _buffer[_endIdx];
-            _buffer[_endIdx] = default!;
-            _endIdx--;
-
-            if (_endIdx == _startIdx)
-            {
-                // Reset the startidx to start of the buffer.
-                _startIdx = -1;
-                _endIdx = -1;
-            }
-
-            return true;
-        }
-        finally
-        {
-            _locker.Exit();
-        }
-    }
-
-    public void Push(T item)
-    {
-        bool lockTaken = false;
-        _locker.Enter(ref lockTaken);
-        Debug.Assert(lockTaken);
-
-        try
-        {
-            int newEndIdx = _endIdx + 1;
-            if (newEndIdx == _buffer.Length)
-            {
-                T[] newItems = new T[_buffer.Length * 2];
-                int count = _endIdx - _startIdx;
-                Array.Copy(_buffer, (_startIdx + 1), newItems, 0, count);
-                _buffer = newItems;
-                _startIdx = -1;
-                newEndIdx = count;
-            }
-
-            _buffer[newEndIdx] = item;
-            _endIdx = newEndIdx;
-        }
-        finally
-        {
-            _locker.Exit();
-        }
-    }
-
-    public bool TryDequeue(out T? item)
-    {
-        bool lockTaken = false;
-        _locker.TryEnter(ref lockTaken);
-        if (!lockTaken)
+        if (_endIdx == _startIdx)
         {
             item = default;
             return false;
         }
 
-        try
-        {
-            if (_endIdx == _startIdx)
-            {
-                item = default;
-                return false;
-            }
+        item = _buffer[_endIdx];
+        _buffer[_endIdx] = default!;
+        _endIdx--;
 
-            item = _buffer[_startIdx + 1];
-            _buffer[_startIdx + 1] = default!;
-            _startIdx++;
-            return true;
-        }
-        finally
+        if (_endIdx == _startIdx)
         {
-            _locker.Exit();
+            // Reset the startidx to start of the buffer.
+            _startIdx = -1;
+            _endIdx = -1;
         }
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void Push(T item)
+    {
+        using var _ = _locker.Acquire();
+
+        int newEndIdx = _endIdx + 1;
+        if (newEndIdx == _buffer.Length)
+        {
+            T[] newItems = new T[_buffer.Length * 2];
+            int count = _endIdx - _startIdx;
+            Array.Copy(_buffer, (_startIdx + 1), newItems, 0, count);
+            _buffer = newItems;
+            _startIdx = -1;
+            newEndIdx = count;
+        }
+
+        _buffer[newEndIdx] = item;
+        _endIdx = newEndIdx;
+    }
+
+    public bool TryDequeue(out T? item)
+    {
+        using var _ = _locker.Acquire();
+
+        if (_endIdx == _startIdx)
+        {
+            item = default;
+            return false;
+        }
+
+        item = _buffer[_startIdx + 1];
+        _buffer[_startIdx + 1] = default!;
+        _startIdx++;
+        return true;
     }
 }
