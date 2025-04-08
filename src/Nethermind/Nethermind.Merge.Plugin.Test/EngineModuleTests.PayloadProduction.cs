@@ -303,12 +303,25 @@ public partial class EngineModuleTests
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
+        CancellationTokenSource cts = new();
+        Task addingTx = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                Interlocked.Increment(ref TxPool.Metrics.PendingTransactionsAdded);
+                await Task.Delay(10);
+            }
+        });
+
         Task waitForImprovement = chain.WaitForImprovedBlock();
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
         await waitForImprovement;
 
         Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.InRange(3, 5).After(timePerSlot.Milliseconds * 10, 1));
+
+        cts.Cancel();
+        await addingTx;
 
         improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(static i => i.Disposed);
 
