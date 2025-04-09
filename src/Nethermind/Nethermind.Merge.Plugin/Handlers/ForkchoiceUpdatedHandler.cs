@@ -304,10 +304,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
+        bool isPayloadSimulated = false;
 
-        if (_simulateBlockProduction)
+        if (_simulateBlockProduction && payloadAttributes is null)
         {
-            payloadAttributes ??= newHeadBlock.Header.GenerateSimulatedPayload();
+            isPayloadSimulated = true;
+            payloadAttributes = newHeadBlock.Header.GenerateSimulatedPayload();
         }
 
         if (payloadAttributes is not null)
@@ -322,7 +324,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         }
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
-        return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
+        return ForkchoiceUpdatedV1Result.Valid(isPayloadSimulated ? null : payloadId, forkchoiceState.HeadBlockHash);
     }
 
     private ResultWrapper<ForkchoiceUpdatedV1Result>? ValidateAttributes(PayloadAttributes? payloadAttributes, int version)
