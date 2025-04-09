@@ -74,11 +74,9 @@ public class CmSketchTests
         // we have made four updates error per item should be 4
         sketch.ErrorPerItem.Should().Be(4d);
 
-        sketch.Query(Ulong0).Should().BeGreaterThanOrEqualTo(1);
-        sketch.Query(Ulong0).Should().BeLessThanOrEqualTo(1 + 4);
+        sketch.Query(Ulong0).Should().BeInRange(1, 1 + 4);
 
-        sketch.Query(Ulong1).Should().BeGreaterThanOrEqualTo(3);
-        sketch.Query(Ulong1).Should().BeLessThanOrEqualTo(3 + 4);
+        sketch.Query(Ulong1).Should().BeInRange(3, 3 + 4);
 
         // unseen item error
         sketch.Query(Ulong2).Should().BeLessThanOrEqualTo(4);
@@ -96,14 +94,11 @@ public class CmSketchTests
         // we have made 100 (1 + 40 + 59) updates, expected max error per item should be 100 * 0.01
         sketch.ErrorPerItem.Should().BeLessThanOrEqualTo(1d);
 
-        sketch.Query(Ulong0).Should().BeGreaterThanOrEqualTo(1);
-        sketch.Query(Ulong0).Should().BeLessThanOrEqualTo(2);
+        sketch.Query(Ulong0).Should().BeInRange(1, 2);
 
-        sketch.Query(Ulong1).Should().BeGreaterThanOrEqualTo(40);
-        sketch.Query(Ulong1).Should().BeLessThanOrEqualTo(41);
+        sketch.Query(Ulong1).Should().BeInRange(40, 41);
 
-        sketch.Query(Ulong2).Should().BeGreaterThanOrEqualTo(59);
-        sketch.Query(Ulong2).Should().BeLessThanOrEqualTo(60);
+        sketch.Query(Ulong2).Should().BeInRange(59, 60);
 
         // unseen item error
         sketch.Query(Ulong3).Should().BeLessThanOrEqualTo(1);
