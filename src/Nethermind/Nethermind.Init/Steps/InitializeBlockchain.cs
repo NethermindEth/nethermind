@@ -79,10 +79,21 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
+            IVMConfig vmConfig = new VMConfig
+            {
+                IlEvmAnalysisQueueMaxSize = 8,
+                IlEvmAnalysisThreshold = 2,
+                IlEvmContractsPerDllCount = 32,
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmPersistPrecompiledContractsOnDisk = true,
+                IlEvmPrecompiledContractsPath = "AotCache",
+                IsIlEvmAggressiveModeEnabled = true,
+                IsILEvmEnabled = true,
+            };
 
-            InitializeIlEvmProcesses();
+            InitializeIlEvmProcesses(vmConfig);
 
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
@@ -181,7 +192,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState)
+        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState, IVMConfig? vMConfig)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -196,7 +207,7 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 codeInfoRepository,
                 _api.LogManager,
-                _api.VMConfig!);
+                vMConfig!);
 
             return virtualMachine;
         }
@@ -248,15 +259,15 @@ namespace Nethermind.Init.Steps
             );
         }
 
-        protected void InitializeIlEvmProcesses()
+        protected void InitializeIlEvmProcesses(IVMConfig? vMConfig)
         {
-            if(!_api.VMConfig?.IsVmOptimizationEnabled ?? false) return;
+            if(!vMConfig?.IsVmOptimizationEnabled ?? false) return;
 
-            IlAnalyzer.StartPrecompilerBackgroundThread(_api.VMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
+            IlAnalyzer.StartPrecompilerBackgroundThread(vMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
 
-            if (_api.VMConfig?.IlEvmPrecompiledContractsPath is null) return;
+            if (vMConfig?.IlEvmPrecompiledContractsPath is null) return;
 
-            string path = _api.VMConfig!.IlEvmPrecompiledContractsPath;
+            string path = vMConfig!.IlEvmPrecompiledContractsPath;
             if (string.IsNullOrEmpty(path)) return;
 
             if(Directory.Exists(path))
@@ -277,10 +288,10 @@ namespace Nethermind.Init.Steps
                 Directory.CreateDirectory(path);
             }
 
-            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
+            if (vMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
 
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(_api.VMConfig!);
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(vMConfig!);
 
         }
 
