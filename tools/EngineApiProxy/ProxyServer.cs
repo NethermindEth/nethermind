@@ -175,12 +175,12 @@ namespace Nethermind.EngineApiProxy
                 // Check if there's an Authorization header and set it on the HttpClient for all future requests
                 if (context.Request.Headers.TryGetValue("Authorization", out var authHeader))
                 {
-                    _logger.Debug("Found Authorization header in client request, storing for future internal requests");
+                    _logger.Trace("Found Authorization header in client request, storing for future internal requests");
                     _httpClient.DefaultRequestHeaders.Remove("Authorization");
                     _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader.ToString());
                 }
                 
-                _logger.Debug($"Processing request: {request}");
+                _logger.Trace($"Processing request: {request}");
             }
             catch (Exception ex)
             {
@@ -432,7 +432,7 @@ namespace Nethermind.EngineApiProxy
                     // Log the presence of Authorization header in original headers
                     if (request.OriginalHeaders.TryGetValue("Authorization", out var origAuthHeader))
                     {
-                        _logger.Debug($"Found Authorization header in original request headers: {origAuthHeader.Substring(0, Math.Min(10, origAuthHeader.Length))}...");
+                        _logger.Trace($"Found Authorization header in original request headers: {origAuthHeader.Substring(0, Math.Min(10, origAuthHeader.Length))}...");
                     }
                     else
                     {
@@ -454,11 +454,11 @@ namespace Nethermind.EngineApiProxy
                             !string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
                         {
                             requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                            _logger.Debug($"Added header: {header.Key}");
+                            _logger.Trace($"Added header: {header.Key}");
                         }
                         else if (!string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
                         {
-                            _logger.Debug($"Skipped content header: {header.Key}");
+                            _logger.Trace($"Skipped content header: {header.Key}");
                         }
                     }
                 }

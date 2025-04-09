@@ -68,6 +68,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 _logger.Debug($"Sending block data fetch request with Authorization header: {authHeaderAdded}");
+                _logger.Info($"PR (M) -> EL: {requestJson}");
                 var response = await _httpClient.SendAsync(requestMessage);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -76,6 +77,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 var responseJson = await response.Content.ReadAsStringAsync();
+                _logger.Info($"EL -> PR (M): {responseJson}");
                 var jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 
                 if (jsonResponse?.Result is JObject blockData)
