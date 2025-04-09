@@ -8,15 +8,9 @@ namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
 
 public readonly record struct CallStat(Address Address, ulong Count);
 
-public class CallStatsAnalyzer : TopNAnalyzer<Address, Address, CallStat>
+public class CallStatsAnalyzer(int topN) : TopNAnalyzer<Address, Address, CallStat>(topN)
 {
-    private readonly Dictionary<Address, ulong> _counts;
-
-
-    public CallStatsAnalyzer(int topN) : base(topN)
-    {
-        _counts = new Dictionary<Address, ulong>();
-    }
+    private readonly Dictionary<Address, ulong> _counts = new();
 
 
     public override void Add(IEnumerable<Address> calls)
@@ -40,7 +34,7 @@ public class CallStatsAnalyzer : TopNAnalyzer<Address, Address, CallStat>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Add(Address call)
     {
-        Add(new[] { call });
+        Add([call]);
     }
 
 

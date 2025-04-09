@@ -3,38 +3,31 @@ using Nethermind.Evm;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
-public readonly struct NGram : IEquatable<NGram>
+public readonly struct NGram(ulong value = NGram.Null) : IEquatable<NGram>
 {
-    public readonly ulong Ulong0;
-    public const uint MaxSize = 7;
+    public readonly ulong Ulong0 = value;
+    private const uint MaxSize = 7;
     public const ulong Null = 0;
     public const Instruction Reset = Instruction.STOP;
 
-    private const ulong TwogramBitMask = (255UL << 8) | 255UL;
-    private const ulong ThreegramBitMask = (255UL << (8 * 2)) | TwogramBitMask;
-    private const ulong FourgramBitMask = (255U << (8 * 3)) | ThreegramBitMask;
-    private const ulong FivegramBitMask = (255UL << (8 * 4)) | FourgramBitMask;
-    private const ulong SixgramBitMask = (255UL << (8 * 5)) | FivegramBitMask;
-    private const ulong SevengramBitMask = (255UL << (8 * 6)) | SixgramBitMask;
+    private const ulong TwoGramBitMask = (255UL << 8) | 255UL;
+    private const ulong ThreeGramBitMask = (255UL << (8 * 2)) | TwoGramBitMask;
+    private const ulong FourGramBitMask = (255U << (8 * 3)) | ThreeGramBitMask;
+    private const ulong FiveGramBitMask = (255UL << (8 * 4)) | FourGramBitMask;
+    private const ulong SixGramBitMask = (255UL << (8 * 5)) | FiveGramBitMask;
+    private const ulong SevenGramBitMask = (255UL << (8 * 6)) | SixGramBitMask;
 
-    public static ulong[] bitMasks =
+    private static readonly ulong[] BitMasks =
     [
-        255UL, TwogramBitMask, ThreegramBitMask, FourgramBitMask, FivegramBitMask, SixgramBitMask, SevengramBitMask
+        255UL, TwoGramBitMask, ThreeGramBitMask, FourGramBitMask, FiveGramBitMask, SixGramBitMask, SevenGramBitMask
     ];
 
-    public static ulong[] byteIndexes =
+    private static readonly ulong[] ByteIndexes =
         { 255UL, 255UL << 8, 255UL << 16, 255UL << 24, 255UL << 32, 255UL << 40, 255UL << 48, 255UL << 56 };
-
-    public static ulong[] byteIndexShifts = { 0, 8, 16, 24, 32, 40, 48, 56 };
 
 
     public NGram(Instruction[] instructions) : this(FromInstructions(instructions))
     {
-    }
-
-    public NGram(ulong value = Null)
-    {
-        Ulong0 = value;
     }
 
     public override bool Equals(object? obj)
@@ -77,9 +70,9 @@ public readonly struct NGram : IEquatable<NGram>
 
     {
         for (var i = 1; i < MaxSize; i++)
-            if (byteIndexes[i - 1] < ngram.Ulong0)
+            if (ByteIndexes[i - 1] < ngram.Ulong0)
                 max = action(
-                        ngram.Ulong0 & bitMasks[i],
+                        ngram.Ulong0 & BitMasks[i],
                         currentSketchPos,
                         bufferSize,
                         minSupport,
@@ -97,7 +90,7 @@ public readonly struct NGram : IEquatable<NGram>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong ShiftAdd(ulong ngram, Instruction instruction)
+    private static ulong ShiftAdd(ulong ngram, Instruction instruction)
     {
         if (instruction == (byte)Reset) return 0;
         return (ngram << 8) | (byte)instruction;
@@ -109,7 +102,7 @@ public readonly struct NGram : IEquatable<NGram>
         var i = 0;
         for (i = 0; i < instructions.Length; i++)
         {
-            instructions[instructions.Length - 1 - i] = (byte)((ngram & byteIndexes[i]) >> (i * 8));
+            instructions[instructions.Length - 1 - i] = (byte)((ngram & ByteIndexes[i]) >> (i * 8));
             if (instructions[instructions.Length - 1 - i] == (byte)Reset) break;
         }
 
@@ -169,7 +162,7 @@ public readonly struct NGram : IEquatable<NGram>
     public IEnumerable<NGram> GetSubsequences()
     {
         for (var i = 1; i < MaxSize; i++)
-            if (byteIndexes[i - 1] < Ulong0)
-                yield return new NGram(Ulong0 & bitMasks[i]);
+            if (ByteIndexes[i - 1] < Ulong0)
+                yield return new NGram(Ulong0 & BitMasks[i]);
     }
 }

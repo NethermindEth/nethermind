@@ -27,20 +27,18 @@ public class CmSketchBuilder
 
     public CmSketch Build()
     {
-        if (_sketchBuckets.HasValue && _sketchNumberOfHashFunctions.HasValue)
-        {
-            var sketch = new CmSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
-            if (_sketchError.HasValue)
-                Debug.Assert(sketch.Error <= _sketchError,
-                    $" expected sketch error to be initialized to at most {_sketchError} found {sketch.Error}");
-            if (_confidence.HasValue)
-                Debug.Assert(sketch.Confidence >= _confidence,
-                    $" expected sketch confidence to be at least {_confidence} found {sketch.Confidence}");
-            return sketch;
-        }
+        if (!_sketchBuckets.HasValue || !_sketchNumberOfHashFunctions.HasValue)
+            throw new InvalidOperationException(
+                "(buckets and number of hash functions must be set.");
+        var sketch = new CmSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
+        if (_sketchError.HasValue)
+            Debug.Assert(sketch.Error <= _sketchError,
+                $" expected sketch error to be initialized to at most {_sketchError} found {sketch.Error}");
+        if (_confidence.HasValue)
+            Debug.Assert(sketch.Confidence >= _confidence,
+                $" expected sketch confidence to be at least {_confidence} found {sketch.Confidence}");
+        return sketch;
 
-        throw new InvalidOperationException(
-            "(buckets or max error) and (hash functions or min confidence) must be set.");
     }
 
     public CmSketchBuilder SetBuckets(int buckets)
@@ -70,17 +68,15 @@ public class CmSketchBuilder
     }
 }
 
-public class CmSketch
+public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
 {
-    public readonly int Buckets;
-    public readonly double Confidence;
+    public readonly double Confidence = 1.0d - Math.Pow(0.5d, numberOfhashFunctions);
 
-    public readonly double Error;
-    public readonly int HashFunctions;
-    private long[] _seeds;
+    public readonly double Error = 2.0d / numberOfBuckets;
+    private long[] _seeds = GenerateSeed(numberOfhashFunctions);
 
     private ulong _seen;
-    private ulong[] _sketch;
+    private ulong[] _sketch = new ulong[numberOfhashFunctions * numberOfBuckets];
 
 
     /*
@@ -94,17 +90,6 @@ public class CmSketch
             $" expected sketch error to be initialized to at most {maxError} found {Error}");
         Debug.Assert(Confidence >= confidence,
             $" expected sketch confidence to be at least {confidence} found {confidence}");
-    }
-
-
-    public CmSketch(int numberOfhashFunctions, int numberOfBuckets)
-    {
-        Confidence = 1.0d - Math.Pow(0.5d, numberOfhashFunctions);
-        _sketch = new ulong[numberOfhashFunctions * numberOfBuckets];
-        Buckets = numberOfBuckets;
-        Error = 2.0d / numberOfBuckets;
-        HashFunctions = numberOfhashFunctions;
-        _seeds = GenerateSeed(numberOfhashFunctions);
     }
 
 
@@ -122,12 +107,12 @@ public class CmSketch
     public void Update(ulong item)
     {
         _seen++;
-        for (var hasher = 0; hasher < HashFunctions; hasher++)
+        for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
             Increment(item, hasher);
     }
 
 
-    private long[] GenerateSeed(int numberOfhashFunctions)
+    private static long[] GenerateSeed(int numberOfhashFunctions)
     {
         var seeds = new long[numberOfhashFunctions];
         var rand = new Random();
@@ -140,15 +125,15 @@ public class CmSketch
     private ulong Increment(ulong item, int hasher)
     {
         return Interlocked.Increment(
-            ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)Buckets)]);
+            ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)numberOfBuckets)]);
     }
 
     public ulong Query(ulong item)
     {
         var minCount = ulong.MaxValue;
-        for (var hasher = 0; hasher < HashFunctions; hasher++)
+        for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
             minCount = Math.Min(minCount,
-                _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)Buckets)]);
+                _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)numberOfBuckets)]);
         return minCount;
     }
 
@@ -157,22 +142,22 @@ public class CmSketch
     {
         _seen++;
         var minCount = ulong.MaxValue;
-        for (var hasher = 0; hasher < HashFunctions; hasher++)
+        for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
             minCount = Math.Min(minCount, Increment(item, hasher));
         return minCount;
     }
 
     public CmSketch Reset()
     {
-        var cms = new CmSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), HashFunctions, Buckets);
-        _sketch = new ulong[Buckets * HashFunctions];
-        _seeds = GenerateSeed(HashFunctions);
+        var cms = new CmSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), numberOfhashFunctions, numberOfBuckets);
+        _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
+        _seeds = GenerateSeed(numberOfhashFunctions);
         return cms;
     }
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong ComputeHash(ulong value, int hasher)
+    private ulong ComputeHash(ulong value, int hasher)
     {
         // Ideally more families of hash functions should go here:
         switch (hasher)
@@ -184,7 +169,7 @@ public class CmSketch
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Fnv1A64(ulong value, long seed)
+    private static ulong Fnv1A64(ulong value, long seed)
     {
         // http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
         const ulong fnvOffsetBasis64 = 14695981039346656037; //64-bit
