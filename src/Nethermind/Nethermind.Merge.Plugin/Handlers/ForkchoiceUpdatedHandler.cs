@@ -304,11 +304,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
-        bool isPayloadSimulated = false;
+        bool isPayloadSimulated = _simulateBlockProduction && payloadAttributes is null;
 
-        if (_simulateBlockProduction && payloadAttributes is null)
+        if (isPayloadSimulated)
         {
-            isPayloadSimulated = true;
             payloadAttributes = newHeadBlock.Header.GenerateSimulatedPayload();
         }
 
