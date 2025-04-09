@@ -141,10 +141,10 @@ public class Worker: IDisposable
         {
             while (!_finishLatch.IsSet)
             {
-                if (_context.TryGetJob(out JobRef otherRef, out bool shouldRetry, _finishLatch))
+                if (_executor.TryStealJob(out JobRef jobRef, out bool shouldRetry))
                 {
                     ResetWaitCounter();
-                    otherRef.ExecuteNonInline(_context);
+                    jobRef.ExecuteNonInline(_context);
                     continue;
                 }
 
@@ -306,22 +306,6 @@ public class Context: IDisposable
         // HOT PATH
         _jobStack.Push(jobRef);
         _executor.NotifyNewJob();
-    }
-
-    internal bool TryGetJob(out JobRef jobRef, out bool shouldRetry, ManualResetEventSlim latch)
-    {
-        if (_jobStack.TryPop(out jobRef))
-        {
-            shouldRetry = false;
-            return true;
-        }
-
-        if (_executor.TryStealJob(out jobRef, out shouldRetry))
-        {
-            return true;
-        }
-
-        return false;
     }
 
     public bool TryStealFrom(out JobRef job, out bool shouldRetry)
