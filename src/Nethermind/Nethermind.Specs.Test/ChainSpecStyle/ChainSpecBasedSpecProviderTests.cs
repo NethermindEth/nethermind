@@ -356,12 +356,12 @@ public class ChainSpecBasedSpecProviderTests
             { TestName = "Cancun" };
             yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp + 100000000))
             { TestName = "Future" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp - 1))
-            { TestName = "Before Prague" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp))
-            { TestName = "Prague" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp + 100000000))
-            { TestName = "Future" };
+            // yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp - 1))
+            // { TestName = "Before Prague" };
+            // yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp))
+            // { TestName = "Prague" };
+            // yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp + 100000000))
+            // { TestName = "Future" };
         }
     }
 
@@ -390,8 +390,9 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
-        VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
-        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x0B98057eA310F4d31F2a452B414647007d1645d9")));
+        // TODO: uncomment in Pectra
+        // VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
+        // Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x0B98057eA310F4d31F2a452B414647007d1645d9")));
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
