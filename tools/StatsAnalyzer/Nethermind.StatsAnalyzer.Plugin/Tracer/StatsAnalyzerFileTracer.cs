@@ -24,7 +24,6 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
     protected readonly ProcessingMode ProcessingMode;
     protected readonly JsonSerializerOptions SerializerOptions = new();
     protected readonly SortOrder Sort;
-    protected readonly Semaphore WriteLock = new(1, 1);
     private int _pos;
     protected long CurrentBlock;
     protected Task CurrentTask = Task.CompletedTask;
@@ -60,14 +59,19 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
 
         ResetBufferAndTracer();
 
-        var semaphore = WriteLock;
-
         Enqueue(new Task(() =>
         {
             Ct.ThrowIfCancellationRequested();
-            WriteTrace(initialBlockNumber, currentBlockNumber, tracer, FileName, FileSystem, SerializerOptions, Ct,
-                semaphore);
-        }, Ct));
+            WriteTrace(
+                    initialBlockNumber,
+                    currentBlockNumber,
+                    tracer,
+                    FileName,
+                    FileSystem,
+                    SerializerOptions,
+                    Ct);
+        },
+        Ct));
 
         base.EndBlockTrace();
     }
@@ -151,10 +155,14 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
         throw new NotImplementedException();
     }
 
-    protected static void WriteTrace(long initialBlockNumber, long currentBlockNumber,
-        IStatsAnalyzerTxTracer<TxTrace> tracer,
-        string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions, CancellationToken ct,
-        Semaphore semaphore)
+    protected static void WriteTrace(
+            long initialBlockNumber,
+            long currentBlockNumber,
+            IStatsAnalyzerTxTracer<TxTrace> tracer,
+            string fileName,
+            IFileSystem fileSystem,
+            JsonSerializerOptions serializerOptions,
+            CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -162,19 +170,11 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
 
         ct.ThrowIfCancellationRequested();
 
-        semaphore.WaitOne();
-        try
+        File.WriteAllText(fileName, string.Empty);
+        using (var file = fileSystem.File.OpenWrite(fileName))
+        using (var jsonWriter = new Utf8JsonWriter(file))
         {
-            File.WriteAllText(fileName, string.Empty);
-            using (var file = fileSystem.File.OpenWrite(fileName))
-            using (var jsonWriter = new Utf8JsonWriter(file))
-            {
-                JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
-            }
-        }
-        finally
-        {
-            semaphore.Release();
+            JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
         }
     }
 }
