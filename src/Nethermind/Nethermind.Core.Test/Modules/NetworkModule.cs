@@ -39,12 +39,11 @@ public class NetworkModule(IInitConfig initConfig) : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
-            .AddSingleton<IPivot, Pivot>()
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()

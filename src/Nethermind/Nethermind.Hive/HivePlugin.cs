@@ -10,10 +10,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Hive;
 
-public class HivePlugin : INethermindPlugin
+public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 {
     private INethermindApi _api = null!;
-    private IHiveConfig _hiveConfig = null!;
     private ILogger _logger;
     private readonly CancellationTokenSource _disposeCancellationToken = new();
 
@@ -33,42 +32,36 @@ public class HivePlugin : INethermindPlugin
     public Task Init(INethermindApi api)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
-        _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
         _logger = _api.LogManager.GetClassLogger();
-
-        Enabled = _hiveConfig.Enabled;
 
         return Task.CompletedTask;
     }
 
     public async Task InitNetworkProtocol()
     {
-        if (Enabled)
-        {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-            if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
-            if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
-            if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+        ArgumentNullException.ThrowIfNull(_api.BlockTree);
+        ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
+        ArgumentNullException.ThrowIfNull(_api.ConfigProvider);
+        ArgumentNullException.ThrowIfNull(_api.LogManager);
+        ArgumentNullException.ThrowIfNull(_api.FileSystem);
+        ArgumentNullException.ThrowIfNull(_api.BlockValidator);
 
-            _api.TxPool!.AcceptTxWhenNotSynced = true;
+        _api.TxPool!.AcceptTxWhenNotSynced = true;
 
-            _api.TxGossipPolicy.Policies.Clear();
+        _api.TxGossipPolicy.Policies.Clear();
 
-            HiveRunner hiveRunner = new(
-                _api.BlockTree,
-                _api.BlockProcessingQueue,
-                _api.ConfigProvider,
-                _api.LogManager.GetClassLogger(),
-                _api.FileSystem,
-                _api.BlockValidator
-            );
+        HiveRunner hiveRunner = new(
+            _api.BlockTree,
+            _api.BlockProcessingQueue,
+            _api.ConfigProvider,
+            _api.LogManager.GetClassLogger(),
+            _api.FileSystem,
+            _api.BlockValidator
+        );
 
-            if (_logger.IsInfo) _logger.Info("Hive is starting");
+        if (_logger.IsInfo) _logger.Info("Hive is starting");
 
-            await hiveRunner.Start(_disposeCancellationToken.Token);
-        }
+        await hiveRunner.Start(_disposeCancellationToken.Token);
     }
 
     public Task InitRpcModules()
@@ -76,5 +69,5 @@ public class HivePlugin : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    private bool Enabled { get; set; }
+    public bool Enabled => hiveConfig.Enabled;
 }

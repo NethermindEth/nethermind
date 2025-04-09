@@ -97,11 +97,11 @@ namespace Nethermind.Db
             _db.Clear();
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Keys;
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Value) : Values;
 
         public virtual IWriteBatch StartWriteBatch()
         {
@@ -113,10 +113,10 @@ namespace Nethermind.Db
 
         public int Count => _db.Count;
 
-        public long GetSize() => 0;
-        public long GetCacheSize(bool includeCacheSize) => 0;
-        public long GetIndexSize() => 0;
-        public long GetMemtableSize() => 0;
+        public static long GetSize() => 0;
+        public static long GetCacheSize(bool includeCacheSize) => 0;
+        public static long GetIndexSize() => 0;
+        public static long GetMemtableSize() => 0;
 
         public void Dispose()
         {
@@ -167,5 +167,7 @@ namespace Nethermind.Db
                 Size = Count
             };
         }
+
+        private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
 }

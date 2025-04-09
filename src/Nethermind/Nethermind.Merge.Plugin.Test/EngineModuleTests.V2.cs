@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -267,7 +268,6 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task getPayloadV2_received_fees_should_be_equal_to_block_value_in_result()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
@@ -281,8 +281,7 @@ public partial class EngineModuleTests
         Transaction[] transactions =
             BuildTransactions(chain, startingHead, sender, Address.Zero, count, value, out _, out _);
 
-        chain.AddTransactions(transactions);
-        chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
+        Task blockImprovementWait = chain.WaitForImprovedBlock();
 
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -294,9 +293,9 @@ public partial class EngineModuleTests
                 })
             .Result.Data.PayloadId!;
 
-        UInt256 startingBalance = chain.StateReader.GetBalance(chain.State.StateRoot, feeRecipient);
+        UInt256 startingBalance = chain.ReadOnlyState.GetBalance(feeRecipient);
 
-        await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
         GetPayloadV2Result getPayloadResult = (await rpc.engine_getPayloadV2(Bytes.FromHexString(payloadId))).Data!;
 
         ResultWrapper<PayloadStatusV1> executePayloadResult =
@@ -363,7 +362,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(txs);
 
         await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, false, withdrawals);
 
         await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
@@ -505,8 +504,13 @@ public partial class EngineModuleTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
+            builder
+                .AddSingleton<IBlockTree>(blockTree)
+                .AddSingleton(new TestBlockchain.Configuration()
+                {
+                    SuggestGenesisOnStart = false,
+                }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
@@ -524,8 +528,12 @@ public partial class EngineModuleTests
             .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton(new TestBlockchain.Configuration()
+            {
+                SuggestGenesisOnStart = false,
+            }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
@@ -829,15 +837,9 @@ public partial class EngineModuleTests
         Withdrawal[]? withdrawals,
         bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
-
-        if (waitForBlockImprovement)
-        {
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
-        }
+        Task blockImprovementWait = waitForBlockImprovement
+            ? chain.WaitForImprovedBlock()
+            : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
         PayloadAttributes payloadAttributes = new PayloadAttributes
@@ -849,8 +851,7 @@ public partial class EngineModuleTests
         };
         string? payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId;
 
-        if (waitForBlockImprovement)
-            await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementWait;
 
         ResultWrapper<ExecutionPayload?> getPayloadResult =
             await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId!));

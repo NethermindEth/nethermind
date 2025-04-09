@@ -62,7 +62,7 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
@@ -99,9 +99,9 @@ public class JsonRpcServiceTests
         string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(static _ =>
-            ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(Array.Empty<SimulateBlockResult>()));
+            ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
-        Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult>()));
+        Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
     }
 
 

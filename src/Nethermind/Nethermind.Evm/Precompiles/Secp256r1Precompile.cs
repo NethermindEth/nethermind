@@ -21,13 +21,11 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != 160)
-            return (null, true);
-
-        var isValid = Secp256r1.VerifySignature(in inputData);
-
         Metrics.Secp256r1Precompile++;
 
-        return (isValid ? ValidResult : null, true);
+        return (
+            Secp256r1.VerifySignature(inputData) ? ValidResult : null,
+            true
+        );
     }
 }

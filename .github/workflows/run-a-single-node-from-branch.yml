@@ -14,15 +14,18 @@ on:
           - sepolia
           - chiado
           - holesky
+          - hoodi
           - op-mainnet
           - op-sepolia
           - base-mainnet
-          - base-sepolia
+          - base-sepolia          
+          - world-sepolia
+          - world-mainnet
           - joc-mainnet
           - joc-testnet
           - linea-mainnet
           - linea-sepolia
-          - taiko-mainnet
+          - taiko-alethia
           - taiko-hekla
           - energyweb
           - volta
@@ -343,7 +346,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           cat "downloaded-artifacts/machine-details/$FILE" >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
-          
+
           cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
           rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
           echo "RPC URL extracted is: $rpc_url"

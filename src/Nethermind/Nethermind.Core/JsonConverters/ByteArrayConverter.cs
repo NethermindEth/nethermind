@@ -30,7 +30,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
             return null;
-        else if (tokenType != JsonTokenType.String)
+        else if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
         {
             ThrowInvalidOperationException();
         }
@@ -56,6 +56,28 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             ArrayPool<byte>.Shared.Return(bytes);
 
         return returnVal;
+    }
+
+    public static void Convert(ref Utf8JsonReader reader, scoped Span<byte> span)
+    {
+        JsonTokenType tokenType = reader.TokenType;
+        if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
+        {
+            return;
+        }
+
+        if (tokenType != JsonTokenType.String)
+        {
+            ThrowInvalidOperationException();
+        }
+
+        ReadOnlySpan<byte> hex = reader.ValueSpan;
+        if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
+        {
+            hex = hex[2..];
+        }
+
+        Bytes.FromUtf8HexString(hex, span);
     }
 
     [DoesNotReturn]

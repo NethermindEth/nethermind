@@ -118,11 +118,10 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             'apikey': key,
         }
         response = requests.get(f'https://{apiUrl}/api', params=params)
-        latestBlock = int(json.loads(response.text)['result'], 16)
     else:
         data_req = '{"id":0,"jsonrpc":"2.0","method": "eth_blockNumber","params": []}'
-        response = requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req).text
-        latestBlock = int(json.loads(response)['result'], 16)
+        response = requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req)
+    latestBlock = int(json.loads(response.text)['result'], 16)
 
     baseBlock = latestBlock - blockReduced
     baseBlock = baseBlock - baseBlock % multiplierRequirement
@@ -135,10 +134,11 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             'boolean': 'true',
             'apikey': key,
         }
-        pivot = json.loads(requests.get(f'https://{apiUrl}/api', params=params))
+        response = requests.get(f'https://{apiUrl}/api', params=params)
     else:
         data_req = f'{{"id":0,"jsonrpc":"2.0","method": "eth_getBlockByNumber","params": ["{hex(baseBlock)}", false]}}'
-        pivot = json.loads(requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req).text)
+        response = requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req)
+    pivot = json.loads(response.text)
 
     pivotHash = pivot['result']['hash']
     pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)

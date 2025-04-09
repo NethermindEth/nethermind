@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/joc-mainnet.json",
     "GenesisHash": "0x1b54bfa6846a13aacc57066840ec10d1b74b06870539bbc8a3d1b19bdc566733",
     "BaseDbPath": "nethermind_db/joc-mainnet",
-    "LogFileName": "joc-mainnet.logs.txt"
+    "LogFileName": "joc-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 15880000,
-    "PivotHash": "0xbcb183a4b55493b7e04d8b5aa0625645d396b48ed8f29bc5da9c5e6fe816a2b2",
-    "PivotTotalDifficulty": "30397226"
+    "PivotNumber": 16850000,
+    "PivotHash": "0xb33ba69ec0f1982fc911d15e2fd5b950a80f3017925062ff250cc2f3627c9f31",
+    "PivotTotalDifficulty": "31764791"
   },
   "Metrics": {
     "NodeName": "JOC-Mainnet"

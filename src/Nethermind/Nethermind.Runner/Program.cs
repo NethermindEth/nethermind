@@ -38,6 +38,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
@@ -50,6 +51,7 @@ Regex.CacheSize = 128;
 #if !DEBUG
 ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
 #endif
+BlocksConfig.AddVersionToExtraData = true;
 
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
@@ -147,7 +149,6 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    processExitSource = new(cancellationToken);
 
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
@@ -182,27 +183,11 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    ApiBuilder apiBuilder = new(configProvider, logManager);
-    IList<INethermindPlugin> plugins = [];
+    processExitSource = new(cancellationToken);
+    ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
+    IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
 
-    foreach (Type pluginType in pluginLoader.PluginTypes)
-    {
-        try
-        {
-            if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
-                plugins.Add(plugin);
-        }
-        catch (Exception ex)
-        {
-            if (logger.IsError) logger.Error($"Failed to create plugin {pluginType.FullName}", ex);
-        }
-    }
-
-    INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-    ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-    nethermindApi.ProcessExit = processExitSource;
-
-    EthereumRunner ethereumRunner = new(nethermindApi);
     try
     {
         await ethereumRunner.Start(processExitSource.Token);
