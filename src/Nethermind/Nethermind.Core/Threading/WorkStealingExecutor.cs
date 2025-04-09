@@ -48,7 +48,7 @@ public class WorkStealingExecutor: IDisposable
         jobRef.ResetEvent.Wait();
     }
 
-    public bool TryStealJob(out JobRef job, out bool shouldRetry)
+    public bool TryStealJob(out JobRef job, out bool shouldRetry, int ctxToCheckFirst)
     {
         shouldRetry = false;
         if (_incomingJob.TryDequeue(out job!))
@@ -57,10 +57,13 @@ public class WorkStealingExecutor: IDisposable
         }
 
         int activeContexts = _workerCount;
-        int ctxToCheckFirst = Interlocked.Increment(ref _stealPartitionCounter);
-        if (ctxToCheckFirst > activeContexts)
+        if (ctxToCheckFirst == -1)
         {
-            Interlocked.Exchange(ref _stealPartitionCounter, ctxToCheckFirst % activeContexts);
+            ctxToCheckFirst = Interlocked.Increment(ref _stealPartitionCounter);
+            if (ctxToCheckFirst > activeContexts)
+            {
+                Interlocked.Exchange(ref _stealPartitionCounter, ctxToCheckFirst % activeContexts);
+            }
         }
 
         // Main bottleneck
@@ -240,6 +243,7 @@ public class Context: IDisposable
     private readonly WorkStealingExecutor _executor;
     private readonly int _contextIdx;
     private readonly Worker _worker;
+    private XorShift64Star _randomizer = new XorShift64Star();
 
     public Context(WorkStealingExecutor executor, int contextIdx, int initialStackSize)
     {
@@ -312,7 +316,7 @@ public class Context: IDisposable
 
                 otherRef!.ExecuteNonInline(this);
             }
-            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry))
+            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry, _randomizer.NextInt(1000)))
             {
                 otherRef!.ExecuteNonInline(this);
             }
@@ -341,7 +345,7 @@ public class Context: IDisposable
             return true;
         }
 
-        if (_executor.TryStealJob(out jobRef, out shouldRetry))
+        if (_executor.TryStealJob(out jobRef, out shouldRetry, _randomizer.NextInt(1000)))
         {
             return true;
         }
@@ -395,5 +399,76 @@ public struct JobRef(IJob job, ManualResetEventSlim _resetEvent)
         job.Execute(context);
 
         ResetEvent.Set();
+    }
+}
+
+/// <summary>
+/// [xorshift*] is a fast pseudorandom number generator which will
+/// even tolerate weak seeding, as long as it's not zero.
+/// </summary>
+/// <seealso href="https://en.wikipedia.org/wiki/Xorshift#xorshift*"/>
+public struct XorShift64Star
+{
+    private ulong _state;
+    private static long _counter = 0;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="XorShift64Star"/> struct.
+    /// Any non-zero seed will do -- this uses a simple global counter for seeding.
+    /// </summary>
+    public XorShift64Star()
+    {
+        ulong seed;
+        do
+        {
+            seed = (ulong)Interlocked.Increment(ref _counter);
+        } while (seed == 0);
+
+        _state = seed;
+    }
+
+    /// <summary>
+    /// Gets the next pseudorandom <see cref="ulong"/> value.
+    /// </summary>
+    /// <returns>The next pseudorandom <see cref="ulong"/> value.</returns>
+    public ulong Next()
+    {
+        ulong x = _state;
+        System.Diagnostics.Debug.Assert(x != 0);
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        _state = x;
+        return x * 0x2545F4914F6CDD1D;
+    }
+
+    /// <summary>
+    /// Returns a pseudorandom <see cref="int"/> value within the range [0, <paramref name="n"/>).
+    /// </summary>
+    /// <param name="n">The exclusive upper bound of the random number returned.</param>
+    /// <returns>A pseudorandom <see cref="int"/> value within the range [0, <paramref name="n"/>).</returns>
+    public int NextInt(int n)
+    {
+        return (int)(Next() % (ulong)n);
+    }
+
+    /// <summary>
+    /// Returns a pseudorandom <see cref="uint"/> value within the range [0, <paramref name="n"/>).
+    /// </summary>
+    /// <param name="n">The exclusive upper bound of the random number returned.</param>
+    /// <returns>A pseudorandom <see cref="uint"/> value within the range [0, <paramref name="n"/>).</returns>
+    public uint NextUInt(uint n)
+    {
+        return (uint)(Next() % n);
+    }
+
+    /// <summary>
+    /// Returns a pseudorandom <see cref="long"/> value within the range [0, <paramref name="n"/>).
+    /// </summary>
+    /// <param name="n">The exclusive upper bound of the random number returned.</param>
+    /// <returns>A pseudorandom <see cref="long"/> value within the range [0, <paramref name="n"/>).</returns>
+    public long NextLong(long n)
+    {
+        return (long)(Next() % (ulong)n);
     }
 }
