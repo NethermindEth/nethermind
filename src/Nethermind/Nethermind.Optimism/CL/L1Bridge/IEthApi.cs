@@ -18,7 +18,7 @@ public interface IEthApi
     Task<L1Block?> GetFinalized(bool fullTxs);
 }
 
-public struct L1Block
+public readonly struct L1Block
 {
     public byte[] ExtraData { get; init; }
     public Hash256 Hash { get; init; }
@@ -32,7 +32,7 @@ public struct L1Block
     public Hash256 MixHash { get; init; }
 }
 
-public struct L1Transaction
+public readonly struct L1Transaction
 {
     public Hash256? Hash { get; init; }
     public TxType? Type { get; init; }
