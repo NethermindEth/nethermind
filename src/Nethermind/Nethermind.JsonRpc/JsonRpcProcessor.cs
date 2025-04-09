@@ -381,7 +381,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms"");
+            if (_logger.IsDebug) _logger.Debug($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             Metrics.JsonRpcSuccesses++;
         }
 
