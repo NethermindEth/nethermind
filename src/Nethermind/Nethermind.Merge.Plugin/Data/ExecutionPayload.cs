@@ -203,6 +203,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         {
             return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
         }
+        catch (ArgumentException)
+        {
+            return new TransactionDecodingResult($"Transaction {i} is not valid");
+        }
     }
 
     /// <summary>

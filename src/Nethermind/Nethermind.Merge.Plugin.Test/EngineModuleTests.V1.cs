@@ -355,12 +355,11 @@ public partial class EngineModuleTests
             yield return GetNewBlockRequestBadDataTestCase(static r => r.StateRoot, TestItem.KeccakD);
 
             Bloom bloom = new();
-            bloom.Add(new[]
-            {
+            bloom.Add([
                 Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakG).TestObject
-            });
+            ]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.LogsBloom, bloom);
-            yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, new[] { new byte[] { 1 } });
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, [[1]]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1);
         }
     }
