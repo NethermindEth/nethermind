@@ -17,14 +17,7 @@ namespace Nethermind.Config
         private const string _clientExtraData = "Nethermind";
         public static string DefaultExtraData = _clientExtraData;
 
-        public static void SetDefaultExtraDataWithVersion()
-        {
-            DefaultExtraData = GetDefaultVersionExtraData();
-            // Update attribute default
-            PropertyInfo propertyInfo = typeof(IBlocksConfig).GetProperty(nameof(IBlocksConfig.ExtraData));
-            ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-            attribute.DefaultValue = DefaultExtraData;
-        }
+        public static void SetDefaultExtraDataWithVersion() => DefaultExtraData = GetDefaultVersionExtraData();
 
         private byte[] _extraDataBytes = Encoding.UTF8.GetBytes(DefaultExtraData);
         private string _extraDataString = DefaultExtraData;
