@@ -100,43 +100,47 @@ sequenceDiagram
     participant P as Proxy
     participant EC as Execution Client
 
+    alt FCU PayloadAttributesd handling
     %% Step 1: CL sends engine_forkChoiceUpdated
     CL->>P: (1) engine_forkChoiceUpdated (with PayloadAttributes null)
-    Note over P: Intercept & delay engine_forkChoiceUpdated
     
-    %% Step 2: based on request (1) PR generates PayloadAttributes
-    alt Validation enabled && PayloadAttributes null
-    
-    P->>P: (2) generate PayloadAttributes
+    %% Step 2: based on request (1) PR generates PayloadAttributes    
+    P->>P: (2) generate PayloadAttributes and add it to request
     Note over P: Append PayloadAttributes to FCU
     
     %% Step 3: PR sends generated request (2) to EL
     P->>EC: (3) engine_forkChoiceUpdated (forkchoiceState + PayloadAttributes)
+    Note over EC: Block Production Starts
     EC->>P: (3) engine_forkChoiceUpdated response (PayloadID)
-       
-    %% Step 4: getting PayloadID from EL (3), sending engine_getPayload with it
-    Note over P: Validation start
-    alt Validation
-    P->>EC: (4) engine_getPayload (PayloadID)
-    EC->>P: (4) engine_getPayload Response (execution payload)
-    
-    %% Step 5: Sending engine_newPayload with generated (4) payload
-    P->>EC: (5) engine_newPayload(generated from getPayload response)
-    EC->>P: (5) -- engine_newPayload response (save in case of error)
+    P->>P: (3) Store PayloadId for future us
+
+    %% Step 4: Respond to CL with PayloadId null
+    P->>CL: (4) engine_forkChoiceUpdated response (PayloadId=null)
     end
 
-    end
-    %% Step 6: Release blocked original FCU request (1)
-    Note over P: Release FCU
-    P->>EC: (1) engine_forkChoiceUpdated (resuming)
-    EC->>P: (1) engine_forkChoiceUpdated response
-    P->>CL: (1) engine_forkChoiceUpdated response 
     
-    %% Step 7: Proceed a valid engine_newPayload (if any)
-    CL->>P: (6) engine_newPayload (next block payload)
-    P->>EC: (6) engine_newPayload response
-   
-    Note over P: Process any new engine_forkChoiceUpdated messages
+    alt Validation
+    %% Step 5: engine_newPaylaod triggers Validation flow
+    CL->>P: (5) engine_newPayload (from real block proposer)
+    
+    %% Step 6: getting PayloadID from EL (3), sending engine_getPayload with it
+    Note over P: Validation start
+    P->>EC: (6) engine_getPayload (PayloadID)
+    EC->>P: (6) engine_getPayload Response (execution payload)
+    
+    %% Step 7: Sending engine_newPayload with generated (4) payload
+    P->>EC: (7) engine_newPayload(generated from getPayload response)
+    EC->>P: (7) -- engine_newPayload response (save in case of error)
+    end
+
+    %% Step 8: Release blocked original newPayload request (5)
+    Note over P: Release newPayload
+    P->>EC: (5) engine_newPayload (resuming)
+    EC->>P: (5) engine_newPayload response
+    P->>CL: (5) engine_newPayload response 
+
+    %% Step 9: engine_FCU received and flow starts from beggining
+    Note over P: engine_FCU received and flow starts from beggining
 
 ```
 
