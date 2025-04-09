@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization.Json;
 using System.Threading;
 using Nethermind.Core.Collections;
 
@@ -16,7 +17,7 @@ public class WorkStealingExecutor: IDisposable
     private readonly int _workerCount = 0;
 
     private int _asleepWorker = 0;
-    // private uint _roundRobinStealIdx = 0;
+    private uint _roundRobinStealIdx = 0;
     // private uint _wakeUpCounter = 0;
 
     private readonly Context[] _workerContexts;
@@ -57,7 +58,10 @@ public class WorkStealingExecutor: IDisposable
         shouldRetry = false;
         int activeContexts = _workerCount;
 
-        if (nextContextToCheck < 0) nextContextToCheck += _workerCount;
+        if (nextContextToCheck < 0)
+        {
+            nextContextToCheck = (int)(Interlocked.Increment(ref _roundRobinStealIdx) % _workerCount);
+        }
 
         for (int i = 0; i < activeContexts; i++)
         {
@@ -104,22 +108,22 @@ public class WorkStealingExecutor: IDisposable
         */
     }
 
-    public void NotifyNewJob(int fromContext)
+    public void NotifyNewJob(int fromContext, int count = 1)
     {
         // HOT PATH
         if (_asleepWorker == 0) return;
+        if (count == 0) return;
 
         for (int i = 0; i < _workerCount; i++)
         {
-            // if (!_sleepingContextQueue.TryDequeue(out int ctxId)) break;
-            // Interlocked.CompareExchange(ref _sleepingContexts[ctxId], false, true);
+            if (!_sleepingContextQueue.TryDequeue(out int ctxId)) break;
+            Interlocked.CompareExchange(ref _sleepingContexts[ctxId], false, true);
 
-            int ctxIdx = (fromContext + i + 1) % _workerCount;
-
-            Context context = _workerContexts[ctxIdx];
+            Context context = _workerContexts[ctxId];
             if (context.TryWakeUp(fromContext))
             {
-                break;
+                count--;
+                if (count == 0) break;
             }
         }
     }
@@ -175,6 +179,8 @@ public class Worker: IDisposable
                     jobRef.ExecuteNonInline(_context);
                     continue;
                 }
+
+                _nextContextToCheck = -1;
 
                 if (!shouldRetry)
                 {
@@ -263,23 +269,12 @@ public class Context: IDisposable
 
     public void Fork(IJob job1, IJob job2)
     {
-        if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
-        {
-            resetEvent = new ManualResetEventSlim(false);
-        }
-        else
-        {
-            resetEvent.Reset();
-        }
-
-        JobRef job2Ref = new(job2, resetEvent);
-        Push(job2Ref);
+        var latch = PushJob(job2);
         job1.Execute(this);
-
-        WaitForJobOrKeepBusy(job2Ref.ResetEvent);
+        WaitForJobOrKeepBusy(latch);
     }
 
-    public ManualResetEventSlim PushJob(IJob job)
+    public ManualResetEventSlim PushJob(IJob job, bool notify = true)
     {
         if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
         {
@@ -291,9 +286,45 @@ public class Context: IDisposable
         }
 
         JobRef jobRef = new(job, resetEvent);
-        Push(jobRef);
+
+        // HOT PATH
+        _jobStack.Push(jobRef);
+        if (notify) _executor.NotifyNewJob(ContextIdx);
 
         return resetEvent;
+    }
+
+    public void NotifyNewJob(int count)
+    {
+        _executor.NotifyNewJob(ContextIdx, count);
+    }
+
+    public void MultiPushJob(ReadOnlySpan<IJob> jobs, Span<ManualResetEventSlim> latches)
+    {
+        RefList16<JobRef> jobRefs = new RefList16<JobRef>();
+
+        for (int i = 0; i < jobs.Length; i++)
+        {
+            if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
+            {
+                resetEvent = new ManualResetEventSlim(false);
+            }
+            else
+            {
+                resetEvent.Reset();
+            }
+
+            JobRef jobRef = new(jobs[i], resetEvent);
+            jobRefs.Add(jobRef);
+            latches[i] = resetEvent;
+        }
+
+        // HOT PATH
+        if (jobs.Length != 0)
+        {
+            _jobStack.PushMany(jobRefs.AsSpan());
+            _executor.NotifyNewJob(ContextIdx, jobs.Length);
+        }
     }
 
     public void WaitForJobOrKeepBusy(ManualResetEventSlim latch)
@@ -330,13 +361,6 @@ public class Context: IDisposable
         _latchPool.Push(latch);
     }
 
-    private void Push(JobRef jobRef)
-    {
-        // HOT PATH
-        _jobStack.Push(jobRef);
-        _executor.NotifyNewJob(ContextIdx);
-    }
-
     public bool TryStealFrom(out JobRef job, out bool shouldRetry)
     {
         return _jobStack.TryDequeue(out job!, out shouldRetry);
@@ -354,20 +378,36 @@ public class Context: IDisposable
 
     public void RunJob16(ref RefList16<IJob> jobs)
     {
-        RefList16<ManualResetEventSlim> jobLatches = new RefList16<ManualResetEventSlim>(0);
+        if (jobs.Count == 0) return;
+        if (jobs.Count == 1)
+        {
+            jobs[0]!.Execute(this);
+            return;
+        }
 
+
+        RefList16<ManualResetEventSlim> jobLatches = new RefList16<ManualResetEventSlim>(jobs.Count - 1);
+
+        if (jobs.Count > 1)
+        {
+            MultiPushJob(jobs.AsSpan()[1..], jobLatches.AsSpan());
+        }
+        /*
         for (int i = jobs.Count - 1; i > 0; i--)
         {
             // In reverse order
-            jobLatches.Add(PushJob(jobs[i]!));
+            jobLatches.Add(PushJob(jobs[i]!, false));
         }
+        NotifyNewJob(jobLatches.Count);
+        */
 
         // Inline
         jobs[0]!.Execute(this);
 
         // Wait for the rest
-        for (int i = 0; i < jobLatches.Count; i++)
+        for (int i = jobLatches.Count - 1; i >= 0; i--)
         {
+            // In reverse order
             WaitForJobOrKeepBusy(jobLatches[i]!);
         }
     }

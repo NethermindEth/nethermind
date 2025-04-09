@@ -343,7 +343,6 @@ namespace Nethermind.Benchmarks.Store
             }
             tempTree.Commit();
         }
-        */
 
         [Benchmark]
         public void InsertAndCommitRepeatedlyTimes()
@@ -372,6 +371,7 @@ namespace Nethermind.Benchmarks.Store
                 }
             }
         }
+        */
 
         [Benchmark]
         public void InsertAndCommitRepeatedlyTimesWithExecutor()

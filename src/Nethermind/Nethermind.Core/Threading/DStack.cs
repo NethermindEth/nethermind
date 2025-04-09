@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Threading;
 
@@ -20,6 +22,15 @@ public class DStack<T>(int initialCapacity)
 
     private long _atomicEndAndStart;
     private T[] _buffer = new T[Math.Max(initialCapacity, 1)];
+
+    public int Count
+    {
+        get
+        {
+            (int startIdx, int endIdx) = GetStartAndEndIdx();
+            return endIdx - startIdx;
+        }
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryPop(out T? item)
@@ -69,6 +80,11 @@ public class DStack<T>(int initialCapacity)
     {
         using var _ = _locker.Acquire();
 
+        PushUnlock(item);
+    }
+
+    private void PushUnlock(T item)
+    {
         (int startIdx, int endIdx) = GetStartAndEndIdx();
 
         int newEndIdx = endIdx + 1;
@@ -84,6 +100,16 @@ public class DStack<T>(int initialCapacity)
 
         _buffer[newEndIdx] = item;
         SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
+    }
+
+    public void PushMany(Span<T> items)
+    {
+        using var _ = _locker.Acquire();
+
+        foreach (var item in items)
+        {
+            PushUnlock(item);
+        }
     }
 
     public bool TryDequeue(out T? item, out bool shouldRetry)

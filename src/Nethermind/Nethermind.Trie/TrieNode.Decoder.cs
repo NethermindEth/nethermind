@@ -489,23 +489,7 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    RefList16<ManualResetEventSlim> latches = new RefList16<ManualResetEventSlim>(0);
-                    for (int i = 0; i < trieNodeToCheck.Count; i++)
-                    {
-                        if (i == trieNodeToCheck.Count - 1)
-                        {
-                            trieNodeToCheck[i].Execute(ctx); // inline
-                        }
-                        else
-                        {
-                            latches.Add(ctx.PushJob(trieNodeToCheck[i]));
-                        }
-                    }
-
-                    for (int i = latches.Count - 1; i >= 0; i--)
-                    {
-                        ctx.WaitForJobOrKeepBusy(latches[i]);
-                    }
+                    ctx.RunJob16(ref trieNodeToCheck);
                 }
                 else if (item.IsExtension)
                 {
