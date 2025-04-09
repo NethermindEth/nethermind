@@ -46,7 +46,10 @@ namespace Nethermind.Config
                 index = version.Length;
             }
 
-            return $"{DefaultExtraData} v{version[..index]}{alpha}";
+            // Don't include too much if the version is long (can be in custom builds)
+            index = Math.Min(index, 9);
+            string defaultExtraData = $"{DefaultExtraData} v{version[..index]}{alpha}";
+            return defaultExtraData;
         }
 
         public bool Enabled { get; set; }
