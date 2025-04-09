@@ -21,41 +21,50 @@ namespace Nethermind.Core.Crypto;
 /// On a lock failure, it just moves on with execution.
 /// When a potential hit happens, the value of the result and the value of the key are copied on the stack to release the lock ASAP.
 /// </summary>
-public static unsafe class KeccakCache
+public unsafe class KeccakCache : IDisposable
 {
-    /// <summary>
-    /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
-    /// </summary>
-    public const int Count = BucketMask + 1;
+    public static readonly KeccakCache Instance = new(0x20000);
 
-    private const int BucketMask = 0x0001_FFFF;
-    private const uint HashMask = unchecked((uint)~BucketMask);
+    /// <summary>
+    /// Count should be a power of two, to ensure proper bit operations
+    /// </summary>
+    public readonly uint Count;
+
+    private readonly uint _bucketMask;
+    private readonly uint _hashMask;
+
     private const uint LockMarker = 0x0000_8000;
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
 
-    private static readonly Entry* Memory;
+    private readonly Entry* _memory;
 
-    static KeccakCache()
+    public KeccakCache(uint count)
     {
-        const UIntPtr size = Count * Entry.Size;
+        Debug.Assert(BitOperations.IsPow2(count));
+
+        UIntPtr size = count * Entry.Size;
 
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
-        Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
-        NativeMemory.Clear(Memory, size);
+        Count = count;
+        _bucketMask = count - 1;
+        _hashMask = ~_bucketMask;
+
+        _memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
+        NativeMemory.Clear(_memory, size);
         GC.AddMemoryPressure((long)size);
     }
 
     [SkipLocalsInit]
-    public static ValueHash256 Compute(ReadOnlySpan<byte> input)
+    public ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
         ComputeTo(input, out ValueHash256 keccak256);
         return keccak256;
     }
 
     [SkipLocalsInit]
-    public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
+    public void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
         // Special cases jump forward as unpredicted
         if (input.Length is 0 or > Entry.MaxPayloadLength)
@@ -64,15 +73,15 @@ public static unsafe class KeccakCache
         }
 
         int hashCode = input.FastHash();
-        uint index = (uint)hashCode & BucketMask;
+        uint index = (uint)hashCode & _bucketMask;
 
         Debug.Assert(index < Count);
 
-        ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
+        ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(_memory), index);
 
         // Half the hash his encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
-        uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
+        uint combined = (_hashMask & (uint)hashCode) | (uint)input.Length;
 
         // Compare with volatile read and then try to lock with CAS
         if (Volatile.Read(ref e.Combined) == combined &&
@@ -165,7 +174,7 @@ public static unsafe class KeccakCache
     /// <summary>
     /// Gets the bucket for tests.
     /// </summary>
-    public static uint GetBucket(ReadOnlySpan<byte> input) => (uint)input.FastHash() & BucketMask;
+    public uint GetBucket(ReadOnlySpan<byte> input) => (uint)input.FastHash() & _bucketMask;
 
     /// <summary>
     /// An entry to cache keccak
@@ -207,4 +216,6 @@ public static unsafe class KeccakCache
         [FieldOffset(0)] public byte Start;
         [FieldOffset(AlignedStart)] public byte Aligned32;
     }
+
+    public void Dispose() => NativeMemory.AlignedFree(_memory);
 }

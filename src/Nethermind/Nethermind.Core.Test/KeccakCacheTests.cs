@@ -18,6 +18,8 @@ namespace Nethermind.Core.Test
         [Test]
         public void Multiple()
         {
+            using var cache = new KeccakCache(1024);
+
             const int spins = 10;
 
             var random = new Random(13);
@@ -28,7 +30,7 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < spins; i++)
             {
-                ValueHash256 actual = KeccakCache.Compute(bytes);
+                ValueHash256 actual = cache.Compute(bytes);
                 actual.Equals(expected).Should().BeTrue();
             }
         }
@@ -36,25 +38,27 @@ namespace Nethermind.Core.Test
         [Test]
         public void Empty()
         {
+            using var cache = new KeccakCache(1024);
             ReadOnlySpan<byte> span = [];
-            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            cache.Compute(span).Should().Be(ValueKeccak.Compute(span));
         }
 
         [Test]
         public void Very_long()
         {
+            using var cache = new KeccakCache(1024);
             ReadOnlySpan<byte> span = new byte[192];
-            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            cache.Compute(span).Should().Be(ValueKeccak.Compute(span));
         }
 
-        private string[] GetBucketCollisions()
+        private string[] GetBucketCollisions(KeccakCache cache)
         {
             var random = new Random(13);
             Span<byte> span = stackalloc byte[32];
             string[] collisions = new string[4];
 
             random.NextBytes(span);
-            var bucket = KeccakCache.GetBucket(span);
+            var bucket = cache.GetBucket(span);
 
             Console.WriteLine(span.ToHexString());
 
@@ -65,12 +69,13 @@ namespace Nethermind.Core.Test
             while (found < 4)
             {
                 random.NextBytes(span);
-                if (KeccakCache.GetBucket(span) == bucket)
+                if (cache.GetBucket(span) == bucket)
                 {
                     collisions[found] = span.ToHexString();
                     Console.WriteLine(span.ToHexString());
                     found++;
                 }
+
                 iterations++;
             }
 
@@ -81,19 +86,21 @@ namespace Nethermind.Core.Test
         [Test]
         public void Collision()
         {
-            var colliding = GetBucketCollisions();
+            using var cache = new KeccakCache(16 * 1024);
+
+            var colliding = GetBucketCollisions(cache);
 
             var collisions = colliding.Length;
             var array = colliding.Select(c => Bytes.FromHexString(c)).ToArray();
             var values = array.Select(a => ValueKeccak.Compute(a)).ToArray();
 
-            var bucket = KeccakCache.GetBucket(array[0]);
+            var bucket = cache.GetBucket(array[0]);
 
             for (int i = 1; i < collisions; i++)
             {
                 var input = array[i];
-                bucket.Should().Be(KeccakCache.GetBucket(input));
-                KeccakCache.Compute(input).Should().Be(values[i]);
+                bucket.Should().Be(cache.GetBucket(input));
+                cache.Compute(input).Should().Be(values[i]);
             }
 
             Parallel.ForEach(array, (a, state, index) =>
@@ -102,7 +109,7 @@ namespace Nethermind.Core.Test
 
                 for (int i = 0; i < 100_000; i++)
                 {
-                    KeccakCache.Compute(a).Should().Be(v);
+                    cache.Compute(a).Should().Be(v);
                 }
             });
         }
@@ -110,11 +117,13 @@ namespace Nethermind.Core.Test
         [Test]
         public void Spin_through_all()
         {
+            using var cache = new KeccakCache(1024);
+
             Span<byte> span = stackalloc byte[4];
-            for (int i = 0; i < KeccakCache.Count; i++)
+            for (int i = 0; i < cache.Count; i++)
             {
                 BinaryPrimitives.WriteInt32LittleEndian(span, i);
-                KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+                cache.Compute(span).Should().Be(ValueKeccak.Compute(span));
             }
         }
     }

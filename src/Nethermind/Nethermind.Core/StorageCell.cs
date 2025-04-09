@@ -28,7 +28,7 @@ namespace Nethermind.Core
         {
             Span<byte> key = stackalloc byte[32];
             Index.ToBigEndian(key);
-            return KeccakCache.Compute(key);
+            return KeccakCache.Instance.Compute(key);
         }
 
         public StorageCell(Address address, in UInt256 index)
