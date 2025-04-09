@@ -5,7 +5,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -337,6 +339,119 @@ namespace Nethermind.Db.Test
                 var expectedBlocks = kvp.Value;
                 var resultBlocks = logIndexStorage.GetBlockNumbersFor(topic, 1, numberOfBlocks).ToList();
                 resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Topic {topic} should have the correct block numbers.");
+            }
+        }
+
+        private static readonly Random Random = new(42);
+
+        private BlockReceipts[][] GenerateBatches(int batchCount, int blocksPerBatch)
+        {
+            var blocksCount = batchCount * blocksPerBatch;
+            var addresses = Enumerable.Repeat(0, blocksCount / 100)
+                .Select(_ => new Address(Random.NextBytes(Address.Size)))
+                .ToArray();
+            var topics = Enumerable.Repeat(0, addresses.Length * 10)
+                .Select(_ => new Hash256(Random.NextBytes(Hash256.Size)))
+                .ToArray();
+
+            var blockNum = 0;
+            var result = new BlockReceipts[batchCount][];
+            for (var i = 0; i < result.Length; i++)
+            {
+                result[i] = new BlockReceipts[blocksPerBatch];
+                for (var j = 0; j < result[i].Length; j++)
+                {
+                    result[i][j] = new(blockNum, GenerateReceipts(addresses, topics));
+                    blockNum++;
+                }
+            }
+
+            return result;
+        }
+
+        private TxReceipt[] GenerateReceipts(Address[] addresses, Hash256[] topics)
+        {
+            (int min, int max) logsPerBlock = (100, 300);
+            (int min, int max) logsPerTx = (0, 10);
+
+            var logs = Enumerable
+                .Repeat(0, Random.Next(logsPerBlock.min, logsPerBlock.max + 1))
+                .Select(_ => Build.A.LogEntry
+                    .WithAddress(Random.NextValue(addresses))
+                    .WithTopics(Enumerable
+                        .Repeat(0, Random.Next(4))
+                        .Select(_ => Random.NextValue(topics))
+                        .ToArray()
+                    ).TestObject
+                ).ToArray();
+
+            var receipts = new List<TxReceipt>();
+            for (var i = 0; i < logs.Length;)
+            {
+                var count = Random.Next(logsPerTx.min, Math.Min(logsPerTx.max, logs.Length - i) + 1);
+                var range = i..(i + count);
+
+                receipts.Add(new() { Logs = logs[range] });
+                i = range.End.Value;
+            }
+
+            return receipts.ToArray();
+        }
+
+        private (Dictionary<Address, HashSet<int>> address, Dictionary<Hash256, HashSet<int>> topic) MapToBlockNumber(IEnumerable<BlockReceipts> blockReceipts)
+        {
+            (Dictionary<Address, HashSet<int>> address, Dictionary<Hash256, HashSet<int>> topic) map = (new(), new());
+
+            foreach (var (blockNumber, txReceipts) in blockReceipts)
+            foreach (var txReceipt in txReceipts)
+            foreach (var log in txReceipt.Logs!)
+            {
+                var addressMap = map.address.GetOrAdd(log.Address, _ => new());
+                addressMap.Add(blockNumber);
+
+                foreach (var topic in log.Topics)
+                {
+                    var topicMap = map.topic.GetOrAdd(topic, _ => new());
+                    topicMap.Add(blockNumber);
+                }
+            }
+
+            return map;
+        }
+
+        //[Repeat(10)]
+        [Explicit("Can take a lot of time, CPU, and disk")]
+        [TestCase(100, 100, 16, int.MaxValue)]
+        [TestCase(100, 100, 16, 100)]
+        [TestCase(100, 100, 8, int.MaxValue)]
+        [TestCase(100, 100, 8, 100)]
+        [TestCase(100, 100, 1, int.MaxValue)]
+        [TestCase(100, 100, 1, 100)]
+        public async Task LargeTest(int batchCount, int blocksPerBatch, int ioParallelization, int compactionDistance)
+        {
+            // Arrange
+            var batches = GenerateBatches(batchCount, blocksPerBatch);
+            var map = MapToBlockNumber(batches.SelectMany(b => b));
+
+            // Act
+            await using var logIndexStorage = CreateLogIndexStorage();
+            foreach (var batch in batches)
+                await logIndexStorage.SetReceiptsAsync(batch, false);
+
+            // Assert
+            foreach (var (address, expectedNums) in map.address)
+            {
+                Assert.That(
+                    logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue),
+                    Is.EquivalentTo(expectedNums.Order())
+                );
+            }
+            foreach (var (topic, expectedNums) in map.topic)
+            {
+                Assert.That(
+                    logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue),
+                    Is.EquivalentTo(expectedNums.Order())
+                );
             }
         }
 
