@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -19,6 +20,10 @@ namespace Nethermind.Config
         public static void SetDefaultExtraDataWithVersion()
         {
             DefaultExtraData = GetDefaultVersionExtraData();
+            // Update attribute default
+            PropertyInfo propertyInfo = typeof(IBlocksConfig).GetProperty(nameof(IBlocksConfig.ExtraData));
+            ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+            attribute.DefaultValue = DefaultExtraData;
         }
 
         private byte[] _extraDataBytes = Encoding.UTF8.GetBytes(DefaultExtraData);
