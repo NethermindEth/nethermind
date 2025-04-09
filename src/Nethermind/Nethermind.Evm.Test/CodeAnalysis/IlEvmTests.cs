@@ -56,7 +56,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             base.Setup();
 
-            IlAnalyzer.ClearCache();
+            AotContractsRepository.ClearCache();
+
+            IlAnalyzer.StartPrecompilerBackgroundThread(config, NullLogger.Instance);
+
             Metrics.IlvmAotPrecompiledCalls = 0;
 
             ILogManager logManager = GetLogManager();
@@ -1914,7 +1917,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
             }
 
-            Assert.That(IlAnalyzer.TryGetIledCode(codehash, out var iledCode), Is.True);
+            Assert.That(AotContractsRepository.TryGetIledCode(codehash, out var iledCode), Is.True);
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
         }
 

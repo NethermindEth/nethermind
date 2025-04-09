@@ -46,9 +46,10 @@ public interface IVMConfig : IConfig
     public string IlEvmPrecompiledContractsPath { get; set; }
 
     [ConfigItem(
-        Description = "Sets Analysis max running tasks count",
-        DefaultValue = "8")]
-    public int IlEvmAnalysisMaxTasksCount { get; set; }
+        Description = "Sets number of contracts to bundle in DLLs",
+        DefaultValue = "32")]
+    public int IlEvmContractsPerDllCount { get; set; }
+
 
     public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;
 }

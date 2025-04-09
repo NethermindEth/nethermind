@@ -12,6 +12,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,10 +27,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
-    private static ConcurrentDictionary<ValueHash256?, IPrecompiledContract> _processed = new();
+    private static readonly ManualResetEventSlim _workOrStopSignal = new(false);
+    private static Thread _workerThread;
+    private static bool _running = false;
 
     private static readonly ConcurrentQueue<CodeInfo> _queue = new();
-    private static int tasksRunningCount = 0;
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
         if (Interlocked.CompareExchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted) != AnalysisPhase.NotStarted
@@ -41,65 +43,68 @@ public static class IlAnalyzer
         Metrics.IncrementIlvmAotQueueSize();
         _queue.Enqueue(codeInfo);
 
-        if (_queue.Count > config.IlEvmAnalysisQueueMaxSize)
+        _workOrStopSignal.Set();
+    }
+
+    public static void StopPrecompilerBackgroundThread()
+    {
+        _running = false;
+        _workOrStopSignal.Set(); // unblock if waiting
+        _workerThread.Join();
+    }
+
+    public static void StartPrecompilerBackgroundThread(IVMConfig config, ILogger logger)
+    {
+        _workerThread ??= new Thread(() =>
         {
-            if(tasksRunningCount < config.IlEvmAnalysisMaxTasksCount)
+            GCSettings.LatencyMode = GCLatencyMode.Batch; // slow but GC-friendly
+
+            while (_running)
             {
-                Task.Run(() => {
-                    Interlocked.Increment(ref tasksRunningCount);
-                    Metrics.IncrementIlvmAotQueueTasksCount();
-                    AnalyzeQueue(config, logger);
-                }).ContinueWith(_ => {
-                    Interlocked.Decrement(ref tasksRunningCount);
-                    Metrics.DecrementIlvmAotQueueTasksCount();
-                });
+                _workOrStopSignal.Wait(); // wait for signal
+                _workOrStopSignal.Reset(); // reset it manually
+
+                ProcessQueue(config, logger); // heavy stuff
             }
+
+        });
+        _workerThread.IsBackground = true;
+
+        if(!_running)
+        {
+            _running = true;
+            _workerThread.Start();
         }
     }
-
-    public static void AddIledCode(ValueHash256? codeHash, IPrecompiledContract ilCode)
+    
+    private static void ProcessQueue(IVMConfig config, ILogger logger)
     {
-        if (codeHash is null || ilCode is null)
-        {
-            return;
-        }
+        if (_queue.Count < config.IlEvmAnalysisQueueMaxSize) return;
 
-        _processed[codeHash] = ilCode;
-    }
+        int count = config.IlEvmAnalysisQueueMaxSize;
 
-    public static bool TryGetIledCode(ValueHash256 codeHash, out IPrecompiledContract ilCode)
-    {
-        if (_processed.TryGetValue(codeHash, out ilCode))
-        {
-            return true;
-        }
-        else
-        {
-            ilCode = null;
-            return false;
-        }
-    }
-
-    public static void ClearCache() => _processed.Clear();
-
-    private static void AnalyzeQueue(IVMConfig config, ILogger logger)
-    {
-        int itemsLeft = _queue.Count;
-        while (itemsLeft-- > 0 && _queue.TryDequeue(out CodeInfo worklet))
+        while (count > 0 && _queue.TryDequeue(out CodeInfo worklet))
         {
             Metrics.DecrementIlvmAotQueueSize();
-            worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
-            try
-            {
-                Analyse(worklet, config.IlEvmEnabledMode, config, logger);
-                Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
-            } catch
-            {
-                Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
-            } finally
-            {
-                Metrics.IncrementIlvmAotContractsProcessed();
-            }
+            ProcessCodeInfo(config, logger, worklet);
+        }
+    }
+
+    private static void ProcessCodeInfo(IVMConfig config, ILogger logger, CodeInfo worklet)
+    {
+        worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
+        try
+        {
+            Analyse(worklet, config.IlEvmEnabledMode, config, logger);
+            Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
+        }
+        catch
+        {
+            Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+        }
+        finally
+        {
+            Metrics.IncrementIlvmAotContractsProcessed();
         }
     }
 
@@ -123,7 +128,7 @@ public static class IlAnalyzer
         switch (mode)
         {
             case ILMode.FULL_AOT_MODE:
-                if (_processed.TryGetValue(codeInfo.Codehash, out IPrecompiledContract? contractDelegate))
+                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out IPrecompiledContract? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
@@ -147,7 +152,7 @@ public static class IlAnalyzer
         var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig);
         Metrics.DecrementIlvmCurrentlyCompiling();
 
-        _processed[codeInfo.Codehash] = contractDelegate;
+        AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);
         codeInfo.IlInfo.PrecompiledContract = contractDelegate;
     }
 

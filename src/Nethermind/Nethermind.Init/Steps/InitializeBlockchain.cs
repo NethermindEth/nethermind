@@ -80,7 +80,7 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
 
-            LoadPrecompiledIlContracts();
+            InitializeIlEvmProcesses();
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
@@ -248,10 +248,12 @@ namespace Nethermind.Init.Steps
             );
         }
 
-        protected void LoadPrecompiledIlContracts()
+        protected void InitializeIlEvmProcesses()
         {
             if(!_api.VMConfig?.IsVmOptimizationEnabled ?? false) return;
-            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
+
+            IlAnalyzer.StartPrecompilerBackgroundThread(_api.VMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
+
             if (_api.VMConfig?.IlEvmPrecompiledContractsPath is null) return;
 
             string path = _api.VMConfig!.IlEvmPrecompiledContractsPath;
@@ -266,7 +268,7 @@ namespace Nethermind.Init.Steps
                         Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
                         ValueHash256 codeHash = new ValueHash256(assembly.GetName().Name!);
                         IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly!.GetType("ContractType")!.FullName!) as IPrecompiledContract;
-                        IlAnalyzer.AddIledCode(codeHash, precompiledContract!);
+                        AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
                     }
                 }
             }
@@ -274,6 +276,12 @@ namespace Nethermind.Init.Steps
             {
                 Directory.CreateDirectory(path);
             }
+
+            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
+
+
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(_api.VMConfig!);
+
         }
 
         // TODO: remove from here - move to consensus?

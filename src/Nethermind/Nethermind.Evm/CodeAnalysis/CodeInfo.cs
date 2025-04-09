@@ -44,7 +44,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if(codeHash is not null && IlAnalyzer.TryGetIledCode(codeHash.Value, out IPrecompiledContract ilCode))
+            if(codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out IPrecompiledContract ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if (codeHash is not null && IlAnalyzer.TryGetIledCode(codeHash.Value, out IPrecompiledContract ilCode))
+            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out IPrecompiledContract ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;

@@ -20,56 +20,71 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.Loader;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
-
 using Label = Sigil.Label;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-internal static class Precompiler
+public static class Precompiler
 {
-    public static IPrecompiledContract CompileContract(string contractName, CodeInfo codeInfo, ContractCompilerMetadata metadata, IVMConfig config)
+    private static PersistedAssemblyBuilder? _currentAsmBuilder = null;
+    private static int _currentBundleSize = 0;
+    private static void CompileContractInternal(AssemblyBuilder asmBuilder, string identifier, CodeInfo codeinfo, ContractCompilerMetadata metadata, IVMConfig config, bool runtimeTarget, out IPrecompiledContract? contracIL)
     {
-        AssemblyBuilder asmBuilder;
-        if(config.IlEvmPersistPrecompiledContractsOnDisk)
-        {
-            asmBuilder = new PersistedAssemblyBuilder(new AssemblyName(contractName), typeof(Object).Assembly);
-        } else
-        {
-            asmBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(contractName), AssemblyBuilderAccess.Run);
-        }
+        Interlocked.Increment(ref _currentBundleSize);
 
-        var moduleBuilder = asmBuilder.DefineDynamicModule("MainModule");
+        contracIL = null;
+        var moduleBuilder = asmBuilder.GetDynamicModule("MainModule") ?? asmBuilder.DefineDynamicModule("MainModule");
 
         // Define a type that implements MoveNext
-        var typeBuilder = moduleBuilder.DefineType("ContractType",
+        var typeBuilder = moduleBuilder.DefineType(identifier,
             TypeAttributes.Public | TypeAttributes.Class);
 
         typeBuilder.AddInterfaceImplementation(typeof(IPrecompiledContract));
 
         // Define the MoveNext method
-        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true, doVerify: false), codeInfo, metadata, config).CreateMethod();
+        EmitMoveNext(Emit<MoveNext>.BuildMethod(typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, CallingConventions.HasThis, allowUnverifiableCode: true, doVerify: false), codeinfo, metadata, config).CreateMethod();
 
-        // Finalize the type
         var finalizedType = typeBuilder.CreateType();
+        if(runtimeTarget)
+        {
+            IPrecompiledContract contract = (IPrecompiledContract)Activator.CreateInstance(finalizedType);
+            contracIL = contract;
+        } else if(config.IlEvmPersistPrecompiledContractsOnDisk)
+        {
+            if(Interlocked.CompareExchange(ref _currentBundleSize, 0, config.IlEvmContractsPerDllCount) == config.IlEvmContractsPerDllCount)
+            {
+                FlushToDisk(config);
+            }
+        }
+        // Finalize the type
+    }
+
+    public static IPrecompiledContract CompileContract(string contractName, CodeInfo codeInfo, ContractCompilerMetadata metadata, IVMConfig config)
+    {
+        CompileContractInternal(AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(contractName), AssemblyBuilderAccess.Run), contractName, codeInfo, metadata, config, true, out IPrecompiledContract? result);
 
         if(config.IlEvmPersistPrecompiledContractsOnDisk)
         {
-            var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(contractName));
-            using var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
-            fileStream.SetLength(0); // Clear the file
-            ((PersistedAssemblyBuilder)asmBuilder).Save(fileStream);  // or pass filename to save into a file
-
-            fileStream.Seek(0, SeekOrigin.Begin);
-            var assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
-            finalizedType = assembly.GetType("ContractType");
+            CompileContractInternal(_currentAsmBuilder ??= new PersistedAssemblyBuilder(new AssemblyName(contractName), typeof(Object).Assembly), contractName, codeInfo, metadata, config, false, out IPrecompiledContract? _);
         }
+        return result;
+    }
 
-        IPrecompiledContract contract = (IPrecompiledContract)Activator.CreateInstance(finalizedType);
-        return contract;
+    public static void FlushToDisk(IVMConfig config)
+    {
+        if (_currentAsmBuilder is null) return;
+
+        var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(_currentAsmBuilder.GetHashCode().ToString()));
+        using var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
+        fileStream.SetLength(0); // Clear the file
+        ((PersistedAssemblyBuilder)_currentAsmBuilder).Save(fileStream);  // or pass filename to save into a file
+
+        _currentAsmBuilder = null;
     }
 
     public static Emit<MoveNext> EmitMoveNext(Emit<MoveNext> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
