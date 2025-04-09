@@ -210,7 +210,7 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    var multiplier = (UInt256) (spec.IsEip7883Enabled ? 16 : 8);
+                    var multiplier = (UInt256)(spec.IsEip7883Enabled ? 16 : 8);
                     bool overflow = UInt256.MultiplyOverflow(exponentLength - 32, multiplier, out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
