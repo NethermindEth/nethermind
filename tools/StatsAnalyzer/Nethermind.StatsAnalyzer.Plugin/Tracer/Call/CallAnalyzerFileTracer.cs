@@ -34,8 +34,7 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         writeFreq,
         mode,
         sort,
-        fileName,
-        ct)
+        ct, fileName)
 
     {
         _callStatsAnalyzer = callStatsAnalyzer;
@@ -46,7 +45,7 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
     }
 
 
-    public override void ResetBufferAndTracer()
+    protected override void ResetBufferAndTracer()
     {
         _buffer = new ResettableList<Address>(_buffer.Count);
         Tracer = new CallStatsAnalyzerTxTracer(_buffer, _callStatsAnalyzer, Sort,

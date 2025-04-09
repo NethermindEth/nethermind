@@ -89,23 +89,23 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override unsafe void Add(Instruction instruction)
     {
-            ResetSketchAtError();
-            _ngram = _ngram.ShiftAdd(instruction);
-            delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
-                PriorityQueue<ulong, ulong>, ulong> ptr = &ProcessNGram;
-            Max = NGram.ProcessEachSubsequence(
-                        _ngram,
-                        ptr,
-                        _currentSketch,
-                        _currentSketchBufferSize,
-                        MinSupport,
-                        Max,
-                        TopN,
-                        _sketchBuffer,
-                        TopNMap,
-                        TopNQueue);
-            TopNQueue.TryPeek(out _, out var min);
-            MinSupport = Math.Max(min, MinSupport);
+        ResetSketchAtError();
+        _ngram = _ngram.ShiftAdd(instruction);
+        delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
+            PriorityQueue<ulong, ulong>, ulong> ptr = &ProcessNGram;
+        Max = NGram.ProcessEachSubsequence(
+                    _ngram,
+                    ptr,
+                    _currentSketch,
+                    _currentSketchBufferSize,
+                    MinSupport,
+                    Max,
+                    TopN,
+                    _sketchBuffer,
+                    TopNMap,
+                    TopNQueue);
+        TopNQueue.TryPeek(out _, out var min);
+        MinSupport = Math.Max(min, MinSupport);
     }
 
 

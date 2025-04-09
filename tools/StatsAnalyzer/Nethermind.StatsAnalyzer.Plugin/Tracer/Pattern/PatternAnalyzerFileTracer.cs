@@ -38,8 +38,7 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
         writeFreq,
         mode,
         sort,
-        fileName,
-        ct)
+        ct, fileName)
     {
         _buffer = buffer;
 
@@ -51,7 +50,7 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
     }
 
 
-    public override void ResetBufferAndTracer()
+    protected override void ResetBufferAndTracer()
     {
         _buffer = new ResettableList<Instruction>(_buffer.Count);
         Tracer = new PatternStatsAnalyzerTxTracer(_buffer, _ignore, _patternStatsAnalyzer, Sort,

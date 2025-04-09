@@ -14,69 +14,75 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
     where TxTracer : class, ITxTracer, IStatsAnalyzerTxTracer<TxTrace>
 
 {
-    private readonly List<Task> _fileTracingQueue = new();
+    private readonly List<Task> _fileTracingQueue = [];
     private readonly int _fileTracingQueueSize = 1;
     private readonly int _writeFreq = 1;
     protected readonly CancellationToken Ct;
     protected readonly string FileName;
-    protected readonly IFileSystem FileSystem;
+    private readonly IFileSystem _fileSystem;
     protected readonly ILogger Logger;
-    protected readonly ProcessingMode ProcessingMode;
-    protected readonly JsonSerializerOptions SerializerOptions = new();
+    private readonly ProcessingMode _processingMode;
+    private readonly JsonSerializerOptions _serializerOptions = new();
     protected readonly SortOrder Sort;
     private int _pos;
-    protected long CurrentBlock;
+    private long _currentBlock;
     protected Task CurrentTask = Task.CompletedTask;
-    protected long InitialBlock;
-    protected Task LastTask = Task.CompletedTask;
+    private long _initialBlock;
+    private Task _lastTask = Task.CompletedTask;
     protected TxTracer Tracer;
 
-    protected StatsAnalyzerFileTracer(TxTracer tracer, string defaultFile, int processingQueueSize,
+    protected StatsAnalyzerFileTracer(
+        TxTracer tracer,
+        string defaultFile,
+        int processingQueueSize,
         IFileSystem fileSystem,
-        ILogger logger, int writeFreq, ProcessingMode mode,
+        ILogger logger,
+        int writeFreq,
+        ProcessingMode mode,
         SortOrder sort,
-        string fileName, CancellationToken ct)
+        CancellationToken ct,
+        string? fileName)
     {
         Tracer = tracer;
-        FileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
-        FileName = fileName;
+        FileName = fileName ?? defaultFile;
         Logger = logger;
-        ProcessingMode = mode;
+        _processingMode = mode;
         Sort = sort;
         Ct = ct;
     }
 
 
-    public abstract void ResetBufferAndTracer();
+    protected abstract void ResetBufferAndTracer();
 
     public override void EndBlockTrace()
     {
         var tracer = Tracer;
-        var initialBlockNumber = InitialBlock;
-        var currentBlockNumber = CurrentBlock;
+        var initialBlockNumber = _initialBlock;
+        var currentBlockNumber = _currentBlock;
 
         ResetBufferAndTracer();
 
         Enqueue(new Task(() =>
-        {
-            Ct.ThrowIfCancellationRequested();
-            WriteTrace(
+            {
+                Ct.ThrowIfCancellationRequested();
+                WriteTrace(
                     initialBlockNumber,
                     currentBlockNumber,
                     tracer,
                     FileName,
-                    FileSystem,
-                    SerializerOptions,
+                    _fileSystem,
+                    _serializerOptions,
                     Ct);
-        },
-        Ct));
+            },
+            Ct));
 
         base.EndBlockTrace();
     }
 
-    public void Enqueue(Task task)
+    private void Enqueue(Task task)
     {
         if (_fileTracingQueueSize < 1) return;
 
@@ -85,7 +91,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
 
 
         // var task = CurrentTask;
-        LastTask = LastTask.ContinueWith(t =>
+        _lastTask = _lastTask.ContinueWith(t =>
         {
             if (t.Exception != null)
                 Logger.Error($"Previous task failed: {t.Exception.Flatten()}");
@@ -96,7 +102,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
         _fileTracingQueue.Add(task);
 
         if (_fileTracingQueue.Count >= _fileTracingQueueSize)
-            switch (ProcessingMode)
+            switch (_processingMode)
             {
                 case ProcessingMode.Bulk:
                     Task.WaitAll(_fileTracingQueue.ToArray(), Ct);
@@ -129,9 +135,9 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
     {
         base.StartNewBlockTrace(block);
         var number = block.Header.Number;
-        if (InitialBlock == 0)
-            InitialBlock = number;
-        CurrentBlock = number;
+        if (_initialBlock == 0)
+            _initialBlock = number;
+        _currentBlock = number;
     }
 
 
@@ -155,14 +161,14 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
         throw new NotImplementedException();
     }
 
-    protected static void WriteTrace(
-            long initialBlockNumber,
-            long currentBlockNumber,
-            IStatsAnalyzerTxTracer<TxTrace> tracer,
-            string fileName,
-            IFileSystem fileSystem,
-            JsonSerializerOptions serializerOptions,
-            CancellationToken ct)
+    private static void WriteTrace(
+        long initialBlockNumber,
+        long currentBlockNumber,
+        IStatsAnalyzerTxTracer<TxTrace> tracer,
+        string fileName,
+        IFileSystem fileSystem,
+        JsonSerializerOptions serializerOptions,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
