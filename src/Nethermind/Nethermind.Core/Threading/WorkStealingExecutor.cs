@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -11,23 +12,19 @@ namespace Nethermind.Core.Threading;
 // Its like rust's rayon, but worst.
 public class WorkStealingExecutor: IDisposable
 {
-    // To randomize stealing. Not exactly random, but it should work.
-    private int _stealPartitionCounter = 0;
+    private readonly int _workerCount = 0;
 
-    private int _workerCount = 0;
     private int _asleepWorker = 0;
-    private Context[] _workerContexts;
-    private ConcurrentQueue<JobRef> _incomingJob = new ConcurrentQueue<JobRef>();
+    private uint _roundRobinStealIdx = 0;
+    private uint _wakeUpCounter = 0;
 
-    private bool[] _sleepingWorkersAdded; // Prevent duplicates in _sleepingContexts
-    // fast pool of sleeping worker for waking up on new job.
-    private ConcurrentQueue<int> _sleepingWorkers = new();
+    private readonly Context[] _workerContexts;
+    private readonly ConcurrentQueue<JobRef> _incomingJob = new ConcurrentQueue<JobRef>();
 
     public WorkStealingExecutor(int workerCount, int initialStackSize)
     {
         _workerCount = workerCount;
         _workerContexts = new Context[workerCount];
-        _sleepingWorkersAdded = new bool[workerCount];
 
         for (int i = 0; i < workerCount; i++)
         {
@@ -48,28 +45,13 @@ public class WorkStealingExecutor: IDisposable
         jobRef.ResetEvent.Wait();
     }
 
-    public bool TryStealJob(out JobRef job, out bool shouldRetry, int ctxToCheckFirst)
+    public bool TryStealJob(out JobRef job, out bool shouldRetry)
     {
         shouldRetry = false;
-        if (_incomingJob.TryDequeue(out job!))
-        {
-            return true;
-        }
-
         int activeContexts = _workerCount;
-        if (ctxToCheckFirst == -1)
-        {
-            ctxToCheckFirst = Interlocked.Increment(ref _stealPartitionCounter);
-            if (ctxToCheckFirst > activeContexts)
-            {
-                Interlocked.Exchange(ref _stealPartitionCounter, ctxToCheckFirst % activeContexts);
-            }
-        }
-
-        // Main bottleneck
         for (int i = 0; i < activeContexts; i++)
         {
-            int idx = (ctxToCheckFirst + i) % activeContexts;
+            int idx = (int)(Interlocked.Increment(ref _roundRobinStealIdx) % activeContexts);
             Context context = _workerContexts[idx];
             // I guess hot path
             if (context.TryStealFrom(out job!, out bool contextSaidShouldRetry))
@@ -80,34 +62,22 @@ public class WorkStealingExecutor: IDisposable
             if (contextSaidShouldRetry) shouldRetry = true;
         }
 
+        if (_incomingJob.TryDequeue(out job!))
+        {
+            return true;
+        }
+
         return false;
     }
 
-    public void AddToSleepingWorker(Context context)
+    public void AddToSleepingWorker()
     {
-        if (Interlocked.CompareExchange(ref _sleepingWorkersAdded[context.ContextIdx], true, false) == false)
-        {
-            _sleepingWorkers.Enqueue(context.ContextIdx);
-            Interlocked.Increment(ref _asleepWorker);
-        }
+        Interlocked.Increment(ref _asleepWorker);
     }
 
-    public void RemoveFromSleepingWorker(Context context)
+    public void RemoveFromSleepingWorker()
     {
         Interlocked.Decrement(ref _asleepWorker);
-
-        // Woken up via notification
-        if (Interlocked.Exchange(ref _sleepingWorkersAdded[context.ContextIdx], false) == false) return;
-
-        while (_sleepingWorkers.TryDequeue(out int ctxId))
-        {
-            if (_sleepingWorkersAdded[ctxId])
-            {
-                // Queue it back
-                _sleepingWorkers.Enqueue(ctxId);
-            }
-            if (ctxId == context.ContextIdx) break;
-        }
     }
 
     public void NotifyNewJob()
@@ -117,18 +87,12 @@ public class WorkStealingExecutor: IDisposable
 
         if (_asleepWorker == 0) return;
 
-        while (true)
+        for (int i = 0; i < _workerCount; i++)
         {
-            if (!_sleepingWorkers.TryDequeue(out int ctxId))
+            Context context = _workerContexts[Interlocked.Increment(ref _wakeUpCounter) % _workerCount];
+            if (context.TryWakeUp())
             {
                 break;
-            }
-
-            if (!Interlocked.Exchange(ref _sleepingWorkersAdded[ctxId], false)) continue; // Woke up on its own
-
-            if (_workerContexts[ctxId].TryWakeUp())
-            {
-                return;
             }
         }
     }
@@ -147,16 +111,20 @@ public class Worker: IDisposable
 {
     private const int RoundUntilSleep = 32;
     private const int LatchWaitMs = 50;
+
+    private readonly WorkStealingExecutor _executor;
     private readonly Context _context;
     private readonly Thread _thread;
+
     private ManualResetEventSlim _finishLatch;
     private ManualResetEventSlim _sleepLatch;
     private bool _isAsleep = false;
     private int _waitRound = 0;
 
-    public Worker(Context context)
+    public Worker(Context context, WorkStealingExecutor executor)
     {
         _context = context;
+        _executor = executor;
         _finishLatch = new ManualResetEventSlim(false);
         _sleepLatch = new ManualResetEventSlim(false);
         _thread = new Thread(WorkerLoop);
@@ -173,7 +141,7 @@ public class Worker: IDisposable
         {
             while (!_finishLatch.IsSet)
             {
-                if (_context.TryGetJob(out JobRef otherRef, out bool shouldRetry))
+                if (_context.TryGetJob(out JobRef otherRef, out bool shouldRetry, _finishLatch))
                 {
                     ResetWaitCounter();
                     otherRef.ExecuteNonInline(_context);
@@ -202,9 +170,14 @@ public class Worker: IDisposable
 
     public bool TryWakeUp()
     {
-        if (!_isAsleep) return false;
-        _sleepLatch.Set();
-        return true;
+        if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
+        {
+            _executor.RemoveFromSleepingWorker();
+            _sleepLatch.Set();
+            return true;
+        }
+
+        return false;
     }
 
     public void ResetWaitCounter()
@@ -217,18 +190,17 @@ public class Worker: IDisposable
         _waitRound++;
         if (_waitRound > RoundUntilSleep)
         {
-            _isAsleep = true;
-            _context.NotifyWorkerAsleep();
-            try
+            if (Interlocked.CompareExchange(ref _isAsleep, true, false) == false)
             {
-                latch.Wait(LatchWaitMs);
+                _executor.AddToSleepingWorker();
             }
-            catch (ThreadInterruptedException)
+
+            latch.Wait(LatchWaitMs);
+
+            if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
             {
+                _executor.RemoveFromSleepingWorker();
             }
-            _context.NotifyWorkerAwake();
-            _isAsleep = false;
-            _waitRound = 0;
             return;
         }
 
@@ -243,7 +215,6 @@ public class Context: IDisposable
     private readonly WorkStealingExecutor _executor;
     private readonly int _contextIdx;
     private readonly Worker _worker;
-    private XorShift64Star _randomizer = new XorShift64Star();
 
     public Context(WorkStealingExecutor executor, int contextIdx, int initialStackSize)
     {
@@ -251,7 +222,7 @@ public class Context: IDisposable
         _contextIdx = contextIdx;
         _jobStack = new(initialStackSize);
         _latchPool = new(initialStackSize);
-        _worker = new Worker(this);
+        _worker = new Worker(this, executor);
     }
 
     public void StartWorker()
@@ -316,7 +287,7 @@ public class Context: IDisposable
 
                 otherRef!.ExecuteNonInline(this);
             }
-            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry, _randomizer.NextInt(1000)))
+            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry))
             {
                 otherRef!.ExecuteNonInline(this);
             }
@@ -337,7 +308,7 @@ public class Context: IDisposable
         _executor.NotifyNewJob();
     }
 
-    internal bool TryGetJob(out JobRef jobRef, out bool shouldRetry)
+    internal bool TryGetJob(out JobRef jobRef, out bool shouldRetry, ManualResetEventSlim latch)
     {
         if (_jobStack.TryPop(out jobRef))
         {
@@ -345,7 +316,7 @@ public class Context: IDisposable
             return true;
         }
 
-        if (_executor.TryStealJob(out jobRef, out shouldRetry, _randomizer.NextInt(1000)))
+        if (_executor.TryStealJob(out jobRef, out shouldRetry))
         {
             return true;
         }
@@ -363,16 +334,6 @@ public class Context: IDisposable
         return _worker.TryWakeUp();
     }
 
-    public void NotifyWorkerAsleep()
-    {
-        _executor.AddToSleepingWorker(this);
-    }
-
-    public void NotifyWorkerAwake()
-    {
-        _executor.RemoveFromSleepingWorker(this);
-    }
-
     public void Dispose()
     {
         _worker.Dispose();
@@ -388,87 +349,18 @@ public struct JobRef(IJob job, ManualResetEventSlim _resetEvent)
 {
     public ManualResetEventSlim ResetEvent { get; } = _resetEvent;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ExecuteInline(Context context)
     {
         job.Execute(context);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ExecuteNonInline(Context context)
     {
         // HOT PATH
         job.Execute(context);
 
         ResetEvent.Set();
-    }
-}
-
-/// <summary>
-/// [xorshift*] is a fast pseudorandom number generator which will
-/// even tolerate weak seeding, as long as it's not zero.
-/// </summary>
-/// <seealso href="https://en.wikipedia.org/wiki/Xorshift#xorshift*"/>
-public struct XorShift64Star
-{
-    private ulong _state;
-    private static long _counter = 0;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="XorShift64Star"/> struct.
-    /// Any non-zero seed will do -- this uses a simple global counter for seeding.
-    /// </summary>
-    public XorShift64Star()
-    {
-        ulong seed;
-        do
-        {
-            seed = (ulong)Interlocked.Increment(ref _counter);
-        } while (seed == 0);
-
-        _state = seed;
-    }
-
-    /// <summary>
-    /// Gets the next pseudorandom <see cref="ulong"/> value.
-    /// </summary>
-    /// <returns>The next pseudorandom <see cref="ulong"/> value.</returns>
-    public ulong Next()
-    {
-        ulong x = _state;
-        System.Diagnostics.Debug.Assert(x != 0);
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
-        _state = x;
-        return x * 0x2545F4914F6CDD1D;
-    }
-
-    /// <summary>
-    /// Returns a pseudorandom <see cref="int"/> value within the range [0, <paramref name="n"/>).
-    /// </summary>
-    /// <param name="n">The exclusive upper bound of the random number returned.</param>
-    /// <returns>A pseudorandom <see cref="int"/> value within the range [0, <paramref name="n"/>).</returns>
-    public int NextInt(int n)
-    {
-        return (int)(Next() % (ulong)n);
-    }
-
-    /// <summary>
-    /// Returns a pseudorandom <see cref="uint"/> value within the range [0, <paramref name="n"/>).
-    /// </summary>
-    /// <param name="n">The exclusive upper bound of the random number returned.</param>
-    /// <returns>A pseudorandom <see cref="uint"/> value within the range [0, <paramref name="n"/>).</returns>
-    public uint NextUInt(uint n)
-    {
-        return (uint)(Next() % n);
-    }
-
-    /// <summary>
-    /// Returns a pseudorandom <see cref="long"/> value within the range [0, <paramref name="n"/>).
-    /// </summary>
-    /// <param name="n">The exclusive upper bound of the random number returned.</param>
-    /// <returns>A pseudorandom <see cref="long"/> value within the range [0, <paramref name="n"/>).</returns>
-    public long NextLong(long n)
-    {
-        return (long)(Next() % (ulong)n);
     }
 }

@@ -14,15 +14,14 @@ namespace Nethermind.Core.Test.Threading;
 
 public class WorkStealingExecutorTests
 {
-    // private const long FibNum = 32;
-    // rivate const long FibResult = 2178309;
+    private const long FibNum = 32;
+    private const long FibResult = 2178309;
 
     // Some other parameter for benchmarking
     // private const long FibNum = 34;
     // private const long FibResult = 5702887;
-    private const long FibNum = 38;
-    private const long FibResult = 39088169;
-
+    // private const long FibNum = 38;
+    // private const long FibResult = 39088169;
     // private const long FibNum = 43;
     // private const long FibResult = 433494437;
 
@@ -94,21 +93,18 @@ public class WorkStealingExecutorTests
         multithreadTime.Should().BeLessThan(baselineTime);
     }
 
-    // [TestCase(2, 1.8)]
-    // [TestCase(4, 3.5)]
-    // [TestCase(8, 6.0)]
-    // [TestCase(16, 8.0)]
+    [TestCase(2, 1.8)]
+    [TestCase(4, 3.5)]
+    [TestCase(8, 6.0)]
+    [TestCase(16, 8.0)]
     [TestCase(32, 10.0)]
     [Parallelizable(ParallelScope.None)]
     public void TestScalability(int workerCount, double minimumSpeedup)
     {
-        if (Environment.ProcessorCount < workerCount)
-        {
-            Assert.Ignore("Insufficient processor count");
-        }
-
-        int baselineWorkerCount = 32; // mainly so that large fib number is easier to compare for profiling.
+        if (Environment.ProcessorCount < workerCount) Assert.Ignore("Insufficient processor count");
         FibonacciResult result = new FibonacciResult();
+
+        int baselineWorkerCount = 1; // mainly so that large fib number is easier to compare for profiling.
 
         TimeSpan baselineTime = TimeSpan.Zero;
         {
@@ -129,13 +125,9 @@ public class WorkStealingExecutorTests
             executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
             multithreadTime = sw.Elapsed;
-            // TestContext.Error.WriteLine($"Total steal time {executor.TotalStealTime / 32 / multithreadTime}");
-            // TestContext.Error.WriteLine($"Total notify time {executor.TotalNotifyTime / 32 / multithreadTime}");
-            // TestContext.Error.WriteLine($"Total time asleep {executor.TotalSleepTime / 32 / multithreadTime}");
         }
 
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
-
         double speedup = (baselineTime * baselineWorkerCount) / multithreadTime;
         TestContext.Error.WriteLine($"Speedup is {speedup}");
         speedup.Should().BeGreaterThan(minimumSpeedup);
@@ -164,10 +156,9 @@ public class WorkStealingExecutorTests
 
             FibonacciResult result1 = new FibonacciResult();
             FibonacciResult result2 = new FibonacciResult();
-            ctx.Fork(
-                new FibonacciJob(currentValue - 1, result1),
-                new FibonacciJob(currentValue - 2, result2)
-            );
+            var latch = ctx.PushJob(new FibonacciJob(currentValue - 2, result2));
+            new FibonacciJob(currentValue - 1, result1).Execute(ctx);
+            ctx.WaitForJobOrKeepBusy(latch);
 
             long resultNum = result1.Result + result2.Result;
             Keccak.Compute(resultNum.ToBigEndianByteArray());
