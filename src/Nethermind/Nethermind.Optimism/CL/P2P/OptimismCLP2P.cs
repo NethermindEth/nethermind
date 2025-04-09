@@ -21,13 +21,12 @@ using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Optimism.CL;
 using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
 using Channel = System.Threading.Channels.Channel;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.CL.P2P;
 
 public class OptimismCLP2P : IDisposable
 {

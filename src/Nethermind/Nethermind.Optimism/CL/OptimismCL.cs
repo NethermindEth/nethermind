@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -12,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Optimism.CL.P2P;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
 

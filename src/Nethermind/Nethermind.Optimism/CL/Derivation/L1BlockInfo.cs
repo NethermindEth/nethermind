@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Specs.Forks;

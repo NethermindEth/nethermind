@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.L1Bridge;
 
 public interface IBeaconApi
 {

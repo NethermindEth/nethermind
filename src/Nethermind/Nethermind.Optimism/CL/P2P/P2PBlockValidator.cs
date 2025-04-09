@@ -9,9 +9,8 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using NonBlocking;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.P2P;
 
 public class P2PBlockValidator : IP2PBlockValidator
 {

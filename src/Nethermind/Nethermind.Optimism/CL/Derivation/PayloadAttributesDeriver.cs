@@ -1,18 +1,16 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
-using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Derivation;
 
 public class PayloadAttributesDeriver : IPayloadAttributesDeriver
 {

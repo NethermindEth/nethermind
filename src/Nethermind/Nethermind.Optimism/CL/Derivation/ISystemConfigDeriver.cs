@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Derivation;
 
 public interface ISystemConfigDeriver
 {

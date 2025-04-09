@@ -5,10 +5,6 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Compression;
-using System.Numerics;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Optimism.CL.Decoding;
 

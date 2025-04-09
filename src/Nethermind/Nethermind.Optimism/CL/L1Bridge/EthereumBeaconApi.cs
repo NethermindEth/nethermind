@@ -4,16 +4,11 @@
 using System;
 using System.Linq;
 using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 
