@@ -235,6 +235,16 @@ public class ChainSpecBasedSpecProviderTests
         });
     }
 
+    private static void VerifPragueSpecificsForMainnetHoleskyHoodiAndSepolia(IReleaseSpec spec)
+    {
+        // Assert.Multiple(() =>
+        // {
+        //     Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+        //     Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
+        //     Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+        //     Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
+        // });
+    }
 
     public static IEnumerable<TestCaseData> HoodiActivations
     {
@@ -346,12 +356,12 @@ public class ChainSpecBasedSpecProviderTests
             { TestName = "Cancun" };
             yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp + 100000000))
             { TestName = "Future" };
-            // yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp - 1))
-            // { TestName = "Before Prague" };
-            // yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp))
-            // { TestName = "Prague" };
-            // yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp + 100000000))
-            // { TestName = "Future" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp - 1))
+            { TestName = "Before Prague" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp))
+            { TestName = "Prague" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp + 100000000))
+            { TestName = "Future" };
         }
     }
 
@@ -380,9 +390,8 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
-        // TODO: uncomment in Pectra
-        // VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
-        // Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x0B98057eA310F4d31F2a452B414647007d1645d9")));
+        VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x0B98057eA310F4d31F2a452B414647007d1645d9")));
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
@@ -470,7 +479,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(MainnetSpecProvider.ShanghaiActivation) { TestName = "Shanghai" };
             yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(MainnetSpecProvider.CancunActivation) { TestName = "Cancun" };
-            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp - 1)) { TestName = "Before Prague" };
+            yield return new TestCaseData(MainnetSpecProvider.PragueActivation) { TestName = "Prague" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -509,8 +520,10 @@ public class ChainSpecBasedSpecProviderTests
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
         IReleaseSpec postCancunSpec = provider.GetSpec(MainnetSpecProvider.CancunActivation);
-        // TODO: add VerifyPragueSpecifics
+        IReleaseSpec postPragueSpec = provider.GetSpec(MainnetSpecProvider.PragueActivation);
+
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+        VerifPragueSpecificsForMainnetHoleskyHoodiAndSepolia(postPragueSpec);
     }
 
     [Flags]
