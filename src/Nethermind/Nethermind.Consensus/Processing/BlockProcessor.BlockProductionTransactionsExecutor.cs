@@ -77,15 +77,18 @@ namespace Nethermind.Consensus.Processing
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
-                // We start with high number as don't want to resize too much,
-                // also don't use the incoming transactions.Count() as that would fully enumerate which is expensive.
-                const int txCount = 512;
+                // We start with high number as don't want to resize too much
+                const int defaultTxCount = 512;
 
                 BlockToProduce? blockToProduce = block as BlockToProduce;
+
+                // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
+                int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
                 IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
 
-                HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 using ArrayPoolList<Transaction> includedTx = new(txCount);
+
+                HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
                 BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
@@ -122,8 +125,7 @@ namespace Nethermind.Consensus.Processing
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
-                HashSet<Transaction> transactionsInBlock,
-                bool addToBlock = true)
+                HashSet<Transaction> transactionsInBlock)
             {
                 AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
 
@@ -137,11 +139,8 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
-                        if (addToBlock)
-                        {
-                            _transactionProcessed?.Invoke(this,
-                                new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
-                        }
+                        _transactionProcessed?.Invoke(this,
+                            new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                     }
                     else
                     {
