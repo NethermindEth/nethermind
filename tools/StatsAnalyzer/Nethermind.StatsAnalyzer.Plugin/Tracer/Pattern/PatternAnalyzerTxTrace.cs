@@ -14,9 +14,12 @@ public class PatternAnalyzerTxTrace
     [JsonPropertyName("currentBlockNumber")]
     public long CurrentBlockNumber { get; set; }
 
-    [JsonPropertyName("errorPerItem")] public double ErrorPerItem { get; set; }
-    [JsonPropertyName("confidence")] public double Confidence { get; set; }
+    [JsonPropertyName("errorPerItem")]
+    public double ErrorPerItem { get; set; }
+    [JsonPropertyName("confidence")]
+    public double Confidence { get; set; }
 
 
-    [JsonPropertyName("stats")] public List<PatternAnalyzerTraceEntry> Entries { get; set; } = new();
+    [JsonPropertyName("stats")]
+    public List<PatternAnalyzerTraceEntry> Entries { get; set; } = new();
 }

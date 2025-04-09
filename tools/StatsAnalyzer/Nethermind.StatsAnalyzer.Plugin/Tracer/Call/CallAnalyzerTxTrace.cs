@@ -15,5 +15,6 @@ public class CallAnalyzerTxTrace
     public long CurrentBlockNumber { get; set; }
 
 
-    [JsonPropertyName("stats")] public List<CallAnalyzerTraceEntry> Entries { get; set; } = new();
+    [JsonPropertyName("stats")]
+    public List<CallAnalyzerTraceEntry> Entries { get; set; } = new();
 }
