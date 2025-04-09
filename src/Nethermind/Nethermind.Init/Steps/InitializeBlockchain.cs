@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Unicode;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -23,7 +24,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -65,6 +65,9 @@ namespace Nethermind.Init.Steps
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
+            ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
+                blocksConfig.ExtraData :
+                "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
