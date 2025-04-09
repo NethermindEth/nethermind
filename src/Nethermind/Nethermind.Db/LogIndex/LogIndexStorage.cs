@@ -608,7 +608,7 @@ namespace Nethermind.Db
 
         public static byte[] CompressDbValue(ReadOnlySpan<byte> data)
         {
-            if (ReadCompressionMarker(data) >= 0)
+            if (ReadCompressionMarker(data) > 0)
                 throw ValidationException("Data is already compressed.");
             if (data.Length % BlockNumSize != 0)
                 throw ValidationException("Invalid data length.");
