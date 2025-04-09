@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
-            if (blockParameter is not null && (blockParameter.BlockHash < blockFinder.EarliestHash || blockParameter.BlockHash < blockFinder.EarliestHash))
+            if (blockParameter is not null && (blockParameter.BlockHash < blockFinder.EarliestHash))
             {
                 return new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
             }
