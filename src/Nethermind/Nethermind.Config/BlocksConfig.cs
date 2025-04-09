@@ -14,6 +14,7 @@ namespace Nethermind.Config
     {
         public static bool AddVersionToExtraData { get; set; }
 
+        public const int DefaultMaxTxKilobytes = 9728;
         public const string DefaultExtraData = "Nethermind";
         private byte[] _extraDataBytes = [];
         private string _extraDataString;
@@ -92,5 +93,7 @@ namespace Nethermind.Config
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
+
+        public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
     }
 }
