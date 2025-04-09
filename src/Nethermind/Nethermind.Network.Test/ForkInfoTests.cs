@@ -53,8 +53,8 @@ public class ForkInfoTests
     [TestCase(15_051_000, 1_710_338_134ul, "0xdce96c2d", 1_710_338_135ul, "Future Shanghai timestamp")]
     [TestCase(15_051_000, 1_710_338_135ul, "0x9f3d2254", 1_746_612_311ul, "First Cancun timestamp")]
     [TestCase(15_051_000, 1_746_612_310ul, "0x9f3d2254", 1_746_612_311ul, "Future Cancun timestamp")]
-    [TestCase(15_051_000, 1_746_612_311ul, "0x0", 0ul, "First Prague timestamp")] //todo: fork hash
-    [TestCase(15_051_000, 1_846_612_311ul, "0x0", 0ul, "Future Prague timestamp")]
+    [TestCase(15_051_000, 1_746_612_311ul, "0xc376cf8b", 0ul, "First Prague timestamp")]
+    [TestCase(15_051_000, 1_846_612_311ul, "0xc376cf8b", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
