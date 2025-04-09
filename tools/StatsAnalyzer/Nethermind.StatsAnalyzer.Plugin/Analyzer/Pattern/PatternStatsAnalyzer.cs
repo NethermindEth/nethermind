@@ -5,9 +5,9 @@ using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
-public readonly record struct Stat(NGram Ngram, ulong Count);
+public readonly record struct PatternStat(NGram Ngram, ulong Count);
 
-public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
+public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat>
 {
     private readonly int _currentSketch = 0;
 
@@ -140,7 +140,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
     }
 
 
-    public override IEnumerable<Stat> Stats(SortOrder order)
+    public override IEnumerable<PatternStat> Stats(SortOrder order)
     {
         LockObj.Enter();
         try
@@ -149,13 +149,13 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
             {
                 case SortOrder.Unordered:
                     foreach (var (ngram, count) in TopNQueue.UnorderedItems)
-                        yield return new Stat(new NGram(ngram), count);
+                        yield return new PatternStat(new NGram(ngram), count);
                     break;
                 case SortOrder.Ascending:
                     var queue = new PriorityQueue<ulong, ulong>(TopN);
                     while (queue.Count > 0)
                         if (queue.TryDequeue(out var ngram, out var count))
-                            yield return new Stat(new NGram(ngram), count);
+                            yield return new PatternStat(new NGram(ngram), count);
                     break;
                 case SortOrder.Descending:
                     var queueDecending =
@@ -163,7 +163,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
                     foreach (var (ngram, count) in TopNQueue.UnorderedItems) queueDecending.Enqueue(ngram, count);
                     while (queueDecending.Count > 0)
                         if (queueDecending.TryDequeue(out var ngram, out var count))
-                            yield return new Stat(new NGram(ngram), count);
+                            yield return new PatternStat(new NGram(ngram), count);
                     break;
             }
         }

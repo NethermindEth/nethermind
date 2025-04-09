@@ -8,7 +8,7 @@ using Nethermind.PatternAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 
-public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruction, Stat, PatternAnalyzerTxTrace>
+public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruction, PatternStat, PatternAnalyzerTxTrace>
 {
     private readonly HashSet<Instruction> _ignoreSet;
 
