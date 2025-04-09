@@ -50,5 +50,5 @@ public class BuilderBlockValidationRequest
     /// </summary>
     [JsonRequired]
     [JsonPropertyName("parent_beacon_block_root")]
-    public Hash256 ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 }
