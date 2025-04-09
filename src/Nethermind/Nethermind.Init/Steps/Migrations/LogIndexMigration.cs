@@ -192,7 +192,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private static readonly string[] Suffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
 
-        private static string GetFolderSize(string path)
+        public static string GetFolderSize(string path)
         {
             var info = new DirectoryInfo(path);
 
