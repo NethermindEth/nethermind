@@ -583,7 +583,7 @@ namespace Nethermind.TxPool
             }
 
             relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
-            Metrics.PendingTransactionsAdded++;
+            Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
             if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
 
