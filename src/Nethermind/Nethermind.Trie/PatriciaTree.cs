@@ -183,34 +183,10 @@ namespace Nethermind.Trie
         private Counter CommitTime = Prometheus.Metrics.CreateCounter("patriciatree_commit_time", "Update roothash time");
         private static Counter CommitGenerateKey = Prometheus.Metrics.CreateCounter("patriciatree_commit_generate_tree_time", "Update roothash time");
 
-        private struct JobSpreader(ArrayPoolList<IJob> jobs, int startIdx, int endIdx): IJob
-        {
-            public void Execute(Context ctx)
-            {
-                if (endIdx == startIdx + 1)
-                {
-                    jobs[startIdx].Execute(ctx);
-                    return;
-                }
-
-                if (startIdx == endIdx)
-                {
-                    return;
-                }
-
-                int laterHalf = startIdx + (endIdx - startIdx) / 2;
-
-                ctx.Fork(
-                    new JobSpreader(jobs, startIdx, laterHalf),
-                    new JobSpreader(jobs, laterHalf, endIdx)
-                );
-            }
-        }
-
         private struct CommitJob(
             ICommitter committer,
             PatriciaTree tree,
-            TreePath path,
+            TreePath nodePath,
             NodeCommitInfo nodeCommitInfo,
             bool skipSelf = false
         ) : IJob
@@ -218,10 +194,10 @@ namespace Nethermind.Trie
             public void Execute(Context ctx)
             {
                 TrieNode node = nodeCommitInfo.Node;
+                TreePath path = nodePath;
                 if (node!.IsBranch)
                 {
-
-                    if (path.Length > 30)
+                    if (path.Length > 64)
                     {
                         for (int i = 0; i < 16; i++)
                         {
@@ -275,6 +251,8 @@ namespace Nethermind.Trie
                             }
                         }
 
+                        ctx.RunJob16(ref jobs);
+                        /*
                         RefList16<ManualResetEventSlim> jobLatches = new RefList16<ManualResetEventSlim>(0);
 
                         for (int i = 1; i < jobs.Count; i++)
@@ -286,6 +264,7 @@ namespace Nethermind.Trie
                         {
                             ctx.WaitForJobOrKeepBusy(jobLatches[i]);
                         }
+                        */
                     }
                 }
                 else if (node.NodeType == NodeType.Extension)

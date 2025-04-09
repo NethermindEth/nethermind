@@ -343,6 +343,7 @@ namespace Nethermind.Benchmarks.Store
             }
             tempTree.Commit();
         }
+        */
 
         [Benchmark]
         public void InsertAndCommitRepeatedlyTimes()
@@ -358,6 +359,34 @@ namespace Nethermind.Benchmarks.Store
                 {
                     using IBlockCommitter _ = trieStore.BeginBlockCommit(i / 2000);
                     tempTree.Commit();
+                }
+
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+        }
+
+        [Benchmark]
+        public void InsertAndCommitRepeatedlyTimesWithExecutor()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                if (i % 2000 == 0)
+                {
+                    using IBlockCommitter _ = trieStore.BeginBlockCommit(i / 2000);
+                    tempTree.Commit(executor: _executor);
                 }
 
                 (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
@@ -396,7 +425,31 @@ namespace Nethermind.Benchmarks.Store
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
-        */
+
+        [Benchmark]
+        public void LargeInsertAndCommitWithExecutor()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.Commit(executor: _executor);
+        }
 
         TrieStore _largeUncommittedFullTree;
         StateTree _largeUncommittedStateTree;
