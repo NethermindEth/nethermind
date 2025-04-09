@@ -14,7 +14,10 @@ public interface IReceiptConfig : IConfig
     bool ReceiptsMigration { get; set; }
 
     [ConfigItem(Description = "The degree of IO operations parallelism during receipts migration.", DefaultValue = "32", HiddenFromDocs = true)]
-    int ReceiptsMigrationIOParallelism { get; set; }
+    int LogIndexIOParallelism { get; set; }
+
+    [ConfigItem(Description = "Distance between blocks on when to force RocksDB compaction", DefaultValue = "262144", HiddenFromDocs = true)]
+    int LogIndexCompactionDistance { get; set; }
 
     [ConfigItem(Description = "Force receipt recovery if its not able to detect it.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ForceReceiptsMigration { get; set; }

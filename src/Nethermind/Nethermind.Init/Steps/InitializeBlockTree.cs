@@ -97,8 +97,8 @@ namespace Nethermind.Init.Steps
             ILogIndexStorage logIndexStorage = _set.LogIndexStorage = new LogIndexStorage(
                 _get.DbProvider.LogIndexDb,
                 _get.LogManager.GetClassLogger<LogIndexStorage>(),
-                initConfig.BaseDbPath,
-                receiptConfig.ReceiptsMigrationIOParallelism
+                receiptConfig.LogIndexIOParallelism,
+                receiptConfig.LogIndexCompactionDistance
             );
 
             _get.DisposeStack.Push(logIndexStorage);

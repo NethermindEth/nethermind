@@ -16,14 +16,19 @@ namespace Nethermind.Db.Test
     [TestFixture]
     public class LogIndexStorageTests
     {
-        private LogIndexStorage _logIndexStorage;
-        private ColumnsDb<LogIndexColumns> _columnsDb;
         private ILogger _logger;
-        private string _dbPath;
+        private string _dbPath = null!;
+        private ColumnsDb<LogIndexColumns> _columnsDb = null!;
+
+        private LogIndexStorage CreateLogIndexStorage(int ioParallelism = 16, int compactionDistance = 262_144)
+        {
+            return new(_columnsDb, _logger, ioParallelism, compactionDistance);
+        }
 
         [SetUp]
         public void Setup()
         {
+            _logger = LimboLogs.Instance.GetClassLogger();
             _dbPath = $"{nameof(LogIndexStorageTests)}";
 
             if (Directory.Exists(_dbPath))
@@ -39,18 +44,11 @@ namespace Nethermind.Db.Test
                 LimboLogs.Instance,
                 Enum.GetValues<LogIndexColumns>()
             );
-
-            _logger = LimboLogs.Instance.GetClassLogger();
-
-            _logIndexStorage = new(_columnsDb, _logger, _dbPath, 8);
         }
 
         [TearDown]
-        public async Task TearDownAsync()
+        public void TearDown()
         {
-            await _logIndexStorage.StopAsync();
-
-            await ((IAsyncDisposable)_logIndexStorage).DisposeAsync();
             _columnsDb.Dispose();
 
             if (Directory.Exists(_dbPath))
@@ -78,7 +76,8 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -107,7 +106,8 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
@@ -134,7 +134,8 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            _logIndexStorage.GetLastKnownBlockNumber().Should().Be(-1);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            logIndexStorage.GetLastKnownBlockNumber().Should().Be(-1);
 
             for (var batchNum = 0; batchNum < batchCount; batchNum++)
             {
@@ -142,12 +143,12 @@ namespace Nethermind.Db.Test
                     .Select(i => new BlockReceipts(i + 1, [receipt]))
                     .ToArray();
 
-                await _logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false);
-                _logIndexStorage.GetLastKnownBlockNumber().Should().Be(receipts[^1].BlockNumber);
+                await logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false);
+                logIndexStorage.GetLastKnownBlockNumber().Should().Be(receipts[^1].BlockNumber);
             }
 
             // Assert
-            var resultBlocks = _logIndexStorage.GetBlockNumbersFor(address, 1, batchSize * batchCount).ToList();
+            var resultBlocks = logIndexStorage.GetBlockNumbersFor(address, 1, batchSize * batchCount).ToList();
             resultBlocks.Should().BeEquivalentTo(Enumerable.Range(1, batchSize * batchCount), "The blocks returned should match the blocks that were saved.");
         }
 
@@ -170,7 +171,8 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -203,7 +205,8 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -232,11 +235,12 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
 
             // Assert
-            var addressBlocks = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
-            var topicBlocks = _logIndexStorage.GetBlockNumbersFor(topic1, 1, 1).ToList();
+            var addressBlocks = logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
+            var topicBlocks = logIndexStorage.GetBlockNumbersFor(topic1, 1, 1).ToList();
 
             addressBlocks.Should().Contain(1, "The block number should be indexed for the address.");
             topicBlocks.Should().Contain(1, "The block number should be indexed for the topic.");
@@ -260,13 +264,14 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
 
             // Assert
-            var addressBlocks1 = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
-            var addressBlocks2 = _logIndexStorage.GetBlockNumbersFor(address2, 1, 1).ToList();
-            var topicBlocks1 = _logIndexStorage.GetBlockNumbersFor(topic1, 1, 1).ToList();
-            var topicBlocks2 = _logIndexStorage.GetBlockNumbersFor(topic2, 1, 1).ToList();
+            var addressBlocks1 = logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
+            var addressBlocks2 = logIndexStorage.GetBlockNumbersFor(address2, 1, 1).ToList();
+            var topicBlocks1 = logIndexStorage.GetBlockNumbersFor(topic1, 1, 1).ToList();
+            var topicBlocks2 = logIndexStorage.GetBlockNumbersFor(topic2, 1, 1).ToList();
 
             addressBlocks1.Should().Contain(1, "The block number should be indexed for address1.");
             addressBlocks2.Should().Contain(1, "The block number should be indexed for address2.");
@@ -284,6 +289,8 @@ namespace Nethermind.Db.Test
             var addressBlockMap = new Dictionary<Address, HashSet<int>>();
             var topicBlockMap = new Dictionary<Hash256, HashSet<int>>();
             var random = new Random(42);
+
+            await using var logIndexStorage = CreateLogIndexStorage();
 
             // Generate unique addresses and topics
             for (int i = 0; i < 20; i++) // 20 unique addresses and topics
@@ -311,7 +318,8 @@ namespace Nethermind.Db.Test
                     topicBlockMap[topic].Add(blockNumber);
                 }
                 var receipt = new TxReceipt { Logs = logs.ToArray() };
-                await _logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false);
+
+                await logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false);
             }
 
             // Assert: Check that each address and topic returns the correct block numbers
@@ -319,7 +327,7 @@ namespace Nethermind.Db.Test
             {
                 var address = kvp.Key;
                 var expectedBlocks = kvp.Value;
-                var resultBlocks = _logIndexStorage.GetBlockNumbersFor(address, 1, numberOfBlocks).ToList();
+                var resultBlocks = logIndexStorage.GetBlockNumbersFor(address, 1, numberOfBlocks).ToList();
                 resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Address {address} should have the correct block numbers.");
             }
 
@@ -327,7 +335,7 @@ namespace Nethermind.Db.Test
             {
                 var topic = kvp.Key;
                 var expectedBlocks = kvp.Value;
-                var resultBlocks = _logIndexStorage.GetBlockNumbersFor(topic, 1, numberOfBlocks).ToList();
+                var resultBlocks = logIndexStorage.GetBlockNumbersFor(topic, 1, numberOfBlocks).ToList();
                 resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Topic {topic} should have the correct block numbers.");
             }
         }

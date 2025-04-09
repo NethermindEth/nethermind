@@ -343,7 +343,7 @@ namespace Nethermind.Init.Steps.Migrations
             Parallel.For(from, to, new()
             {
                 CancellationToken = token,
-                MaxDegreeOfParallelism = _receiptConfig.ReceiptsMigrationIOParallelism
+                MaxDegreeOfParallelism = _receiptConfig.LogIndexIOParallelism
             }, i =>
             {
                 Block block = _blockTree.FindBlock(i) ?? GetMissingBlock(i);

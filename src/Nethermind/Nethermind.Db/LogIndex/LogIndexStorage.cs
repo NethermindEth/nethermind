@@ -34,7 +34,8 @@ namespace Nethermind.Db
         public const int BlockNumSize = sizeof(int);
         public const int BlockMaxVal = int.MaxValue;
         public const int MaxUncompressedLength = 128 * BlockNumSize;
-        private const int CompactionDistance = 262_144; // 2^18
+
+        private readonly int _compactionDistance;
 
         // TODO: get rid of static fields
         // A lot of duplicates in case of regular Channel, TODO: find a better way to guarantee uniqueness
@@ -42,10 +43,14 @@ namespace Nethermind.Db
         public static void EnqueueCompress(byte[] dbKey) => CompressQueue.TryAdd(dbKey, true);
 
         // TODO: ensure class is singleton
-        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism)
+        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger,
+            int ioParallelism, int compactionDistance)
         {
             if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
             _ioParallelism = ioParallelism;
+
+            if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
+            _compactionDistance = compactionDistance;
 
             _logger = logger;
 
@@ -67,15 +72,21 @@ namespace Nethermind.Db
 
         public async Task StopAsync()
         {
-            //Console.WriteLine("!!!!!!!!!! StopAsync !!!!!!!!!!");
             await _setReceiptsSemaphore.WaitAsync();
 
-            // TODO: check if needed
-            _addressDb.Flush();
-            _topicsDb.Flush();
-            _defaultDb.Flush();
+            try
+            {
+                // TODO: check if needed
+                _addressDb.Flush();
+                _topicsDb.Flush();
+                _defaultDb.Flush();
 
-            if (_logger.IsInfo) _logger.Info("Log index storage stopped");
+                if (_logger.IsInfo) _logger.Info("Log index storage stopped");
+            }
+            finally
+            {
+                _setReceiptsSemaphore.Release();
+            }
         }
 
         ValueTask IAsyncDisposable.DisposeAsync()
@@ -369,7 +380,7 @@ namespace Nethermind.Db
             finally
             {
                 _lastCompactionAt ??= batch[0].BlockNumber - 1;
-                if (batch[^1].BlockNumber - _lastCompactionAt >= CompactionDistance)
+                if (batch[^1].BlockNumber - _lastCompactionAt >= _compactionDistance)
                 {
                     Compact(stats);
                     _lastCompactionAt = batch[^1].BlockNumber;
