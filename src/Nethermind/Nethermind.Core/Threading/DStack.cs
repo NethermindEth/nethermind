@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -11,13 +10,13 @@ namespace Nethermind.Core.Threading;
 /// <summary>
 /// Like a concurrent stack, but also support dequeue.
 /// It will not reduce buffer size on dequeue/pop.
-/// The dequeue may return false and not return item if blocked.
+/// The dequeue is expected to not be called often and may return false and not return item if blocked.
 /// </summary>
 /// <param name="initialCapacity"></param>
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private SpinLock _locker = new SpinLock(false);
+    private McsLock _locker = new McsLock();
 
     private long _atomicEndAndStart;
     private T[] _buffer = new T[Math.Max(initialCapacity, 1)];
@@ -25,37 +24,28 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryPop(out T? item)
     {
-        bool lockEntered = false;
-        _locker.Enter(ref lockEntered);
-        Debug.Assert(lockEntered);
+        using var _ = _locker.Acquire();
 
-        try
+        (int startIdx, int endIdx) = GetStartAndEndIdx();
+        if (endIdx == startIdx)
         {
-            (int startIdx, int endIdx) = GetStartAndEndIdx();
-            if (endIdx == startIdx)
-            {
-                item = default;
-                return false;
-            }
-
-            item = _buffer[endIdx];
-            _buffer[endIdx] = default!;
-            endIdx--;
-
-            if (endIdx == startIdx)
-            {
-                // Reset the startidx to start of the buffer.
-                startIdx = -1;
-                endIdx = -1;
-            }
-
-            SetStartAndEndIdxUnlocked(startIdx, endIdx);
-            return true;
+            item = default;
+            return false;
         }
-        finally
+
+        item = _buffer[endIdx];
+        _buffer[endIdx] = default!;
+        endIdx--;
+
+        if (endIdx == startIdx)
         {
-            _locker.Exit(false);
+            // Reset the startidx to start of the buffer.
+            startIdx = -1;
+            endIdx = -1;
         }
+
+        SetStartAndEndIdxUnlocked(startIdx, endIdx);
+        return true;
     }
 
     private (int startIdx, int endIdx) GetStartAndEndIdx()
@@ -77,32 +67,23 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Push(T item)
     {
-        bool lockEntered = false;
-        _locker.Enter(ref lockEntered);
-        Debug.Assert(lockEntered);
+        using var _ = _locker.Acquire();
 
-        try
+        (int startIdx, int endIdx) = GetStartAndEndIdx();
+
+        int newEndIdx = endIdx + 1;
+        if (newEndIdx == _buffer.Length)
         {
-            (int startIdx, int endIdx) = GetStartAndEndIdx();
-
-            int newEndIdx = endIdx + 1;
-            if (newEndIdx == _buffer.Length)
-            {
-                T[] newItems = new T[_buffer.Length * 2];
-                int count = endIdx - startIdx;
-                Array.Copy(_buffer, (startIdx + 1), newItems, 0, count);
-                _buffer = newItems;
-                startIdx = -1;
-                newEndIdx = count;
-            }
-
-            _buffer[newEndIdx] = item;
-            SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
+            T[] newItems = new T[_buffer.Length * 2];
+            int count = endIdx - startIdx;
+            Array.Copy(_buffer, (startIdx + 1), newItems, 0, count);
+            _buffer = newItems;
+            startIdx = -1;
+            newEndIdx = count;
         }
-        finally
-        {
-            _locker.Exit(false);
-        }
+
+        _buffer[newEndIdx] = item;
+        SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
     }
 
     public bool TryDequeue(out T? item, out bool shouldRetry)
@@ -116,14 +97,11 @@ public class DStack<T>(int initialCapacity)
             return false;
         }
 
-        bool lockEntered = false;
-        _locker.TryEnter(ref lockEntered);
-        if (!lockEntered)
+        if (!_locker.TryAcquire(out McsLock.Disposable disposable))
         {
             shouldRetry = true;
             return false;
         }
-        Debug.Assert(lockEntered);
 
         try
         {
@@ -140,7 +118,7 @@ public class DStack<T>(int initialCapacity)
         }
         finally
         {
-            _locker.Exit(false);
+            disposable.Dispose();
         }
     }
 }

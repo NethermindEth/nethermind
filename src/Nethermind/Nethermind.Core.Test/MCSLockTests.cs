@@ -7,6 +7,8 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using FluentAssertions;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Test;
 
@@ -29,6 +31,22 @@ public class MCSLockTests
         }
 
         Assert.Pass(); // Test passes if no deadlock or exception occurs.
+    }
+
+    [Test]
+    public void TestTryAcquire()
+    {
+        mcsLock.TryAcquire(out McsLock.Disposable disposable).Should().BeTrue();
+        disposable.Dispose();
+
+        mcsLock.TryAcquire(out disposable).Should().BeTrue();
+        disposable.Dispose();
+
+        McsLock.Disposable dis2 = mcsLock.Acquire();
+        mcsLock.TryAcquire(out disposable).Should().BeFalse();
+        dis2.Dispose();
+
+        mcsLock.TryAcquire(out disposable).Should().BeTrue();
     }
 
     [Test]

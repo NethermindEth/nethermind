@@ -47,6 +47,19 @@ public class McsLock
         return new Disposable(node);
     }
 
+    public bool TryAcquire(out Disposable disposable)
+    {
+        ThreadNode node = _node.Value!;
+
+        node.State = (nuint)LockState.Waiting;
+        disposable = new Disposable(node);
+
+        if (_tail is not null) return false;
+
+        disposable = Acquire();
+        return true;
+    }
+
     private static void WaitForUnlock(ThreadNode node, ThreadNode predecessor)
     {
         // If there was a previous tail, it means the lock is already held by someone.
