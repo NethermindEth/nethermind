@@ -91,6 +91,17 @@ namespace Nethermind.Init.Steps
                 IsILEvmEnabled = true,
             };
 
+            Console.WriteLine($"IlEvmAnalysisQueueMaxSize: {vmConfig.IlEvmAnalysisQueueMaxSize}");
+            Console.WriteLine($"IlEvmAnalysisThreshold: {vmConfig.IlEvmAnalysisThreshold}");
+            Console.WriteLine($"IlEvmContractsPerDllCount: {vmConfig.IlEvmContractsPerDllCount}");
+            Console.WriteLine($"IlEvmEnabledMode: {vmConfig.IlEvmEnabledMode}");
+            Console.WriteLine($"IlEvmPersistPrecompiledContractsOnDisk: {vmConfig.IlEvmPersistPrecompiledContractsOnDisk}");
+            Console.WriteLine($"IlEvmPrecompiledContractsPath: {vmConfig.IlEvmPrecompiledContractsPath}");
+            Console.WriteLine($"IsIlEvmAggressiveModeEnabled: {vmConfig.IsIlEvmAggressiveModeEnabled}");
+            Console.WriteLine($"IsILEvmEnabled: {vmConfig.IsVmOptimizationEnabled}");
+
+            ThisNodeInfo.AddInfo("EvmOptimization     :", $"{vmConfig.IlEvmEnabledMode}");
+
             InitializeIlEvmProcesses(vmConfig);
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
