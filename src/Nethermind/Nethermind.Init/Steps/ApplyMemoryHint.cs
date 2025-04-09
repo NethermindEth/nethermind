@@ -22,6 +22,7 @@ namespace Nethermind.Init.Steps
         private readonly INetworkConfig _networkConfig;
         private readonly ISyncConfig _syncConfig;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly IKeccakCacheConfig _keccakCacheConfig;
 
         public ApplyMemoryHint(INethermindApi api)
         {
@@ -31,6 +32,7 @@ namespace Nethermind.Init.Steps
             _networkConfig = api.Config<INetworkConfig>();
             _syncConfig = api.Config<ISyncConfig>();
             _txPoolConfig = api.Config<ITxPoolConfig>();
+            _keccakCacheConfig = api.Config<IKeccakCacheConfig>();
         }
 
         public Task Execute(CancellationToken _)
@@ -45,6 +47,7 @@ namespace Nethermind.Init.Steps
                     _networkConfig,
                     _syncConfig,
                     _txPoolConfig,
+                    _keccakCacheConfig,
                     cpuCount);
             }
 

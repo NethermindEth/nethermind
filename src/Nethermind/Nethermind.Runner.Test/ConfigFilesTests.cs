@@ -20,6 +20,7 @@ using Nethermind.Network.Config;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
@@ -394,6 +395,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
                 configProvider.GetConfig<INetworkConfig>(),
                 configProvider.GetConfig<ISyncConfig>(),
                 configProvider.GetConfig<ITxPoolConfig>(),
+                configProvider.GetConfig<IKeccakCacheConfig>(),
                 (uint)Environment.ProcessorCount);
         }
     }

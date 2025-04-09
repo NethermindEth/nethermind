@@ -18,6 +18,7 @@ public class BuiltInStepsModule : Module
         typeof(EraStep),
         typeof(FilterBootnodes),
         typeof(InitCrypto),
+        typeof(InitKeccakCache),
         typeof(InitDatabase),
         typeof(InitializeBlockchain),
         typeof(InitializeBlockProducer),

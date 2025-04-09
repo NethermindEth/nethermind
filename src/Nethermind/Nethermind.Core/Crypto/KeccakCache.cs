@@ -23,7 +23,14 @@ namespace Nethermind.Core.Crypto;
 /// </summary>
 public unsafe class KeccakCache : IDisposable
 {
-    public static readonly KeccakCache Instance = new(0x20000);
+    /// <summary>
+    /// A small initial count to let never KeccakCache be null.
+    /// </summary>
+    private const uint InitialCount = 16 * 1024;
+
+    public static KeccakCache Instance => _instance;
+
+    private static KeccakCache _instance = new(InitialCount);
 
     /// <summary>
     /// Count should be a power of two, to ensure proper bit operations
@@ -54,6 +61,30 @@ public unsafe class KeccakCache : IDisposable
         _memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
         NativeMemory.Clear(_memory, size);
         GC.AddMemoryPressure((long)size);
+    }
+
+    /// <summary>
+    /// Calculates the actual memory size.
+    /// </summary>
+    /// <param name="maxMemory">The maximum memory to occupy.</param>
+    /// <returns>How much it will actually occupy.</returns>
+    public static long CalculateActualMemorySize(long maxMemory)
+    {
+        var count = AlignCountToPowerOf2(maxMemory);
+        return count * Entry.Size;
+    }
+
+    public static void Initialize(long maxMemory)
+    {
+        var count = AlignCountToPowerOf2(maxMemory);
+        KeccakCache previous = Interlocked.Exchange(ref _instance, new KeccakCache(count));
+        previous.Dispose();
+    }
+
+    private static uint AlignCountToPowerOf2(long maxMemory)
+    {
+        var count = (uint)(maxMemory / Entry.Size);
+        return 1U << BitOperations.Log2(count);
     }
 
     [SkipLocalsInit]
@@ -217,5 +248,9 @@ public unsafe class KeccakCache : IDisposable
         [FieldOffset(AlignedStart)] public byte Aligned32;
     }
 
-    public void Dispose() => NativeMemory.AlignedFree(_memory);
+    public void Dispose()
+    {
+        NativeMemory.AlignedFree(_memory);
+        GC.RemoveMemoryPressure((long)Count * Entry.Size);
+    }
 }
