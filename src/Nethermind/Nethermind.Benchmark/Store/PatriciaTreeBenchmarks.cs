@@ -371,7 +371,6 @@ namespace Nethermind.Benchmarks.Store
                 }
             }
         }
-        */
 
         [Benchmark]
         public void LargeInsertAndCommit()
@@ -397,14 +396,18 @@ namespace Nethermind.Benchmarks.Store
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
+        */
 
-        [Benchmark]
-        public void LargeInsertAndCommitWithExecutor()
+        TrieStore _largeUncommittedFullTree;
+        StateTree _largeUncommittedStateTree;
+
+        [IterationSetup(Targets = [nameof(LargeCommit), nameof(LargeCommitWithExecutor), nameof(LargeHash), nameof(LargeHashWithExecutor)])]
+        public void SetupLargeUncommittedTree()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(),
+            TrieStore trieStore = _largeUncommittedFullTree = new TrieStore(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB()),
                 Persist.IfBlockOlderThan(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+            StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
@@ -418,60 +421,41 @@ namespace Nethermind.Benchmarks.Store
                     tempTree.Get(address);
                 }
             }
+        }
 
-            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
-            tempTree.Commit(executor: _executor);
+        [IterationCleanup(Targets = [nameof(LargeCommit), nameof(LargeCommitWithExecutor), nameof(LargeHash), nameof(LargeHashWithExecutor)])]
+        public void CleanupLargeUncommittedTree()
+        {
+            _largeUncommittedFullTree.Dispose();
         }
 
         [Benchmark]
-        public void LargeInsertAndHash()
+        public void LargeCommit()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
-                if (isWrite)
-                {
-                    tempTree.Set(address, value);
-                }
-                else
-                {
-                    tempTree.Get(address);
-                }
-            }
-
-            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
-            tempTree.UpdateRootHash();
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.Commit();
         }
 
         [Benchmark]
-        public void LargeInsertAndHashWithExecutor()
+        public void LargeCommitWithExecutor()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.Commit(executor: _executor);
+        }
 
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
-                if (isWrite)
-                {
-                    tempTree.Set(address, value);
-                }
-                else
-                {
-                    tempTree.Get(address);
-                }
-            }
+        [Benchmark]
+        public void LargeHash()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash();
+        }
 
-            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
-            tempTree.RecursiveResolveKey(_executor);
-            tempTree.UpdateRootHash(canBeParallel: false);
+        [Benchmark]
+        public void LargeHashWithExecutor()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.RecursiveResolveKey(_executor);
+            _largeUncommittedStateTree.UpdateRootHash();
         }
 
         /*
