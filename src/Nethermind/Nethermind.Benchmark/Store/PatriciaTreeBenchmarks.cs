@@ -401,7 +401,13 @@ namespace Nethermind.Benchmarks.Store
         TrieStore _largeUncommittedFullTree;
         StateTree _largeUncommittedStateTree;
 
-        [IterationSetup(Targets = [nameof(LargeCommit), nameof(LargeCommitWithExecutor), nameof(LargeHash), nameof(LargeHashWithExecutor)])]
+        [IterationSetup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeCommitWithExecutor),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+            nameof(LargeHashWithExecutor)
+        ])]
         public void SetupLargeUncommittedTree()
         {
             TrieStore trieStore = _largeUncommittedFullTree = new TrieStore(new MemDb(),
@@ -423,7 +429,13 @@ namespace Nethermind.Benchmarks.Store
             }
         }
 
-        [IterationCleanup(Targets = [nameof(LargeCommit), nameof(LargeCommitWithExecutor), nameof(LargeHash), nameof(LargeHashWithExecutor)])]
+        [IterationCleanup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeCommitWithExecutor),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+            nameof(LargeHashWithExecutor)
+        ])]
         public void CleanupLargeUncommittedTree()
         {
             _largeUncommittedFullTree.Dispose();
@@ -451,11 +463,18 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
+        public void LargeHashNoParallel()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
+        }
+
+        [Benchmark]
         public void LargeHashWithExecutor()
         {
             using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
             _largeUncommittedStateTree.RecursiveResolveKey(_executor);
-            _largeUncommittedStateTree.UpdateRootHash();
+            _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
         }
 
         /*
