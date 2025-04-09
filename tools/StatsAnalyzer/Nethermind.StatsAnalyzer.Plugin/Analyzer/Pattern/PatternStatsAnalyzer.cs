@@ -85,11 +85,10 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
     }
 
 
+    //use LockObj to be thread safe. Call ProcessTopN after adding instruction(s).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override unsafe void Add(Instruction instruction)
     {
-        lock (LockObj)
-        {
             ResetSketchAtError();
             _ngram = _ngram.ShiftAdd(instruction);
             delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
@@ -107,7 +106,6 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, Stat>
                         TopNQueue);
             TopNQueue.TryPeek(out _, out var min);
             MinSupport = Math.Max(min, MinSupport);
-        }
     }
 
 
