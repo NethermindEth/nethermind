@@ -56,36 +56,33 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
 
     public override unsafe void Add(IEnumerable<Instruction> instructions)
     {
-        lock (LockObj)
+        ResetSketchAtError();
+
+        TopNQueue.Clear();
+        foreach (var instruction in instructions)
         {
-            ResetSketchAtError();
-
-            TopNQueue.Clear();
-            foreach (var instruction in instructions)
-            {
-                _ngram = _ngram.ShiftAdd(instruction);
-                delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
-                    PriorityQueue<ulong, ulong>, ulong> ptr = &ProcessNGram;
-                Max = NGram.ProcessEachSubsequence(
-                        _ngram,
-                        ptr,
-                        _currentSketch,
-                        _currentSketchBufferSize,
-                        MinSupport,
-                        Max,
-                        TopN,
-                        _sketchBuffer,
-                        TopNMap,
-                        TopNQueue);
-            }
-
-            _ngram = _ngram.ShiftAdd(NGram.Reset);
-            ProcessTopN();
+            _ngram = _ngram.ShiftAdd(instruction);
+            delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
+                PriorityQueue<ulong, ulong>, ulong> ptr = &ProcessNGram;
+            Max = NGram.ProcessEachSubsequence(
+                    _ngram,
+                    ptr,
+                    _currentSketch,
+                    _currentSketchBufferSize,
+                    MinSupport,
+                    Max,
+                    TopN,
+                    _sketchBuffer,
+                    TopNMap,
+                    TopNQueue);
         }
+
+        _ngram = _ngram.ShiftAdd(NGram.Reset);
+        ProcessTopN();
     }
 
 
-    //use LockObj to be thread safe. Call ProcessTopN after adding instruction(s).
+    // Call ProcessTopN after adding instruction(s).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override unsafe void Add(Instruction instruction)
     {
@@ -142,31 +139,26 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
 
     public override IEnumerable<PatternStat> Stats(SortOrder order)
     {
-        LockObj.Enter();
-        try
+        switch (order)
         {
-            switch (order)
-            {
-                case SortOrder.Unordered:
-                    foreach (var (ngram, count) in TopNQueue.UnorderedItems)
+            case SortOrder.Unordered:
+                foreach (var (ngram, count) in TopNQueue.UnorderedItems)
+                    yield return new PatternStat(new NGram(ngram), count);
+                break;
+            case SortOrder.Ascending:
+                var queue = new PriorityQueue<ulong, ulong>(TopN);
+                while (queue.Count > 0)
+                    if (queue.TryDequeue(out var ngram, out var count))
                         yield return new PatternStat(new NGram(ngram), count);
-                    break;
-                case SortOrder.Ascending:
-                    var queue = new PriorityQueue<ulong, ulong>(TopN);
-                    while (queue.Count > 0)
-                        if (queue.TryDequeue(out var ngram, out var count))
-                            yield return new PatternStat(new NGram(ngram), count);
-                    break;
-                case SortOrder.Descending:
-                    var queueDecending =
-                        new PriorityQueue<ulong, ulong>(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
-                    foreach (var (ngram, count) in TopNQueue.UnorderedItems) queueDecending.Enqueue(ngram, count);
-                    while (queueDecending.Count > 0)
-                        if (queueDecending.TryDequeue(out var ngram, out var count))
-                            yield return new PatternStat(new NGram(ngram), count);
-                    break;
-            }
+                break;
+            case SortOrder.Descending:
+                var queueDecending =
+                    new PriorityQueue<ulong, ulong>(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
+                foreach (var (ngram, count) in TopNQueue.UnorderedItems) queueDecending.Enqueue(ngram, count);
+                while (queueDecending.Count > 0)
+                    if (queueDecending.TryDequeue(out var ngram, out var count))
+                        yield return new PatternStat(new NGram(ngram), count);
+                break;
         }
-        finally { LockObj.Exit(); }
     }
 }
