@@ -165,6 +165,14 @@ namespace Nethermind.Blockchain
                 AttemptToFixCorruptionByMovingHeadBackwards();
             }
 
+
+            EarliestHash = GenesisHash;
+            if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+            {
+                var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+                EarliestHash = FindBlockHash(lowestBlock);
+            }
+
             if (_logger.IsInfo)
                 _logger.Info($"Block tree initialized, " +
                              $"last processed is {Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}, " +
@@ -1426,6 +1434,7 @@ namespace Nethermind.Blockchain
         public Hash256? PendingHash => Head?.Hash;
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
+        public Hash256? EarliestHash { get; private set; }
 
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {

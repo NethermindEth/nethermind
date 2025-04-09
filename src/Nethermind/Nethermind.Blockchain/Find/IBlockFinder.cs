@@ -21,6 +21,8 @@ namespace Nethermind.Blockchain.Find
 
         Block? Head { get; }
 
+        Hash256 EarliestHash { get; }
+
         Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
@@ -57,7 +59,7 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindHeadBlock() => Head;
 
-        public Block? FindEarliestBlock() => FindGenesisBlock();
+        public Block? FindEarliestBlock() => FindBlock(EarliestHash, BlockTreeLookupOptions.RequireCanonical);
 
         public Block? FindLatestBlock() => FindHeadBlock();
 
