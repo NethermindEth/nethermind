@@ -139,7 +139,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
     public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
-        TransactionDecodingResult transactions = GetTransactions();
+        TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
             return new BlockDecodingResult(transactions.Error);
@@ -179,7 +179,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public TransactionDecodingResult GetTransactions()
+    public TransactionDecodingResult TryGetTransactions()
     {
         if (_transactions is not null) return new TransactionDecodingResult(_transactions);
 
@@ -267,7 +267,7 @@ public struct TransactionDecodingResult
         Transactions = transactions;
     }
 
-    public TransactionDecodingResult(string? error)
+    public TransactionDecodingResult(string error)
     {
         Error = error;
     }
@@ -283,7 +283,7 @@ public struct BlockDecodingResult
         Block = block;
     }
 
-    public BlockDecodingResult(string? error)
+    public BlockDecodingResult(string error)
     {
         Error = error;
     }

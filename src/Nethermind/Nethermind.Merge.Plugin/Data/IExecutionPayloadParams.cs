@@ -86,7 +86,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        TransactionDecodingResult transactionDecodingResult = executionPayload.GetTransactions();
+        TransactionDecodingResult transactionDecodingResult = executionPayload.TryGetTransactions();
         if (transactionDecodingResult.Error is not null)
         {
             error = transactionDecodingResult.Error;

@@ -1101,7 +1101,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
 
-        Transaction[] txsReceived = executionPayload.GetTransactions().Transactions;
+        Transaction[] txsReceived = executionPayload.TryGetTransactions().Transactions;
 
         txsReceived.Should().BeEquivalentTo(txsSource, static options => options
             .Excluding(static t => t.ChainId)

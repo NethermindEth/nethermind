@@ -230,7 +230,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         Block? b = payload.TryGetBlock().Block;
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.GetTransactions().Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes;
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
