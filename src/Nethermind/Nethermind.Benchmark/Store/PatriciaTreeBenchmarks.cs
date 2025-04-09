@@ -371,7 +371,6 @@ namespace Nethermind.Benchmarks.Store
                 }
             }
         }
-        */
 
         [Benchmark]
         public void InsertAndCommitRepeatedlyTimesWithExecutor()
@@ -400,6 +399,7 @@ namespace Nethermind.Benchmarks.Store
                 }
             }
         }
+        */
 
         [Benchmark]
         public void LargeInsertAndCommit()

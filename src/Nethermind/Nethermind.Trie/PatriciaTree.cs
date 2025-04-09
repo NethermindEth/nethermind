@@ -164,6 +164,7 @@ namespace Nethermind.Trie
                         this,
                         path,
                         new NodeCommitInfo(RootRef),
+                        maxLevelForConcurrentCommit,
                         skipSelf: skipRoot
                     ));
                 }
@@ -188,6 +189,7 @@ namespace Nethermind.Trie
             PatriciaTree tree,
             TreePath nodePath,
             NodeCommitInfo nodeCommitInfo,
+            int maxLevelForConcurrentCommit,
             bool skipSelf = false
         ) : IJob
         {
@@ -197,7 +199,7 @@ namespace Nethermind.Trie
                 TreePath path = nodePath;
                 if (node!.IsBranch)
                 {
-                    if (path.Length > 64)
+                    if (path.Length > maxLevelForConcurrentCommit)
                     {
                         for (int i = 0; i < 16; i++)
                         {
@@ -209,7 +211,8 @@ namespace Nethermind.Trie
                                     committer,
                                     tree,
                                     path,
-                                    new NodeCommitInfo(childNode!, node, i)
+                                    new NodeCommitInfo(childNode!, node, i),
+                                    maxLevelForConcurrentCommit
                                 ).Execute(ctx);
                                 path.TruncateOne();
                             }
@@ -237,7 +240,8 @@ namespace Nethermind.Trie
                                         committer,
                                         tree,
                                         path,
-                                        new NodeCommitInfo(childNode!, node, i)
+                                        new NodeCommitInfo(childNode!, node, i),
+                                        maxLevelForConcurrentCommit
                                     )
                                 );
                                 path.TruncateOne();
@@ -282,7 +286,8 @@ namespace Nethermind.Trie
                             committer,
                             tree,
                             path,
-                            new NodeCommitInfo(extensionChild, node, 0)
+                            new NodeCommitInfo(extensionChild, node, 0),
+                            maxLevelForConcurrentCommit
                         ).Execute(ctx);
                     }
                     else

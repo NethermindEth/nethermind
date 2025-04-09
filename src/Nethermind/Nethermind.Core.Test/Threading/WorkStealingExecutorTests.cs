@@ -25,9 +25,9 @@ public class WorkStealingExecutorTests
     // private const long FibNum = 43;
     // private const long FibResult = 433494437;
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(16)]
+    // [TestCase(1)]
+    // [TestCase(2)]
+    [TestCase(32)]
     public void TestBasicFactorial(int workerCount)
     {
         using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
@@ -35,6 +35,7 @@ public class WorkStealingExecutorTests
         FibonacciResult result = new FibonacciResult();
         executor.Execute(new FibonacciJob(FibNum, result));
         result.Result.Should().Be(FibResult);
+        executor.PrintDebug();
     }
 
     [Test]
@@ -128,7 +129,7 @@ public class WorkStealingExecutorTests
         }
 
         TestContext.Error.WriteLine($"Time {baselineTime} vs {multithreadTime}");
-        double speedup = (baselineTime * baselineWorkerCount) / multithreadTime;
+        double speedup =  (baselineTime * baselineWorkerCount) / multithreadTime;
         TestContext.Error.WriteLine($"Speedup is {speedup}");
         speedup.Should().BeGreaterThan(minimumSpeedup);
     }

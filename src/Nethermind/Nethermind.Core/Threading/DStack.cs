@@ -83,6 +83,7 @@ public class DStack<T>(int initialCapacity)
         PushUnlock(item);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PushUnlock(T item)
     {
         (int startIdx, int endIdx) = GetStartAndEndIdx();
@@ -102,6 +103,7 @@ public class DStack<T>(int initialCapacity)
         SetStartAndEndIdxUnlocked(startIdx, newEndIdx);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void PushMany(Span<T> items)
     {
         using var _ = _locker.Acquire();
