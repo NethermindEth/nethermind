@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -17,28 +18,35 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test
 {
-    [TestFixture]
-    public class LogIndexStorageTests
+    [TestFixture(10, 100)]
+    [TestFixture(5, 200)]
+    [TestFixture(100, 100, Explicit = true)]
+    [TestFixture(100, 200, Explicit = true)]
+    public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
     {
+        private readonly TestData _testData = GenerateTestData(new Random(42), batchCount, blocksPerBatch);
+
         private ILogger _logger;
         private string _dbPath = null!;
         private ColumnsDb<LogIndexColumns> _columnsDb = null!;
 
-        private LogIndexStorage CreateLogIndexStorage(int ioParallelism = 16, int compactionDistance = 262_144)
+        private LogIndexStorage CreateLogIndexStorage(int ioParallelism = 16, int compactionDistance = 262_144,
+            ColumnsDb<LogIndexColumns>? columnsDb = null)
         {
-            return new(_columnsDb, _logger, ioParallelism, compactionDistance);
+            return new(columnsDb ?? _columnsDb, _logger, ioParallelism, compactionDistance);
         }
 
         [SetUp]
         public void Setup()
         {
             _logger = LimboLogs.Instance.GetClassLogger();
-            _dbPath = $"{nameof(LogIndexStorageTests)}";
+            _dbPath = GetType().Name;
 
             if (Directory.Exists(_dbPath))
             {
                 Directory.Delete(_dbPath, true);
             }
+
             Directory.CreateDirectory(_dbPath);
 
             _columnsDb = new(
@@ -59,319 +67,152 @@ namespace Nethermind.Db.Test
                 Directory.Delete(_dbPath, true);
         }
 
-        [Test]
-        public async Task SetReceipts_SavesCorrectAddresses()
+        [Combinatorial]
+        public async Task Set_Get_Test(
+            [Values(1, 8, 16)] int ioParallelism,
+            [Values(100, 200, int.MaxValue)] int compactionDistance
+        )
         {
-            // Arrange
-            var address1 = new Address("0x0000000000000000000000000000000000001234");
-            var address2 = new Address("0x0000000000000000000000000000000000005678");
-            int blockNumber = 100;
-            var receipts = new[]
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task SetMultiInstance_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            var half = _testData.Batches.Length / 2;
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches.Take(half));
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches.Skip(half));
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task RepeatedSet_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task RepeatedSetMultiInstance_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                VerifyReceipts(logIndexStorage, _testData);
+        }
+
+
+        [Combinatorial]
+        public async Task Set_NewInstance_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
+        public async Task Set_ConcurrentGet_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            using var getCancellation = new CancellationTokenSource();
+            var token = getCancellation.Token;
+
+            var getThreads = new[]
             {
-                new TxReceipt
-                {
-                    Logs = new List<LogEntry>
-                    {
-                        new(address1, [], []),
-                        new(address1, [], []), // Multiple logs for the same address
-                        new(address2, [], [])
-                    }.ToArray()
-                }
+                new Thread(() => GetBlockNumbersLoop(new Random(42), logIndexStorage, _testData, token)),
+                new Thread(() => GetBlockNumbersLoop(new Random(4242), logIndexStorage, _testData, token)),
+                new Thread(() => GetBlockNumbersLoop(new Random(424242), logIndexStorage, _testData, token)),
             };
+            getThreads.ForEach(t => t.Start());
 
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            // Assert
-            IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            Enumerate(addressDb)
-                .Select(x => new Address(x.key[..Address.Size])).ToHashSet()
-                .Should().BeEquivalentTo([address1, address2]);
+            await getCancellation.CancelAsync();
+            getThreads.ForEach(t => t.Join());
+
+            VerifyReceipts(logIndexStorage, _testData);
         }
 
-        [Test]
-        public async Task SetReceipts_SavesLogsWithDifferentTopics()
+        private static TestData GenerateTestData(Random random, int batchCount, int blocksPerBatch)
         {
-            // Arrange
-            var topic1 = new Hash256("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
-            var topic2 = new Hash256("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
-            int blockNumber = 100;
-            var receipts = new[]
-            {
-                new TxReceipt
-                {
-                    Logs = new List<LogEntry>
-                    {
-                        new(Address.Zero, [], [topic1]),
-                        new(Address.Zero, [], [topic2])
-                    }.ToArray()
-                }
-            };
+            var testData = new TestData(batchCount, blocksPerBatch);
 
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
-
-            // Assert
-            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
-            Enumerate(topicDb)
-                .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
-                .Should().BeEquivalentTo([topic1, topic2]);
-        }
-
-        [TestCase(7, 1)]
-        [TestCase(8, 2)]
-        [TestCase(15, 3)]
-        [TestCase(300, 4)]
-        [TestCase(9999, 10)]
-        public async Task GetBlockNumbersFor_ReturnsCorrectBlocks(int batchSize, int batchCount)
-        {
-            // Arrange
-            var address = new Address("0x0000000000000000000000000000000000001234");
-            var receipt = new TxReceipt
-            {
-                Logs = new List<LogEntry>
-                {
-                    new(address, [], [])
-                }.ToArray()
-            };
-
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            logIndexStorage.GetLastKnownBlockNumber().Should().Be(-1);
-
-            for (var batchNum = 0; batchNum < batchCount; batchNum++)
-            {
-                BlockReceipts[] receipts = Enumerable.Range(batchSize * batchNum, batchSize)
-                    .Select(i => new BlockReceipts(i + 1, [receipt]))
-                    .ToArray();
-
-                await logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false);
-                logIndexStorage.GetLastKnownBlockNumber().Should().Be(receipts[^1].BlockNumber);
-            }
-
-            // Assert
-            var resultBlocks = logIndexStorage.GetBlockNumbersFor(address, 1, batchSize * batchCount).ToList();
-            resultBlocks.Should().BeEquivalentTo(Enumerable.Range(1, batchSize * batchCount), "The blocks returned should match the blocks that were saved.");
-        }
-
-        [Test]
-        public async Task SetReceipts_DistinguishesOverlappingAddressAndTopicKeys()
-        {
-            // Arrange
-            var address = new Address("0x1234567890abcdef1234567890abcdef12345678");
-            var topic = new Hash256("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
-            int blockNumber = 100;
-            var receipts = new[]
-            {
-                new TxReceipt
-                {
-                    Logs = new List<LogEntry>
-                    {
-                        new(address, [], [topic])
-                    }.ToArray()
-                }
-            };
-
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
-
-            // Assert
-            IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
-
-            Enumerable.Concat<object>(
-                    Enumerate(addressDb).Select(x => new Address(x.key[..Address.Size])).ToHashSet(),
-                    Enumerate(topicDb).Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet())
-                .ToArray()
-                .Should().BeEquivalentTo(new object[] { address, topic });
-        }
-
-        [Test]
-        public async Task SetReceipts_SavesMixedLogsCorrectly()
-        {
-            // Arrange
-            var address = new Address("0x0000000000000000000000000000000000001234");
-            var topic = new Hash256("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
-            int blockNumber = 100;
-            var receipts = new[]
-            {
-                new TxReceipt
-                {
-                    Logs = new List<LogEntry>
-                    {
-                        new(address, [], []),
-                        new(Address.Zero, [], [topic])
-                    }.ToArray()
-                }
-            };
-
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            await logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
-
-            // Assert
-            IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            Enumerate(addressDb)
-                .Select(x => new Address(x.key[..Address.Size])).ToHashSet()
-                .Should().BeEquivalentTo([Address.Zero, address]);
-
-            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
-            Enumerate(topicDb)
-                .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
-                .Should().BeEquivalentTo([topic]);
-        }
-
-        [Test]
-        public async Task SetReceipts_MixedAddressAndTopicEntriesInSameBlock()
-        {
-            // Arrange
-            var address1 = new Address("0x0000000000000000000000000000000000001234");
-            var topic1 = new Hash256("0x0000000000000000000000000000000000000000000000000000000000000001");
-            var receipt = new TxReceipt
-            {
-                Logs = new List<LogEntry>
-                {
-                    new(address1, [], [topic1])
-                }.ToArray()
-            };
-
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            await logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
-
-            // Assert
-            var addressBlocks = logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
-            var topicBlocks = logIndexStorage.GetBlockNumbersFor(topic1, 1, 1).ToList();
-
-            addressBlocks.Should().Contain(1, "The block number should be indexed for the address.");
-            topicBlocks.Should().Contain(1, "The block number should be indexed for the topic.");
-        }
-
-        [Test]
-        public async Task SetReceipts_MultipleTopicsAndAddressesInSingleBlock()
-        {
-            // Arrange
-            var address1 = new Address("0x0000000000000000000000000000000000001234");
-            var address2 = new Address("0x0000000000000000000000000000000000005678");
-            var topic1 = new Hash256("0x0000000000000000000000000000000000000000000000000000000000000001");
-            var topic2 = new Hash256("0x0000000000000000000000000000000000000000000000000000000000000002");
-            var receipt = new TxReceipt
-            {
-                Logs = new List<LogEntry>
-                {
-                    new(address1, [], [topic1]),
-                    new(address2, [], [topic2])
-                }.ToArray()
-            };
-
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage();
-            await logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
-
-            // Assert
-            var addressBlocks1 = logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
-            var addressBlocks2 = logIndexStorage.GetBlockNumbersFor(address2, 1, 1).ToList();
-            var topicBlocks1 = logIndexStorage.GetBlockNumbersFor(topic1, 1, 1).ToList();
-            var topicBlocks2 = logIndexStorage.GetBlockNumbersFor(topic2, 1, 1).ToList();
-
-            addressBlocks1.Should().Contain(1, "The block number should be indexed for address1.");
-            addressBlocks2.Should().Contain(1, "The block number should be indexed for address2.");
-            topicBlocks1.Should().Contain(1, "The block number should be indexed for topic1.");
-            topicBlocks2.Should().Contain(1, "The block number should be indexed for topic2.");
-        }
-
-        [Test]
-        public async Task SetReceipts_CheckValidityWithDiverseData()
-        {
-            // Arrange
-            int numberOfBlocks = 100;
-            List<Address> generatedAddresses = [];
-            List<Hash256> generatedTopics = [];
-            var addressBlockMap = new Dictionary<Address, HashSet<int>>();
-            var topicBlockMap = new Dictionary<Hash256, HashSet<int>>();
-            var random = new Random(42);
-
-            await using var logIndexStorage = CreateLogIndexStorage();
-
-            // Generate unique addresses and topics
-            for (int i = 0; i < 20; i++) // 20 unique addresses and topics
-            {
-                var address = new Address($"0x{i.ToString("x").PadLeft(40, '0')}");
-                var topic = new Hash256($"0x{i.ToString("x").PadLeft(64, '0')}");
-                generatedAddresses.Add(address);
-                generatedTopics.Add(topic);
-                addressBlockMap[address] = [];
-                topicBlockMap[topic] = [];
-            }
-
-            // Act: Create receipts and distribute them across blocks
-            for (int blockNumber = 1; blockNumber <= numberOfBlocks; blockNumber++)
-            {
-                var logs = new List<LogEntry>();
-                for (int i = 0; i < 5; i++) // 5 logs per block
-                {
-                    Address address = generatedAddresses[random.Next(generatedAddresses.Count)];
-                    Hash256 topic = generatedTopics[random.Next(generatedTopics.Count)];
-                    logs.Add(new(address, [], [topic]));
-
-                    // Track which blocks these addresses and topics appear in
-                    addressBlockMap[address].Add(blockNumber);
-                    topicBlockMap[topic].Add(blockNumber);
-                }
-                var receipt = new TxReceipt { Logs = logs.ToArray() };
-
-                await logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false);
-            }
-
-            // Assert: Check that each address and topic returns the correct block numbers
-            foreach (var kvp in addressBlockMap)
-            {
-                var address = kvp.Key;
-                var expectedBlocks = kvp.Value;
-                var resultBlocks = logIndexStorage.GetBlockNumbersFor(address, 1, numberOfBlocks).ToList();
-                resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Address {address} should have the correct block numbers.");
-            }
-
-            foreach (var kvp in topicBlockMap)
-            {
-                var topic = kvp.Key;
-                var expectedBlocks = kvp.Value;
-                var resultBlocks = logIndexStorage.GetBlockNumbersFor(topic, 1, numberOfBlocks).ToList();
-                resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Topic {topic} should have the correct block numbers.");
-            }
-        }
-
-        private BlockReceipts[][] GenerateBatches(Random random, int batchCount, int blocksPerBatch)
-        {
             var blocksCount = batchCount * blocksPerBatch;
-            var addresses = Enumerable.Repeat(0, blocksCount / 100)
+            var addresses = Enumerable.Repeat(0, blocksCount / 5)
                 .Select(_ => new Address(random.NextBytes(Address.Size)))
                 .ToArray();
             var topics = Enumerable.Repeat(0, addresses.Length * 10)
                 .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
                 .ToArray();
 
+            // Generate batches
             var blockNum = 0;
-            var result = new BlockReceipts[batchCount][];
-            for (var i = 0; i < result.Length; i++)
+            foreach (var batch in testData.Batches)
             {
-                result[i] = new BlockReceipts[blocksPerBatch];
-                for (var j = 0; j < result[i].Length; j++)
+                for (var i = 0; i < batch.Length; i++)
                 {
-                    result[i][j] = new(blockNum, GenerateReceipts(random, addresses, topics));
-                    blockNum++;
+                    batch[i] = new(blockNum++, GenerateReceipts(random, addresses, topics));
                 }
             }
 
-            return result;
+            foreach (var blockReceipts in testData.Batches)
+            foreach (var (blockNumber, txReceipts) in blockReceipts)
+            foreach (var txReceipt in txReceipts)
+            foreach (var log in txReceipt.Logs!)
+            {
+                var addressMap = testData.AddressMap.GetOrAdd(log.Address, _ => []);
+                addressMap.Add(blockNumber);
+
+                foreach (var topic in log.Topics)
+                {
+                    var topicMap = testData.TopicMap.GetOrAdd(topic, _ => []);
+                    topicMap.Add(blockNumber);
+                }
+            }
+
+            return testData;
         }
 
-        private TxReceipt[] GenerateReceipts(Random random, Address[] addresses, Hash256[] topics)
+        private static TxReceipt[] GenerateReceipts(Random random, Address[] addresses, Hash256[] topics)
         {
-            (int min, int max) logsPerBlock = (100, 300);
+            (int min, int max) logsPerBlock = (0, 200);
             (int min, int max) logsPerTx = (0, 10);
 
             var logs = Enumerable
@@ -398,51 +239,10 @@ namespace Nethermind.Db.Test
             return receipts.ToArray();
         }
 
-        private (Dictionary<Address, HashSet<int>> address, Dictionary<Hash256, HashSet<int>> topic) MapToBlockNumber(IEnumerable<BlockReceipts> blockReceipts)
+        private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches)
         {
-            (Dictionary<Address, HashSet<int>> address, Dictionary<Hash256, HashSet<int>> topic) map = (new(), new());
-
-            foreach (var (blockNumber, txReceipts) in blockReceipts)
-            foreach (var txReceipt in txReceipts)
-            foreach (var log in txReceipt.Logs!)
-            {
-                var addressMap = map.address.GetOrAdd(log.Address, _ => new());
-                addressMap.Add(blockNumber);
-
-                foreach (var topic in log.Topics)
-                {
-                    var topicMap = map.topic.GetOrAdd(topic, _ => new());
-                    topicMap.Add(blockNumber);
-                }
-            }
-
-            return map;
-        }
-
-        //[Repeat(10)]
-        [Explicit("Can take a lot of time, CPU, and disk")]
-        [TestCase(100, 100, 16, int.MaxValue)]
-        [TestCase(100, 100, 16, 100)]
-        [TestCase(100, 100, 16, 200)]
-        [TestCase(100, 100, 8, int.MaxValue)]
-        [TestCase(100, 100, 8, 100)]
-        [TestCase(100, 100, 8, 200)]
-        [TestCase(100, 100, 1, int.MaxValue)]
-        [TestCase(100, 100, 1, 200)]
-        [TestCase(100, 100, 1, 200)]
-        public async Task LargeTest(int batchCount, int blocksPerBatch, int ioParallelism, int compactionDistance)
-        {
-            // Arrange
             var timestamp = Stopwatch.GetTimestamp();
-            var batches = GenerateBatches(new Random(42), batchCount, blocksPerBatch);
-            var map = MapToBlockNumber(batches.SelectMany(b => b));
-            await TestContext.Out.WriteLineAsync($"Generated batches and map in {Stopwatch.GetElapsedTime(timestamp)}");
-
-            // Act
-            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
-
             var totalStats = new SetReceiptsStats();
-
             foreach (var batch in batches)
             {
                 var stats = await logIndexStorage.SetReceiptsAsync(batch, false);
@@ -451,7 +251,7 @@ namespace Nethermind.Db.Test
             }
 
             // Log statistics
-            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)}:" +
+            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)} in {Stopwatch.GetElapsedTime(timestamp)}:" +
                 $"\n\tTxs: +{totalStats.TxAdded:N0}" +
                 $"\n\tLogs: +{totalStats.LogsAdded:N0}" +
                 $"\n\tTopics: +{totalStats.TopicsAdded:N0}" +
@@ -471,38 +271,60 @@ namespace Nethermind.Db.Test
                 $"\n\t\tPutting: {totalStats.PostMergeProcessing.PuttingValues}" +
                 $"\n\t\tCompressed keys: {totalStats.PostMergeProcessing.CompressedAddressKeys:N0} address, {totalStats.PostMergeProcessing.CompressedTopicKeys:N0} topic" +
                 $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndexStorage))}");
+        }
 
-            // Assert
-            foreach (var (address, expectedNums) in map.address)
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData, int? maxBlock = null)
+        {
+            maxBlock ??= int.MaxValue;
+
+            foreach (var (address, expectedNums) in testData.AddressMap)
             {
                 Assert.That(
                     logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue),
-                    Is.EquivalentTo(expectedNums.Order())
+                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock))
                 );
             }
-            foreach (var (topic, expectedNums) in map.topic)
+
+            foreach (var (topic, expectedNums) in testData.TopicMap)
             {
                 Assert.That(
                     logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue),
-                    Is.EquivalentTo(expectedNums.Order())
+                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock))
                 );
             }
         }
 
-        private static IEnumerable<(byte[] key, byte[] value)> Enumerate(IIterator<byte[], byte[]> iterator)
+        private static void GetBlockNumbersLoop(Random random, ILogIndexStorage logIndexStorage, TestData testData,
+            CancellationToken cancellationToken)
         {
-            iterator.SeekToFirst();
-            while (iterator.Valid())
+            var addresses = testData.AddressMap.Keys.ToArray();
+            var topics = testData.TopicMap.Keys.ToArray();
+
+            while (!cancellationToken.IsCancellationRequested)
             {
-                yield return (iterator.Key(), iterator.Value());
-                iterator.Next();
+                var address = random.NextValue(addresses);
+                logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue);
+
+                var topic = random.NextValue(topics);
+                logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue);
             }
         }
 
-        private static IEnumerable<(byte[] key, byte[] value)> Enumerate(IDb db)
+        private class TestData
         {
-            // TODO: dispose iterator?
-            return Enumerate(db.GetIterator(true));
+            public readonly BlockReceipts[][] Batches;
+            public readonly Dictionary<Address, HashSet<int>> AddressMap = new();
+            public readonly Dictionary<Hash256, HashSet<int>> TopicMap = new();
+
+            public TestData(int batchCount, int blocksPerBatch)
+            {
+                Batches = new BlockReceipts[batchCount][];
+
+                for (var i = 0; i < Batches.Length; i++)
+                    Batches[i] = new BlockReceipts[blocksPerBatch];
+            }
+
+            public override string ToString() => $"{Batches.Length} * {Batches[0].Length} blocks";
         }
     }
 }
