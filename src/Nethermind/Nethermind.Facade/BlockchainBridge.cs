@@ -149,6 +149,12 @@ namespace Nethermind.Facade
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
+        public Hash256? GetBlockHash(Hash256 txHash)
+        {
+            Hash256? blockHash = _receiptFinder.FindBlockHash(txHash);
+            return blockHash;
+        }
+
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
