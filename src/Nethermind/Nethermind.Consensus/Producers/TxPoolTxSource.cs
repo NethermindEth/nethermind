@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             long blockNumber = parent.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(parent);
+            IReleaseSpec spec = payloadAttributes is not null ? _specProvider.GetSpec(new ForkActivation(parent.Number + 1, payloadAttributes.Timestamp)) : _specProvider.GetSpec(parent);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
@@ -152,6 +152,13 @@ namespace Nethermind.Consensus.Producers
                 if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                    continue;
+                }
+
+                ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
+                if (spec.GetBlobProofVersion() != proofVersion)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.GetBlobProofVersion()} is wanted, but tx's proof version is {proofVersion}.");
                     continue;
                 }
 
