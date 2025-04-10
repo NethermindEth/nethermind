@@ -17,8 +17,6 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
     : IBlockhashStore
 {
-    private static readonly byte[] EmptyBytes = [0];
-
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
     {
         IReleaseSpec spec = specProvider.GetSpec(blockHeader);
@@ -44,7 +42,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        StorageValue data = worldState.Get(blockHashStoreCell);
-        return data.IsZero ? null : Hash256.FromBytesWithPadding(data.BytesWithNoLeadingZeroes);
+        ref readonly StorageValue data = ref worldState.Get(blockHashStoreCell);
+        return data.IsZero ? null : Hash256.FromBytesWithPadding(data.Bytes);
     }
 }
