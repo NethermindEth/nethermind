@@ -43,13 +43,13 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         if (tx.IsDeposit())
             return UInt256.Zero;
 
-        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot).Bytes, true);
+        UInt256 l1BaseFee = worldState.Get(_l1BaseFeeSlot).BigEndianUInt;
 
         if (_opSpecHelper.IsFjord(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot).Bytes, true);
+            UInt256 blobBaseFee = worldState.Get(_blobBaseFeeSlot).BigEndianUInt;
 
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot).Bytes;
+            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot).BytesWithNoLeadingZeroes;
 
             const int baseFeeFieldsStart = 16;
             const int fieldSize = sizeof(uint);
@@ -71,9 +71,9 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
 
         if (_opSpecHelper.IsEcotone(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot).Bytes, true);
+            UInt256 blobBaseFee = worldState.Get(_blobBaseFeeSlot).BigEndianUInt;
 
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot).Bytes;
+            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot).BytesWithNoLeadingZeroes;
 
             const int baseFeeFieldsStart = 16;
             const int fieldSize = sizeof(uint);
@@ -87,8 +87,8 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         }
         else
         {
-            UInt256 overhead = new(worldState.Get(_overheadSlot).Bytes, true);
-            UInt256 feeScalar = new(worldState.Get(_scalarSlot).Bytes, true);
+            UInt256 overhead = worldState.Get(_overheadSlot).BigEndianUInt;
+            UInt256 feeScalar = worldState.Get(_scalarSlot).BigEndianUInt;
 
             return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
         }

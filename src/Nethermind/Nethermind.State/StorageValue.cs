@@ -47,6 +47,16 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         value.ToBigEndian(BytesAsSpan);
     }
 
+
+    /// <summary>
+    /// Transforms this storage value into the <see cref="UInt256"/> big endian.
+    /// </summary>
+    public UInt256 BigEndianUInt
+    {
+        [method: MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => new(BytesAsSpan, true);
+    }
+
     public static implicit operator StorageValue(byte[] bytes) => new(bytes);
 
     public static readonly StorageValue Zero = default;
