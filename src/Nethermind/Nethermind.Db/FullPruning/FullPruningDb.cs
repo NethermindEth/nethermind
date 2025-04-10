@@ -24,6 +24,8 @@ namespace Nethermind.Db.FullPruning
         private readonly DbSettings _settings;
         private readonly IDbFactory _dbFactory;
         private readonly Action? _updateDuplicateWriteMetrics;
+        private readonly ILogManager _logManager;
+        private ProgressLogger? _progressLogger;
 
         // current main DB, will be written to and will be main source for reading
         private IDb _currentDb;
@@ -32,11 +34,12 @@ namespace Nethermind.Db.FullPruning
         // this will be null if no full pruning is in progress
         private PruningContext? _pruningContext;
 
-        public FullPruningDb(DbSettings settings, IDbFactory dbFactory, Action? updateDuplicateWriteMetrics = null)
+        public FullPruningDb(DbSettings settings, IDbFactory dbFactory, ILogManager logManager, Action? updateDuplicateWriteMetrics = null)
         {
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
+            _logManager = logManager;
             _currentDb = CreateDb(_settings).WithEOACompressed();
         }
 
@@ -182,6 +185,8 @@ namespace Nethermind.Db.FullPruning
             context = pruningContext ?? newContext;
             if (pruningContext is null)
             {
+                _progressLogger = new ProgressLogger("Pruning", _logManager);
+                _progressLogger.Reset(0, newContext.TotalKeys);
                 PruningStarted?.Invoke(this, new PruningEventArgs(context, true));
                 return true;
             }
@@ -203,6 +208,8 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb?.Flush();
             IDb oldDb = Interlocked.Exchange(ref _currentDb, _pruningContext?.CloningDb);
             ClearOldDb(oldDb);
+            _progressLogger?.MarkEnd();
+            _progressLogger = null;
         }
 
         protected virtual void ClearOldDb(IDb oldDb)
@@ -223,27 +230,33 @@ namespace Nethermind.Db.FullPruning
             public IDb CloningDb { get; }
             public bool DuplicateReads { get; }
             private readonly FullPruningDb _db;
+            public long TotalKeys { get; }
+            private long _processedKeys;
 
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {
                 CloningDb = cloningDb;
                 DuplicateReads = duplicateReads;
                 _db = db;
+                // Get total keys count in a more efficient way
+                TotalKeys = db._currentDb.GatherMetric().TotalKeys;
+                _processedKeys = 0;
             }
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 _db.Duplicate(CloningDb, key, value, flags);
+                _processedKeys++;
+                if (_processedKeys % 1000 == 0) // Log progress every 1000 keys to avoid too frequent logging
+                {
+                    _db._progressLogger?.Update(_processedKeys);
+                    _db._progressLogger?.LogProgress();
+                }
             }
 
             public IWriteBatch StartWriteBatch()
             {
-                return CloningDb.StartWriteBatch();
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return CloningDb.Get(key, flags);
+                return new ProgressTrackingWriteBatch(CloningDb.StartWriteBatch(), this);
             }
 
             /// <inheritdoc />
@@ -309,6 +322,36 @@ namespace Nethermind.Db.FullPruning
             {
                 _writeBatch.Set(key, value, flags);
                 _db.Duplicate(_clonedWriteBatch, key, value, flags);
+            }
+        }
+
+        private class ProgressTrackingWriteBatch : IWriteBatch
+        {
+            private readonly IWriteBatch _writeBatch;
+            private readonly PruningContext _context;
+            private long _batchProcessedKeys;
+
+            public ProgressTrackingWriteBatch(IWriteBatch writeBatch, PruningContext context)
+            {
+                _writeBatch = writeBatch;
+                _context = context;
+            }
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                _writeBatch.Set(key, value, flags);
+                _batchProcessedKeys++;
+                if (_batchProcessedKeys % 1000 == 0)
+                {
+                    _context._db._progressLogger?.Update(_context._processedKeys + _batchProcessedKeys);
+                    _context._db._progressLogger?.LogProgress();
+                }
+            }
+
+            public void Dispose()
+            {
+                _context._processedKeys += _batchProcessedKeys;
+                _writeBatch.Dispose();
             }
         }
 
