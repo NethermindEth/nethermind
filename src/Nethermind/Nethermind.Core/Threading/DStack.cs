@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Collections;
@@ -18,7 +19,7 @@ namespace Nethermind.Core.Threading;
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private McsLock _locker = new McsLock();
+    private SpinLock _locker = new SpinLock();
 
     private long _atomicEndAndStart;
     private T[] _buffer = new T[Math.Max(initialCapacity, 1)];
@@ -35,12 +36,15 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public bool TryPop(out T? item)
     {
-        using var _ = _locker.Acquire();
+        bool entered = false;
+        _locker.Enter(ref entered);
+        Debug.Assert(entered);
 
         (int startIdx, int endIdx) = GetStartAndEndIdx();
         if (endIdx == startIdx)
         {
             item = default;
+            _locker.Exit();
             return false;
         }
 
@@ -56,6 +60,7 @@ public class DStack<T>(int initialCapacity)
         }
 
         SetStartAndEndIdxUnlocked(startIdx, endIdx);
+        _locker.Exit();
         return true;
     }
 
@@ -78,9 +83,13 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Push(T item)
     {
-        using var _ = _locker.Acquire();
+        bool entered = false;
+        _locker.Enter(ref entered);
+        Debug.Assert(entered);
 
         PushUnlock(item);
+
+        _locker.Exit();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -106,12 +115,16 @@ public class DStack<T>(int initialCapacity)
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void PushMany(Span<T> items)
     {
-        using var _ = _locker.Acquire();
+        bool entered = false;
+        _locker.Enter(ref entered);
+        Debug.Assert(entered);
 
         foreach (var item in items)
         {
             PushUnlock(item);
         }
+
+        _locker.Exit();
     }
 
     public bool TryDequeue(out T? item, out bool shouldRetry)
@@ -125,7 +138,9 @@ public class DStack<T>(int initialCapacity)
             return false;
         }
 
-        if (!_locker.TryAcquire(out McsLock.Disposable disposable))
+        bool entered = false;
+        _locker.TryEnter(ref entered);
+        if (!entered)
         {
             shouldRetry = true;
             return false;
@@ -146,7 +161,7 @@ public class DStack<T>(int initialCapacity)
         }
         finally
         {
-            disposable.Dispose();
+            _locker.Exit();
         }
     }
 }
