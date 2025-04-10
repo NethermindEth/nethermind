@@ -79,7 +79,8 @@ namespace Nethermind.EngineApiProxy.Services
                 var blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
                 if (blockData == null)
                 {
-                    throw new InvalidOperationException($"Failed to fetch block data for hash: {headBlockHash}");
+                    _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
+                    return string.Empty;
                 }
                 
                 // 2. Generate payload attributes
@@ -129,8 +130,15 @@ namespace Nethermind.EngineApiProxy.Services
                 if (fcuResponse.Result is JObject resultObj && resultObj["payloadId"] != null)
                 {
                     string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
+                    
                     if (string.IsNullOrEmpty(payloadId))
                     {
+                        string payloadStatus = resultObj["payloadStatus"]?["status"]?.ToString() ?? string.Empty;
+                        if (payloadStatus == "SYNCING")
+                        {
+                            _logger.Warn($"Payload is SYNCING, skipping validation for payloadId: {payloadId}");
+                            return string.Empty;
+                        }
                         throw new InvalidOperationException("Received empty payloadId from FCU response");
                     }
                     
@@ -190,7 +198,8 @@ namespace Nethermind.EngineApiProxy.Services
                 
                 // Create getPayload request
                 var getPayloadRequest = new JsonRpcRequest(
-                    "engine_getPayloadV3",
+                    //TODO: add support for engine_getPayloadV3
+                    "engine_getPayloadV4",
                     new JArray { payloadId },
                     Guid.NewGuid().ToString());
                 
@@ -219,7 +228,7 @@ namespace Nethermind.EngineApiProxy.Services
                     if (payloadResponse.Error.Code == -32601 || 
                         (payloadResponse.Error.Message?.Contains("not supported") == true))
                     {
-                        throw new InvalidOperationException($"Method engine_getPayloadV3 is not supported: {payloadResponse.Error.Message}");
+                        throw new InvalidOperationException($"Method engine_getPayloadV4 is not supported: {payloadResponse.Error.Message}");
                     }
                     
                     throw new InvalidOperationException($"Error getting payload: {payloadResponse.Error.Code} - {payloadResponse.Error.Message}");
@@ -303,22 +312,31 @@ namespace Nethermind.EngineApiProxy.Services
                 throw new InvalidOperationException("Failed to parse executionPayload from response");
             }
             
-            // Use provided parentBeaconBlockRoot or default if not provided
-            if (string.IsNullOrEmpty(parentBeaconBlockRoot))
+            // Ensure we have a parentBeaconBlockRoot value
+            if (string.IsNullOrEmpty(parentBeaconBlockRoot) && executionPayload["parentHash"] != null)
             {
+                // If not provided, use the parentHash from the executionPayload
+                parentBeaconBlockRoot = executionPayload["parentHash"]?.ToString();
+                _logger.Debug($"Using parentHash as parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            }
+            else if (string.IsNullOrEmpty(parentBeaconBlockRoot))
+            {
+                // If still not available, use a zero hash as fallback
                 parentBeaconBlockRoot = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                _logger.Warn("No parent beacon block root provided, using default zero value");
+                _logger.Warn("No parentHash or parentBeaconBlockRoot available, using zero hash");
             }
             
             // For engine_newPayloadV3, we need 3 parameters:
             // 1. executionPayload - the actual payload object
             // 2. blobVersionedHashes - array of blob version hashes (empty array for non-blob transactions)
-            // 3. The hex-encoded parent beacon block root
+            // 3. parentBeaconBlockRoot - same as parentHash
             var blobVersionedHashes = new JArray();
             
+            _logger.Debug($"Creating newPayloadV4 request with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
             return new JsonRpcRequest(
-                "engine_newPayloadV3",
-                new JArray { executionPayload, blobVersionedHashes, parentBeaconBlockRoot },
+                //TODO: add support for engine_newPayloadV3
+                "engine_newPayloadV4",
+                new JArray { executionPayload, blobVersionedHashes, parentBeaconBlockRoot, new JArray() },
                 Guid.NewGuid().ToString());
         }
         

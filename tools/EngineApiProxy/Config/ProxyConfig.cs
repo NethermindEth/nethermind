@@ -46,7 +46,7 @@ namespace Nethermind.EngineApiProxy.Config
         /// <summary>
         /// Mode for block validation (Fcu or NewPayload)
         /// </summary>
-        public ValidationMode ValidationMode { get; set; } = ValidationMode.Fcu;
+        public ValidationMode ValidationMode { get; set; } = ValidationMode.NewPayload;
 
         public override string ToString()
         {
