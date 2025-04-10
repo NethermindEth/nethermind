@@ -57,6 +57,7 @@ namespace Nethermind.TxPool
         private readonly ILogger _logger;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        private readonly ReaderWriterLockSlim _newHeadLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
@@ -248,6 +249,8 @@ namespace Nethermind.TxPool
                     // Clear snapshot
                     _transactionSnapshot = null;
                     _blobTransactionSnapshot = null;
+
+                    _newHeadLock.EnterWriteLock();
                     try
                     {
                         ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
@@ -283,6 +286,10 @@ namespace Nethermind.TxPool
                     catch (Exception e)
                     {
                         if (_logger.IsWarn) _logger.Warn($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                    }
+                    finally
+                    {
+                        _newHeadLock.ExitWriteLock();
                     }
                 }
             }
@@ -471,8 +478,21 @@ namespace Nethermind.TxPool
             }
 
             TxFilteringState state = new(tx, _accounts);
+            AcceptTxResult accepted;
 
-            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, ref state);
+             _newHeadLock.EnterReadLock();
+            try
+            {
+                accepted = FilterTransactions(tx, handlingOptions, ref state);
+                if (accepted)
+                {
+                    accepted = AddCore(tx, ref state, startBroadcast);
+                }
+            }
+            finally
+            {
+                _newHeadLock.ExitReadLock();
+            }
 
             if (!accepted)
             {
@@ -480,15 +500,11 @@ namespace Nethermind.TxPool
             }
             else
             {
-                accepted = AddCore(tx, ref state, startBroadcast);
-                if (accepted)
-                {
-                    // Clear proper snapshot
-                    if (tx.SupportsBlobs)
-                        _blobTransactionSnapshot = null;
-                    else
-                        _transactionSnapshot = null;
-                }
+                // Clear proper snapshot
+                if (tx.SupportsBlobs)
+                    _blobTransactionSnapshot = null;
+                else
+                    _transactionSnapshot = null;
             }
 
             return accepted;
