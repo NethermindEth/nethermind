@@ -315,6 +315,11 @@ namespace Nethermind.Db.FullPruning
                 _writeBatch.Set(key, value, flags);
                 _db.Duplicate(_clonedWriteBatch, key, value, flags);
             }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                throw new NotSupportedException("Merging is not supported by this implementation.");
+            }
         }
 
         public void Tune(ITunableDb.TuneType type)
