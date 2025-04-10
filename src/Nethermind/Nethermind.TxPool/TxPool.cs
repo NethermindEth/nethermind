@@ -251,7 +251,7 @@ namespace Nethermind.TxPool
                     try
                     {
                         ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                        if (args.PreviousBlock is not null && !CanUseCache(args.Block, accountChanges))
+                        if (args.PreviousBlock is not null || !CanUseCache(args.Block, accountChanges))
                         {
                             // Non-sequential block or reorganization detected, reset cache
                             _accountCache.Reset();
