@@ -91,6 +91,7 @@ namespace Nethermind.Db
 
         ValueTask IAsyncDisposable.DisposeAsync()
         {
+            CompressQueue.Clear();
             _setReceiptsSemaphore.Dispose();
             return ValueTask.CompletedTask;
         }
@@ -534,9 +535,6 @@ namespace Nethermind.Db
                 var timestamp = Stopwatch.GetTimestamp();
                 var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
                 stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
-
-                if (dbValue.Length < BlockNumSize)
-                    Debugger.Break();
 
                 var blockNum = ReadValBlockNum(dbValue);
 
