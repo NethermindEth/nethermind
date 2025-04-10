@@ -149,6 +149,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         long startTimestamp = Stopwatch.GetTimestamp();
+        long added = Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded);
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             (b) =>
@@ -159,33 +160,34 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
             },
             TaskContinuationOptions.RunContinuationsAsynchronously);
-        blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
+        blockImprovementContext.ImprovementTask.ContinueWith(async b =>
         {
             CancellationToken token = cts.Token;
-            if (token.IsCancellationRequested)
+            do
             {
-                return;
-            }
-
-            TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp);
-            if (dynamicDelay == Timeout.InfiniteTimeSpan)
-            {
-                // If we can't finish before that cutoff, skip the improvement
-                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
-                return;
-            }
-
-            // If we reach here, we still have time for an improvement build (which still responds to cancellation)
-            try
-            {
-                // If the dynamic delay is still positive, await that
-                if (dynamicDelay > TimeSpan.Zero)
+                if (token.IsCancellationRequested)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {dynamicDelay.TotalMilliseconds}ms");
+                    return;
+                }
+
+                TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp);
+                if (dynamicDelay == Timeout.InfiniteTimeSpan)
+                {
+                    // If we can't finish before that cutoff, skip the improvement
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
+                    return;
+                }
+
+                // If we reach here, we still have time for an improvement build (which still responds to cancellation)
+                try
+                {
                     await Task.Delay(dynamicDelay, token);
                 }
-            }
-            catch (OperationCanceledException) { }
+                catch (OperationCanceledException) { }
+
+                // Loop the delay if no new txs have been added, and while not cancelled.
+                // Is no point in rebuilding an identical block.
+            } while (added == Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded));
 
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
@@ -243,9 +245,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             // We'll interpolate between two fractional rates:
             // - fractionStart (1/6): a slower build rate at the start
-            // - fractionEnd   (1/480): a faster build rate near the end
+            // - fractionEnd   (1/960): a faster build rate near the end
             const double fractionStart = 1.0 / 6.0;
-            const double fractionEnd = 1.0 / 480.0;
+            const double fractionEnd = 1.0 / 960.0;
             // Slot Timeline: 0% -------------------------- 100%
             //                |        (long gap)         | 
             //    [Block Improvement #1]        <--- big delay here
@@ -262,6 +264,11 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             // So near the start: delay is bigger (slower improvement)
             // Near the end: delay shrinks, allowing more frequent improvements
             dynamicDelay = TimeSpan.FromSeconds(timeRemainingInSlot.TotalSeconds * currentFraction);
+            if (dynamicDelay < minDelay)
+            {
+                // Don't want to spin endlessly if no new txs
+                dynamicDelay = minDelay;
+            }
         }
         else
         {
