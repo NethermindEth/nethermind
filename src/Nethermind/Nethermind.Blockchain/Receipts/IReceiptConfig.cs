@@ -13,7 +13,7 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to migrate the receipts database to the new schema.", DefaultValue = "false")]
     bool ReceiptsMigration { get; set; }
 
-    [ConfigItem(Description = "The degree of IO operations parallelism during receipts migration.", DefaultValue = "32", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The degree of IO operations parallelism during receipts migration.", DefaultValue = "8", HiddenFromDocs = true)]
     int LogIndexIOParallelism { get; set; }
 
     [ConfigItem(Description = "Distance between blocks on when to force RocksDB compaction", DefaultValue = "262144", HiddenFromDocs = true)]

@@ -7,7 +7,7 @@ public class ReceiptConfig : IReceiptConfig
 {
     public bool StoreReceipts { get; set; } = true;
     public bool ReceiptsMigration { get; set; } = false;
-    public int LogIndexIOParallelism { get; set; } = 16; // TODO: add validation
+    public int LogIndexIOParallelism { get; set; } = 8; // TODO: add validation
     public int LogIndexCompactionDistance { get; set; } = 262_144;
     public bool ForceReceiptsMigration { get; set; } = false;
     public bool CompactReceiptStore { get; set; } = true;
