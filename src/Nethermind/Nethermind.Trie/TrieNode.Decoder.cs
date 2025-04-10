@@ -472,13 +472,13 @@ namespace Nethermind.Trie
             }
         }
 
-        public struct EnsureResolvedJob(ICappedArrayPool? bufferPool, ITrieNodeResolver resolver, TreePath path, TrieNode item) : IJob
+        public struct EnsureResolvedJob(ICappedArrayPool? bufferPool, ITrieNodeResolver resolver, TreePath path, TrieNode item) : IJob<EnsureResolvedJob>
         {
-            public void Execute(Context ctx)
+            public void Execute(Context<EnsureResolvedJob> ctx)
             {
                 if (item.IsBranch)
                 {
-                    RefList16<IJob> trieNodeToCheck = new RefList16<IJob>(0);
+                    RefList16<EnsureResolvedJob> trieNodeToCheck = new RefList16<EnsureResolvedJob>(0);
 
                     for (int i = 0; i < BranchesCount; i++)
                     {

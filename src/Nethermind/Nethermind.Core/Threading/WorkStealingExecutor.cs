@@ -12,7 +12,7 @@ using Nethermind.Core.Collections;
 namespace Nethermind.Core.Threading;
 
 // Its like rust's rayon, but worst.
-public class WorkStealingExecutor: IDisposable
+public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 {
     private readonly int _workerCount = 0;
 
@@ -20,8 +20,8 @@ public class WorkStealingExecutor: IDisposable
     private uint _roundRobinStealIdx = 0;
     // private uint _wakeUpCounter = 0;
 
-    private readonly Context[] _workerContexts;
-    private readonly ConcurrentQueue<JobRef> _incomingJob = new ConcurrentQueue<JobRef>();
+    private readonly Context<T>[] _workerContexts;
+    private readonly ConcurrentQueue<JobRef<T>> _incomingJob = new ConcurrentQueue<JobRef<T>>();
 
     private readonly bool[] _sleepingContexts;
     private readonly ConcurrentQueue<int> _sleepingContextQueue;
@@ -29,14 +29,14 @@ public class WorkStealingExecutor: IDisposable
     public WorkStealingExecutor(int workerCount, int initialStackSize)
     {
         _workerCount = workerCount;
-        _workerContexts = new Context[workerCount];
+        _workerContexts = new Context<T>[workerCount];
 
         _sleepingContexts = new bool[workerCount];
         _sleepingContextQueue = new ConcurrentQueue<int>();
 
         for (int i = 0; i < workerCount; i++)
         {
-            _workerContexts[i] = new Context(this, i, initialStackSize);
+            _workerContexts[i] = new Context<T>(this, i, initialStackSize);
         }
         for (int i = 0; i < workerCount; i++)
         {
@@ -44,16 +44,16 @@ public class WorkStealingExecutor: IDisposable
         }
     }
 
-    public void Execute(IJob job)
+    public void Execute(T job)
     {
         // TODO: Way to enroll current thread.
-        JobRef jobRef = new JobRef(job, 0, new ManualResetEventSlim(false, 1));
+        JobRef<T> jobRef = new JobRef<T>(job, 0, new ManualResetEventSlim(false, 1));
         _incomingJob.Enqueue(jobRef);
         NotifyNewJob(0);
         jobRef.ResetEvent.Wait();
     }
 
-    public bool TryStealJob(out JobRef job, out bool shouldRetry, int currentCtx, int nextContextToCheck)
+    public bool TryStealJob(out JobRef<T> job, out bool shouldRetry, int currentCtx, int nextContextToCheck)
     {
         shouldRetry = false;
         int activeContexts = _workerCount;
@@ -69,7 +69,7 @@ public class WorkStealingExecutor: IDisposable
             // nextContextToCheck += _workerCount-1; // check the previous contexts.
             nextContextToCheck++; // check the previous contexts.
 
-            Context context = _workerContexts[idx];
+            Context<T> context = _workerContexts[idx];
             if (context.TryStealFrom(out job!, out bool contextSaidShouldRetry))
             {
                 return true;
@@ -144,7 +144,7 @@ public class WorkStealingExecutor: IDisposable
             }
             Interlocked.CompareExchange(ref _sleepingContexts[ctxId], false, true);
 
-            Context context = _workerContexts[ctxId];
+            Context<T> context = _workerContexts[ctxId];
             if (context.TryWakeUp(fromContext))
             {
                 Interlocked.Increment(ref _statsNotifyOk);
@@ -178,13 +178,13 @@ public class WorkStealingExecutor: IDisposable
     }
 }
 
-public class Worker: IDisposable
+public class Worker<T>: IDisposable where T: IJob<T>
 {
     private const int RoundUntilSleep = 32;
     private const int LatchWaitMs = 100;
 
-    private readonly WorkStealingExecutor _executor;
-    private readonly Context _context;
+    private readonly WorkStealingExecutor<T> _executor;
+    private readonly Context<T> _context;
     private readonly Thread _thread;
 
     private ManualResetEventSlim _finishLatch;
@@ -192,7 +192,7 @@ public class Worker: IDisposable
     private bool _isAsleep = false;
     private int _waitRound = 0;
 
-    public Worker(Context context, WorkStealingExecutor executor)
+    public Worker(Context<T> context, WorkStealingExecutor<T> executor)
     {
         _context = context;
         _executor = executor;
@@ -212,7 +212,7 @@ public class Worker: IDisposable
         {
             while (!_finishLatch.IsSet)
             {
-                if (_context.TryStealJob(out JobRef jobRef, out bool shouldRetry))
+                if (_context.TryStealJob(out JobRef<T> jobRef, out bool shouldRetry))
                 {
                     jobRef.ExecuteNonInline(_context);
                     continue;
@@ -286,23 +286,23 @@ public class Worker: IDisposable
     }
 }
 
-public class Context: IDisposable
+public class Context<T>: IDisposable where T: IJob<T>
 {
-    private DStack<JobRef> _jobStack;
+    private DStack<JobRef<T>> _jobStack;
     private Stack<ManualResetEventSlim> _latchPool;
-    private readonly WorkStealingExecutor _executor;
+    private readonly WorkStealingExecutor<T> _executor;
     private readonly int _contextIdx;
-    private readonly Worker _worker;
+    private readonly Worker<T> _worker;
     private int _nextContextToCheck;
     private long _jobId = 0;
 
-    public Context(WorkStealingExecutor executor, int contextIdx, int initialStackSize)
+    public Context(WorkStealingExecutor<T> executor, int contextIdx, int initialStackSize)
     {
         _executor = executor;
         _contextIdx = contextIdx;
         _jobStack = new(initialStackSize);
         _latchPool = new(initialStackSize);
-        _worker = new Worker(this, executor);
+        _worker = new Worker<T>(this, executor);
     }
 
     public void StartWorker()
@@ -312,14 +312,14 @@ public class Context: IDisposable
 
     public int ContextIdx => _contextIdx;
 
-    public void Fork(IJob job1, IJob job2)
+    public void Fork(T job1, T job2)
     {
         var latch = PushJob(job2);
         job1.Execute(this);
         WaitForJobOrKeepBusy(latch);
     }
 
-    public JobRef PushJob(IJob job, bool notify = true)
+    public JobRef<T> PushJob(T job, bool notify = true)
     {
         if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
         {
@@ -330,7 +330,7 @@ public class Context: IDisposable
             resetEvent.Reset();
         }
 
-        JobRef jobRef = new(job, _jobId++, resetEvent);
+        JobRef<T> jobRef = new(job, _jobId++, resetEvent);
 
         // HOT PATH
         _jobStack.Push(jobRef);
@@ -339,9 +339,9 @@ public class Context: IDisposable
         return jobRef;
     }
 
-    public void MultiPushJob(ReadOnlySpan<IJob> jobs, Span<JobRef> latches)
+    public void MultiPushJob(ReadOnlySpan<T> jobs, Span<JobRef<T>> latches)
     {
-        RefList16<JobRef> jobRefs = new RefList16<JobRef>();
+        RefList16<JobRef<T>> jobRefs = new RefList16<JobRef<T>>();
 
         for (int i = 0; i < jobs.Length; i++)
         {
@@ -354,7 +354,7 @@ public class Context: IDisposable
                 resetEvent.Reset();
             }
 
-            JobRef jobRef = new(jobs[i], _jobId++, resetEvent);
+            JobRef<T> jobRef = new(jobs[i], _jobId++, resetEvent);
             jobRefs.Add(jobRef);
             latches[i] = jobRef;
         }
@@ -367,14 +367,14 @@ public class Context: IDisposable
         }
     }
 
-    public void WaitForJobOrKeepBusy(JobRef jobRef)
+    public void WaitForJobOrKeepBusy(JobRef<T> jobRef)
     {
         // Announce looking here
         _worker.ResetWaitCounter();
 
         while (!jobRef.ResetEvent.IsSet)
         {
-            if (_jobStack.TryPop(out JobRef otherRef))
+            if (_jobStack.TryPop(out JobRef<T> otherRef))
             {
                 _worker.ResetWaitCounter();
                 if (otherRef.Id == jobRef.Id)
@@ -406,7 +406,7 @@ public class Context: IDisposable
         _latchPool.Push(jobRef.ResetEvent);
     }
 
-    public bool TryStealJob(out JobRef jobRef, out bool shouldRetry)
+    public bool TryStealJob(out JobRef<T> jobRef, out bool shouldRetry)
     {
         bool ok = _executor.TryStealJob(out jobRef, out shouldRetry, ContextIdx, _nextContextToCheck);
         if (ok)
@@ -419,7 +419,7 @@ public class Context: IDisposable
         return ok;
     }
 
-    public bool TryStealFrom(out JobRef job, out bool shouldRetry)
+    public bool TryStealFrom(out JobRef<T> job, out bool shouldRetry)
     {
         bool ok = _jobStack.TryDequeue(out job!, out shouldRetry);
         if (ok)
@@ -446,7 +446,7 @@ public class Context: IDisposable
         _worker.Dispose();
     }
 
-    public void RunJob16(ref RefList16<IJob> jobs)
+    public void RunJob16(ref RefList16<T> jobs)
     {
         if (jobs.Count == 0) return;
         if (jobs.Count == 1)
@@ -456,7 +456,7 @@ public class Context: IDisposable
         }
 
 
-        RefList16<JobRef> jobLatches = new RefList16<JobRef>(jobs.Count - 1);
+        RefList16<JobRef<T>> jobLatches = new RefList16<JobRef<T>>(jobs.Count - 1);
 
         if (jobs.Count > 1)
         {
@@ -497,25 +497,25 @@ public class Context: IDisposable
     }
 }
 
-public interface IJob
+public interface IJob<T> where T : IJob<T>
 {
-    public void Execute(Context ctx);
+    public void Execute(Context<T> ctx);
 }
 
-public struct JobRef(IJob job, long id, ManualResetEventSlim _resetEvent)
+public struct JobRef<T>(T job, long id, ManualResetEventSlim _resetEvent) where T : IJob<T>
 {
     public long Id = id;
 
     public ManualResetEventSlim ResetEvent { get; } = _resetEvent;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ExecuteInline(Context context)
+    public void ExecuteInline(Context<T> context)
     {
         job.Execute(context);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ExecuteNonInline(Context context)
+    public void ExecuteNonInline(Context<T> context)
     {
         // HOT PATH
         job.Execute(context);

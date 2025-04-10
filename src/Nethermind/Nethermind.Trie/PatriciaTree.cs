@@ -133,7 +133,7 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None, WorkStealingExecutor? executor = null)
+        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None, WorkStealingExecutor<CommitJob>? executor = null)
         {
             if (!_allowCommits)
             {
@@ -184,16 +184,16 @@ namespace Nethermind.Trie
         private Counter CommitTime = Prometheus.Metrics.CreateCounter("patriciatree_commit_time", "Update roothash time");
         private static Counter CommitGenerateKey = Prometheus.Metrics.CreateCounter("patriciatree_commit_generate_tree_time", "Update roothash time");
 
-        private struct CommitJob(
+        public struct CommitJob(
             ICommitter committer,
             PatriciaTree tree,
             TreePath nodePath,
             NodeCommitInfo nodeCommitInfo,
             int maxLevelForConcurrentCommit,
             bool skipSelf = false
-        ) : IJob
+        ) : IJob<CommitJob>
         {
-            public void Execute(Context ctx)
+            public void Execute(Context<CommitJob> ctx)
             {
                 TrieNode node = nodeCommitInfo.Node;
                 TreePath path = nodePath;
@@ -227,7 +227,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        RefList16<IJob> jobs = new RefList16<IJob>(0);
+                        RefList16<CommitJob> jobs = new RefList16<CommitJob>(0);
 
                         for (int i = 0; i < 16; i++)
                         {
@@ -492,7 +492,7 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
-        public void RecursiveResolveKey(WorkStealingExecutor executor)
+        public void RecursiveResolveKey(WorkStealingExecutor<TrieNode.EnsureResolvedJob> executor)
         {
             TreePath path = TreePath.Empty;
             long sw = Stopwatch.GetTimestamp();

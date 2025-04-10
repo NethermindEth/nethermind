@@ -30,7 +30,7 @@ public class WorkStealingExecutorTests
     [TestCase(32)]
     public void TestBasicFactorial(int workerCount)
     {
-        using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
+        using WorkStealingExecutor<FibonacciJob> executor = new(workerCount, (int)FibNum);
 
         FibonacciResult result = new FibonacciResult();
         executor.Execute(new FibonacciJob(FibNum, result));
@@ -51,7 +51,7 @@ public class WorkStealingExecutorTests
 
         TimeSpan executorTime = TimeSpan.Zero;
         {
-            using WorkStealingExecutor executor = new(1, (int)FibNum);
+            using WorkStealingExecutor<FibonacciJob> executor = new(1, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
             FibonacciResult result = new FibonacciResult();
@@ -82,7 +82,7 @@ public class WorkStealingExecutorTests
 
         TimeSpan multithreadTime = TimeSpan.Zero;
         {
-            using WorkStealingExecutor executor = new(Environment.ProcessorCount, (int)FibNum);
+            using WorkStealingExecutor<FibonacciJob> executor = new(Environment.ProcessorCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
             executor.Execute(new FibonacciJob(FibNum, result));
@@ -109,7 +109,7 @@ public class WorkStealingExecutorTests
 
         TimeSpan baselineTime = TimeSpan.Zero;
         {
-            using WorkStealingExecutor singleExecutor = new(baselineWorkerCount, (int)FibNum);
+            using WorkStealingExecutor<FibonacciJob> singleExecutor = new(baselineWorkerCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
             singleExecutor.Execute(new FibonacciJob(FibNum, result));
@@ -120,7 +120,7 @@ public class WorkStealingExecutorTests
 
         TimeSpan multithreadTime = TimeSpan.Zero;
         {
-            using WorkStealingExecutor executor = new(workerCount, (int)FibNum);
+            using WorkStealingExecutor<FibonacciJob> executor = new(workerCount, (int)FibNum);
 
             Stopwatch sw = Stopwatch.StartNew();
             executor.Execute(new FibonacciJob(FibNum, result));
@@ -139,9 +139,9 @@ public class WorkStealingExecutorTests
         internal long Result = 0;
     }
 
-    internal struct FibonacciJob(long currentValue, FibonacciResult result): IJob
+    internal struct FibonacciJob(long currentValue, FibonacciResult result): IJob<FibonacciJob>
     {
-        public void Execute(Context ctx)
+        public void Execute(Context<FibonacciJob> ctx)
         {
             if (currentValue == 0)
             {

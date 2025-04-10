@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -50,7 +51,8 @@ namespace Nethermind.Benchmarks.Store
         private const int _largerEntryCount = 1024 * 10 * 10;
         private (bool, Hash256, Account)[] _largerEntriesAccess;
 
-        private WorkStealingExecutor _executor;
+        private WorkStealingExecutor<PatriciaTree.CommitJob> _executorCommit;
+        private WorkStealingExecutor<TrieNode.EnsureResolvedJob> _executorHash;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -230,7 +232,8 @@ namespace Nethermind.Benchmarks.Store
         public void Setup()
         {
             _tree = new StateTree();
-            _executor = new WorkStealingExecutor(Environment.ProcessorCount, 16);
+            _executorCommit = new WorkStealingExecutor<PatriciaTree.CommitJob>(Environment.ProcessorCount, 16);
+            _executorHash = new WorkStealingExecutor<TrieNode.EnsureResolvedJob>(Environment.ProcessorCount, 16);
 
             _entries = new (Hash256, Account)[_entryCount];
             for (int i = 0; i < _entryCount; i++)
@@ -309,7 +312,8 @@ namespace Nethermind.Benchmarks.Store
         [GlobalCleanup]
         public void Cleanup()
         {
-            _executor.Dispose();
+            _executorCommit.Dispose();
+            _executorHash.Dispose();
         }
 
         /*
@@ -448,7 +452,7 @@ namespace Nethermind.Benchmarks.Store
             }
 
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
-            tempTree.Commit(executor: _executor);
+            tempTree.Commit(executor: _executorCommit);
         }
 
         TrieStore _largeUncommittedFullTree;
@@ -505,7 +509,7 @@ namespace Nethermind.Benchmarks.Store
         public void LargeCommitWithExecutor()
         {
             using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
-            _largeUncommittedStateTree.Commit(executor: _executor);
+            _largeUncommittedStateTree.Commit(executor: _executorCommit);
         }
 
         [Benchmark]
@@ -526,7 +530,7 @@ namespace Nethermind.Benchmarks.Store
         public void LargeHashWithExecutor()
         {
             using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
-            _largeUncommittedStateTree.RecursiveResolveKey(_executor);
+            _largeUncommittedStateTree.RecursiveResolveKey(_executorHash);
             _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
         }
 
