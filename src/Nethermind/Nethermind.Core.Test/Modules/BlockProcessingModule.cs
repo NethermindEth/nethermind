@@ -32,10 +32,6 @@ public class BlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<IBlockValidator, BlockValidator>()
-            .AddSingleton<ITxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
-            .AddSingleton<IHeaderValidator, HeaderValidator>()
-            .AddSingleton<IUnclesValidator, UnclesValidator>()
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
@@ -62,6 +58,7 @@ public class BlockProcessingModule : Module
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // These are common between processing and production and worldstate-ful, so they should be scoped instead
             // of singleton.
@@ -80,6 +77,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<MainBlockProcessingContext, ILifetimeScope>(ConfigureMainBlockProcessingContext)
             // Then component that has no ambiguity is extracted back out.
             .Map<IBlockProcessingQueue, MainBlockProcessingContext>(ctx => ctx.BlockProcessingQueue)
+            .Bind<IMainProcessingContext, MainBlockProcessingContext>()
 
 
             // Seems to be only used by block producer.

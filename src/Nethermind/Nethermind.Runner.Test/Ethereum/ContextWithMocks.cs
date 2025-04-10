@@ -71,6 +71,10 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
                     .AddSingleton(Substitute.For<ISyncServer>())
+                    .AddSingleton<ITxValidator>(new TxValidator(MainnetSpecProvider.Instance.ChainId))
+                    .AddSingleton(Substitute.For<IBlockValidator>())
+                    .AddSingleton(Substitute.For<IHeaderValidator>())
+                    .AddSingleton(Substitute.For<IUnclesValidator>())
                     .Build()
             );
 
@@ -93,7 +97,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
-            api.BlockValidator = Substitute.For<IBlockValidator>();
             api.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.StaticNodesManager = Substitute.For<IStaticNodesManager>();
@@ -107,7 +110,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.FilterManager = Substitute.For<IFilterManager>();
             api.FilterStore = Substitute.For<IFilterStore>();
             api.GrpcServer = Substitute.For<IGrpcServer>();
-            api.HeaderValidator = Substitute.For<IHeaderValidator>();
             api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();
@@ -133,8 +135,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
             api.EthSyncingInfo = Substitute.For<IEthSyncingInfo>();
             api.HealthHintService = Substitute.For<IHealthHintService>();
-            api.TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId);
-            api.UnclesValidator = Substitute.For<IUnclesValidator>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();

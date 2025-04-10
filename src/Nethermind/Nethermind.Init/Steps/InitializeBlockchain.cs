@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -19,7 +20,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
@@ -52,13 +52,15 @@ namespace Nethermind.Init.Steps
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
-            setApi.TxValidator = CreateTxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
+            ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
+                blocksConfig.ExtraData :
+                "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
@@ -80,10 +82,6 @@ namespace Nethermind.Init.Steps
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            setApi.HeaderValidator = CreateHeaderValidator();
-            setApi.UnclesValidator = CreateUnclesValidator();
-            setApi.BlockValidator = CreateBlockValidator();
-
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
@@ -101,7 +99,7 @@ namespace Nethermind.Init.Steps
                 ? new(new(
                         _api.WorldStateManager!,
                         _api.BlockTree!.AsReadOnly(),
-                        _api.SpecProvider,
+                        _api.SpecProvider!,
                         _api.LogManager),
                     mainWorldState,
                     _api.SpecProvider!,
@@ -165,29 +163,6 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual TxValidator? CreateTxValidator(ulong v)
-        {
-            return new TxValidator(_api.SpecProvider!.ChainId);
-        }
-
-        protected virtual IBlockValidator CreateBlockValidator()
-        {
-            return new BlockValidator(
-                _api.TxValidator,
-                _api.HeaderValidator,
-                _api.UnclesValidator,
-                _api.SpecProvider,
-                _api.LogManager);
-        }
-
-        protected virtual IUnclesValidator CreateUnclesValidator()
-        {
-            return new UnclesValidator(
-                _api.BlockTree,
-                _api.HeaderValidator,
-                _api.LogManager);
-        }
-
         protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -224,8 +199,9 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-            new TxPool.TxPool(_api.EthereumEcdsa!,
+        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+        {
+            TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
                 _api.Config<ITxPoolConfig>(),
@@ -234,14 +210,11 @@ namespace Nethermind.Init.Steps
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy);
 
-        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
+            _api.DisposeStack.Push(txPool);
+            return txPool;
+        }
 
-        // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
-        protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
-            _api.BlockTree,
-            _api.SealValidator,
-            _api.SpecProvider,
-            _api.LogManager);
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)

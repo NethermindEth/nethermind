@@ -96,7 +96,6 @@ public class ValidateSubmissionHandler
 
         payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
 
-
         BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
         string payloadStr = $"BuilderBlock: {payload}";
@@ -104,24 +103,25 @@ public class ValidateSubmissionHandler
         if (_logger.IsInfo)
             _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
-        if (!payload.TryGetBlock(out Block? block))
+        BlockDecodingResult decodingResult = payload.TryGetBlock();
+        Block? block = decodingResult.Block;
+        if (block is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}.");
-            return FlashbotsResult.Invalid($"Block {payload} coud not be parsed as a block");
+            if (_logger.IsTrace) _logger.Trace($"Invalid block: {decodingResult.Error}. Result of {payloadStr}.");
+            return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
 
-        if (block is not null && !ValidateBlock(block, request.Message, request.RegisteredGasLimit, out string? error))
+        if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
         }
 
-        if (block is not null && !ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
+        if (!ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
             return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
         }
-
 
         return FlashbotsResult.Valid();
     }
