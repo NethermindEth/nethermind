@@ -92,7 +92,12 @@ namespace Nethermind.Db
         ValueTask IAsyncDisposable.DisposeAsync()
         {
             CompressQueue.Clear();
+
             _setReceiptsSemaphore.Dispose();
+            _addressDb.Dispose();
+            _topicsDb.Dispose();
+            _defaultDb.Dispose();
+
             return ValueTask.CompletedTask;
         }
 
@@ -358,9 +363,11 @@ namespace Nethermind.Db
             BlockReceipts[] batch, bool isBackwardSync
         )
         {
-            //Console.WriteLine("!!!!!!!!!! SetReceiptsAsync !!!!!!!!!!");
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
+
+            if (_lastKnownBlock < 0)
+                _lastKnownBlock = GetLastKnownBlockNumber();
 
             var stats = new SetReceiptsStats();
 
@@ -393,7 +400,6 @@ namespace Nethermind.Db
                 stats.LastBlockNumber = _lastKnownBlock;
 
                 _setReceiptsSemaphore.Release();
-                //Console.WriteLine("!!!!!!!!!! _setReceiptsSemaphore.Release() !!!!!!!!!!");
             }
 
             return stats;
