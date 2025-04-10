@@ -1,5 +1,11 @@
 namespace Nethermind.EngineApiProxy.Config
 {
+    public enum ValidationMode
+    {
+        Fcu,
+        NewPayload
+    }
+
     public class ProxyConfig
     {
         /// <summary>
@@ -37,9 +43,14 @@ namespace Nethermind.EngineApiProxy.Config
         /// </summary>
         public int TimestampOffsetSeconds { get; set; } = 12;
 
+        /// <summary>
+        /// Mode for block validation (Fcu or NewPayload)
+        /// </summary>
+        public ValidationMode ValidationMode { get; set; } = ValidationMode.Fcu;
+
         public override string ToString()
         {
-            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}";
+            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}";
         }
     }
 } 

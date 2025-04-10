@@ -45,6 +45,11 @@ namespace Nethermind.EngineApiProxy
                 description: "Default fee recipient address for generated payload attributes",
                 getDefaultValue: () => "0x8943545177806ed17b9f23f0a21ee5948ecaa776");
             
+            var validationModeOption = new Option<ValidationMode>(
+                name: "--validation-mode",
+                description: "Mode for block validation (Fcu or NewPayload)",
+                getDefaultValue: () => ValidationMode.Fcu);
+            
             // Create root command with options
             var rootCommand = new RootCommand("Nethermind Engine API Proxy");
             rootCommand.AddOption(executionClientOption);
@@ -53,8 +58,9 @@ namespace Nethermind.EngineApiProxy
             rootCommand.AddOption(logFileOption);
             rootCommand.AddOption(validateAllBlocksOption);
             rootCommand.AddOption(feeRecipientOption);
+            rootCommand.AddOption(validationModeOption);
             
-            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel, string? logFile, bool validateAllBlocks, string feeRecipient) =>
+            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel, string? logFile, bool validateAllBlocks, string feeRecipient, ValidationMode validationMode) =>
             {
                 try
                 {
@@ -104,7 +110,8 @@ namespace Nethermind.EngineApiProxy
                         LogLevel = logLevel,
                         LogFile = logFile,
                         ValidateAllBlocks = validateAllBlocks,
-                        DefaultFeeRecipient = feeRecipient
+                        DefaultFeeRecipient = feeRecipient,
+                        ValidationMode = validationMode
                     };
                     
                     logger.Info($"Starting Engine API Proxy with configuration: {config}");
@@ -138,7 +145,7 @@ namespace Nethermind.EngineApiProxy
                     Console.Error.WriteLine($"Error: {ex.Message}");
                     Environment.Exit(1);
                 }
-            }, executionClientOption, portOption, logLevelOption, logFileOption, validateAllBlocksOption, feeRecipientOption);
+            }, executionClientOption, portOption, logLevelOption, logFileOption, validateAllBlocksOption, feeRecipientOption, validationModeOption);
             
             return await rootCommand.InvokeAsync(args);
         }
