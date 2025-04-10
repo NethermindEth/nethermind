@@ -53,7 +53,6 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
 
-
         private readonly ILogger _logger;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
@@ -480,7 +479,7 @@ namespace Nethermind.TxPool
             TxFilteringState state = new(tx, _accounts);
             AcceptTxResult accepted;
 
-             _newHeadLock.EnterReadLock();
+            _newHeadLock.EnterReadLock();
             try
             {
                 accepted = FilterTransactions(tx, handlingOptions, ref state);
