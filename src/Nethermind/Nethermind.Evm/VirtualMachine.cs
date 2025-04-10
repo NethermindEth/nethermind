@@ -2517,7 +2517,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             spec)) return EvmExceptionType.OutOfGas;
 
         ref readonly StorageValue value = ref _state.Get(in storageCell);
-        stack.PushBytes(value.Bytes);
+        stack.PushBytes(value);
         if (typeof(TTracingStorage) == typeof(IsTracing))
         {
             _txTracer.LoadOperationStorage(storageCell.Address, result, value.BytesWithNoLeadingZeroes);
@@ -2657,7 +2657,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 byte[] storageBytes = new byte[32]; // do not stackalloc here
                 storageCell.Index.ToBigEndian(storageBytes);
-                _txTracer.ReportStorageChange(storageBytes, newValue.Bytes);
+                _txTracer.ReportStorageChange(storageBytes, newValue.BytesWithNoLeadingZeroes);
             }
 
             if (typeof(TTracingStorage) == typeof(IsTracing))

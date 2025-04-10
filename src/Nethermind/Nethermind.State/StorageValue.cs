@@ -78,6 +78,11 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     public ReadOnlySpan<byte> Bytes =>
         MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
+    /// <summary>
+    /// Provides unsafe direct access to the vector reference.
+    /// </summary>
+    public readonly ref Vector256<byte> UnsafeRef => ref Unsafe.AsRef(in _bytes);
+
     // TODO: optimize potentially to create span only after scanning the vector?
     public ReadOnlySpan<byte> BytesWithNoLeadingZeroes => Bytes.WithoutLeadingZeros();
 
