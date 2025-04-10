@@ -250,6 +250,8 @@ namespace Nethermind.Db.Test
                 totalStats.Combine(stats);
             }
 
+            //totalStats.Combine(logIndexStorage.Compact());
+
             // Log statistics
             await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)} in {Stopwatch.GetElapsedTime(timestamp)}:" +
                 $"\n\tTxs: +{totalStats.TxAdded:N0}" +

@@ -275,6 +275,7 @@ namespace Nethermind.Init.Steps.Migrations
                 startFrom = Math.Max(startFrom, _logIndexStorage.GetLastKnownBlockNumber() + 1);
 
                 _totalBlocks = _blockTree.BestKnownNumber;
+                //_totalBlocks = startFrom + 1_000_000;
                 for (long i = startFrom; i < _totalBlocks; i += BatchSize)
                 {
                     BlockReceipts[] batch = GetBlocks(i, Math.Min(i + BatchSize, _blockTree.BestKnownNumber), token);

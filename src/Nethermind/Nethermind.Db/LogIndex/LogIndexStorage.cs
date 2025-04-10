@@ -202,7 +202,7 @@ namespace Nethermind.Db
             }
         }
 
-        private const bool IncludeTopicIndex = false;
+        private const bool IncludeTopicIndex = true;
 
         private static byte[] BuildTopicKey(Hash256 topic, byte topicIndex)
         {
@@ -395,7 +395,7 @@ namespace Nethermind.Db
             }
             finally
             {
-                _lastCompactionAt ??= batch[0].BlockNumber - 1;
+                _lastCompactionAt ??= batch[0].BlockNumber;
                 if (batch[^1].BlockNumber - _lastCompactionAt >= _compactionDistance)
                 {
                     Compact(stats);
