@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Producers
             _logManager = logManager;
             _executionRequestsProcessor = executionRequestsProcessor;
 
-            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
+            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
 
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
