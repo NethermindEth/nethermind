@@ -1928,7 +1928,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         storageCell = new(env.ExecutingAccount, result);
 
                         ref readonly StorageValue value = ref _state.GetTransientState(in storageCell);
-                        stack.PushBytes(value.Bytes);
+                        stack.PushBytes(value);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {

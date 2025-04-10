@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -89,10 +90,33 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     /// <summary>
     /// Provides unsafe direct access to the vector reference.
     /// </summary>
-    public readonly ref Vector256<byte> UnsafeRef => ref Unsafe.AsRef(in _bytes);
+    public ref readonly Vector256<byte> UnsafeRef => ref Unsafe.AsRef(in _bytes);
 
-    // TODO: optimize potentially to create span only after scanning the vector?
-    public ReadOnlySpan<byte> BytesWithNoLeadingZeroes => Bytes.WithoutLeadingZeros();
+    public ReadOnlySpan<byte> BytesWithNoLeadingZeroes
+    {
+        get
+        {
+            if (Vector256.IsHardwareAccelerated)
+            {
+                if (_bytes == Vector256<byte>.Zero)
+                    return ReadOnlySpan<byte>.Empty;
+
+                var setBytes =
+                    ~
+                        Vector256.Equals(Vector256<byte>.Zero, _bytes)
+                            .ExtractMostSignificantBits();
+
+                var offset = BitOperations.TrailingZeroCount(setBytes);
+
+                return MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.Add(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)), offset),
+                    MemorySize - offset);
+            }
+
+
+            return Bytes.WithoutLeadingZeros();
+        }
+    }
 
     public static bool operator ==(StorageValue left, StorageValue right) => left.Equals(right);
 
