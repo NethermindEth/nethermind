@@ -251,7 +251,7 @@ namespace Nethermind.TxPool
                     try
                     {
                         ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                        if (!CanUseCache(args.Block, accountChanges))
+                        if (args.PreviousBlock is not null || !CanUseCache(args.Block, accountChanges))
                         {
                             // Not sequential block, reset cache
                             _accountCache.Reset();
@@ -270,7 +270,7 @@ namespace Nethermind.TxPool
                         ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
 
-                        if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced)
+                        if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
                         {
                             _hashCache.ClearCurrentBlockCache();
                         }
@@ -282,7 +282,7 @@ namespace Nethermind.TxPool
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        if (_logger.IsWarn) _logger.Warn($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                     }
                 }
             }
@@ -307,7 +307,10 @@ namespace Nethermind.TxPool
                         continue;
                     }
                     _hashCache.Delete(tx.Hash!);
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    // For reorg we will submit with PersistentBroadcast
+                    SubmitTx(tx, isEip155Enabled ?
+                        TxHandlingOptions.PersistentBroadcast :
+                        TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.PreEip155Signing);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -319,7 +322,10 @@ namespace Nethermind.TxPool
                         if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
                         blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                        // For reorg we will submit with PersistentBroadcast
+                        SubmitTx(blobTx, isEip155Enabled ?
+                            TxHandlingOptions.PersistentBroadcast :
+                            TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.PreEip155Signing);
                     }
                     if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -456,13 +462,13 @@ namespace Nethermind.TxPool
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
-            bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
             if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
+            {
+                TraceTx(tx, handlingOptions, startBroadcast);
+            }
 
             TxFilteringState state = new(tx, _accounts);
 
@@ -486,6 +492,13 @@ namespace Nethermind.TxPool
             }
 
             return accepted;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceTx(Transaction tx, TxHandlingOptions handlingOptions, bool startBroadcast)
+            {
+                bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
+                _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
+            }
         }
 
         private void AddPendingDelegations(Transaction tx)
