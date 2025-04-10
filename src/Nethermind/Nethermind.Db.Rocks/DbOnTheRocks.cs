@@ -1858,6 +1858,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         // TODO: inherit MergeOperator instead, to improve performance and minimize allocations
         private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
         {
+            var lastBlockNum = -1;
             var timestamp = Stopwatch.GetTimestamp();
 
             try
@@ -1877,12 +1878,34 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
                 // TODO: can ArrayPool be used?
                 var result = new byte[resultLength];
-                existingValue.CopyTo(result);
+
+                if (existingValue.Length > 0)
+                {
+                    existingValue.CopyTo(result);
+                    lastBlockNum = LogIndexStorage.ReadValLastBlockNum(existingValue);
+                }
 
                 var shift = existingValue.Length;
                 for (int i = 0; i < operands.Count; i++)
                 {
-                    ReadOnlySpan<byte> operand = operands.Get(i);
+                    var operand = operands.Get(i);
+
+                    // Validate we are merging non-intersecting segments - to prevent data corruption
+                    if (lastBlockNum != -1 && LogIndexStorage.ReadValBlockNum(operand) <= lastBlockNum)
+                    {
+                        success = false;
+
+                        // setting success=false during background merge may simply hide the error
+                        // TODO: check if this can be handled better, for example via paranoid_checks=true
+                        throw new InvalidOperationException($"Merge error: {lastBlockNum} -> {LogIndexStorage.ReadValBlockNum(operand)}");
+
+                        //return result;
+                    }
+                    else
+                    {
+                        lastBlockNum = LogIndexStorage.ReadValLastBlockNum(operand);
+                    }
+
                     operand.CopyTo(result.AsSpan(shift..));
                     shift += operand.Length;
                 }
