@@ -19,7 +19,7 @@ public class BlockTreeSuggestPacer : IDisposable
     private readonly long _resumeBatchSize;
     private readonly IBlockTree _blockTree;
 
-    public BlockTreeSuggestPacer(IBlockTree blockTree, long stopBatchSize = 4096, long resumeBatchSize = 2048)
+    public BlockTreeSuggestPacer(IBlockTree blockTree, long stopBatchSize = 8096, long resumeBatchSize = 7096)
     {
         blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         _blockTree = blockTree;
