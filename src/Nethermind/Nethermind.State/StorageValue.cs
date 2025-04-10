@@ -99,7 +99,7 @@ public readonly struct StorageValue : IEquatable<StorageValue>
             if (Vector256.IsHardwareAccelerated)
             {
                 if (_bytes == Vector256<byte>.Zero)
-                    return ReadOnlySpan<byte>.Empty;
+                    return Nethermind.Core.Extensions.Bytes.ZeroByteSpan;
 
                 var setBytes =
                     ~
