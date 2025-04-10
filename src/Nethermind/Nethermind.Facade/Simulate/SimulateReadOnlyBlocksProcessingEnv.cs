@@ -75,7 +75,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, CodeInfoRepository, logManager));
         _transactionProcessor = transactionProcessorFactory.CreateTransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
-        BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
+        BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, ignoreEip3607: true);
     }
 
     private IReadOnlyDbProvider DbProvider { get; }
