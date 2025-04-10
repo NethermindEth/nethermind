@@ -20,6 +20,16 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool TryGetAccount(Address address, out AccountStruct account) => innerState.TryGetAccount(address, out account);
 
+    public IDisposable BeginScope(Hash256 stateRoot)
+    {
+        return innerState.BeginScope(stateRoot);
+    }
+
+    public IDisposable BeginScope()
+    {
+        return innerState.BeginScope();
+    }
+
     public byte[] GetOriginal(in StorageCell storageCell) => innerState.GetOriginal(in storageCell);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell) => innerState.Get(in storageCell);

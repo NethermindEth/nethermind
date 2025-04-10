@@ -89,6 +89,8 @@ public partial class BlockProcessor(
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
+
+        using var _ = _stateProvider.BeginScope(newBranchStateRoot ?? _stateProvider.StateRoot);
         InitBranch(newBranchStateRoot);
 
         Block suggestedBlock = suggestedBlocks[0];

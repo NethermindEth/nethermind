@@ -71,6 +71,7 @@ namespace Nethermind.Evm.Test
 
         private void AssertCmp(TestAllTracerWithOutput receipt, byte[] result)
         {
+            using var _ = TestState.BeginScope(TestState.StateRoot);
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
         }

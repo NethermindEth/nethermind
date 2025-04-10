@@ -15,6 +15,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Taiko.TaikoSpec;
@@ -46,6 +47,7 @@ public class TransactionProcessorTests
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -76,6 +78,7 @@ public class TransactionProcessorTests
             .WithExtraData(extraData)
             .WithBeneficiary(benefeciaryAddress).WithGasLimit(gasLimit).TestObject;
 
+        using var _ = _stateProvider!.BeginScope(_stateProvider.StateRoot);
         _transactionProcessor!.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         Assert.Multiple(() =>

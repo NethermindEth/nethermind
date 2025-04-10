@@ -108,7 +108,7 @@ public class GethStyleTracer(
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides, false);
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, worldState, specProvider);
         try
         {
@@ -178,7 +178,7 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides, false);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, worldState, specProvider);
 
         try
@@ -216,7 +216,7 @@ public class GethStyleTracer(
             if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
         }
 
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides, false);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, worldState, specProvider);
         try
         {

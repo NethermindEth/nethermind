@@ -66,11 +66,15 @@ public class CensorshipDetectorTests
         _txPool = CreatePool();
         _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
 
-        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
-        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
-        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressA);
-        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressA);
-        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
+        Transaction tx1, tx2, tx3, tx4, tx5;
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+            tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
+            tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressA);
+            tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressA);
+            tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
+        }
 
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
         Hash256 blockHash1 = block1.Hash!;
@@ -97,11 +101,15 @@ public class CensorshipDetectorTests
         _txPool = CreatePool();
         _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
 
-        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
-        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
-        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressA);
-        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressA);
-        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
+        Transaction tx1, tx2, tx3, tx4, tx5;
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+            tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
+            tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressA);
+            tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressA);
+            tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
+        }
 
         // high-paying tx censorship: true
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
@@ -147,33 +155,44 @@ public class CensorshipDetectorTests
                     TestItem.AddressF.ToString()]
             });
 
-        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
-        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
-        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressC);
-        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressD);
-        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressE);
-        Transaction tx6 = SubmitTxToPool(6, TestItem.PrivateKeyF, TestItem.AddressF);
+        Transaction tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, tx10, tx11, tx12;
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+            tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
+            tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressC);
+            tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressD);
+            tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressE);
+            tx6 = SubmitTxToPool(6, TestItem.PrivateKeyF, TestItem.AddressF);
+        }
+
 
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx1, tx6]).WithParentHash(TestItem.KeccakA).TestObject;
         Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
-        Transaction tx7 = SubmitTxToPool(7, TestItem.PrivateKeyA, TestItem.AddressA);
-        Transaction tx8 = SubmitTxToPool(8, TestItem.PrivateKeyF, TestItem.AddressF);
-
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx7 = SubmitTxToPool(7, TestItem.PrivateKeyA, TestItem.AddressA);
+            tx8 = SubmitTxToPool(8, TestItem.PrivateKeyF, TestItem.AddressF);
+        }
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx2, tx8]).WithParentHash(blockHash1).TestObject;
         Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
-
-        Transaction tx9 = SubmitTxToPool(9, TestItem.PrivateKeyB, TestItem.AddressB);
-        Transaction tx10 = SubmitTxToPool(10, TestItem.PrivateKeyF, TestItem.AddressF);
-
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx9 = SubmitTxToPool(9, TestItem.PrivateKeyB, TestItem.AddressB);
+            tx10 = SubmitTxToPool(10, TestItem.PrivateKeyF, TestItem.AddressF);
+        }
         Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx3, tx10]).WithParentHash(blockHash2).TestObject;
         Hash256 blockHash3 = block3.Hash!;
         BlockProcessingWorkflow(block3);
 
-        Transaction tx11 = SubmitTxToPool(11, TestItem.PrivateKeyC, TestItem.AddressC);
-        Transaction tx12 = SubmitTxToPool(12, TestItem.PrivateKeyF, TestItem.AddressF);
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx11 = SubmitTxToPool(11, TestItem.PrivateKeyC, TestItem.AddressC);
+            tx12 = SubmitTxToPool(12, TestItem.PrivateKeyF, TestItem.AddressF);
+        }
 
         Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(0).WithTransactions([tx4, tx12]).WithParentHash(blockHash3).TestObject;
         BlockProcessingWorkflow(block4);
@@ -202,28 +221,39 @@ public class CensorshipDetectorTests
                     TestItem.AddressE.ToString()]
             });
 
-        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
-        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
-        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressC);
-        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressD);
-        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressE);
+        Transaction tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, tx10;
+
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+            tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
+            tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressC);
+            tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressD);
+            tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressE);
+        }
 
         // address censorship: false
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx3, tx4, tx5]).WithParentHash(TestItem.KeccakA).TestObject;
         Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
-        Transaction tx6 = SubmitTxToPool(6, TestItem.PrivateKeyC, TestItem.AddressC);
-        Transaction tx7 = SubmitTxToPool(7, TestItem.PrivateKeyD, TestItem.AddressD);
-        Transaction tx8 = SubmitTxToPool(8, TestItem.PrivateKeyE, TestItem.AddressE);
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx6 = SubmitTxToPool(6, TestItem.PrivateKeyC, TestItem.AddressC);
+            tx7 = SubmitTxToPool(7, TestItem.PrivateKeyD, TestItem.AddressD);
+            tx8 = SubmitTxToPool(8, TestItem.PrivateKeyE, TestItem.AddressE);
+        }
 
         // address censorship: false
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx7, tx8]).WithParentHash(blockHash1).TestObject;
         Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
 
-        Transaction tx9 = SubmitTxToPool(9, TestItem.PrivateKeyD, TestItem.AddressD);
-        Transaction tx10 = SubmitTxToPool(10, TestItem.PrivateKeyE, TestItem.AddressE);
+        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        {
+            tx9 = SubmitTxToPool(9, TestItem.PrivateKeyD, TestItem.AddressD);
+            tx10 = SubmitTxToPool(10, TestItem.PrivateKeyE, TestItem.AddressE);
+        }
 
         // address censorship: true
         Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx1, tx10]).WithParentHash(blockHash2).TestObject;

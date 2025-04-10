@@ -151,7 +151,7 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
+            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride, true);
 
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
@@ -175,7 +175,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
+            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride, true);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, true,
@@ -200,7 +200,7 @@ namespace Nethermind.Facade
                 : new(header.GasBeneficiary);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!), header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!, true), header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput

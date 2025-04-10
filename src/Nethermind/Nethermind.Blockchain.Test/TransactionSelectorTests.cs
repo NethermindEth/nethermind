@@ -247,6 +247,7 @@ namespace Nethermind.Blockchain.Test
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
             {
+                using var __ = stateProvider.BeginScope(stateProvider.StateRoot);
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates

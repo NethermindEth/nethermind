@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.Producers
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 CreateReadonlyTxProcessingEnv(_worldStateManager, readOnlyBlockTree);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash, false);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(

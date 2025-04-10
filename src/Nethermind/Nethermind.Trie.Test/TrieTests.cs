@@ -1033,65 +1033,69 @@ namespace Nethermind.Trie.Test
                 addresses[i] = TestItem.GetRandomAddress(_random);
             }
 
-            for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
+            using (stateProvider.BeginScope(Keccak.EmptyTreeHash))
             {
-                bool isEmptyBlock = _random.Next(5) == 0;
-                if (!isEmptyBlock)
+                for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
                 {
-                    for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
+                    bool isEmptyBlock = _random.Next(5) == 0;
+                    if (!isEmptyBlock)
                     {
-                        int randomAddressIndex = _random.Next(addresses.Length);
-                        int randomAccountIndex = _random.Next(accounts.Length);
-
-                        Address address = addresses[randomAddressIndex];
-                        Account account = accounts[randomAccountIndex];
-
-                        if (stateProvider.AccountExists(address))
+                        for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
                         {
-                            Account existing = stateProvider.GetAccount(address);
-                            if (existing.Balance != account.Balance)
+                            int randomAddressIndex = _random.Next(addresses.Length);
+                            int randomAccountIndex = _random.Next(accounts.Length);
+
+                            Address address = addresses[randomAddressIndex];
+                            Account account = accounts[randomAccountIndex];
+
+                            if (stateProvider.AccountExists(address))
                             {
-                                if (account.Balance > existing.Balance)
+                                Account existing = stateProvider.GetAccount(address);
+                                if (existing.Balance != account.Balance)
                                 {
-                                    stateProvider.AddToBalance(
-                                        address, account.Balance - existing.Balance, MuirGlacier.Instance);
-                                }
-                                else
-                                {
-                                    stateProvider.SubtractFromBalance(
-                                        address, existing.Balance - account.Balance, MuirGlacier.Instance);
+                                    if (account.Balance > existing.Balance)
+                                    {
+                                        stateProvider.AddToBalance(
+                                            address, account.Balance - existing.Balance, MuirGlacier.Instance);
+                                    }
+                                    else
+                                    {
+                                        stateProvider.SubtractFromBalance(
+                                            address, existing.Balance - account.Balance, MuirGlacier.Instance);
+                                    }
+
+                                    stateProvider.IncrementNonce(address, UInt256.One);
                                 }
 
-                                stateProvider.IncrementNonce(address, UInt256.One);
+                                byte[] storage = new byte[1];
+                                _random.NextBytes(storage);
+                                stateProvider.Set(new StorageCell(address, 1), storage);
                             }
+                            else if (!account.IsTotallyEmpty)
+                            {
+                                stateProvider.CreateAccount(address, account.Balance);
 
-                            byte[] storage = new byte[1];
-                            _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
-                        }
-                        else if (!account.IsTotallyEmpty)
-                        {
-                            stateProvider.CreateAccount(address, account.Balance);
-
-                            byte[] storage = new byte[1];
-                            _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                                byte[] storage = new byte[1];
+                                _random.NextBytes(storage);
+                                stateProvider.Set(new StorageCell(address, 1), storage);
+                            }
                         }
                     }
-                }
 
-                streamWriter.WriteLine(
-                    $"Commit block {blockNumber} | empty: {isEmptyBlock}");
+                    streamWriter.WriteLine(
+                        $"Commit block {blockNumber} | empty: {isEmptyBlock}");
 
-                stateProvider.Commit(MuirGlacier.Instance);
+                    stateProvider.Commit(MuirGlacier.Instance);
 
-                stateProvider.CommitTree(blockNumber);
+                    stateProvider.CommitTree(blockNumber);
 
-                if (blockNumber > blocksCount - Reorganization.MaxDepth)
-                {
-                    rootQueue.Enqueue(stateProvider.StateRoot);
+                    if (blockNumber > blocksCount - Reorganization.MaxDepth)
+                    {
+                        rootQueue.Enqueue(stateProvider.StateRoot);
+                    }
                 }
             }
+
 
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
@@ -1105,7 +1109,7 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    stateProvider.StateRoot = currentRoot;
+                    using var _ = stateProvider.BeginScope(currentRoot);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))

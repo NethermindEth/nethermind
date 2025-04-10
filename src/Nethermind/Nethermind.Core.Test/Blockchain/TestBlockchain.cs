@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
-    public const int DefaultTimeout = 10000;
+    public const int DefaultTimeout = 1000000;
     protected long TestTimout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
@@ -173,34 +173,38 @@ public class TestBlockchain : IDisposable
         _fromContainer = Container.Resolve<FromContainer>();
 
         IWorldState state = _fromContainer.WorldStateManager.GlobalWorldState;
-
         ISpecProvider specProvider = SpecProvider;
-        // Eip4788 precompile state account
-        if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
-        {
-            state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
-        }
-
-        // Eip2935
-        if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
-        {
-            state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
-        }
-
         Configuration testConfiguration = _fromContainer.Configuration;
-        state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
-        state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
-        state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+        using (state.BeginScope(state.StateRoot))
+        {
+            // Eip4788 precompile state account
+            if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+            {
+                state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            }
 
-        InitialStateMutator?.Invoke(state);
+            // Eip2935
+            if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
+            {
+                state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+            }
 
-        byte[] code = Bytes.FromHexString("0xabcd");
-        state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
 
-        state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+            InitialStateMutator?.Invoke(state);
 
-        state.Commit(SpecProvider.GenesisSpec);
-        state.CommitTree(0);
+            byte[] code = Bytes.FromHexString("0xabcd");
+            state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+
+            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+
+            state.Commit(SpecProvider.GenesisSpec);
+            state.CommitTree(0);
+        }
+
+
 
         BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 

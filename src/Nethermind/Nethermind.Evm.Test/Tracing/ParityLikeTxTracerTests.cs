@@ -216,8 +216,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 50000)
@@ -254,8 +253,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)
@@ -289,8 +287,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .CallCode(TestItem.AddressC, 50000)
@@ -323,8 +320,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .CallCode(TestItem.AddressC, 50000, UInt256.MaxValue, ulong.MaxValue)
@@ -350,8 +346,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether())
@@ -529,8 +524,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50000)
@@ -547,6 +541,17 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         };
 
         Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("staticcall"), "[0] type");
+    }
+
+    private void InitStateWithCode(byte[] createCode)
+    {
+        using (TestState.BeginScope(TestState.StateRoot))
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+        }
     }
 
     [Test]
@@ -577,8 +582,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
+        InitStateWithCode(deployedCode);
 
         byte[] code = Prepare.EvmCode
             .Call(IdentityPrecompile.Address, 50000)
@@ -615,8 +619,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 40000)
@@ -670,8 +673,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .PersistData("0x2", SampleHexData1)
@@ -708,8 +710,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        InitStateWithCode(createCode);
 
         byte[] code = Prepare.EvmCode
             .PersistData("0x2", SampleHexData1)
@@ -794,6 +795,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -802,6 +804,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -810,6 +813,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ParityTraceTypes traceTypes, params byte[] code)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, traceTypes);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -818,6 +822,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
     {
+        using var __ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
         _ = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);

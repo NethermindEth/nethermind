@@ -417,6 +417,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     private byte[] NestedCalls()
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         byte[] deployedCode = new byte[3];
 
         byte[] initCode = Prepare.EvmCode
@@ -430,10 +431,13 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         TestState.CreateAccount(TestItem.AddressC, 1.Ether());
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
         return Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
+
     }
 
     private byte[] CallWithInput()

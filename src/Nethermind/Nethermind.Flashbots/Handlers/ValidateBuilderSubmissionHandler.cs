@@ -64,7 +64,7 @@ public class ValidateSubmissionHandler
         _logger = logManager!.GetClassLogger();
         _specProvider = specProvider;
 
-        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash, false);
         var worldState = _processingScope.WorldState;
         ITransactionProcessor transactionProcessor = _processingScope.TransactionProcessor;
         IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, worldState, _specProvider, 0, logManager);

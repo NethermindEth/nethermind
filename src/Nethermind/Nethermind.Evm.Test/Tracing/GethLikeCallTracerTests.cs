@@ -24,6 +24,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
+        using var __ = TestState.BeginScope(TestState.StateRoot);
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
         using NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
         using GethLikeTxTrace callTrace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
@@ -542,6 +543,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private byte[] CreateNestedCallsCode(bool revertParentCall = false, bool revertCreateCall = false)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         byte[] deployedCode = new byte[3];
 
         byte[] initCode = Prepare.EvmCode.ForInitOf(deployedCode).Done;
@@ -557,6 +559,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .CallWithInput(TestItem.AddressC, 50000, SampleHexData1)
             .DelegateCall(TestItem.AddressC, 50000)
             .Log(0, 0);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
         return revertParentCall ? callCodePrepare.Revert(0, 0).Done : callCodePrepare.Done;
     }
 }

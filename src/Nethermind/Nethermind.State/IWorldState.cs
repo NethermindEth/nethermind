@@ -17,6 +17,10 @@ namespace Nethermind.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+
+    public IDisposable BeginScope(Hash256 stateRoot);
+    public IDisposable BeginScope();
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>

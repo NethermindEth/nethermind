@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -121,8 +122,11 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
-        worldState.RecalculateStateRoot();
+        using(worldState.BeginScope(worldState.StateRoot))
+        {
+            worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+            worldState.RecalculateStateRoot();
+        }
 
         using TempPath tmpFile = TempPath.GetTempFile();
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
@@ -212,8 +216,11 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
-        worldState.RecalculateStateRoot();
+        using(worldState.BeginScope(worldState.StateRoot))
+        {
+            worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+            worldState.RecalculateStateRoot();
+        }
 
         using var tmpFile = TempPath.GetTempFile();
         using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());

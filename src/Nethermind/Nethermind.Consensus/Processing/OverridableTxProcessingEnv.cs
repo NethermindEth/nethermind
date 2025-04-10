@@ -49,13 +49,13 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     protected virtual ITransactionProcessor CreateTransactionProcessor() =>
         new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
-    IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot, bool initScope) => Build(stateRoot, initScope);
 
-    public OverridableTxProcessingScope Build(Hash256 stateRoot) => new(CodeInfoRepository, TransactionProcessor, StateProvider, stateRoot);
+    public OverridableTxProcessingScope Build(Hash256 stateRoot, bool initScope) => new(CodeInfoRepository, TransactionProcessor, StateProvider, stateRoot, initScope);
 
-    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride, bool initScope)
     {
-        OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
+        OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)), initScope);
         if (stateOverride is not null)
         {
             scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);

@@ -35,6 +35,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(isBlobSupportEnabled
@@ -50,6 +51,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithMaxFeePerGas(1.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) - (sizeExceeded ? 1 : 0) };
@@ -68,6 +70,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithMaxFeePerGas(1.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) };
@@ -90,6 +93,7 @@ namespace Nethermind.TxPool.Test
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             for (int i = 0; i < poolSize; i++)
             {
@@ -122,6 +126,7 @@ namespace Nethermind.TxPool.Test
                 MaxPendingBlobTxsPerSender = maxPendingBlobTxs
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             for (int nonce = 0; nonce < txPoolConfig.Size; nonce++)
             {
@@ -152,6 +157,7 @@ namespace Nethermind.TxPool.Test
             };
 
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
@@ -191,6 +197,7 @@ namespace Nethermind.TxPool.Test
             };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction blobTxAdded = Build.A.Transaction
@@ -234,6 +241,7 @@ namespace Nethermind.TxPool.Test
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction tx = Build.A.Transaction
@@ -251,6 +259,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool([Values(true, false)] bool isBlob)
         {
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = Build.A.Transaction
@@ -288,6 +297,7 @@ namespace Nethermind.TxPool.Test
             }
 
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
@@ -307,6 +317,7 @@ namespace Nethermind.TxPool.Test
             };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction oldTx = Build.A.Transaction
@@ -354,6 +365,7 @@ namespace Nethermind.TxPool.Test
                 Size = 10
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction tx = Build.A.Transaction
@@ -381,6 +393,7 @@ namespace Nethermind.TxPool.Test
                 Size = 10
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             _headInfo.CurrentFeePerBlobGas = UInt256.MaxValue;
@@ -419,6 +432,7 @@ namespace Nethermind.TxPool.Test
             bool shouldReplace = blobsInFirstTx <= blobsInSecondTx;
 
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = Build.A.Transaction
@@ -452,7 +466,7 @@ namespace Nethermind.TxPool.Test
         public void should_discard_tx_when_data_gas_cost_cause_overflow([Values(false, true)] bool supportsBlobs)
         {
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory }, GetCancunSpecProvider());
-
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             UInt256.MaxValue.Divide(GasCostOf.Transaction * 2, out UInt256 halfOfMaxGasPriceWithoutOverflow);
@@ -494,6 +508,7 @@ namespace Nethermind.TxPool.Test
             }
 
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
@@ -548,7 +563,7 @@ namespace Nethermind.TxPool.Test
                 BlobsSupport = BlobsSupportMode.StorageWithReorgs
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
-
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
@@ -592,7 +607,7 @@ namespace Nethermind.TxPool.Test
                 BlobsSupport = BlobsSupportMode.StorageWithReorgs
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
-
+            using var __ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
@@ -660,6 +675,7 @@ namespace Nethermind.TxPool.Test
                 : new BlobTxDistinctSortedPool(txPoolConfig.InMemoryBlobPoolSize, comparer, LimboLogs.Instance);
 
             Transaction[] blobTxs = new Transaction[poolSize * 2];
+            using var __ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
 
             // adding 2x more txs than pool capacity. First half will be evicted
             for (int i = 0; i < poolSize * 2; i++)
@@ -720,6 +736,7 @@ namespace Nethermind.TxPool.Test
         [Repeat(3)]
         public void should_handle_indexing_blobs_when_adding_txs_in_parallel([Values(true, false)] bool isPersistentStorage)
         {
+            using var __ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             const int txsPerSender = 10;
             int poolSize = TestItem.PrivateKeys.Length * txsPerSender;
             TxPoolConfig txPoolConfig = new()

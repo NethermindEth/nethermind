@@ -149,8 +149,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        using (TestState.BeginScope(TestState.StateRoot))
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+        }
 
         byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 50000)
@@ -189,8 +194,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        using (TestState.BeginScope(TestState.StateRoot))
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+        }
 
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1) // just to test if stack is restored
@@ -233,8 +243,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        using (TestState.BeginScope(TestState.StateRoot))
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+        }
 
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(64, SampleHexData2.PadLeft(64, '0')) // just to test if memory is restored
@@ -277,8 +292,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        using (TestState.BeginScope(TestState.StateRoot))
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+        }
 
         byte[] code = Prepare.EvmCode
             .PersistData("0x2", HexZero) // just to test if storage is restored

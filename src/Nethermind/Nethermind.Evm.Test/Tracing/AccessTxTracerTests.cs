@@ -23,6 +23,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Records_get_correct_accessed_addresses()
         {
+            using var __ = TestState.BeginScope(TestState.StateRoot);
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
@@ -33,9 +34,10 @@ namespace Nethermind.Evm.Test.Tracing
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
             IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(static tuples => tuples.Address);
-            IEnumerable<Address> expected = new[] {
+            IEnumerable<Address> expected =
+            [
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
-            };
+            ];
 
             addressesAccessed.Should().BeEquivalentTo(expected);
         }

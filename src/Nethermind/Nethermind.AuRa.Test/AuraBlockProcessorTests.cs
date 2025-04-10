@@ -125,23 +125,35 @@ namespace Nethermind.AuRa.Test
             (AuRaBlockProcessor processor, IWorldState stateProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
 
-            stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
-            stateProvider.CreateAccount(TestItem.AddressB, UInt256.One);
-            stateProvider.Commit(London.Instance);
-            stateProvider.CommitTree(0);
-            stateProvider.RecalculateStateRoot();
+            using (stateProvider.BeginScope(stateProvider.StateRoot))
+            {
+                stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
+                stateProvider.CreateAccount(TestItem.AddressB, UInt256.One);
+                stateProvider.Commit(London.Instance);
+                stateProvider.CommitTree(0);
+                stateProvider.RecalculateStateRoot();
+            }
 
             Process(processor, 1, stateProvider.StateRoot);
-            stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
-            stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
+            using (stateProvider.BeginScope(stateProvider.StateRoot))
+            {
+                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
+                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
+            }
 
             Process(processor, 2, stateProvider.StateRoot);
-            stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
-            stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
+            using (stateProvider.BeginScope(stateProvider.StateRoot))
+            {
+                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
+                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
+            }
 
             Process(processor, 3, stateProvider.StateRoot);
-            stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
-            stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
+            using (stateProvider.BeginScope(stateProvider.StateRoot))
+            {
+                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
+                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
+            }
         }
 
         private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)

@@ -18,6 +18,7 @@ using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool.Test;
 internal class DelegatedAccountFilterTest
@@ -45,6 +46,7 @@ internal class DelegatedAccountFilterTest
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope(Keccak.EmptyTreeHash);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
@@ -75,6 +77,7 @@ internal class DelegatedAccountFilterTest
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope(Keccak.EmptyTreeHash);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
@@ -101,6 +104,7 @@ internal class DelegatedAccountFilterTest
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope(Keccak.EmptyTreeHash);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
@@ -132,6 +136,7 @@ internal class DelegatedAccountFilterTest
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope(Keccak.EmptyTreeHash);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
@@ -167,6 +172,7 @@ internal class DelegatedAccountFilterTest
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope(Keccak.EmptyTreeHash);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 1);
         TxFilteringState state = new(transaction, stateProvider);
 

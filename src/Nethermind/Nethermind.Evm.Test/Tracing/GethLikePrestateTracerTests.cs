@@ -82,6 +82,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedSStoreDiffModeTrace)]
     public void Test_PrestateTrace_SStore(string? config, string expectedTrace)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         TestState.CreateAccount(Address.Zero, 100.Ether());
         StorageCell storageCell = new StorageCell(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
@@ -150,6 +151,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedNestedCallsDiffModeTrace)]
     public void Test_PrestateTrace_NestedCalls(string? config, string expectedTrace)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         byte[] deployedCode = new byte[3];
         byte[] initCode = Prepare.EvmCode
             .ForInitOf(deployedCode)
@@ -237,6 +239,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedCreate2DiffModeTrace)]
     public void Test_PrestateTrace_Create2(string? config, string expectedTrace)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         byte[] salt = { 4, 5, 6 };
         byte[] deployedCode = { 1, 2, 3 };
         byte[] initCode = Prepare.EvmCode
@@ -307,6 +310,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedExistingAccountDiffModeTrace)]
     public void Test_PrestateTrace_ExistingAccount(string? config, string expectedTrace)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         TestState.CreateAccount(Address.Zero, 100.Ether());
         TestState.CreateAccount(TestItem.AddressC, 5.Ether());
         TestState.IncrementNonce(TestItem.AddressC);
@@ -359,6 +363,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedEmptyToDiffModeTrace)]
     public void Test_PrestateTrace_EmptyTo(string? config, string expectedTrace)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         TestState.CreateAccount(Address.Zero, 100.Ether());
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);
@@ -412,6 +417,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedSelfDestructDiffModeTrace)]
     public void Test_PrestateTrace_SelfDestruct(string? config, string expectedTrace)
     {
+        using var _ = TestState.BeginScope(TestState.StateRoot);
         TestState.CreateAccount(Address.Zero, 100.Ether());
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);

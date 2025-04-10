@@ -9,6 +9,6 @@ namespace Nethermind.Evm.TransactionProcessing;
 
 public interface IOverridableTxProcessorSource
 {
-    IOverridableTxProcessingScope Build(Hash256 stateRoot);
-    IOverridableTxProcessingScope BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
+    IOverridableTxProcessingScope Build(Hash256 stateRoot, bool initScope);
+    IOverridableTxProcessingScope BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride, bool initScope);
 }
