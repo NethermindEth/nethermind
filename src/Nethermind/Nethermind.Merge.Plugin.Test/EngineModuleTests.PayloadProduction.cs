@@ -106,7 +106,7 @@ public partial class EngineModuleTests
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
-        Transaction[] transactionsInBlock = getPayloadResult.GetTransactions();
+        Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Transactions;
         transactionsInBlock.Should().BeEquivalentTo(transactions, o => o
             .Excluding(t => t.ChainId)
             .Excluding(t => t.SenderAddress)
@@ -325,7 +325,7 @@ public partial class EngineModuleTests
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(3, 6, 11);
-        Transaction[] txs = getPayloadResult.GetTransactions();
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
         txs.Should().HaveCount(11);
     }
@@ -368,13 +368,13 @@ public partial class EngineModuleTests
         chain.AddTransactions(tx2);
         await blockImprovementLock.WaitAsync(500 * TestContext.CurrentContext.CurrentRepeatCount);
 
-        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(1, 2);
-        Transaction[] txs = getPayloadResult.GetTransactions();
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
         txs.Should().HaveCount(2);
     }
@@ -418,7 +418,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        getPayloadResult.GetTransactions().Should().HaveCount(3);
+        getPayloadResult.TryGetTransactions().Transactions.Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
     }
 
