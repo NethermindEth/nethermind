@@ -2546,7 +2546,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        StorageValue newValue = new StorageValue(stack.PopWord256());
+
+        // Direct pop by ref and capturing as the new value
+        ref var v = ref stack.PopBytesByRef();
+        if (IsNullRef(ref v)) return EvmExceptionType.StackUnderflow;
+
+        StorageValue newValue = new StorageValue(in As<byte, Vector256<byte>>(ref v));
         bool newIsZero = newValue.IsZero;
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);

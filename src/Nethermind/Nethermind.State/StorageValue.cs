@@ -40,6 +40,14 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     }
 
     /// <summary>
+    /// Creates a storage value from raw vector.
+    /// </summary>
+    public StorageValue(in Vector256<byte> bytes)
+    {
+        _bytes = bytes;
+    }
+
+    /// <summary>
     /// Creates a storage value out of the <paramref name="value"/>.
     /// </summary>
     public StorageValue(in UInt256 value)
