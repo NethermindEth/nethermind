@@ -217,6 +217,14 @@ namespace Nethermind.Db
             if (IncludeTopicIndex) buffer[^1] = topicIndex;
         }
 
+        private IDb GetDbByKeyLength(int length) => length switch
+        {
+            Address.Size => _addressDb,
+            Hash256.Size when !IncludeTopicIndex => _topicsDb,
+            Hash256.Size + 1 when IncludeTopicIndex => _topicsDb,
+            var size => throw ValidationException($"Unexpected key of {size} bytes.")
+        };
+
         // TODO: optimize allocations
         private Dictionary<byte[], List<int>>? BuildProcessingDictionary(
             BlockReceipts[] batch, SetReceiptsStats stats
@@ -433,12 +441,7 @@ namespace Nethermind.Db
         // TODO: optimize allocations
         private void SaveBlockNumbersByKey(byte[] key, IReadOnlyList<int> blockNums, SetReceiptsStats stats)
         {
-            var db = key.Length switch
-            {
-                Address.Size => _addressDb,
-                Hash256.Size => _topicsDb,
-                var size => throw ValidationException($"Unexpected key of {size} bytes.")
-            };
+            var db = GetDbByKeyLength(key.Length);
 
             var dbKeyArray = ArrayPool<byte>.Shared.Rent(key.Length + BlockNumSize);
             var dbKey = dbKeyArray.AsSpan(0, key.Length + BlockNumSize);
@@ -531,12 +534,7 @@ namespace Nethermind.Db
 
             var block = new ActionBlock<byte[]>(dbKey =>
             {
-                var db = (dbKey.Length - BlockNumSize) switch
-                {
-                    Address.Size => _addressDb,
-                    Hash256.Size => _topicsDb,
-                    var size => throw ValidationException($"Unexpected index size of {size} bytes.")
-                };
+                var db = GetDbByKeyLength(dbKey.Length - BlockNumSize);
 
                 var timestamp = Stopwatch.GetTimestamp();
                 var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
