@@ -2390,11 +2390,9 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingTransaction(txsA[1].Hash!, out Transaction tx2).Should().BeTrue();
 
             tx1.Should().BeEquivalentTo(txsA[0], static options => options
-                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
                 .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
 
             tx2.Should().BeEquivalentTo(txsA[1], static options => options
-                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
                 .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
         }
 

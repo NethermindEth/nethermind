@@ -313,10 +313,7 @@ namespace Nethermind.TxPool
                         continue;
                     }
                     _hashCache.Delete(tx.Hash!);
-                    // For reorg we will submit with PersistentBroadcast
-                    SubmitTx(tx, isEip155Enabled ?
-                        TxHandlingOptions.PersistentBroadcast :
-                        TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.PreEip155Signing);
+                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -328,10 +325,7 @@ namespace Nethermind.TxPool
                         if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
                         blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
-                        // For reorg we will submit with PersistentBroadcast
-                        SubmitTx(blobTx, isEip155Enabled ?
-                            TxHandlingOptions.PersistentBroadcast :
-                            TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.PreEip155Signing);
+                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                     }
                     if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -487,17 +481,17 @@ namespace Nethermind.TxPool
                 {
                     accepted = AddCore(tx, ref state, startBroadcast);
                 }
+                else
+                {
+                    Metrics.PendingTransactionsDiscarded++;
+                }
             }
             finally
             {
                 _newHeadLock.ExitReadLock();
             }
 
-            if (!accepted)
-            {
-                Metrics.PendingTransactionsDiscarded++;
-            }
-            else
+            if (accepted)
             {
                 // Clear proper snapshot
                 if (tx.SupportsBlobs)
