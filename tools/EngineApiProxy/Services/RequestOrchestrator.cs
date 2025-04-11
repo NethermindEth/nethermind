@@ -353,7 +353,7 @@ namespace Nethermind.EngineApiProxy.Services
                 var requestJson = JsonConvert.SerializeObject(request);
                 string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
                 _logger.Debug($"Forwarding validation request to EL at: {targetHost}");
-                _logger.Info($"PR (V) -> EL: {requestJson}");
+                _logger.Info($"PR -> EL|{request.Method}|V|{requestJson}");
                 var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
                 // Create a request message instead of using PostAsync
@@ -418,7 +418,7 @@ namespace Nethermind.EngineApiProxy.Services
                 // Parse response
                 var responseJson = await response.Content.ReadAsStringAsync();
                 _logger.Debug($"Received response from EL at: {targetHost}");
-                _logger.Info($"EL -> PR (V): {responseJson}");
+                _logger.Info($"EL -> PR|{request.Method}|V|{responseJson}");
                 
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 if (jsonRpcResponse == null)

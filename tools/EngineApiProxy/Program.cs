@@ -158,7 +158,7 @@ namespace Nethermind.EngineApiProxy
             // Create console target
             var consoleTarget = new ColoredConsoleTarget("console")
             {
-                Layout = "${longdate}|${level:uppercase=true}|${logger}|${message} ${exception:format=tostring}"
+                Layout = "${longdate}|${level:uppercase=true}|${message} ${exception:format=tostring}"
             };
             
             // Add console target to configuration

@@ -144,7 +144,7 @@ sequenceDiagram
     %% Based on request (1) PR generates PayloadAttributes
     alt Validation enabled
  
-    P->>P: (1.1) generate PayloadAttributes
+    P->>P: (1.1) generate PayloadAttributes (based on previous block)
     Note over P: Append PayloadAttributes to FCU
     
     %% Step 2: PR sends generated request (1.1) to EL
@@ -194,42 +194,52 @@ sequenceDiagram
     CL->>P: (1) engine_forkChoiceUpdated (with PayloadAttributes null)
     Note over P: Intercept & delay engine_forkChoiceUpdated
     
-    %% Step 2: based on request (1) PR generates PayloadAttributes
+    %% Step 1.1: based on request (1) PR generates PayloadAttributes
     alt Validation enabled && PayloadAttributes null
     
-    P->>P: (2) generate PayloadAttributes
+    P->>P: (1.1) generate PayloadAttributes (based on the current head block)
     Note over P: Append PayloadAttributes to FCU
     
-    %% Step 3: PR sends generated request (2) to EL
-    P->>EC: (3) engine_forkChoiceUpdated (forkchoiceState + PayloadAttributes)
-    EC->>P: (3) engine_forkChoiceUpdated response (PayloadID)
+    %% Step 2: PR sends generated request (1.1) to EL
+    P->>EC: (2) engine_forkChoiceUpdated (forkchoiceState + PayloadAttributes)
+    EC->>P: (2) engine_forkChoiceUpdated response (PayloadID)
        
-    %% Step 4: getting PayloadID from EL (3), sending engine_getPayload with it
+    %% Step 3: getting PayloadID from EL (2), sending engine_getPayload with it
     Note over P: Validation start
     alt Validation
-    P->>EC: (4) engine_getPayload (PayloadID)
-    EC->>P: (4) engine_getPayload Response (execution payload)
+    P->>EC: (3) engine_getPayload (PayloadID)
+    EC->>P: (3) engine_getPayload Response (execution payload)
     
-    %% Step 5: Sending engine_newPayload with generated (4) payload
-    P->>EC: (5) engine_newPayload(generated from getPayload response)
-    EC->>P: (5) -- engine_newPayload response (save in case of error)
+    %% Step 4: Sending engine_newPayload with generated (3) payload
+    P->>EC: (4) engine_newPayload(generated from getPayload response)
+    EC->>P: (4) -- engine_newPayload response (save in case of error)
     end
 
     end
-    %% Step 6: Release blocked original FCU request (1)
+    %% Step 5: Release blocked original FCU request (1)
     Note over P: Release FCU
     P->>EC: (1) engine_forkChoiceUpdated (resuming)
     EC->>P: (1) engine_forkChoiceUpdated response
     P->>CL: (1) engine_forkChoiceUpdated response 
     
-    %% Step 7: Proceed a valid engine_newPayload (if any)
-    CL->>P: (6) engine_newPayload (next block payload)
-    P->>EC: (6) engine_newPayload response
+    %% Step 6: Proceed a valid engine_newPayload (if any)
+    CL->>P: (5) engine_newPayload (next block payload)
+    P->>EC: (5) engine_newPayload response
+    EC->>P: (5) engine_newPayload response
+    P->>CL: (5) engine_newPayload response 
    
     Note over P: Process any new engine_forkChoiceUpdated messages
 
 
 ```
+
+#### Differences between FCU and NewPayload flows
+
+- they block (and then resume) different requests (`engine_forkchoiceUpdatedV3` vs `engine_newPayload`)
+- in FCU flow payload we have already the payload we need to validate, in newPayload flow we need to generate it based on current state
+- in FCU flow `engine_forkchoiceUpdatedV3` will be generated using `latestValidHash` from the current `engine_newPayload` request (because EL already has this block), in NewPayload flow we will use `latestValidHash` from the previous block (since current block is not exist in EL DB yet)
+- thus, we may have different payloads in FCU and NewPayload flows, but FCU one will be more close to the original one
+- in FCU we start validation only if we have null payload attributes, in NewPayload we will validate every payload (since there is no way to know if the payload was already validated by another CL before `engine_newPayload` request was sent)
 
 
 ## Testing with Kurtosis
@@ -344,3 +354,7 @@ docker logs cl-1-lighthouse-nethermind--22f7e291c6cb42ecaee2b288ae51ce04 > conse
 - Ensure the execution client endpoint URL is correctly formatted and accessible
 - If using auto-validation, check that block data is being fetched successfully
 - Using `tools/EngineApiProxy/Scripts/inspect_containers.py` script you can find out IP addresses and configuration of the proxy container
+- "2025-04-11 14:56:38.2485|WARN|Validation flow failed, payloadId is empty. Seems like the node is not synced yet. " - this is expected and happens when CL is not synced yet. To check sync status do:
+  ```
+  curl -X GET "http://localhost:4000/eth/v1/node/syncing" -H "Accept: application/json"
+  ```

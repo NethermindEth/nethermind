@@ -77,7 +77,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 var responseJson = await response.Content.ReadAsStringAsync();
-                _logger.Info($"EL -> PR (M): {responseJson}");
+                _logger.Info($"EL -> PR|M|{request.Method}|{responseJson}");
                 var jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 
                 if (jsonResponse?.Result is JObject blockData)

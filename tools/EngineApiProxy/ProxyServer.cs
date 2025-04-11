@@ -157,7 +157,15 @@ namespace Nethermind.EngineApiProxy
             
             string sourceIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             string sourceHost = context.Request.Headers.ContainsKey("Host") ? context.Request.Headers["Host"].ToString() : "unknown";
-            _logger.Info($"CL -> PR (Source IP: {sourceIp}, Headers Host: {sourceHost}): {requestBody}");
+            string method;
+            try {
+                var requestObj = JObject.Parse(requestBody);
+                method = requestObj["method"]?.ToString() ?? "unknown";
+            }
+            catch {
+                method = "unknown";
+            }
+            _logger.Info($"CL -> PR|{method}|(Source IP: {sourceIp}, Headers Host: {sourceHost}): {requestBody}");
             
             JsonRpcRequest? request;
             try
@@ -241,7 +249,7 @@ namespace Nethermind.EngineApiProxy
             context.Response.ContentType = "application/json";
             string destinationIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             string destinationHost = context.Request.Headers.ContainsKey("Host") ? context.Request.Headers["Host"].ToString() : "unknown";
-            _logger.Info($"PR -> CL (Destination IP: {destinationIp}, Headers Host: {destinationHost}, Method: {request.Method}): {JsonConvert.SerializeObject(response)}");
+            _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {destinationIp}, Headers Host: {destinationHost}): {JsonConvert.SerializeObject(response)}");
             await context.Response.WriteAsync(JsonConvert.SerializeObject(response));
         }
 
@@ -649,7 +657,7 @@ namespace Nethermind.EngineApiProxy
                 string requestJson = JsonConvert.SerializeObject(request);
                 string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
                 _logger.Debug($"Forwarding request to EL at: {targetHost}");
-                _logger.Info($"PR -> EL: {requestJson}");
+                _logger.Info($"PR -> EL|{request.Method}|{requestJson}");
                 var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
                 // Create a request message instead of using PostAsync directly
@@ -715,7 +723,7 @@ namespace Nethermind.EngineApiProxy
                 var response = await _httpClient.SendAsync(requestMessage);
                 string responseBody = await response.Content.ReadAsStringAsync();
                 _logger.Debug($"Received response from EL at: {targetHost}");
-                _logger.Info($"EL -> PR: {responseBody}");
+                _logger.Info($"EL -> PR|{request.Method}|{responseBody}");
                 
                 if (!response.IsSuccessStatusCode)
                 {
