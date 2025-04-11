@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
-
+using Nethermind.Core;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -47,9 +47,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         {
             ParityAccountStateChange change = new()
             {
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>
+                Storage = new Dictionary<UInt256, ParityStateChange<StorageValue>>
                 {
-                    {1, new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {0})}
+                    {1, new ParityStateChange<StorageValue>(new byte[] {1}, new byte[] {0})}
                 }
             };
 

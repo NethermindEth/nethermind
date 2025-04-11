@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -115,13 +116,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) =>
         _currentTxTracer.ReportMemoryChange(offset, data);
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value) =>
         _currentTxTracer.ReportStorageChange(key, value);
 
-    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) =>
+    public void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue) =>
         _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) =>
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value) =>
         _currentTxTracer.LoadOperationStorage(address, storageIndex, value);
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
@@ -139,7 +140,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportAccountRead(Address address) =>
         _currentTxTracer.ReportAccountRead(address);
 
-    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>
+    public void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after) =>
         _currentTxTracer.ReportStorageChange(storageCell, before, after);
 
     public void ReportStorageRead(in StorageCell storageCell) =>

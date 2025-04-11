@@ -3,6 +3,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.State;
 using NUnit.Framework;
 

@@ -17,7 +17,6 @@ namespace Nethermind.Benchmarks.State
 
         private const int OperationsPerInvoke = 1000;
 
-
         [GlobalSetup]
         public void Setup()
         {
@@ -46,11 +45,11 @@ namespace Nethermind.Benchmarks.State
         {
             public bool IsTracingStorage => throw new NotImplementedException();
 
-            public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+            public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value) =>
                 throw new NotImplementedException();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+            public void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after) { }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             public void ReportStorageRead(in StorageCell storageCell) { }

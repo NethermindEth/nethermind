@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing;
@@ -303,7 +304,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="newValue"></param>
     /// <param name="currentValue"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue);
+    void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue);
 
     /// <summary>
     ///
@@ -313,7 +314,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="newValue"></param>
     /// <param name="currentValue"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
+    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue) { }
 
     /// <summary>
     ///
@@ -322,7 +323,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="storageIndex"></param>
     /// <param name="value"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value);
+    void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value);
 
     /// <summary>
     ///
@@ -331,7 +332,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="storageIndex"></param>
     /// <param name="value"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
+    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, in StorageValue value) { }
 
     /// <summary>
     ///

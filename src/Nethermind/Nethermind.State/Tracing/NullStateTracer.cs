@@ -29,10 +29,10 @@ public class NullStateTracer : IWorldStateTracer
     public void ReportAccountRead(Address address)
         => throw new InvalidOperationException(ErrorMessage);
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
         => throw new InvalidOperationException(ErrorMessage);
 
-    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
         => throw new InvalidOperationException(ErrorMessage);
 
     public void ReportStorageRead(in StorageCell storageCell)

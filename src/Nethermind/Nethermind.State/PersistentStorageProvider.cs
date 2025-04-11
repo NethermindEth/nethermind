@@ -549,7 +549,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (!before.Equals(after))
             {
                 // TODO: consider non allocating report
-                tracer.ReportStorageChange(address, before.BytesWithNoLeadingZeroes.ToArray(), after.BytesWithNoLeadingZeroes.ToArray());
+                tracer.ReportStorageChange(address, before, after);
             }
         }
     }

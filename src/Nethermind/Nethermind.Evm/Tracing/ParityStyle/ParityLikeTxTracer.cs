@@ -279,7 +279,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public override void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
         {
             _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
         }
@@ -339,7 +339,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             value.Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
-        public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public override void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
         {
             ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
             if (!exists)
@@ -347,14 +347,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 value = new ParityAccountStateChange();
             }
 
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= [];
-            ref ParityStateChange<byte[]>? change = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
-            if (exists)
-            {
-                before = change.Before ?? before;
-            }
+            Dictionary<UInt256, ParityStateChange<StorageValue>> storage = value.Storage ??= [];
+            ref ParityStateChange<StorageValue>? change = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
 
-            change = new ParityStateChange<byte[]>(before, after);
+            var previous = exists && !change.Before.IsZero ? change.Before : before;
+
+            change = new ParityStateChange<StorageValue>(previous, after);
         }
 
         public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

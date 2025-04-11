@@ -687,10 +687,10 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
         Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
         Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        Assert.That(trace.StateChanges[Recipient].Storage[2].Before.ToArray(), Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
+        Assert.That(trace.StateChanges[Recipient].Storage[2].After.ToArray(), Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
+        Assert.That(trace.StateChanges[Recipient].Storage[3].Before.ToArray(), Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
+        Assert.That(trace.StateChanges[Recipient].Storage[3].After.ToArray(), Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
     }
 
     [Test]

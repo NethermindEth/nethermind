@@ -9,7 +9,7 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.State;
+namespace Nethermind.Core;
 
 /// <summary>
 /// Represents a storage value.
@@ -125,9 +125,31 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     public bool IsZero => _bytes == Vector256<byte>.Zero;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public string ToHexString(bool withZeroX) => Bytes.WithoutLeadingZeros().ToHexString(withZeroX);
+    public string ToHexString(bool withZeroX) => BytesWithNoLeadingZeroes.ToHexString(withZeroX);
 
     public override string ToString() => ToHexString(false);
 
     public byte[] ToArray() => BytesWithNoLeadingZeroes.ToArray();
+
+    public static StorageValue FromHexString(ReadOnlySpan<byte> hex)
+    {
+        const int maxChars = MemorySize * 2;
+
+        StorageValue result = default;
+
+        if (hex.Length < maxChars)
+        {
+            Span<byte> hex32 = stackalloc byte[maxChars];
+            hex32.Fill((byte)'0');
+            hex.CopyTo(hex32[(64 - hex.Length)..]);
+
+            Nethermind.Core.Extensions.Bytes.FromUtf8HexString(hex32, result.BytesAsSpan);
+        }
+        else
+        {
+            Nethermind.Core.Extensions.Bytes.FromUtf8HexString(hex, result.BytesAsSpan);
+        }
+
+        return result;
+    }
 }

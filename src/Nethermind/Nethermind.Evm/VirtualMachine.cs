@@ -1933,7 +1933,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             if (gasAvailable < 0) goto OutOfGas;
-                            _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value.BytesWithNoLeadingZeroes);
+                            _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
                         }
 
                         break;
@@ -1952,13 +1952,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             storageCell = new(env.ExecutingAccount, result);
                             bytes = stack.PopWord256();
 
-                            _state.SetTransientState(in storageCell, new StorageValue(bytes));
+                            var newValue = new StorageValue(bytes);
+                            _state.SetTransientState(in storageCell, newValue);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
                                 StorageValue currentValue = _state.GetTransientState(in storageCell);
-                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue.BytesWithNoLeadingZeroes);
+                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, newValue, currentValue);
                             }
 
                             break;
@@ -2520,7 +2521,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         stack.PushBytes(value);
         if (typeof(TTracingStorage) == typeof(IsTracing))
         {
-            _txTracer.LoadOperationStorage(storageCell.Address, result, value.BytesWithNoLeadingZeroes);
+            _txTracer.LoadOperationStorage(storageCell.Address, result, value);
         }
 
         return EvmExceptionType.None;
@@ -2662,12 +2663,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 byte[] storageBytes = new byte[32]; // do not stackalloc here
                 storageCell.Index.ToBigEndian(storageBytes);
-                _txTracer.ReportStorageChange(storageBytes, newValue.BytesWithNoLeadingZeroes);
+                _txTracer.ReportStorageChange(storageBytes, newValue);
             }
 
             if (typeof(TTracingStorage) == typeof(IsTracing))
             {
-                _txTracer.SetOperationStorage(storageCell.Address, result, newValue.BytesWithNoLeadingZeroes, currentValue.BytesWithNoLeadingZeroes);
+                _txTracer.SetOperationStorage(storageCell.Address, result, newValue, currentValue);
             }
         }
 

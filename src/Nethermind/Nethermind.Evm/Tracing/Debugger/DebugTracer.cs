@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.Debugger;
 
@@ -221,10 +222,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => InnerTracer.ReportMemoryChange(offset, data);
 
-    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue)
         => InnerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value)
         => InnerTracer.LoadOperationStorage(address, storageIndex, value);
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
@@ -278,10 +279,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportAccountRead(Address address)
         => InnerTracer.ReportAccountRead(address);
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
         => InnerTracer.ReportStorageChange(key, value);
 
-    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
         => InnerTracer.ReportStorageChange(storageCell, before, after);
 
     public void ReportStorageRead(in StorageCell storageCell)

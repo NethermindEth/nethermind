@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.Proofs
 {
@@ -60,7 +61,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             Accounts.Add(address);
         }
 
-        public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public override void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
         {
             // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
             // and so we do not need to add account to Accounts

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle;
 
 public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccountStateChange>
 {
-    private readonly Bytes32Converter _32BytesConverter = new();
+    private readonly StorageValueConverter _storageValueConverter = new();
 
     public override ParityAccountStateChange Read(
         ref Utf8JsonReader reader,
@@ -81,7 +81,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         }
     }
 
-    private void WriteStorageChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, bool isNew, JsonSerializerOptions options)
+    private void WriteStorageChange(Utf8JsonWriter writer, ParityStateChange<StorageValue> change, bool isNew, JsonSerializerOptions options)
     {
         if (change is null)
         {
@@ -93,7 +93,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
-                _32BytesConverter.Write(writer, change.After, options);
+                _storageValueConverter.Write(writer, change.After, options);
                 writer.WriteEndObject();
             }
             else
@@ -102,9 +102,9 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WritePropertyName("*"u8);
                 writer.WriteStartObject();
                 writer.WritePropertyName("from"u8);
-                _32BytesConverter.Write(writer, change.Before, options);
+                _storageValueConverter.Write(writer, change.Before, options);
                 writer.WritePropertyName("to"u8);
-                _32BytesConverter.Write(writer, change.After, options);
+                _storageValueConverter.Write(writer, change.After, options);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }
@@ -152,7 +152,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         writer.WriteStartObject();
         if (value.Storage is not null)
         {
-            foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(static s => s.Key))
+            foreach (KeyValuePair<UInt256, ParityStateChange<StorageValue>> pair in value.Storage.OrderBy(static s => s.Key))
             {
                 string trimmedKey = pair.Key.ToString("x64");
                 trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);

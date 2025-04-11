@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -154,7 +155,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingStorage)
@@ -307,7 +308,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -316,7 +317,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingOpLevelStorage)
@@ -325,7 +326,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingOpLevelStorage)
