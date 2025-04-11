@@ -54,7 +54,7 @@ namespace Nethermind.State
             index.ToBigEndian(key);
 
             // We can't direct ComputeTo the key as its also the input, so need a separate variable
-            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
+            KeccakCache.Instance.ComputeTo(key, out ValueHash256 keyHash);
             // Which we can then directly assign to fast update the key
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }

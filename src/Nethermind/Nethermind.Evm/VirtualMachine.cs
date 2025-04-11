@@ -1142,7 +1142,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = vmState.Memory.LoadSpan(in a, b);
 
                         // Compute the KECCAK256 directly to the stack slot
-                        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushBytesRef()));
+                        KeccakCache.Instance.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushBytesRef()));
                         break;
                     }
                 case Instruction.ADDRESS:
