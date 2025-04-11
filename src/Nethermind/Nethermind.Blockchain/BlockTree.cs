@@ -159,18 +159,17 @@ namespace Nethermind.Blockchain
                     Genesis = genesisHeader;
                     LoadStartBlock();
                     Head ??= FindBlock(genesisBlockInfo.BlockHash, BlockTreeLookupOptions.None);
+
+                    EarliestHash = GenesisHash;
+                    if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+                    {
+                        var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+                        EarliestHash = FindBlockHash(lowestBlock);
+                    }
                 }
 
                 RecalculateTreeLevels();
                 AttemptToFixCorruptionByMovingHeadBackwards();
-            }
-
-
-            EarliestHash = GenesisHash;
-            if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
-            {
-                var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
-                EarliestHash = FindBlockHash(lowestBlock);
             }
 
             if (_logger.IsInfo)
@@ -1316,6 +1315,15 @@ namespace Nethermind.Blockchain
             if (block.IsGenesis)
             {
                 Genesis = block.Header;
+            }
+
+            if (block.Hash == EarliestHash)
+            {
+                if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+                {
+                    var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+                    EarliestHash = FindBlockHash(lowestBlock);
+                }
             }
 
             Head = block;

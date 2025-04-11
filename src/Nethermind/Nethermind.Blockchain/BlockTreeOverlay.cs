@@ -49,7 +49,7 @@ public class BlockTreeOverlay : IBlockTree
     public Hash256? PendingHash => _overlayTree.PendingHash ?? _baseTree.PendingHash;
     public Hash256? FinalizedHash => _overlayTree.FinalizedHash ?? _baseTree.FinalizedHash;
     public Hash256? SafeHash => _overlayTree.SafeHash ?? _baseTree.SafeHash;
-    public Hash256 EarliestHash => _baseTree.EarliestHash;
+    public Hash256? EarliestHash => _baseTree.EarliestHash;
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
     public long? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
 
