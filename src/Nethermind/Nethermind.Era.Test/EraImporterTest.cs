@@ -177,4 +177,32 @@ public class EraImporterTest
 
         await importTask;
     }
+
+    [CancelAfter(2000)]
+    [Test]
+    public async Task ImportAsArchiveSync_WhenStartIsLessThanHead_ShouldThrow(CancellationToken token)
+    {
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        string destinationPath = outputCtx.ResolveTempDirPath();
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .AddSingleton<IEraConfig>(new EraConfig()
+            {
+                ImportBlocksBufferSize = 10,
+                MaxEra1Size = 16,
+                NetworkName = EraTestModule.TestNetwork
+            })
+            .Build();
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Func<Task> act = () => sut.Import(destinationPath, 30, long.MaxValue,
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
 }
