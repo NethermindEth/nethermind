@@ -140,25 +140,36 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         return ResultWrapper<Hash256>.Success(result);
     }
 
-    public new ResultWrapper<OptimismReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
+    public new ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<OptimismReceiptForRpc?>.Success(null);
+            return ResultWrapper<ReceiptForRpc?>.Success(null);
         }
 
         SearchResult<Block> foundBlock = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
         if (foundBlock.Object is null)
         {
-            return ResultWrapper<OptimismReceiptForRpc?>.Success(null);
+            return ResultWrapper<ReceiptForRpc?>.Success(null);
         }
 
         Block block = foundBlock.Object;
-
-        L1BlockGasInfo l1GasInfo = new(block, _opSpecHelper);
-        return ResultWrapper<OptimismReceiptForRpc?>.Success(
-            new(txHash, (OptimismTxReceipt)receipt, gasInfo.Value, l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)), logIndexStart));
+        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, _opSpecHelper);
+        ReceiptForRpc result =
+            receipt is OptimismTxReceipt optimismTxReceipt
+                ? new OptimismReceiptForRpc(
+                        txHash,
+                        optimismTxReceipt,
+                        gasInfo.Value,
+                        l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)),
+                        logIndexStart)
+                : new ReceiptForRpc(
+                        txHash,
+                        receipt,
+                        gasInfo.Value,
+                        logIndexStart);
+        return ResultWrapper<ReceiptForRpc?>.Success(result);
     }
 
     public override ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
