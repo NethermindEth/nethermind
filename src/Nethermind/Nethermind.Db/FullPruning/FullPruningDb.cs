@@ -186,7 +186,7 @@ namespace Nethermind.Db.FullPruning
             if (pruningContext is null)
             {
                 _progressLogger = new ProgressLogger("Pruning", _logManager);
-                _progressLogger.Reset(0, newContext.TotalKeys);
+                _progressLogger.Reset(0, 0); // Initialize with no upper bound
                 PruningStarted?.Invoke(this, new PruningEventArgs(context, true));
                 return true;
             }
@@ -225,31 +225,26 @@ namespace Nethermind.Db.FullPruning
 
         private class PruningContext : IPruningContext
         {
-            private bool _committed = false;
-            private bool _disposed = false;
+            private readonly FullPruningDb _db;
+            private long _processedKeys;
             public IDb CloningDb { get; }
             public bool DuplicateReads { get; }
-            private readonly FullPruningDb _db;
-            public long TotalKeys { get; }
-            private long _processedKeys;
 
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {
                 CloningDb = cloningDb;
                 DuplicateReads = duplicateReads;
                 _db = db;
-                // Get total keys count in a more efficient way
-                TotalKeys = db._currentDb.GatherMetric().TotalKeys;
-                _processedKeys = 0;
+                _db._progressLogger?.Reset(0, 0); // Initialize with no upper bound
             }
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
-                _db.Duplicate(CloningDb, key, value, flags);
+                CloningDb.Set(key, value, flags);
                 _processedKeys++;
-                if (_processedKeys % 1000 == 0) // Log progress every 1000 keys to avoid too frequent logging
+                _db._progressLogger?.Update(_processedKeys);
+                if (_processedKeys % 100000 == 0)
                 {
-                    _db._progressLogger?.Update(_processedKeys);
                     _db._progressLogger?.LogProgress();
                 }
             }
@@ -263,7 +258,6 @@ namespace Nethermind.Db.FullPruning
             public void Commit()
             {
                 _db.FinishPruning();
-                _committed = true; // we mark the context as committed.
             }
 
             /// <inheritdoc />
@@ -277,19 +271,9 @@ namespace Nethermind.Db.FullPruning
             /// <inheritdoc />
             public void Dispose()
             {
-                if (!_disposed)
-                {
-                    _db.FinishPruning(this, _committed);
-                    if (!_committed)
-                    {
-                        // if the context was not committed, then pruning failed and we delete the cloned DB
-                        CloningDb.Clear();
-                    }
-
-                    CancellationTokenSource.Dispose();
-                    Metrics.StateDbPruning = 0;
-                    _disposed = true;
-                }
+                _db.FinishPruning(this, true);
+                CancellationTokenSource.Dispose();
+                Metrics.StateDbPruning = 0;
             }
         }
 
