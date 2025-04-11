@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Benchmarks.State;
 
-public class StorageValueBenchmarks
+public class StorageValueBenchmark
 {
     [Benchmark(OperationsPerInvoke = 8)]
     [Arguments(0)]

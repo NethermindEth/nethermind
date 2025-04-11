@@ -101,11 +101,15 @@ public readonly struct StorageValue : IEquatable<StorageValue>
                 if (_bytes == Vector256<byte>.Zero)
                     return Nethermind.Core.Extensions.Bytes.ZeroByteSpan;
 
+                // At least one byte is set.
+                // To get the number of leading zeroes, check which are equal to zero and negate.
+
                 var setBytes =
                     ~
                         Vector256.Equals(Vector256<byte>.Zero, _bytes)
                             .ExtractMostSignificantBits();
 
+                // It's one bit per byte, count trailing zero bits then.
                 var offset = BitOperations.TrailingZeroCount(setBytes);
 
                 return MemoryMarshal.CreateReadOnlySpan(
