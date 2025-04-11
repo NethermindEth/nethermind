@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Collections;
@@ -14,20 +15,22 @@ namespace Nethermind.Core.Threading;
 // Its like rust's rayon, but worst.
 public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 {
+    private uint _roundRobinStealIdx = 0;
+
     private readonly int _workerCount = 0;
+    private readonly Context<T>[] _workerContexts;
+    private readonly DStack<Context<T>> _guestContextPool = new DStack<Context<T>>(0);
 
     private int _asleepWorker = 0;
-    private uint _roundRobinStealIdx = 0;
-    // private uint _wakeUpCounter = 0;
-
-    private readonly Context<T>[] _workerContexts;
-    private readonly ConcurrentQueue<JobRef<T>> _incomingJob = new ConcurrentQueue<JobRef<T>>();
-
     private readonly bool[] _sleepingContexts;
     private readonly ConcurrentQueue<int> _sleepingContextQueue;
+    private readonly int _initialStackSize;
+    private Context<T>[] _guestContexts = [];
 
     public WorkStealingExecutor(int workerCount, int initialStackSize)
     {
+        _initialStackSize = initialStackSize;
+
         _workerCount = workerCount;
         _workerContexts = new Context<T>[workerCount];
 
@@ -46,14 +49,49 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 
     public void Execute(T job)
     {
-        // TODO: Way to enroll current thread.
-        JobRef<T> jobRef = new JobRef<T>(job, 0, new ManualResetEventSlim(false, 1));
-        _incomingJob.Enqueue(jobRef);
-        NotifyNewJob(0);
-        jobRef.ResetEvent.Wait();
+        var ctx = CreateGuestContext();
+        job.Execute(ctx);
+        ReturnGuestContext(ctx);
     }
 
-    public bool TryStealJob(out JobRef<T> job, out bool shouldRetry, int currentCtx, int nextContextToCheck)
+    private Context<T> CreateGuestContext()
+    {
+        if (!_guestContextPool.TryPop(out Context<T>? context))
+        {
+            context = new Context<T>(this, -1, _initialStackSize);
+        }
+
+        while (true)
+        {
+            Context<T>[] currentPool = _guestContexts;
+            Context<T>[] newContexts = new Context<T>[currentPool.Length + 1];
+            currentPool.CopyTo(newContexts, 0);
+            newContexts[currentPool.Length] = context!;
+            if (Interlocked.CompareExchange(ref _guestContexts, newContexts, currentPool) == currentPool)
+            {
+                break;
+            }
+        }
+
+        return context!;
+    }
+
+    private void ReturnGuestContext(Context<T> context)
+    {
+        while (true)
+        {
+            Context<T>[] currentPool = _guestContexts;
+            Context<T>[] newContexts = currentPool.Where(c => c != context).ToArray();
+            if (Interlocked.CompareExchange(ref _guestContexts, newContexts, currentPool) == currentPool)
+            {
+                break;
+            }
+        }
+
+        _guestContextPool.Push(context);
+    }
+
+    public bool TryStealJob(out JobRef<T> job, out bool shouldRetry, int nextContextToCheck)
     {
         shouldRetry = false;
         int activeContexts = _workerCount;
@@ -66,8 +104,7 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
         for (int i = 0; i < activeContexts; i++)
         {
             int idx = (nextContextToCheck % activeContexts);
-            // nextContextToCheck += _workerCount-1; // check the previous contexts.
-            nextContextToCheck++; // check the previous contexts.
+            nextContextToCheck++;
 
             Context<T> context = _workerContexts[idx];
             if (context.TryStealFrom(out job!, out bool contextSaidShouldRetry))
@@ -78,9 +115,20 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
             if (contextSaidShouldRetry) shouldRetry = true;
         }
 
-        if (_incomingJob.TryDequeue(out job!))
+        Context<T>[] guestContexts = _guestContexts;
+        int guestContextsCount = guestContexts.Length;
+        for (int i = 0; i < guestContextsCount; i++)
         {
-            return true;
+            int idx = (nextContextToCheck % guestContextsCount);
+            nextContextToCheck++;
+
+            Context<T> context = guestContexts[idx];
+            if (context.TryStealFrom(out job!, out bool contextSaidShouldRetry))
+            {
+                return true;
+            }
+
+            if (contextSaidShouldRetry) shouldRetry = true;
         }
 
         job = default;
@@ -89,6 +137,7 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 
     public void AddToSleepingWorker(int contextIdx)
     {
+        if (contextIdx < 0) return;
         Interlocked.Increment(ref _asleepWorker);
 
         if (Interlocked.CompareExchange(ref _sleepingContexts[contextIdx], true, false) == false)
@@ -99,14 +148,8 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 
     public void RemoveFromSleepingWorker(int contextIdx)
     {
+        if (contextIdx < 0) return;
         Interlocked.Decrement(ref _asleepWorker);
-
-        /*
-        if (Interlocked.CompareExchange(ref _sleepingContexts[contextIdx], false, true) == true)
-        {
-            // Maybe try to remove?
-        }
-        */
     }
 
     private long _statsNotify = 0;
@@ -175,6 +218,8 @@ public class Context<T>: IDisposable where T: IJob<T>
 
     private ManualResetEventSlim _finishLatch;
     private ManualResetEventSlim _sleepLatch;
+    private const int RoundUntilSleep = 32;
+    private const int LatchWaitMs = 100;
     private int _waitRound = 0;
     private bool _isAsleep = false;
     private long _wakeUpTime = 0;
@@ -275,7 +320,7 @@ public class Context<T>: IDisposable where T: IJob<T>
 
                 otherRef!.ExecuteNonInline(this);
             }
-            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry, ContextIdx, -1))
+            else if (_executor.TryStealJob(out otherRef, out bool shouldRetry, -1))
             {
                 _statsSteal++;
                 ResetWaitCounter();
@@ -285,7 +330,11 @@ public class Context<T>: IDisposable where T: IJob<T>
             {
                 _statsNoJob++;
                 if (shouldRetry) _statsStealRetry++;
-                if (!shouldRetry) OnNoJob(jobRef.ResetEvent.WaitHandle);
+                if (!shouldRetry)
+                {
+                    _sleepLatch.Reset();
+                    OnNoJob(jobRef.ResetEvent.WaitHandle);
+                }
             }
         }
 
@@ -293,27 +342,12 @@ public class Context<T>: IDisposable where T: IJob<T>
         _latchPool.Push(jobRef.ResetEvent);
     }
 
-    public bool TryStealJob(out JobRef<T> jobRef, out bool shouldRetry)
-    {
-        bool ok = _executor.TryStealJob(out jobRef, out shouldRetry, ContextIdx, _nextContextToCheck);
-        if (ok)
-        {
-            _statsSteal++;
-            ResetWaitCounter();
-        }
-
-        _nextContextToCheck = -1;
-        return ok;
-    }
-
     public void ResetWaitCounter()
     {
         _waitRound = 0;
     }
 
-    private const int RoundUntilSleep = 32;
-    private const int LatchWaitMs = 100;
-    public void OnNoJob(WaitHandle? latch)
+    private void OnNoJob(WaitHandle? latch)
     {
         _waitRound++;
         if (_waitRound > RoundUntilSleep)
@@ -355,17 +389,22 @@ public class Context<T>: IDisposable where T: IJob<T>
         {
             while (!_finishLatch.IsSet)
             {
-                if (TryStealJob(out JobRef<T> jobRef, out bool shouldRetry))
+                bool ok = _executor.TryStealJob(out JobRef<T> jobRef, out bool shouldRetry, _nextContextToCheck);
+                if (ok)
                 {
+                    _statsSteal++;
                     jobRef.ExecuteNonInline(this);
+                    ResetWaitCounter();
                     continue;
                 }
+
+                _nextContextToCheck = -1;
 
                 if (shouldRetry) _statsStealRetry++;
                 if (!shouldRetry)
                 {
                     _sleepLatch.Reset();
-                    OnNoJob(_sleepLatch.WaitHandle);
+                    OnNoJob(null);
                 }
             }
         }

@@ -19,16 +19,16 @@ public class WorkStealingExecutorTests
     // private const long FibResult = 2178309;
 
     // Some other parameter for benchmarking
-    private const long FibNum = 34;
-    private const long FibResult = 5702887;
+    // private const long FibNum = 34;
+    // private const long FibResult = 5702887;
     // private const long FibNum = 38;
     // private const long FibResult = 39088169;
-    // private const long FibNum = 43;
-    // private const long FibResult = 433494437;
+    private const long FibNum = 43;
+    private const long FibResult = 433494437;
 
     // [TestCase(1)]
     // [TestCase(2)]
-    [TestCase(4)]
+    [TestCase(32)]
     public void TestBasicFactorial(int workerCount)
     {
         using WorkStealingExecutor<FibonacciJob> executor = new(workerCount, (int)FibNum);
