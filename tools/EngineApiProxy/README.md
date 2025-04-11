@@ -35,6 +35,7 @@ docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-prox
 - `--log-level` or `-l`: Log level (Trace, Debug, Info, Warn, Error) (default: Info)
 - `--validate-all-blocks`: Enable validation for all blocks, even those where CL doesn't request validation
 - `--fee-recipient`: Default fee recipient address for generated payload attributes (default: 0x0000000000000000000000000000000000000000)
+- `--validation-mode`: Mode for block validation (Fcu or NewPayload) (default: NewPayload)
 
 ### Examples
 
@@ -49,6 +50,9 @@ dotnet run -c Release -- --ec-endpoint http://localhost:8551 --port 9551 --log-l
 
 # With auto-validation of all blocks enabled
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks
+
+# Using Fcu validation mode instead of NewPayload
+dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
 ```
 
 #### Running with Docker
@@ -59,6 +63,9 @@ docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://executio
 
 # With auto-validation of all blocks enabled
 docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --validate-all-blocks
+
+# Using Fcu validation mode
+docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
 ```
 
 ## Configuration with Clients
@@ -90,9 +97,92 @@ The project consists of several key components:
 - `PayloadAttributesGenerator.cs`: Generates valid payload attributes
 - `RequestOrchestrator.cs`: Orchestrates the validation flow
 
-### Message Flow
+## Auto-Validation Feature
 
-The proxy implements this workflow:
+The auto-validation feature (`--validate-all-blocks`) allows the proxy to validate all blocks, including those where the Consensus Layer doesn't request validation (by sending null payload attributes).
+
+### Validation Flow
+
+Validation flow allows to generate validation events (FCU -> GetPayload -> NewPayload) for blocks that were validated by another consensus client.
+
+It might be useful in the following cases:
+
+1. To make sure that your execution client can build a valid block that another consensus client already validated
+2. Catch and log bad blocks as soon as possible
+3. Testing consensus implementations
+4. Debug issues with block validation logic (TBD)
+
+When enabled with `--validate-all-blocks`, the proxy will:
+
+1. Detect FCU requests with null payload attributes
+2. Generate valid payload attributes based on the current head block
+3. Create and validate blocks (send `engine_getPayload` and `engine_newPayload` requests to EC)
+4. Consensus Layer will not know about this, so it will proceed with the next block as usual
+
+The tool did not modify existing blockchain and can be safely used in the production environment. But it is highly recommend to use `--validate-all-blocks` flag to enable the validation only on nodes that are not validator ones.
+
+There are 2 flows of validation:
+
+1. Validation after `engine_newPayload` request (`--validation-mode=NewPayload`)
+
+In this flow CL sends `engine_newPayload` request to the proxy, proxy generates payload attributes based on the payload and sends `engine_forkChoiceUpdated` request to the execution client with payload attributes. Then EL will return PayloadID and proxy will use it to send `engine_getPayload` request to the execution client. After that proxy will generate synthetic `engine_newPayload` request and send it to the execution client.
+
+With the flow, we will generate FCU based on the parent block, so the final "validated" block may be different from the original one. Since we hold `engine_newPayload` request and do not control FCU, flow will run against all `engine_newPayload` requests, so this may break validator node.
+
+#### NewPayload Flow
+
+```mermaid
+sequenceDiagram
+    participant CL as Consensus Client
+    participant P as Proxy
+    participant EC as Execution Client
+
+    %% Step 7: Proceed a valid engine_newPayload (if any)
+    CL->>P: (1) engine_newPayload (next block payload)
+    
+    Note over P: Get data from engine_newPayload and generate PayloadAttributes based on it
+    %% Based on request (1) PR generates PayloadAttributes
+    alt Validation enabled
+ 
+    P->>P: (1.1) generate PayloadAttributes
+    Note over P: Append PayloadAttributes to FCU
+    
+    %% Step 2: PR sends generated request (1.1) to EL
+    P->>EC: (2) engine_forkChoiceUpdated (forkchoiceState + PayloadAttributes)
+    EC->>P: (2) engine_forkChoiceUpdated response (PayloadID)
+       
+    %% Step 3: getting PayloadID from EL (2), sending engine_getPayload with it
+    Note over P: Validation start
+    alt Validation
+    P->>EC: (3) engine_getPayload (PayloadID)
+    EC->>P: (3) engine_getPayload Response (execution payload)
+    
+    %% Step 4: Sending engine_newPayload with generated (3) payload
+    P->>EC: (4) engine_newPayload(generated from getPayload response)
+    EC->>P: (4) -- engine_newPayload response (save in case of error)
+    end
+
+    end
+    %% Step 5: Resuming original engine_newPayload
+    P->>EC: (1) engine_newPayload response (RESUME)
+    P->>CL: (1) engine_newPayload response (Original response)
+    Note over P: Process any new engine_forkChoiceUpdated messages
+
+    %% Step 6: CL sends engine_forkChoiceUpdated based on original engine_newPayload response
+    CL->>P: (5) engine_forkChoiceUpdated (with PayloadAttributes null)
+    P->>EC: (5) engine_forkChoiceUpdated
+    EC->>P: (5) engine_forkChoiceUpdated response
+    P->>CL: (5) engine_forkChoiceUpdated response 
+
+```
+
+2.Validation of payloads based on `engine_forkChoiceUpdated` request (`--validation-mode=Fcu`)
+
+The difference between this flow is that we are not waiting for `engine_newPayload` request from CL, but only for `engine_forkChoiceUpdated` with null payload attributes. The validation payload should be very close to the original one (since we are using the same `forkchoiceState`), but with different `blockHash` and `blockNumber`.
+
+The flow may be safely used with both validator and non-validator nodes, since we are ignoring FCU requests when payload attributes are not null.
+
+#### FCU Flow
 
 ```mermaid
 sequenceDiagram
@@ -138,38 +228,9 @@ sequenceDiagram
    
     Note over P: Process any new engine_forkChoiceUpdated messages
 
+
 ```
 
-1. Intercept `engine_forkChoiceUpdated` requests
-2. If auto-validation (`--validate-all-blocks`) is enabled and payload attributes are `null`:
-   - Pause the message queue
-   - Fetch block data for the head block
-   - Generate valid payload attributes
-   - Send modified FCU to EC with generated attributes
-   - Get payload ID from FCU response
-   - Make `engine_getPayload` request to EC
-   - Generate synthetic `engine_newPayload` from payload and send to EC
-   - TBD: write logs to specific file in case `engine_newPayload` returns an error
-   - Resume message queue
-3. Otherwise, forward request to EC as-is
-
-### Concurrent forkChoiceUpdated Processing
-
-## Auto-Validation Feature
-
-The auto-validation feature allows the proxy to validate all blocks, including those where the Consensus Layer doesn't request validation (by sending null payload attributes). This is useful for:
-
-- Testing consensus implementations
-- Verifying block validation logic
-- Forcing block creation for all forkChoiceUpdated calls
-- Find issues with block validation logic
-
-When enabled with `--validate-all-blocks`, the proxy will:
-
-1. Detect FCU requests with null payload attributes
-2. Generate valid payload attributes based on the current head block
-3. Create and validate blocks (send `engine_getPayload` and `engine_newPayload` requests to EC)
-4. Consensus Layer will not know about this, so it will proceed with the next block as usual
 
 ## Testing with Kurtosis
 
@@ -266,6 +327,15 @@ docker logs el-proxy-2-nethermind--40c3d946b41f4b14ab4f34569d17a3cc > proxy.txt
 ```bash
 docker logs cl-1-lighthouse-nethermind--22f7e291c6cb42ecaee2b288ae51ce04 > consensus.txt
 ```
+
+## Issues and Limitations
+
+- "Blob versioned hashes do not match" error may happen on EC. Currently proxy doesn't support blob transactions. All such blocks will be skipped during the validation.
+- Following message in EL logs:
+  ```txt
+  sedge-execution-client  | 10 Apr 16:05:25 | Non consecutive block commit. This is likely a reorg. Last block commit: 158346. New block commit: 158346.
+  ```
+  This is an expected and happens because we do not send FCU after the validation. So, CL doesn't not know about the block and we revert it on the EL side
 
 ## Troubleshooting
 
