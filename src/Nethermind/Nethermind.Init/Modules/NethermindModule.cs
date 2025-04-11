@@ -35,8 +35,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
         builder
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
-
-            .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddModule(new NetworkModule(configProvider))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
@@ -50,12 +49,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
-
-
-            .AddSingleton<INodeStatsManager>((ctx) => new NodeStatsManager(
-                ctx.Resolve<ITimerFactory>(),
-                ctx.Resolve<ILogManager>(),
-                ctx.Resolve<INetworkConfig>().MaxCandidatePeerCount)) // The INetworkConfig is not referable in NodeStatsManager.
 
             ;
     }
