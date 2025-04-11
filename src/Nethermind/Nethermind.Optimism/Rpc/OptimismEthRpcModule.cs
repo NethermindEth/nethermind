@@ -16,6 +16,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -240,7 +241,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         if (returnFullTransactionObjects)
         {
             _blockchainBridge.RecoverTxSenders(block);
-            OptimismTxReceipt[] receipts = _receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray();
+            TxReceipt[] receipts = _receiptFinder.Get(block);
             result.Transactions = result.Transactions.Select((hash, index) =>
             {
                 var transactionModel = TransactionForRpc.FromTransaction(
@@ -250,7 +251,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                     txIndex: index);
                 if (transactionModel is DepositTransactionForRpc depositTx)
                 {
-                    OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
+                    OptimismTxReceipt? receipt = (OptimismTxReceipt?)receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
                     depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
                 }
 
