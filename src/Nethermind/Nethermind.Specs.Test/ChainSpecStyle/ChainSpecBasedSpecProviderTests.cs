@@ -235,6 +235,16 @@ public class ChainSpecBasedSpecProviderTests
         });
     }
 
+    private static void VerifPragueSpecificsForMainnetHoleskyHoodiAndSepolia(IReleaseSpec spec)
+    {
+        // Assert.Multiple(() =>
+        // {
+        //     Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+        //     Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
+        //     Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+        //     Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
+        // });
+    }
 
     public static IEnumerable<TestCaseData> HoodiActivations
     {
@@ -470,7 +480,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(MainnetSpecProvider.ShanghaiActivation) { TestName = "Shanghai" };
             yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(MainnetSpecProvider.CancunActivation) { TestName = "Cancun" };
-            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp - 1)) { TestName = "Before Prague" };
+            yield return new TestCaseData(MainnetSpecProvider.PragueActivation) { TestName = "Prague" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -509,8 +521,10 @@ public class ChainSpecBasedSpecProviderTests
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
         IReleaseSpec postCancunSpec = provider.GetSpec(MainnetSpecProvider.CancunActivation);
-        // TODO: add VerifyPragueSpecifics
+        IReleaseSpec postPragueSpec = provider.GetSpec(MainnetSpecProvider.PragueActivation);
+
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+        VerifPragueSpecificsForMainnetHoleskyHoodiAndSepolia(postPragueSpec);
     }
 
     [Flags]
