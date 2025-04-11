@@ -60,9 +60,6 @@ public class Metrics
     [Description("Number of EXP opcodes executed.")]
     public static long ExpOpcode { get; set; }
 
-    [Description("Number of BLOCKHASH opcodes executed.")]
-    public static long BlockhashOpcode { get; set; }
-
     [Description("Number of BN254_MUL precompile calls.")]
     public static long Bn254MulPrecompile { get; set; }
 
