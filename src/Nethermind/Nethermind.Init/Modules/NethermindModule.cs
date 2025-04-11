@@ -9,11 +9,14 @@ using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stats;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
@@ -32,8 +35,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
         builder
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
-
-            .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddModule(new NetworkModule(configProvider))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())

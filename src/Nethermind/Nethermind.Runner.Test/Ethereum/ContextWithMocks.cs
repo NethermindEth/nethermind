@@ -126,7 +126,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.TxSender = Substitute.For<ITxSender>();
             api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
-            api.NodeStatsManager = Substitute.For<INodeStatsManager>();
             api.RpcModuleProvider = Substitute.For<IRpcModuleProvider>();
             api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();

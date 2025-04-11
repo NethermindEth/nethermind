@@ -155,13 +155,11 @@ namespace Nethermind.Api
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
-        public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
-        public INodeStatsManager? NodeStatsManager { get; set; }
         public IPeerManager? PeerManager { get; set; }
         public IPeerPool? PeerPool { get; set; }
         public IProtocolsManager? ProtocolsManager { get; set; }
