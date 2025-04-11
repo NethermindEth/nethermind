@@ -170,7 +170,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
 
-        CodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
+        CodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _);
         result.MachineCode.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 
@@ -184,9 +184,11 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
+        var codehash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code);
+
         CodeInfoRepository sut = new();
 
-        sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
+        sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().BeEquivalentTo(new CodeInfo(code, codehash));
     }
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)

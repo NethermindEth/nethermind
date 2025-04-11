@@ -74,6 +74,7 @@ public abstract class BlockchainTestBase
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
     {
+        Debug.WriteLine("============================================================================================================");
         TestContext.Out.WriteLine($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
             TestContext.Out.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
