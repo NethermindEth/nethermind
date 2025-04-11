@@ -204,9 +204,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             // TODO: when direct / calls are treated same we should not need such differentiation
                             goto Failure;
                         }
-
-                        // TODO: testing it as it seems the way to pass zkSNARKs tests
-                        currentState.GasAvailable = 0;
                     }
                 }
                 else
