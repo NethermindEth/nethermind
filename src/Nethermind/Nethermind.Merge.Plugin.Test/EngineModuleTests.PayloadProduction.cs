@@ -108,7 +108,7 @@ public partial class EngineModuleTests
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
-        Transaction[] transactionsInBlock = getPayloadResult.GetTransactions();
+        Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Transactions;
         transactionsInBlock.Should().BeEquivalentTo(transactions, o => o
             .Excluding(t => t.ChainId)
             .Excluding(t => t.SenderAddress)
@@ -303,12 +303,25 @@ public partial class EngineModuleTests
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
+        CancellationTokenSource cts = new();
+        Task addingTx = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                Interlocked.Increment(ref TxPool.Metrics.PendingTransactionsAdded);
+                await Task.Delay(10);
+            }
+        });
+
         Task waitForImprovement = chain.WaitForImprovedBlock();
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
         await waitForImprovement;
 
         Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.InRange(3, 5).After(timePerSlot.Milliseconds * 10, 1));
+
+        cts.Cancel();
+        await addingTx;
 
         improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(static i => i.Disposed);
 
@@ -351,7 +364,7 @@ public partial class EngineModuleTests
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(3, 6, 11);
-        Transaction[] txs = getPayloadResult.GetTransactions();
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
         txs.Should().HaveCount(11);
     }
@@ -402,7 +415,7 @@ public partial class EngineModuleTests
 
         transactionsLength.Should().Equal(1, 2);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        Transaction[] txs = getPayloadResult.GetTransactions();
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
         txs.Should().HaveCount(2);
     }
@@ -445,7 +458,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        getPayloadResult.GetTransactions().Should().HaveCount(3);
+        getPayloadResult.TryGetTransactions().Transactions.Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
     }
 
