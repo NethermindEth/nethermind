@@ -14,6 +14,10 @@
   "Metrics": {
     "NodeName": "Sepolia Archive"
   },
+  "Sync": {
+    "AncientReceiptsBarrier": 1450408,
+    "AncientBodiesBarrier": 1450408
+  },
   "Blocks": {
     "TargetBlockGasLimit": 60000000
   },
