@@ -379,12 +379,7 @@ namespace Nethermind.Consensus.Processing
             {
                 UInt256 beforeBalance = _stateReader.GetBalance(beforeRoot, beneficiary);
                 UInt256 afterBalance = _stateReader.GetBalance(afterRoot, beneficiary);
-                if (beforeBalance < afterBalance)
-                {
-                    return afterBalance - beforeBalance;
-                }
-
-                return default;
+                return beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
             }
         }
 
