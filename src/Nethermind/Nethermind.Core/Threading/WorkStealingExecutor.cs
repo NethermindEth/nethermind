@@ -164,139 +164,22 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
     }
 }
 
-public class Worker<T>: IDisposable where T: IJob<T>
-{
-    private const int RoundUntilSleep = 32;
-    private const int LatchWaitMs = 100;
-
-    private readonly WorkStealingExecutor<T> _executor;
-    private readonly Context<T> _context;
-    private readonly Thread _thread;
-
-    private ManualResetEventSlim _finishLatch;
-    private ManualResetEventSlim _sleepLatch;
-    private bool _isAsleep = false;
-    private int _waitRound = 0;
-
-    public Worker(Context<T> context, WorkStealingExecutor<T> executor)
-    {
-        _context = context;
-        _executor = executor;
-        _finishLatch = new ManualResetEventSlim(false);
-        _sleepLatch = new ManualResetEventSlim(false);
-        _thread = new Thread(WorkerLoop);
-    }
-
-    public void Start()
-    {
-        _thread.UnsafeStart();
-    }
-
-    private void WorkerLoop()
-    {
-        try
-        {
-            while (!_finishLatch.IsSet)
-            {
-                if (_context.TryStealJob(out JobRef<T> jobRef, out bool shouldRetry))
-                {
-                    jobRef.ExecuteNonInline(_context);
-                    continue;
-                }
-
-                if (shouldRetry) _statsExecuteStolenRetry++;
-                if (!shouldRetry)
-                {
-                    _sleepLatch.Reset();
-                    OnNoJob(_sleepLatch.WaitHandle);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Error in worker loop {ex}");
-            throw;
-        }
-    }
-
-    public void Dispose()
-    {
-        _finishLatch.Set();
-        _thread.Join();
-    }
-
-    private long _wakeUpTime = 0;
-
-    public bool TryWakeUp()
-    {
-        if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
-        {
-            _wakeUpTime = Stopwatch.GetTimestamp();
-            _sleepLatch.Set();
-            _executor.RemoveFromSleepingWorker(_context.ContextIdx);
-            return true;
-        }
-
-        return false;
-    }
-
-    public void ResetWaitCounter()
-    {
-        _waitRound = 0;
-    }
-
-    internal long _statsExecuteStolenRetry = 0;
-    internal long _statsYielded = 0;
-    internal long _statsWaited = 0;
-
-    internal List<(long, long)> _wakeUpTimes = new List<(long, long)>();
-
-    public void OnNoJob(WaitHandle? latch)
-    {
-        _waitRound++;
-        if (_waitRound > RoundUntilSleep)
-        {
-            if (Interlocked.CompareExchange(ref _isAsleep, true, false) == false)
-            {
-                _executor.AddToSleepingWorker(_context.ContextIdx);
-            }
-
-            _statsWaited++;
-            if (latch != null)
-            {
-                WaitHandle.WaitAny([latch, _sleepLatch.WaitHandle], LatchWaitMs);
-            }
-            else
-            {
-                _sleepLatch.Wait(LatchWaitMs);
-            }
-            if (_wakeUpTime != 0)
-            {
-                _wakeUpTimes.Add((_wakeUpTime, Stopwatch.GetTimestamp() - _wakeUpTime));
-                _wakeUpTime = 0;
-            }
-
-            if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
-            {
-                _executor.RemoveFromSleepingWorker(_context.ContextIdx);
-            }
-            return;
-        }
-
-        _statsYielded++;
-        Thread.Yield();
-    }
-}
-
 public class Context<T>: IDisposable where T: IJob<T>
 {
     private DStack<JobRef<T>> _jobStack;
     private Stack<ManualResetEventSlim> _latchPool;
     private readonly WorkStealingExecutor<T> _executor;
     private readonly int _contextIdx;
-    private readonly Worker<T> _worker;
     private int _nextContextToCheck;
-    private long _jobId = 0;
+    private long _jobIdCounter = 0;
+
+    private ManualResetEventSlim _finishLatch;
+    private ManualResetEventSlim _sleepLatch;
+    private int _waitRound = 0;
+    private bool _isAsleep = false;
+    private long _wakeUpTime = 0;
+    private Thread? _workerThread = null;
+
 
     public Context(WorkStealingExecutor<T> executor, int contextIdx, int initialStackSize)
     {
@@ -304,12 +187,14 @@ public class Context<T>: IDisposable where T: IJob<T>
         _contextIdx = contextIdx;
         _jobStack = new(initialStackSize);
         _latchPool = new(initialStackSize);
-        _worker = new Worker<T>(this, executor);
+        _finishLatch = new ManualResetEventSlim(false);
+        _sleepLatch = new ManualResetEventSlim(false);
     }
 
     public void StartWorker()
     {
-        _worker.Start();
+        _workerThread = new Thread(WorkerLoop);
+        _workerThread.Start();
     }
 
     public int ContextIdx => _contextIdx;
@@ -332,7 +217,7 @@ public class Context<T>: IDisposable where T: IJob<T>
             resetEvent.Reset();
         }
 
-        JobRef<T> jobRef = new(job, _jobId++, resetEvent);
+        JobRef<T> jobRef = new(job, _jobIdCounter++, resetEvent);
 
         // HOT PATH
         _jobStack.Push(jobRef);
@@ -356,7 +241,7 @@ public class Context<T>: IDisposable where T: IJob<T>
                 resetEvent.Reset();
             }
 
-            JobRef<T> jobRef = new(jobs[i], _jobId++, resetEvent);
+            JobRef<T> jobRef = new(jobs[i], _jobIdCounter++, resetEvent);
             jobRefs.Add(jobRef);
             latches[i] = jobRef;
         }
@@ -372,13 +257,13 @@ public class Context<T>: IDisposable where T: IJob<T>
     public void WaitForJobOrKeepBusy(JobRef<T> jobRef)
     {
         // Announce looking here
-        _worker.ResetWaitCounter();
+        ResetWaitCounter();
 
         while (!jobRef.ResetEvent.IsSet)
         {
             if (_jobStack.TryPop(out JobRef<T> otherRef))
             {
-                _worker.ResetWaitCounter();
+                ResetWaitCounter();
                 if (otherRef.Id == jobRef.Id)
                 {
                     // Inline execute
@@ -393,14 +278,14 @@ public class Context<T>: IDisposable where T: IJob<T>
             else if (_executor.TryStealJob(out otherRef, out bool shouldRetry, ContextIdx, -1))
             {
                 _statsSteal++;
-                _worker.ResetWaitCounter();
+                ResetWaitCounter();
                 otherRef!.ExecuteNonInline(this);
             }
             else
             {
                 _statsNoJob++;
                 if (shouldRetry) _statsStealRetry++;
-                if (!shouldRetry) _worker.OnNoJob(jobRef.ResetEvent.WaitHandle);
+                if (!shouldRetry) OnNoJob(jobRef.ResetEvent.WaitHandle);
             }
         }
 
@@ -414,11 +299,94 @@ public class Context<T>: IDisposable where T: IJob<T>
         if (ok)
         {
             _statsSteal++;
-            _worker.ResetWaitCounter();
+            ResetWaitCounter();
         }
 
         _nextContextToCheck = -1;
         return ok;
+    }
+
+    public void ResetWaitCounter()
+    {
+        _waitRound = 0;
+    }
+
+    private const int RoundUntilSleep = 32;
+    private const int LatchWaitMs = 100;
+    public void OnNoJob(WaitHandle? latch)
+    {
+        _waitRound++;
+        if (_waitRound > RoundUntilSleep)
+        {
+            if (Interlocked.CompareExchange(ref _isAsleep, true, false) == false)
+            {
+                _executor.AddToSleepingWorker(ContextIdx);
+            }
+
+            _statsWaited++;
+            if (latch != null)
+            {
+                WaitHandle.WaitAny([latch, _sleepLatch.WaitHandle], LatchWaitMs);
+            }
+            else
+            {
+                _sleepLatch.Wait(LatchWaitMs);
+            }
+            if (_wakeUpTime != 0)
+            {
+                _wakeUpTimes.Add((_wakeUpTime, Stopwatch.GetTimestamp() - _wakeUpTime));
+                _wakeUpTime = 0;
+            }
+
+            if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
+            {
+                _executor.RemoveFromSleepingWorker(ContextIdx);
+            }
+            return;
+        }
+
+        _statsYielded++;
+        Thread.Yield();
+    }
+
+    private void WorkerLoop()
+    {
+        try
+        {
+            while (!_finishLatch.IsSet)
+            {
+                if (TryStealJob(out JobRef<T> jobRef, out bool shouldRetry))
+                {
+                    jobRef.ExecuteNonInline(this);
+                    continue;
+                }
+
+                if (shouldRetry) _statsStealRetry++;
+                if (!shouldRetry)
+                {
+                    _sleepLatch.Reset();
+                    OnNoJob(_sleepLatch.WaitHandle);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error in worker loop {ex}");
+            throw;
+        }
+    }
+
+    public bool TryWakeUp()
+    {
+        if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
+        {
+            _wakeUpTime = Stopwatch.GetTimestamp();
+            _sleepLatch.Set();
+            _executor.RemoveFromSleepingWorker(ContextIdx);
+            return true;
+        }
+
+        return false;
     }
 
     public bool TryStealFrom(out JobRef<T> job, out bool shouldRetry)
@@ -434,7 +402,7 @@ public class Context<T>: IDisposable where T: IJob<T>
     public bool TryWakeUp(int nextContextToCheck)
     {
         _nextContextToCheck = nextContextToCheck;
-        bool ok = _worker.TryWakeUp();
+        bool ok = TryWakeUp();
         if (ok)
         {
             _statsWokeUpNotify++;
@@ -445,7 +413,11 @@ public class Context<T>: IDisposable where T: IJob<T>
 
     public void Dispose()
     {
-        _worker.Dispose();
+        _finishLatch.Set();
+        if (_workerThread is not null)
+        {
+            _workerThread.Join();
+        }
     }
 
     public void RunJob16(ref RefList16<T> jobs)
@@ -464,14 +436,6 @@ public class Context<T>: IDisposable where T: IJob<T>
         {
             MultiPushJob(jobs.AsSpan()[1..], jobLatches.AsSpan());
         }
-        /*
-        for (int i = jobs.Count - 1; i > 0; i--)
-        {
-            // In reverse order
-            jobLatches.Add(PushJob(jobs[i]!, false));
-        }
-        NotifyNewJob(jobLatches.Count);
-        */
 
         // Inline
         jobs[0]!.Execute(this);
@@ -489,14 +453,17 @@ public class Context<T>: IDisposable where T: IJob<T>
     private long _statsStolenFrom = 0;
     private long _statsNoJob;
     private long _statsWokeUpNotify;
+    private long _statsYielded = 0;
+    private long _statsWaited = 0;
+    internal List<(long, long)> _wakeUpTimes = new List<(long, long)>();
 
     public void PrintDebugStats()
     {
         long actualSteal = _statsSteal;
-        long actualStealRetry = _statsStealRetry + _worker._statsExecuteStolenRetry;
+        long actualStealRetry = _statsStealRetry;
 
-        Console.Error.WriteLine($"{ContextIdx,5}  ST {actualSteal,5}  STR {actualStealRetry,5}  SF {_statsStolenFrom,5}  NJ {_statsNoJob,5}  W {_statsWokeUpNotify,5}  WY {_worker._statsYielded}  WW {_worker._statsWaited}");
-        foreach (var workerWakeUpTime in _worker._wakeUpTimes)
+        Console.Error.WriteLine($"{ContextIdx,5}  ST {actualSteal,5}  STR {actualStealRetry,5}  SF {_statsStolenFrom,5}  NJ {_statsNoJob,5}  W {_statsWokeUpNotify,5}  WY {_statsYielded}  WW {_statsWaited}");
+        foreach (var workerWakeUpTime in _wakeUpTimes)
         {
             Console.Error.WriteLine($"T {workerWakeUpTime.Item1} {TimeSpan.FromTicks(workerWakeUpTime.Item2).TotalMilliseconds}");
         }

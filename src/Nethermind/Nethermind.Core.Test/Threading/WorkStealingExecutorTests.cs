@@ -35,7 +35,9 @@ public class WorkStealingExecutorTests
 
         FibonacciResult result = new FibonacciResult();
         Thread.Sleep(10);
+        long startTime = Stopwatch.GetTimestamp();
         executor.Execute(new FibonacciJob(FibNum, result));
+        Console.Error.WriteLine($"Took {TimeSpan.FromTicks(result.Timestamp - startTime).TotalMilliseconds}ms");
         result.Result.Should().Be(FibResult);
         executor.PrintDebug();
     }
@@ -140,12 +142,14 @@ public class WorkStealingExecutorTests
     internal class FibonacciResult
     {
         internal long Result = 0;
+        internal long Timestamp = 0;
     }
 
     internal struct FibonacciJob(long currentValue, FibonacciResult result): IJob<FibonacciJob>
     {
         public void Execute(Context<FibonacciJob> ctx)
         {
+            result.Timestamp = Stopwatch.GetTimestamp();
             if (currentValue == 0)
             {
                 result.Result = 0;
