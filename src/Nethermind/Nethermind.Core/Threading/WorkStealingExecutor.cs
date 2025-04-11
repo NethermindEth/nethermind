@@ -19,13 +19,13 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 
     private readonly int _workerCount = 0;
     private readonly Context<T>[] _workerContexts;
-    private readonly DStack<Context<T>> _guestContextPool = new DStack<Context<T>>(0);
 
     private int _asleepWorker = 0;
     private readonly bool[] _sleepingContexts;
     private readonly ConcurrentQueue<int> _sleepingContextQueue;
     private readonly int _initialStackSize;
-    private Context<T>[] _guestContexts = [];
+
+    private ConcurrentQueue<JobRef<T>> _incomingJobs = new ConcurrentQueue<JobRef<T>>();
 
     public WorkStealingExecutor(int workerCount, int initialStackSize)
     {
@@ -49,46 +49,11 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
 
     public void Execute(T job)
     {
-        var ctx = CreateGuestContext();
-        job.Execute(ctx);
-        ReturnGuestContext(ctx);
-    }
-
-    private Context<T> CreateGuestContext()
-    {
-        if (!_guestContextPool.TryPop(out Context<T>? context))
-        {
-            context = new Context<T>(this, -1, _initialStackSize);
-        }
-
-        while (true)
-        {
-            Context<T>[] currentPool = _guestContexts;
-            Context<T>[] newContexts = new Context<T>[currentPool.Length + 1];
-            currentPool.CopyTo(newContexts, 0);
-            newContexts[currentPool.Length] = context!;
-            if (Interlocked.CompareExchange(ref _guestContexts, newContexts, currentPool) == currentPool)
-            {
-                break;
-            }
-        }
-
-        return context!;
-    }
-
-    private void ReturnGuestContext(Context<T> context)
-    {
-        while (true)
-        {
-            Context<T>[] currentPool = _guestContexts;
-            Context<T>[] newContexts = currentPool.Where(c => c != context).ToArray();
-            if (Interlocked.CompareExchange(ref _guestContexts, newContexts, currentPool) == currentPool)
-            {
-                break;
-            }
-        }
-
-        _guestContextPool.Push(context);
+        ManualResetEventSlim resetEvent = new ManualResetEventSlim(false);
+        JobRef<T> jobRef = new JobRef<T>(job, -1, resetEvent);
+        _incomingJobs.Enqueue(jobRef);
+        NotifyNewJob(-1, 1);
+        resetEvent.Wait();
     }
 
     public bool TryStealJob(out JobRef<T> job, out bool shouldRetry, int nextContextToCheck)
@@ -115,21 +80,7 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
             if (contextSaidShouldRetry) shouldRetry = true;
         }
 
-        Context<T>[] guestContexts = _guestContexts;
-        int guestContextsCount = guestContexts.Length;
-        for (int i = 0; i < guestContextsCount; i++)
-        {
-            int idx = (nextContextToCheck % guestContextsCount);
-            nextContextToCheck++;
-
-            Context<T> context = guestContexts[idx];
-            if (context.TryStealFrom(out job!, out bool contextSaidShouldRetry))
-            {
-                return true;
-            }
-
-            if (contextSaidShouldRetry) shouldRetry = true;
-        }
+        if (_incomingJobs.TryDequeue(out job)) return true;
 
         job = default;
         return false;
@@ -225,6 +176,8 @@ public class Context<T>: IDisposable where T: IJob<T>
     private long _wakeUpTime = 0;
     private Thread? _workerThread = null;
 
+    private int _spinCount = 1;
+
 
     public Context(WorkStealingExecutor<T> executor, int contextIdx, int initialStackSize)
     {
@@ -232,8 +185,8 @@ public class Context<T>: IDisposable where T: IJob<T>
         _contextIdx = contextIdx;
         _jobStack = new(initialStackSize);
         _latchPool = new(initialStackSize);
-        _finishLatch = new ManualResetEventSlim(false);
-        _sleepLatch = new ManualResetEventSlim(false);
+        _finishLatch = new ManualResetEventSlim(false, _spinCount);
+        _sleepLatch = new ManualResetEventSlim(false, _spinCount);
     }
 
     public void StartWorker()
@@ -255,7 +208,7 @@ public class Context<T>: IDisposable where T: IJob<T>
     {
         if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
         {
-            resetEvent = new ManualResetEventSlim(false, 1);
+            resetEvent = new ManualResetEventSlim(false, _spinCount);
         }
         else
         {
@@ -279,7 +232,7 @@ public class Context<T>: IDisposable where T: IJob<T>
         {
             if (!_latchPool.TryPop(out ManualResetEventSlim? resetEvent))
             {
-                resetEvent = new ManualResetEventSlim(false, 1);
+                resetEvent = new ManualResetEventSlim(false, _spinCount);
             }
             else
             {
