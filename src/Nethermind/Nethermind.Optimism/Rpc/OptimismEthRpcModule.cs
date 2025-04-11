@@ -77,31 +77,35 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         _opSpecHelper = opSpecHelper;
     }
 
-    public new ResultWrapper<OptimismReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public new ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
-        static ResultWrapper<OptimismReceiptForRpc[]?> GetBlockReceipts(IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider, IOptimismSpecHelper opSpecHelper)
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
         {
-            SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<OptimismReceiptForRpc[]?>.Success(null);
-            }
-
-            Block? block = searchResult.Object!;
-            OptimismTxReceipt[] receipts = receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray() ?? new OptimismTxReceipt[block.Transactions.Length];
-            IReleaseSpec spec = specProvider.GetSpec(block.Header);
-
-            L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
-
-            OptimismReceiptForRpc[]? result = [.. receipts
-                .Zip(block.Transactions, (r, t) =>
-                {
-                    return new OptimismReceiptForRpc(t.Hash!, r, t.GetGasInfo(spec, block.Header), l1BlockGasInfo.GetTxGasInfo(t), receipts.GetBlockLogFirstIndex(r.Index));
-                })];
-            return ResultWrapper<OptimismReceiptForRpc[]?>.Success(result);
+            return ResultWrapper<ReceiptForRpc[]?>.Success(null);
         }
 
-        return GetBlockReceipts(_receiptFinder, blockParameter, _blockFinder, _specProvider, _opSpecHelper);
+        Block? block = searchResult.Object!;
+        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        L1BlockGasInfo l1BlockGasInfo = new(block, _opSpecHelper);
+
+        ReceiptForRpc[]? result = [.. receipts
+                .Zip(block.Transactions, (receipt, tx) =>
+                    receipt is OptimismTxReceipt optimismTxReceipt
+                        ? new OptimismReceiptForRpc(
+                            tx.Hash!,
+                            optimismTxReceipt,
+                            tx.GetGasInfo(spec, block.Header),
+                            l1BlockGasInfo.GetTxGasInfo(tx),
+                            receipts.GetBlockLogFirstIndex(receipt.Index))
+                        : new ReceiptForRpc(
+                            tx.Hash!,
+                            receipt,
+                            tx.GetGasInfo(spec, block.Header),
+                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
+        return ResultWrapper<ReceiptForRpc[]?>.Success(result);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
