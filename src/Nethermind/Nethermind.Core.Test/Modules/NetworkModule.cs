@@ -40,7 +40,6 @@ public class NetworkModule(IInitConfig initConfig) : Module
 
         builder
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
