@@ -4,9 +4,8 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.State;
 
-namespace Nethermind.Evm.Benchmark;
+namespace Nethermind.Benchmarks.State;
 
 public class StorageValueBenchmarks
 {
