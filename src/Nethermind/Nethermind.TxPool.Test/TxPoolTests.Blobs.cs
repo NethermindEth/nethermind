@@ -532,7 +532,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void RecoverAddress_should_work_correctly()
         {
-            Transaction tx = GetTx(TestItem.PrivateKeyA);
+            Transaction tx = GetBlobTx(TestItem.PrivateKeyA);
             _ethereumEcdsa.RecoverAddress(tx).Should().Be(tx.SenderAddress);
         }
 
@@ -552,7 +552,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
-            Transaction[] txs = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
+            Transaction[] txs = { GetBlobTx(TestItem.PrivateKeyA), GetBlobTx(TestItem.PrivateKeyB) };
 
             _txPool.SubmitTx(txs[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.SubmitTx(txs[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -597,8 +597,8 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
 
-            Transaction[] txsA = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
-            Transaction[] txsB = { GetTx(TestItem.PrivateKeyC) };
+            Transaction[] txsA = { GetBlobTx(TestItem.PrivateKeyA), GetBlobTx(TestItem.PrivateKeyB) };
+            Transaction[] txsB = { GetBlobTx(TestItem.PrivateKeyC) };
 
             _txPool.SubmitTx(txsA[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.SubmitTx(txsA[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -775,7 +775,7 @@ namespace Nethermind.TxPool.Test
             values.Count.Should().Be(poolSize / 2);
         }
 
-        private Transaction GetTx(PrivateKey sender)
+        private Transaction GetBlobTx(PrivateKey sender)
         {
             return Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
