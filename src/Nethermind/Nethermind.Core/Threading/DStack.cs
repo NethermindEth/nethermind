@@ -19,7 +19,7 @@ namespace Nethermind.Core.Threading;
 /// <typeparam name="T"></typeparam>
 public class DStack<T>(int initialCapacity)
 {
-    private SpinLock _locker = new SpinLock();
+    private SpinLock _locker = new SpinLock(false);
 
     private long _atomicEndAndStart;
     private T[] _buffer = new T[Math.Max(initialCapacity, 1)];

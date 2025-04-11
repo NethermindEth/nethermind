@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -14,12 +15,12 @@ namespace Nethermind.Core.Test.Threading;
 
 public class WorkStealingExecutorTests
 {
-    private const long FibNum = 32;
-    private const long FibResult = 2178309;
+    // private const long FibNum = 32;
+    // private const long FibResult = 2178309;
 
     // Some other parameter for benchmarking
-    // private const long FibNum = 34;
-    // private const long FibResult = 5702887;
+    private const long FibNum = 34;
+    private const long FibResult = 5702887;
     // private const long FibNum = 38;
     // private const long FibResult = 39088169;
     // private const long FibNum = 43;
@@ -27,12 +28,13 @@ public class WorkStealingExecutorTests
 
     // [TestCase(1)]
     // [TestCase(2)]
-    [TestCase(32)]
+    [TestCase(4)]
     public void TestBasicFactorial(int workerCount)
     {
         using WorkStealingExecutor<FibonacciJob> executor = new(workerCount, (int)FibNum);
 
         FibonacciResult result = new FibonacciResult();
+        Thread.Sleep(10);
         executor.Execute(new FibonacciJob(FibNum, result));
         result.Result.Should().Be(FibResult);
         executor.PrintDebug();
@@ -125,6 +127,7 @@ public class WorkStealingExecutorTests
             Stopwatch sw = Stopwatch.StartNew();
             executor.Execute(new FibonacciJob(FibNum, result));
             result.Result.Should().Be(FibResult);
+            executor.PrintDebug();
             multithreadTime = sw.Elapsed;
         }
 

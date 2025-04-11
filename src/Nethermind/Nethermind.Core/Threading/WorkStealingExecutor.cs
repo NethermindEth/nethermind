@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices.JavaScript;
 using System.Threading;
 using Nethermind.Core.Collections;
 
@@ -83,6 +83,7 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
             return true;
         }
 
+        job = default;
         return false;
     }
 
@@ -118,21 +119,6 @@ public class WorkStealingExecutor<T>: IDisposable where T: IJob<T>
         // HOT PATH
         if (count == 0) return;
         if (_asleepWorker == 0) return;
-
-        /*
-        var searchOrder = _ctxSearchOrder[fromContext];
-        for (int i = 0; i < _workerCount; i++)
-        {
-            // if (!_sleepingContextQueue.TryDequeue(out int ctxId)) break;
-            // Interlocked.CompareExchange(ref _sleepingContexts[ctxId], false, true);
-            Context context = _workerContexts[searchOrder[i]];
-            if (context.TryWakeUp(fromContext))
-            {
-                count--;
-                if (count == 0) break;
-            }
-        }
-        */
 
         Interlocked.Increment(ref _statsNotify);
         for (int i = 0; i < _workerCount; i++)
@@ -188,7 +174,7 @@ public class Worker<T>: IDisposable where T: IJob<T>
     private readonly Thread _thread;
 
     private ManualResetEventSlim _finishLatch;
-    private ManualResetEvent _sleepLatch;
+    private ManualResetEventSlim _sleepLatch;
     private bool _isAsleep = false;
     private int _waitRound = 0;
 
@@ -197,7 +183,7 @@ public class Worker<T>: IDisposable where T: IJob<T>
         _context = context;
         _executor = executor;
         _finishLatch = new ManualResetEventSlim(false);
-        _sleepLatch = new ManualResetEvent(false);
+        _sleepLatch = new ManualResetEventSlim(false);
         _thread = new Thread(WorkerLoop);
     }
 
@@ -222,7 +208,7 @@ public class Worker<T>: IDisposable where T: IJob<T>
                 if (!shouldRetry)
                 {
                     _sleepLatch.Reset();
-                    OnNoJob(_sleepLatch);
+                    OnNoJob(_sleepLatch.WaitHandle);
                 }
             }
         }
@@ -239,13 +225,15 @@ public class Worker<T>: IDisposable where T: IJob<T>
         _thread.Join();
     }
 
+    private long _wakeUpTime = 0;
+
     public bool TryWakeUp()
     {
         if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
         {
-            // _nextContextToCheck = nextContextToCheck;
-            _executor.RemoveFromSleepingWorker(_context.ContextIdx);
+            _wakeUpTime = Stopwatch.GetTimestamp();
             _sleepLatch.Set();
+            _executor.RemoveFromSleepingWorker(_context.ContextIdx);
             return true;
         }
 
@@ -261,7 +249,9 @@ public class Worker<T>: IDisposable where T: IJob<T>
     internal long _statsYielded = 0;
     internal long _statsWaited = 0;
 
-    public void OnNoJob(WaitHandle latch)
+    internal List<(long, long)> _wakeUpTimes = new List<(long, long)>();
+
+    public void OnNoJob(WaitHandle? latch)
     {
         _waitRound++;
         if (_waitRound > RoundUntilSleep)
@@ -272,7 +262,19 @@ public class Worker<T>: IDisposable where T: IJob<T>
             }
 
             _statsWaited++;
-            latch.WaitOne(LatchWaitMs);
+            if (latch != null)
+            {
+                WaitHandle.WaitAny([latch, _sleepLatch.WaitHandle], LatchWaitMs);
+            }
+            else
+            {
+                _sleepLatch.Wait(LatchWaitMs);
+            }
+            if (_wakeUpTime != 0)
+            {
+                _wakeUpTimes.Add((_wakeUpTime, Stopwatch.GetTimestamp() - _wakeUpTime));
+                _wakeUpTime = 0;
+            }
 
             if (Interlocked.CompareExchange(ref _isAsleep, false, true) == true)
             {
@@ -494,6 +496,10 @@ public class Context<T>: IDisposable where T: IJob<T>
         long actualStealRetry = _statsStealRetry + _worker._statsExecuteStolenRetry;
 
         Console.Error.WriteLine($"{ContextIdx,5}  ST {actualSteal,5}  STR {actualStealRetry,5}  SF {_statsStolenFrom,5}  NJ {_statsNoJob,5}  W {_statsWokeUpNotify,5}  WY {_worker._statsYielded}  WW {_worker._statsWaited}");
+        foreach (var workerWakeUpTime in _worker._wakeUpTimes)
+        {
+            Console.Error.WriteLine($"T {workerWakeUpTime.Item1} {TimeSpan.FromTicks(workerWakeUpTime.Item2).TotalMilliseconds}");
+        }
     }
 }
 
