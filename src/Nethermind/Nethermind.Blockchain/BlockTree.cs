@@ -159,6 +159,13 @@ namespace Nethermind.Blockchain
                     Genesis = genesisHeader;
                     LoadStartBlock();
                     Head ??= FindBlock(genesisBlockInfo.BlockHash, BlockTreeLookupOptions.None);
+
+                    EarliestHash = GenesisHash;
+                    if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+                    {
+                        var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+                        EarliestHash = FindBlockHash(lowestBlock);
+                    }
                 }
 
                 RecalculateTreeLevels();
@@ -1310,6 +1317,15 @@ namespace Nethermind.Blockchain
                 Genesis = block.Header;
             }
 
+            if (block.Hash == EarliestHash)
+            {
+                if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+                {
+                    var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+                    EarliestHash = FindBlockHash(lowestBlock);
+                }
+            }
+
             Head = block;
             _blockInfoDb.Set(HeadAddressInDb, block.Hash.Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
@@ -1426,6 +1442,7 @@ namespace Nethermind.Blockchain
         public Hash256? PendingHash => Head?.Hash;
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
+        public Hash256? EarliestHash { get; private set; }
 
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {

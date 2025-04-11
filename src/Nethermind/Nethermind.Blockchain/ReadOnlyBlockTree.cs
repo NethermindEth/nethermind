@@ -93,6 +93,7 @@ namespace Nethermind.Blockchain
         public Hash256 PendingHash => _wrapped.PendingHash;
         public Hash256 FinalizedHash => _wrapped.FinalizedHash;
         public Hash256 SafeHash => _wrapped.SafeHash;
+        public Hash256 EarliestHash => _wrapped.EarliestHash;
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
