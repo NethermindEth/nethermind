@@ -1927,7 +1927,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         storageCell = new(env.ExecutingAccount, result);
 
-                        ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
+                        ref readonly StorageValue value = ref _state.GetTransientState(in storageCell);
                         stack.PushBytes(value);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
@@ -1952,13 +1952,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             storageCell = new(env.ExecutingAccount, result);
                             bytes = stack.PopWord256();
 
-                            _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+                            var newValue = new StorageValue(bytes);
+                            _state.SetTransientState(in storageCell, newValue);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
-                                ReadOnlySpan<byte> currentValue = _state.GetTransientState(in storageCell);
-                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
+                                StorageValue currentValue = _state.GetTransientState(in storageCell);
+                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, newValue, currentValue);
                             }
 
                             break;
@@ -2516,7 +2517,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             StorageAccessType.SLOAD,
             spec)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> value = _state.Get(in storageCell);
+        ref readonly StorageValue value = ref _state.Get(in storageCell);
         stack.PushBytes(value);
         if (typeof(TTracingStorage) == typeof(IsTracing))
         {
@@ -2546,9 +2547,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+
+        // Direct pop by ref and capturing as the new value
+        ref var v = ref stack.PopBytesByRef();
+        if (IsNullRef(ref v)) return EvmExceptionType.StackUnderflow;
+
+        StorageValue newValue = new StorageValue(in As<byte, Vector256<byte>>(ref v));
+        bool newIsZero = newValue.IsZero;
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
 
@@ -2559,11 +2564,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StorageAccessType.SSTORE,
                 spec)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
+        ref readonly StorageValue currentValue = ref _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-        bool currentIsZero = currentValue.IsZero();
+        bool currentIsZero = currentValue.IsZero;
 
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || currentValue.Equals(newValue);
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
@@ -2589,10 +2594,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else // net metered, C != N
             {
-                Span<byte> originalValue = _state.GetOriginal(in storageCell);
-                bool originalIsZero = originalValue.IsZero();
+                ref readonly StorageValue originalValue = ref _state.GetOriginal(in storageCell);
+                bool originalIsZero = originalValue.IsZero;
 
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                bool currentSameAsOriginal = originalValue.Equals(currentValue);
                 if (currentSameAsOriginal)
                 {
                     if (currentIsZero)
@@ -2630,7 +2635,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                     }
 
-                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                    bool newSameAsOriginal = originalValue.Equals(newValue);
                     if (newSameAsOriginal)
                     {
                         long refundFromReversal;
@@ -2652,19 +2657,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!newSameAsCurrent)
         {
-            _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            _state.Set(in storageCell, newValue);
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
-                ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
                 byte[] storageBytes = new byte[32]; // do not stackalloc here
                 storageCell.Index.ToBigEndian(storageBytes);
-                _txTracer.ReportStorageChange(storageBytes, valueToStore);
+                _txTracer.ReportStorageChange(storageBytes, newValue);
             }
 
             if (typeof(TTracingStorage) == typeof(IsTracing))
             {
-                _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+                _txTracer.SetOperationStorage(storageCell.Address, result, newValue, currentValue);
             }
         }
 

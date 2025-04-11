@@ -37,17 +37,15 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         Trace.Gas = gasSpent.SpentGas;
     }
 
-    public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public override void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue)
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
+        Span<byte> bigEndian = stackalloc byte[32];
 
         storageIndex.ToBigEndian(bigEndian);
 
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = newValue.Bytes.ToHexString(false);
     }
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)

@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -48,8 +49,8 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
     public virtual void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportAccountRead(Address address) { }
-    public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
-    public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+    public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value) { }
+    public virtual void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after) { }
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
     public virtual void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
     public virtual void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { }
@@ -62,8 +63,8 @@ public abstract class TxTracer : ITxTracer
     public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
-    public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
-    public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
+    public virtual void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue) { }
+    public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value) { }
     public virtual void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
     public virtual void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
     public virtual void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }

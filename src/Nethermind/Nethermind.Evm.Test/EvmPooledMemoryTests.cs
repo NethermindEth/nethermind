@@ -275,15 +275,15 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
     {
     }
 
-    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue)
     {
     }
 
-    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value)
     {
     }
 
@@ -312,7 +312,7 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after)
+    public void ReportStorageChange(in StorageCell storageAddress, in StorageValue before, in StorageValue after)
     {
         throw new NotSupportedException();
     }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -28,7 +29,8 @@ namespace Nethermind.State
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ??
+                      throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>
@@ -36,9 +38,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public ref readonly StorageValue Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(in storageCell);
+            return ref GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -46,7 +48,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
             PushUpdate(in storageCell, newValue);
         }
@@ -80,7 +82,8 @@ namespace Nethermind.State
             int currentPosition = _changes.Count - 1;
             if (snapshot > currentPosition)
             {
-                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+                throw new InvalidOperationException(
+                    $"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
             }
 
             if (snapshot == currentPosition)
@@ -99,7 +102,8 @@ namespace Nethermind.State
                         int actualPosition = stack.Pop();
                         if (actualPosition != currentPosition - i)
                         {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+                            throw new InvalidOperationException(
+                                $"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
                         }
 
                         _keptInCache.Add(change);
@@ -111,7 +115,8 @@ namespace Nethermind.State
                 int forAssertion = stack.Pop();
                 if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    throw new InvalidOperationException(
+                        $"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
                 _changes[currentPosition - i] = default;
@@ -133,11 +138,11 @@ namespace Nethermind.State
 
             _keptInCache.Clear();
 
-            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) &&
+                   lastOriginalSnapshot > snapshot)
             {
                 _transactionChangesSnapshots.Pop();
             }
-
         }
 
         /// <summary>
@@ -150,23 +155,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+            public static readonly ChangeTrace _zeroBytes = new(StorageValue.Zero, StorageValue.Zero);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(byte[]? before, byte[]? after)
+            public ChangeTrace(StorageValue before, StorageValue after)
             {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = before ?? StorageTree.ZeroBytes;
+                After = after;
+                Before = before;
             }
 
-            public ChangeTrace(byte[]? after)
+            public ChangeTrace(StorageValue after)
             {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = StorageTree.ZeroBytes;
+                After = after;
+                Before = StorageValue.Zero;
             }
 
-            public byte[] Before;
-            public byte[] After;
+            public StorageValue Before;
+            public StorageValue After;
         }
 
         /// <summary>
@@ -223,21 +228,16 @@ namespace Nethermind.State
         /// Attempt to get the current value at the storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected ref readonly StorageValue TryGetCachedValue(in StorageCell storageCell)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
-                {
-                    bytes = _changes[lastChangeIndex].Value;
-                    return true;
-                }
+                return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndex].Value;
             }
 
-            bytes = null;
-            return false;
+            return ref Unsafe.NullRef<StorageValue>();
         }
 
         /// <summary>
@@ -245,14 +245,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
+        protected abstract ref readonly StorageValue GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, in StorageValue value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -265,7 +265,8 @@ namespace Nethermind.State
         /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref StackList<int>? value =
+                ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             if (!exists)
             {
                 value = new StackList<int>();
@@ -286,7 +287,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    Set(cellByAddress.Key, StorageValue.Zero);
                 }
             }
         }
@@ -296,7 +297,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
+            public Change(ChangeType changeType, StorageCell storageCell, StorageValue value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -305,7 +306,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly byte[] Value;
+            public readonly StorageValue Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }
