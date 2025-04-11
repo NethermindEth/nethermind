@@ -25,6 +25,7 @@ namespace Nethermind.Facade
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Hash256 txHash);
+        Hash256? GetBlockHash(Hash256 txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
         (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);
