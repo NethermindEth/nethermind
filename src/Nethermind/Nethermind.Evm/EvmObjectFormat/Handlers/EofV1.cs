@@ -47,7 +47,7 @@ internal class Eof1 : IEofVersionHandler
 
     internal const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
     internal const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
-    internal const ushort MAXIMUM_NUM_CONTAINER_SECTIONS = 0x00FF;
+    internal const int MAXIMUM_NUM_CONTAINER_SECTIONS = 0x00FF;
     internal const ushort RETURN_STACK_MAX_HEIGHT = MAXIMUM_NUM_CODE_SECTIONS; // the size in the type section allocated to each function section
 
     internal const ushort MINIMUM_SIZE = MINIMUM_HEADER_SIZE
@@ -710,8 +710,8 @@ internal class Eof1 : IEofVersionHandler
         }
 
         // 2. Validate the container sections count.
-        // Is one extra from the initial so greater than equal
-        if (header.ContainerSections?.Count >= MAXIMUM_NUM_CONTAINER_SECTIONS)
+        // Is one extra from the initial so one extra to max count
+        if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS + 1)
         {
             // NOTE: This check could be moved to the header parsing phase.
             if (Logger.IsTrace)
