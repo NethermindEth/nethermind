@@ -20,35 +20,6 @@ public static class BitmapHelper
         0b0111_1111
     };
 
-    /// <summary>
-    /// Collects data locations in code.
-    /// An unset bit means the byte is an opcode, a set bit means it's data.
-    /// </summary>
-    public static byte[] CreateCodeBitmap(ReadOnlySpan<byte> code, bool isEof = false)
-    {
-        // The bitmap is 4 bytes longer than necessary, in case the code
-        // ends with a PUSH32, the algorithm will push zeroes onto the
-        // bitvector outside the bounds of the actual code.
-        byte[] bitVector = new byte[(code.Length / 8) + 1 + 4];
-
-        for (int pc = 0; pc < code.Length;)
-        {
-            (ushort? InputCount, ushort? OutputCount, ushort? immediates) opMetadaata = ((Instruction)code[pc]).StackRequirements();
-
-            pc++;
-
-            int numbits =
-                code[pc] == (byte)Instruction.RJUMPV
-                    ? Instruction.RJUMPV.GetImmediateCount(isEof, code[pc])
-                    : opMetadaata.immediates.Value;
-
-            if (numbits == 0) continue;
-
-            FlagMultipleBits(numbits, bitVector, ref pc);
-        }
-        return bitVector;
-    }
-
     public static void FlagMultipleBits(int bitCount, Span<byte> bitVector, scoped ref int pc)
     {
         if (bitCount == 0) return;
@@ -78,13 +49,6 @@ public static class BitmapHelper
             bitVector.Set1(pc);
             pc += bitCount;
         }
-    }
-    /// <summary>
-    /// Checks if the position is in a code segment.
-    /// </summary>
-    public static bool IsCodeSegment(Span<byte> bitVector, int pos)
-    {
-        return (bitVector[pos / 8] & (0x80 >> (pos % 8))) == 0;
     }
 
     private static void Set1(this Span<byte> bitVector, int pos)
