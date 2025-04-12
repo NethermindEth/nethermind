@@ -32,8 +32,9 @@ public static class BitmapHelper
                 pc += 16;
             }
 
-            for (; bitCount >= 8; bitCount -= 8)
+            if (bitCount >= 8)
             {
+                bitCount -= 8;
                 bitVector.Set8(pc);
                 pc += 8;
             }
