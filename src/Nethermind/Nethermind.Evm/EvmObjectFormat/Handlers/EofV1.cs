@@ -16,6 +16,7 @@ using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.EvmObjectFormat.Handlers;
 
+// https://github.com/ipsilon/eof/blob/main/spec/eof.md
 internal class Eof1 : IEofVersionHandler
 {
     public const byte VERSION = 0x01;
