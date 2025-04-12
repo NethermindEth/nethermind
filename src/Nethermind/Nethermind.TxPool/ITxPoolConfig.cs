@@ -16,15 +16,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "2048", Description = "The max number of transactions held in the mempool (the more transactions in the mempool, the more memory used).")]
     int Size { get; set; }
 
-    [ConfigItem(
-        Description = """
-                      Blobs support mode:
-
-                      - `Disabled`: No support for blob transactions
-                      - `InMemory`: Blob transactions stored only in memory
-                      - `Storage`: Blob transactions stored in db
-                      - `StorageWithReorgs`: Blob transactions stored in db with support for restoring reorganized blob transactions to blob pool
-                      """, DefaultValue = "StorageWithReorgs")]
+    [ConfigItem(Description = "The blobs support mode.", DefaultValue = nameof(BlobsSupportMode.StorageWithReorgs))]
     BlobsSupportMode BlobsSupport { get; set; }
 
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
@@ -50,6 +42,14 @@ public interface ITxPoolConfig : IConfig
         Description = "The max transaction gas allowed.")]
 
     long? GasLimit { get; set; }
+
+    [ConfigItem(DefaultValue = "131072",
+        Description = "The max transaction size allowed, in bytes.")]
+    long? MaxTxSize { get; set; }
+
+    [ConfigItem(DefaultValue = "1048576",
+        Description = "The max blob transaction size allowed, excluding blobs, in bytes.")]
+    long? MaxBlobTxSize { get; set; }
 
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]

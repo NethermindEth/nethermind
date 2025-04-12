@@ -23,7 +23,7 @@ public static class Program
         foreach (var test in sortedTests)
         {
             long size = 0;
-            List<string> testsList = null;
+            List<string>? testsList = null;
 
             if (groupedTestNames.Count == MaxJobsCount)
             {

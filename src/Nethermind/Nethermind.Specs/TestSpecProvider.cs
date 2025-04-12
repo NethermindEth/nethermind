@@ -36,6 +36,7 @@ namespace Nethermind.Specs
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
+        public ulong? BeaconChainGenesisTimestamp { get; set; }
         public ulong? _networkId;
         public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
 

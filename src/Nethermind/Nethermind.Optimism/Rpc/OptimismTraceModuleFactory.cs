@@ -13,6 +13,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Facade;
 using Nethermind.State;
 
 namespace Nethermind.Optimism.Rpc;
@@ -21,6 +22,8 @@ public class OptimismTraceModuleFactory(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
+    IBlockchainBridge blockchainBridge,
+    ulong secondsPerSlot,
     IBlockPreprocessorStep recoveryStep,
     IRewardCalculatorSource rewardCalculatorSource,
     IReceiptStorage receiptFinder,
@@ -34,6 +37,8 @@ public class OptimismTraceModuleFactory(
         worldStateManager,
         blockTree,
         jsonRpcConfig,
+        blockchainBridge,
+        secondsPerSlot,
         recoveryStep,
         rewardCalculatorSource,
         receiptFinder,
@@ -41,10 +46,10 @@ public class OptimismTraceModuleFactory(
         poSSwitcher,
         logManager)
 {
-    protected override ReadOnlyTxProcessingEnv CreateTxProcessingEnv() =>
-        new OptimismReadOnlyTxProcessingEnv(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
+    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) =>
+        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
 
-    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
+    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,
                 Always.Valid,
                 _recoveryStep,
@@ -52,7 +57,7 @@ public class OptimismTraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                _worldStateManager.GlobalStateReader,
+                worldStateManager.GlobalStateReader,
                 _logManager,
                 opSpecHelper,
                 contractRewriter,

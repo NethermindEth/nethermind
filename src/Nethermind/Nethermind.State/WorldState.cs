@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -105,11 +104,11 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections = false)
+        public void Reset(bool resetBlockChanges = true)
         {
-            _stateProvider.Reset(resizeCollections);
-            _persistentStorageProvider.Reset(resizeCollections);
-            _transientStorageProvider.Reset(resizeCollections);
+            _stateProvider.Reset(resetBlockChanges);
+            _persistentStorageProvider.Reset(resetBlockChanges);
+            _transientStorageProvider.Reset(resetBlockChanges);
         }
         public void WarmUp(AccessList? accessList)
         {
@@ -144,19 +143,17 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
-
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
             _stateProvider.AddToBalance(address, balanceChange, spec);
         }
-        public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
@@ -177,8 +174,11 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            _persistentStorageProvider.CommitTrees(blockNumber);
-            _stateProvider.CommitTree(blockNumber);
+            using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
+            {
+                _persistentStorageProvider.CommitTrees(committer);
+                _stateProvider.CommitTree();
+            }
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
@@ -201,10 +201,11 @@ namespace Nethermind.State
             return _stateProvider.GetCodeHash(address);
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
+        public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
         }
+
         public bool AccountExists(Address address)
         {
             return _stateProvider.AccountExists(address);
@@ -223,17 +224,17 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(commitStorageRoots);
-            _transientStorageProvider.Commit(commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, isGenesis);
+            _persistentStorageProvider.Commit(commitRoots);
+            _transientStorageProvider.Commit(commitRoots);
+            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
         }
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
-            _transientStorageProvider.Commit(tracer, commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+            _persistentStorageProvider.Commit(tracer, commitRoots);
+            _transientStorageProvider.Commit(tracer, commitRoots);
+            _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
@@ -252,13 +253,12 @@ namespace Nethermind.State
             _stateProvider.Restore(snapshot.StateSnapshot);
         }
 
-        internal void Restore(int state, int persistantStorage, int transientStorage)
+        internal void Restore(int state, int persistentStorage, int transientStorage)
         {
-            Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
+            Restore(new Snapshot(state, new Snapshot.Storage(persistentStorage, transientStorage)));
         }
 
-        // Needed for benchmarks
-        internal void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in UInt256 nonce)
         {
             _stateProvider.SetNonce(address, nonce);
         }
@@ -269,9 +269,11 @@ namespace Nethermind.State
         }
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
+        public void ResetTransient()
+        {
+            _transientStorageProvider.Reset();
+        }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
-
-        public bool ClearCache() => PreBlockCaches?.Clear() == true;
     }
 }

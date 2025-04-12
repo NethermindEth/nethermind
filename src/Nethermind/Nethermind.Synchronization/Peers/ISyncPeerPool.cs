@@ -9,12 +9,14 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public interface ISyncPeerPool : IDisposable
+    public interface ISyncPeerPool : IAsyncDisposable
     {
         Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
@@ -29,6 +31,16 @@ namespace Nethermind.Synchronization.Peers
         void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details);
 
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
+
+        /// <summary>
+        /// Estimate the request limit for a specific request type for the peer which get allocated next based
+        /// on the allocation strategy and context. May not be accurate as different peer may get allocated.
+        /// </summary>
+        Task<int?> EstimateRequestLimit(
+            RequestType bodies,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts blocks,
+            CancellationToken token);
 
         /// <summary>
         /// Wakes up all the sleeping peers.
@@ -91,12 +103,6 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         void Start();
 
-        /// <summary>
-        /// Stops the pool loops
-        /// </summary>
-        /// <returns></returns>
-        Task StopAsync();
-
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
@@ -106,9 +112,23 @@ namespace Nethermind.Synchronization.Peers
 
     public static class SyncPeerPoolExtensions
     {
-        public static async Task<T> AllocateAndRun<T>(
+        public static Task<T> AllocateAndRun<T>(
             this ISyncPeerPool syncPeerPool,
             Func<ISyncPeer, Task<T>> func,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            CancellationToken cancellationToken)
+        {
+            return syncPeerPool.AllocateAndRun(
+                (peerInfo) => func(peerInfo?.SyncPeer),
+                peerAllocationStrategy,
+                allocationContexts,
+                cancellationToken);
+        }
+
+        public static async Task<T> AllocateAndRun<T>(
+            this ISyncPeerPool syncPeerPool,
+            Func<PeerInfo, Task<T>> func,
             IPeerAllocationStrategy peerAllocationStrategy,
             AllocationContexts allocationContexts,
             CancellationToken cancellationToken)
@@ -120,8 +140,8 @@ namespace Nethermind.Synchronization.Peers
                 cancellationToken: cancellationToken);
             try
             {
-                if (allocation is null) return default;
-                return await func(allocation.Current?.SyncPeer);
+                if (allocation?.Current is null) return default;
+                return await func(allocation.Current);
             }
             finally
             {

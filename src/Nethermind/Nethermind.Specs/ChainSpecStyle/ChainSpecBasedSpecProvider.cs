@@ -10,6 +10,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -26,24 +28,23 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public bool GenesisStateUnavailable { get => _chainSpec.GenesisStateUnavailable; }
 
+        protected virtual ReleaseSpec CreateEmptyReleaseSpec() => new();
+
         private void BuildTransitions()
         {
             SortedSet<long> transitionBlockNumbers = new();
             SortedSet<ulong> transitionTimestamps = new();
             transitionBlockNumbers.Add(0L);
 
-            if (_chainSpec.Ethash?.BlockRewards is not null)
+            foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
+                         .AllChainSpecParameters)
             {
-                foreach ((long blockNumber, _) in _chainSpec.Ethash.BlockRewards)
-                {
-                    transitionBlockNumbers.Add(blockNumber);
-                }
+                item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
             }
 
-            AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
-            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
-            AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
-            AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
+            AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
+            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
+            AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -86,12 +87,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
-            foreach (KeyValuePair<long, long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
-            {
-                transitionBlockNumbers.Add(bombDelay.Key);
-            }
-
-
             (ForkActivation Activation, IReleaseSpec Spec)[] allTransitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
 
             LoadTransitions(allTransitions);
@@ -106,7 +101,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private static (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
+        private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
             SortedSet<long> transitionBlockNumbers,
             SortedSet<ulong> transitionTimestamps)
@@ -117,7 +112,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             int index = 0;
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
-                ReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
+                IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
                 transitions[index++] = ((ForkActivation)releaseStartBlock, releaseSpec);
             }
 
@@ -125,7 +120,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 long activationBlockNumber = biggestBlockTransition;
                 ForkActivation forkActivation = (activationBlockNumber, releaseStartTimestamp);
-                ReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, activationBlockNumber, releaseStartTimestamp);
+                IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, activationBlockNumber, releaseStartTimestamp);
                 transitions[index++] = (forkActivation, releaseSpec);
             }
 
@@ -152,23 +147,21 @@ namespace Nethermind.Specs.ChainSpecStyle
             return transitionActivations;
         }
 
-        private static ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+        protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
-            ReleaseSpec releaseSpec = new();
-            releaseSpec.MaximumUncleCount = (int)(releaseStartBlock >= (chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2);
+            ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
+            releaseSpec.MaximumUncleCount = 2;
+            releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
             releaseSpec.MinGasLimit = chainSpec.Parameters.MinGasLimit;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
-            releaseSpec.DifficultyBoundDivisor = chainSpec.Ethash?.DifficultyBoundDivisor ?? 1;
-            releaseSpec.FixedDifficulty = chainSpec.Ethash?.FixedDifficulty;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.MaxCodeSize = releaseSpec.IsEip170Enabled ? (chainSpec.Parameters.MaxCodeSize ?? long.MaxValue) : long.MaxValue;
-            releaseSpec.IsEip2Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip7Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock ||
-                                        (chainSpec.Parameters.Eip7Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip100Enabled = (chainSpec.Ethash?.Eip100bTransition ?? 0) <= releaseStartBlock;
+            releaseSpec.IsEip2Enabled = true;
+            releaseSpec.IsEip100Enabled = true;
+            releaseSpec.IsEip7Enabled = (chainSpec.Parameters.Eip7Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip140Enabled = (chainSpec.Parameters.Eip140Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip145Enabled = (chainSpec.Parameters.Eip145Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip150Enabled = (chainSpec.Parameters.Eip150Transition ?? 0) <= releaseStartBlock;
@@ -205,37 +198,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip3607Enabled = (chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.ValidateChainId = (chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
             releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(chainSpec.Parameters.ValidateReceiptsTransition ?? 0, chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
-
-            releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559FeeCollector : null;
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
             releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator ?? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
-
-            if (chainSpec.Optimism?.CanyonTimestamp <= releaseStartTimestamp)
-            {
-                releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Optimism.CanyonBaseFeeChangeDenominator;
-            }
-
-
-            if (chainSpec.Ethash is not null)
-            {
-                foreach (KeyValuePair<long, UInt256> blockReward in chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
-                {
-                    if (blockReward.Key <= releaseStartBlock)
-                    {
-                        releaseSpec.BlockReward = blockReward.Value;
-                    }
-                }
-
-                foreach (KeyValuePair<long, long> bombDelay in chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
-                {
-                    if (bombDelay.Key <= releaseStartBlock)
-                    {
-                        releaseSpec.DifficultyBombDelay += bombDelay.Value;
-                    }
-                }
-            }
 
             releaseSpec.IsEip1153Enabled = (chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip3651Enabled = (chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -246,6 +212,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsRip7212Enabled = (chainSpec.Parameters.Rip7212TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsOpGraniteEnabled = (chainSpec.Parameters.OpGraniteTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsOpHoloceneEnabled = (chainSpec.Parameters.OpHoloceneTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
             releaseSpec.IsEip5656Enabled = (chainSpec.Parameters.Eip5656TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip6780Enabled = (chainSpec.Parameters.Eip6780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -254,7 +222,64 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip2935Enabled = (chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip2935ContractAddress = chainSpec.Parameters.Eip2935ContractAddress;
 
+            releaseSpec.IsEip7702Enabled = (chainSpec.Parameters.Eip7702TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
+            releaseSpec.IsEip6110Enabled = (chainSpec.Parameters.Eip6110TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.DepositContractAddress = chainSpec.Parameters.DepositContractAddress;
+
+            releaseSpec.IsEip7002Enabled = (chainSpec.Parameters.Eip7002TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip7002ContractAddress = chainSpec.Parameters.Eip7002ContractAddress;
+
+            releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
+            releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
+            bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
+            bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
+            releaseSpec.IsEip4844FeeCollectorEnabled = eip4844FeeCollector;
+
+            foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
+                         .AllChainSpecParameters)
+            {
+                item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+            }
+
+            SetMaxAndTargetBlobCount();
+
             return releaseSpec;
+
+            void SetMaxAndTargetBlobCount()
+            {
+                (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork();
+                if (fork is null) return;
+
+                if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name, out ChainSpecBlobCountJson blobCount) ||
+                    chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name, out blobCount))
+                {
+                    releaseSpec.TargetBlobCount = blobCount.Target;
+                    releaseSpec.MaxBlobCount = blobCount.Max;
+                    releaseSpec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
+                }
+                else
+                {
+                    releaseSpec.TargetBlobCount = 3;
+                    releaseSpec.MaxBlobCount = 6;
+                    releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+                }
+            }
+            (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork()
+            {
+                if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+                {
+                    return (Prague.Instance, Cancun.Instance);
+                }
+
+                return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                    ? (Cancun.Instance, Shanghai.Instance)
+                    : (null, null);
+            }
+
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -276,8 +301,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         public UInt256? TerminalTotalDifficulty { get; private set; }
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
+        public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
+        public string SealEngine => _chainSpec.SealEngineType;
     }
 }

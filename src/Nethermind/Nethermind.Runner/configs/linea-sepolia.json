@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/linea-sepolia.json",
+    "GenesisHash": "0x65a64c825d7c13ce1bf077801d0b6b2a89853e19e4a89a5433d7d85d2102a20b",
+    "BaseDbPath": "nethermind_db/linea-sepolia",
+    "LogFileName": "linea-sepolia.log"
+  },
+  "Merge": {
+    "Enabled": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Metrics": {
+    "NodeName": "LineaSepolia"
+  },
+  "Sync": {
+    "SnapSync": true,
+    "PivotNumber": 11480000,
+    "PivotHash": "0xe6836f71367e771914464d6e380641eeb4a24ea712d6b29fefa9d3e020322444",
+    "PivotTotalDifficulty": "22960001",
+    "HeaderStateDistance": 6
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545
+  }
+}

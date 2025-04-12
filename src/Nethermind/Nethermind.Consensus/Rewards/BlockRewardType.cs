@@ -17,19 +17,14 @@ namespace Nethermind.Consensus.Rewards
     {
         public static string ToLowerString(this BlockRewardType blockRewardType)
         {
-            switch (blockRewardType)
+            return blockRewardType switch
             {
-                case BlockRewardType.Block:
-                    return "block";
-                case BlockRewardType.Uncle:
-                    return "uncle";
-                case BlockRewardType.External:
-                    return "external";
-                case BlockRewardType.EmptyStep:
-                    return "emptystep";
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(blockRewardType), blockRewardType, null);
-            }
+                BlockRewardType.Block => "block",
+                BlockRewardType.Uncle => "uncle",
+                BlockRewardType.External => "external",
+                BlockRewardType.EmptyStep => "emptystep",
+                _ => throw new ArgumentOutOfRangeException(nameof(blockRewardType), blockRewardType, null),
+            };
         }
     }
 }

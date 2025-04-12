@@ -29,23 +29,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private readonly MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests;
 
-        private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
-            minRequestLimit: 1,
-            maxRequestLimit: 128,
-
-            // In addition to the byte limit, we also try to keep the latency of the get receipts between these two
-            // watermark. This reduce timeout rate, and subsequently disconnection rate.
-            lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
-            upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
-
-            // When the receipts message size exceed this, we try to reduce the maximum number of block for this peer.
-            // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
-            // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
-            // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
-            maxResponseSize: 3_000_000,
-            initialRequestSize: 8
-        );
-
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -106,10 +89,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             using var message = msg;
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return response;
         }
@@ -152,7 +134,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return ArrayPoolList<TxReceipt[]>.Empty();
             }
 
-            IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _receiptsRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+            IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList()), token));
 
             return txReceipts;

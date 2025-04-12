@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
@@ -90,7 +89,7 @@ namespace Nethermind.Grpc.Clients
 
                 var result = await _client.QueryAsync(new QueryRequest
                 {
-                    Args = { args ?? Enumerable.Empty<string>() }
+                    Args = { args ?? [] }
                 });
 
                 return result.Data;
@@ -114,16 +113,14 @@ namespace Nethermind.Grpc.Clients
                     return;
                 }
 
-                using (var stream = _client.Subscribe(new SubscriptionRequest
+                using var stream = _client.Subscribe(new SubscriptionRequest
                 {
-                    Args = { args ?? Enumerable.Empty<string>() }
-                }))
+                    Args = { args ?? [] }
+                });
+                while (enabled() && _connected && !cancellationToken.IsCancellationRequested &&
+                       await stream.ResponseStream.MoveNext(cancellationToken))
                 {
-                    while (enabled() && _connected && !cancellationToken.IsCancellationRequested &&
-                           await stream.ResponseStream.MoveNext(cancellationToken))
-                    {
-                        callback(stream.ResponseStream.Current.Data);
-                    }
+                    callback(stream.ResponseStream.Current.Data);
                 }
             }
             catch (Exception ex)

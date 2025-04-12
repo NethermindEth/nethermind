@@ -37,7 +37,7 @@ mkdir -p genesis
 
 echo "Downloading goerli chainspec from Nethermind GitHub repository"
 # Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
-wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
+wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/0758dc22da3df805ca9f280eccdff715328a23e5/src/Nethermind/Chains/goerli.json
 
 # Remove all post merge EIPs
 sed -i '/TransitionTimestamp/d' goerli.json
@@ -127,7 +127,7 @@ docker-compose up
 #END of main
 
 function writeNethermindConfig() {
-cat <<EOF > node_$1/configs/config.cfg
+cat <<EOF > node_$1/configs/config.json
 {
     "Init": {
         "WebSocketsEnabled": false,
@@ -136,7 +136,7 @@ cat <<EOF > node_$1/configs/config.cfg
         "IsMining": true,
         "ChainSpecPath": "/config/genesis/goerli.json",
         "BaseDbPath": "nethermind_db/clique",
-        "LogFileName": "clique.logs.txt",
+        "LogFileName": "clique.log",
         "StaticNodesPath": "Data/static-nodes.json"
     },
     "Network": {
@@ -196,7 +196,7 @@ cat <<EOF >> docker-compose.yml
         command: --config config
         volumes:
             - ./genesis:/config/genesis
-            - ./node_$1/configs/config.cfg:/nethermind/configs/config.cfg
+            - ./node_$1/configs/config.json:/nethermind/configs/config.json
             - ./static-nodes.json:/nethermind/Data/static-nodes.json
             - ./node_$1/db/clique:/nethermind/nethermind_db/clique
             - ./node_$1/keystore:/nethermind/keystore

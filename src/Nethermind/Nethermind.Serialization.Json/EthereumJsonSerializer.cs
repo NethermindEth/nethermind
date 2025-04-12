@@ -6,10 +6,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
@@ -17,21 +17,25 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        public const int DefaultMaxDepth = 128;
         private readonly int? _maxDepth;
         private readonly JsonSerializerOptions _jsonOptions;
 
-        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int? maxDepth = null)
+        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int maxDepth = DefaultMaxDepth)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue
-                ? CreateOptions(indented: false, maxDepth: maxDepth.Value, converters: converters)
-                : CreateOptions(indented: false, converters: converters);
+            _jsonOptions = CreateOptions(indented: false, maxDepth: maxDepth, converters: converters);
         }
 
-        public EthereumJsonSerializer(int? maxDepth = null)
+        public EthereumJsonSerializer(int maxDepth = DefaultMaxDepth)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
+            _jsonOptions = maxDepth != DefaultMaxDepth ? CreateOptions(indented: false, maxDepth: maxDepth) : JsonOptions;
+        }
+
+        public object Deserialize(string json, Type type)
+        {
+            return JsonSerializer.Deserialize(json, type, _jsonOptions);
         }
 
         public T Deserialize<T>(Stream stream)
@@ -54,17 +58,19 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
+        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = DefaultMaxDepth)
         {
             var options = new JsonSerializerOptions
             {
                 WriteIndented = indented,
+                NewLine = "\n",
                 IncludeFields = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                 Converters =
                 {
                     new LongConverter(),
@@ -135,21 +141,18 @@ namespace Nethermind.Serialization.Json
             return writerOptions;
         }
 
-        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
+        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
             var writer = GetPipeWriter(stream, leaveOpen);
-            Serialize(writer, value, indented);
+            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions, cancellationToken);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;
             return outputCount;
         }
 
-        public void Serialize<T>(IBufferWriter<byte> writer, T value, bool indented = false)
-        {
-            using var jsonWriter = new Utf8JsonWriter(writer, CreateWriterOptions(indented));
-            JsonSerializer.Serialize(jsonWriter, value, indented ? JsonOptionsIndented : _jsonOptions);
-        }
+        public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
+            => JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
@@ -163,22 +166,24 @@ namespace Nethermind.Serialization.Json
         {
             ArgumentNullException.ThrowIfNullOrEmpty(innerPath);
 
-            if (innerPath.Contains('.'))
+            ReadOnlySpan<char> pathSpan = innerPath.AsSpan();
+            int lastDot = pathSpan.LastIndexOf('.');
+            if (lastDot >= 0)
             {
-                string[] parts = innerPath.Split('.');
                 JsonElement currentElement = element;
-                for (int i = 0; i < parts.Length - 1; i++)
+                foreach (Range subPath in pathSpan[..lastDot].Split('.'))
                 {
-                    if (!currentElement.TryGetProperty(parts[i], out currentElement))
+                    if (!currentElement.TryGetProperty(pathSpan[subPath], out currentElement))
                     {
                         value = default;
                         return false;
                     }
                 }
-                return currentElement.TryGetProperty(parts[^1], out value);
+                lastDot++;
+                return currentElement.TryGetProperty(pathSpan[lastDot..], out value);
             }
 
-            return element.TryGetProperty(innerPath.AsSpan(), out value);
+            return element.TryGetProperty(pathSpan, out value);
         }
     }
 }

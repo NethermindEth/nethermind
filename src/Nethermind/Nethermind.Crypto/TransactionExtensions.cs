@@ -9,7 +9,7 @@ namespace Nethermind.Crypto
 {
     public static class TransactionExtensions
     {
-        private static readonly TxDecoder _txDecoder = new();
+        private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
         public static Hash256 CalculateHash(this Transaction transaction)
         {

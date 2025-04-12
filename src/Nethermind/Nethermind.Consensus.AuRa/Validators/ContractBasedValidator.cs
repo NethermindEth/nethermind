@@ -143,7 +143,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)
             {
-                var receipts = _receiptFinder.Get(block) ?? Array.Empty<TxReceipt>();
+                var receipts = _receiptFinder.Get(block) ?? [];
                 if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
                 {
                     if (Validators.SequenceEqual(potentialValidators))

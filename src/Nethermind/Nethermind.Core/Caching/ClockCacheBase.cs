@@ -21,20 +21,25 @@ public abstract class ClockCacheBase<TKey>
     protected Queue<int> FreeOffsets { get; } = new();
 
     protected int Clock { get; set; } = 0;
+    // Use local count to avoid lock contention with reads on ConcurrentDictionary.Count
+    protected int _count = 0;
+
+    public int Count => Volatile.Read(ref _count);
 
     protected ClockCacheBase(int maxCapacity)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
 
         MaxCapacity = maxCapacity;
-        KeyToOffset = maxCapacity == 0 ? Array.Empty<TKey>() : new TKey[maxCapacity];
-        HasBeenAccessedBitmap = maxCapacity == 0 ? Array.Empty<long>() : new long[GetInt64ArrayLengthFromBitLength(maxCapacity)];
+        KeyToOffset = maxCapacity == 0 ? [] : new TKey[maxCapacity];
+        HasBeenAccessedBitmap = maxCapacity == 0 ? [] : new long[GetInt64ArrayLengthFromBitLength(maxCapacity)];
     }
 
     protected void Clear()
     {
         if (MaxCapacity == 0) return;
 
+        _count = 0;
         Clock = 0;
         FreeOffsets.Clear();
         KeyToOffset.AsSpan().Clear();

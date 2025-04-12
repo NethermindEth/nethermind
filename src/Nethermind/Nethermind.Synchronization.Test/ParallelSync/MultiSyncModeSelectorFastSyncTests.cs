@@ -299,16 +299,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
-        public void Finished_any_sync_before()
-        {
-            Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
-                .WhenSnapSyncIsConfigured()
-                .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(SyncMode.StateNodes);
-        }
-
-        [Test]
         public void Finished_any_sync_far_time_ago()
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -527,16 +517,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastSync | fastBlocksState.GetSyncMode()));
         }
 
-        [Test]
-        public void When_state_sync_finished_but_needs_to_catch_up()
-        {
-            Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
-                .When_FastSync_NoSnapSync_Configured()
-                .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(SyncMode.StateNodes);
-        }
-
         /// <summary>
         /// we DO NOT want the thing like below to happen (incorrectly go back to StateNodes from Full)
         /// 2020-04-25 19:58:32.1466|INFO|254|Changing state to Full at processed:0|state:9943624|block:0|header:9943624|peer block:9943656
@@ -593,7 +573,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
             syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
-            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - 32);
             syncProgressResolver.FindBestProcessedBlock().Returns(0);
             syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
             syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
@@ -610,11 +590,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             syncPeers.Add(syncPeer);
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p)).ToArray();
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(static p => new PeerInfo(p)).ToArray();
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
+            ISyncConfig syncConfig = new TestSyncConfig() { FastSyncCatchUpHeightDelta = 2 };
             syncConfig.FastSync = true;
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);

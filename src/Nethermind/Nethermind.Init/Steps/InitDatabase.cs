@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
@@ -16,7 +17,6 @@ using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps
@@ -90,8 +90,6 @@ namespace Nethermind.Init.Steps
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
                     break;
             }
-
-            _api.NodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, _api.LogManager);
         }
     }
 }

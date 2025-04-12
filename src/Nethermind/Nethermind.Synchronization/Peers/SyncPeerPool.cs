@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -17,8 +18,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -36,7 +39,7 @@ namespace Nethermind.Synchronization.Peers
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-        private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
+        private readonly Channel<RefreshTotalDiffTask> _peerRefreshQueue = Channel.CreateUnbounded<RefreshTotalDiffTask>();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
 
@@ -48,7 +51,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly int _allocationsUpgradeIntervalInMs;
 
         private bool _isStarted;
-        private readonly object _isAllocatedChecks = new();
+        private readonly Lock _isAllocatedChecks = new();
 
         private DateTime _lastUselessPeersDropTime = DateTime.UtcNow;
 
@@ -58,6 +61,16 @@ namespace Nethermind.Synchronization.Peers
         private readonly ManualResetEvent _signals = new(true);
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
+
+        public SyncPeerPool(IBlockTree blockTree,
+            INodeStatsManager nodeStatsManager,
+            IBetterPeerStrategy betterPeerStrategy,
+            INetworkConfig networkConfig,
+            ILogManager logManager)
+        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount)
+        {
+
+        }
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
@@ -113,6 +126,17 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
+        public async Task<int?> EstimateRequestLimit(RequestType requestType, IPeerAllocationStrategy allocationStrategy, AllocationContexts context, CancellationToken token)
+        {
+            // So, to know which peer is next, we just try to allocate it, and then free it back.
+            SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
+            if (!syncPeerAllocation.HasPeer) return null;
+
+            int requestSize = _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+            Free(syncPeerAllocation);
+            return requestSize;
+        }
+
         public void Start()
         {
             _refreshLoopTask = Task.Factory.StartNew(
@@ -138,14 +162,6 @@ namespace Nethermind.Synchronization.Peers
 
             _isStarted = true;
             StartUpgradeTimer();
-        }
-
-        public async Task StopAsync()
-        {
-            _isStarted = false;
-            _refreshLoopCancellation.Cancel();
-            await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
         }
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
@@ -215,7 +231,7 @@ namespace Nethermind.Synchronization.Peers
         public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 blockHash)
         {
             RefreshTotalDiffTask task = new(blockHash, syncPeer);
-            _peerRefreshQueue.Add(task);
+            _peerRefreshQueue.Writer.TryWrite(task);
         }
 
         public void AddPeer(ISyncPeer syncPeer)
@@ -254,7 +270,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
-                _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
+                _peerRefreshQueue.Writer.TryWrite(new RefreshTotalDiffTask(syncPeer));
             }
         }
 
@@ -325,7 +341,7 @@ namespace Nethermind.Synchronization.Peers
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
-            SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
+            SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts, _isAllocatedChecks);
             while (true)
             {
                 if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
@@ -338,8 +354,9 @@ namespace Nethermind.Synchronization.Peers
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
+                waitTime = Math.Min(waitTime, timeoutMilliseconds);
 
-                if (!_signals.SafeWaitHandle.IsClosed)
+                if (waitTime > 0 && !_signals.SafeWaitHandle.IsClosed)
                 {
                     await _signals.WaitOneAsync(waitTime, cts.Token);
                     if (!_signals.SafeWaitHandle.IsClosed)
@@ -349,7 +366,6 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
         }
-
 
         private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
         {
@@ -388,7 +404,7 @@ namespace Nethermind.Synchronization.Peers
 
         private async Task RunRefreshPeerLoop()
         {
-            foreach (RefreshTotalDiffTask refreshTask in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
+            await foreach (RefreshTotalDiffTask refreshTask in _peerRefreshQueue.Reader.ReadAllAsync(_refreshLoopCancellation.Token))
             {
                 ISyncPeer syncPeer = refreshTask.SyncPeer;
                 if (_logger.IsTrace) _logger.Trace($"Refreshing info for {syncPeer}.");
@@ -445,6 +461,7 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsDebug) _logger.Debug("Starting eth sync peer upgrade timer");
             Timer upgradeTimer = _upgradeTimer = new Timer(_allocationsUpgradeIntervalInMs);
+            bool disposed = false;
             upgradeTimer.Elapsed += (_, _) =>
             {
                 try
@@ -454,14 +471,15 @@ namespace Nethermind.Synchronization.Peers
                 }
                 catch (Exception exception)
                 {
-                    if (_logger.IsDebug) _logger.Error("Allocations upgrade failure", exception);
+                    if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Allocations upgrade failure", exception);
                 }
                 finally
                 {
-                    upgradeTimer.Enabled = true;
+                    if (!disposed)
+                        upgradeTimer.Enabled = true;
                 }
             };
-
+            upgradeTimer.Disposed += (_, _) => { disposed = true; };
             upgradeTimer.Start();
         }
 
@@ -676,15 +694,6 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public void Dispose()
-        {
-            _peerRefreshQueue?.Dispose();
-            _refreshLoopCancellation?.Dispose();
-            _refreshLoopTask?.Dispose();
-            _signals?.Dispose();
-            _upgradeTimer?.Dispose();
-        }
-
         private void UpdatePeerCountMetric(NodeClientType clientType, int delta)
         {
             Metrics.SyncPeers.AddOrUpdate(clientType, Math.Max(0, delta), (_, l) => l + delta);
@@ -706,6 +715,21 @@ namespace Nethermind.Synchronization.Peers
             public Hash256? BlockHash { get; }
 
             public ISyncPeer SyncPeer { get; }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (!_isStarted) return;
+            _isStarted = false;
+            _refreshLoopCancellation.Cancel();
+            await (_refreshLoopTask ?? Task.CompletedTask);
+            Parallel.ForEach(_peers, static p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
+
+            _peerRefreshQueue.Writer.TryComplete();
+            _refreshLoopCancellation.Dispose();
+            _refreshLoopTask?.Dispose();
+            _signals.Dispose();
+            _upgradeTimer?.Dispose();
         }
     }
 }

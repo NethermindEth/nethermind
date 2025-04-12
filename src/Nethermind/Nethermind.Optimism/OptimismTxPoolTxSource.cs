@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -14,13 +13,15 @@ public class OptimismTxPoolTxSource : ITxSource
 {
     private readonly ITxSource _baseTxSource;
 
+    public bool SupportsBlobs => _baseTxSource.SupportsBlobs;
+
     public OptimismTxPoolTxSource(ITxSource baseTxSource)
     {
         _baseTxSource = baseTxSource;
     }
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) =>
         payloadAttributes is OptimismPayloadAttributes { NoTxPool: true }
-            ? Enumerable.Empty<Transaction>()
-            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes);
+            ? []
+            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource);
 }

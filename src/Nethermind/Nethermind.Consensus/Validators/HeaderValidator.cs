@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Microsoft.Extensions.Options;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Validators
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
         private readonly ISealValidator _sealValidator;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
         protected readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -39,7 +39,13 @@ namespace Nethermind.Consensus.Validators
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
-        public static bool ValidateHash(BlockHeader header) => header.Hash == header.CalculateHash();
+        public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
+        {
+            actualHash = header.CalculateHash();
+            return header.Hash == actualHash;
+        }
+
+        public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);
 
         private bool ValidateHash(BlockHeader header, ref string? error)
         {
@@ -48,7 +54,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = BlockErrorMessages.InvalidHeaderHash;
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash, header.CalculateHash());
                 return false;
             }
 
@@ -92,10 +98,34 @@ namespace Nethermind.Consensus.Validators
                 && ValidateTimestamp(header, parent, ref error)
                 && ValidateBlockNumber(header, parent, ref error)
                 && Validate1559(header, parent, spec, ref error)
-                && ValidateBlobGasFields(header, parent, spec, ref error);
+                && ValidateBlobGasFields(header, parent, spec, ref error)
+                && ValidateRequestsHash(header, spec, ref error);
         }
 
-        private bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.RequestsEnabled)
+            {
+                if (header.RequestsHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field is not set.");
+                    error = BlockErrorMessages.MissingRequests;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.RequestsHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field should not have value.");
+                    error = BlockErrorMessages.RequestsNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected virtual bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip1559Enabled)
             {
@@ -104,7 +134,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = BlockErrorMessages.InvalidBaseFeePerGas;
+                    error = BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas);
                     return false;
                 }
             }
@@ -112,7 +142,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
+        protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
             if (header.Number != parent.Number + 1)
             {
@@ -124,7 +154,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateGasUsed(BlockHeader header, ref string? error)
+        protected virtual bool ValidateGasUsed(BlockHeader header, ref string? error)
         {
             if (header.GasUsed > header.GasLimit)
             {
@@ -136,7 +166,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
+        protected virtual bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
         {
             if (parent is null)
             {
@@ -159,7 +189,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
+        protected virtual bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
         {
             bool result = _sealValidator.ValidateParams(parent, header, isUncle);
 
@@ -172,7 +202,7 @@ namespace Nethermind.Consensus.Validators
             return result;
         }
 
-        private bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error)
+        protected virtual bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error)
         {
             // Note, these are out of spec. Technically, there could be a block with field with very high value that is
             // valid when using ulong, but wrapped to negative value when using long. However, switching to ulong
@@ -248,7 +278,7 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
-        private bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
+        protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
         {
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
@@ -312,7 +342,7 @@ namespace Nethermind.Consensus.Validators
             header.Bloom is not null &&
             header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
 
-        private bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip4844Enabled)
             {
@@ -334,7 +364,7 @@ namespace Nethermind.Consensus.Validators
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                    error = BlockErrorMessages.IncorrectExcessBlobGas;
+                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }
             }

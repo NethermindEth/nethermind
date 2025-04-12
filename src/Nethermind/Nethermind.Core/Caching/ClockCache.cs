@@ -4,23 +4,27 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-
+using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
+
+using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<TKey>(maxCapacity)
+public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new ConcurrentDictionary<TKey, LruCacheItem>();
+    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? CollectionExtensions.LockPartitions, maxCapacity);
     private readonly McsLock _lock = new();
 
     public TValue Get(TKey key)
     {
         if (MaxCapacity == 0) return default!;
 
-        if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
+        if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
             MarkAccessed(ov.Offset);
             return ov.Value;
@@ -33,7 +37,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         value = default!;
         if (MaxCapacity == 0) return false;
 
-        if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
+        if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
             MarkAccessed(ov.Offset);
             value = ov.Value;
@@ -52,9 +56,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
             return Delete(key);
         }
 
-        if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
+        if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            ov.Value = val;
+            _cacheMap[key] = new(val, ov.Offset);
             MarkAccessed(ov.Offset);
             return false;
         }
@@ -67,14 +71,15 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         using var lockRelease = _lock.Acquire();
 
         // Recheck under lock
-        if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
+        if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            ov.Value = val;
+            _cacheMap[key] = new(val, ov.Offset);
             MarkAccessed(ov.Offset);
             return false;
         }
 
-        int offset = _cacheMap.Count;
+        int offset = _count;
+        Debug.Assert(_cacheMap.Count == _count);
         if (FreeOffsets.Count > 0)
         {
             offset = FreeOffsets.Dequeue();
@@ -84,8 +89,10 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
             offset = Replace(key);
         }
 
-        _cacheMap[key] = new LruCacheItem(offset, val);
+        _cacheMap[key] = new(val, offset);
         KeyToOffset[offset] = key;
+        _count++;
+        Debug.Assert(_cacheMap.Count == _count);
 
         return true;
     }
@@ -93,7 +100,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
     private int Replace(TKey key)
     {
         int position = Clock;
-        int max = _cacheMap.Count;
+        int max = _count;
         while (true)
         {
             if (position >= max)
@@ -108,6 +115,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
                 {
                     ThrowInvalidOperationException();
                 }
+                _count--;
                 break;
             }
 
@@ -130,8 +138,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
         using var lockRelease = _lock.Acquire();
 
-        if (_cacheMap.Remove(key, out LruCacheItem? ov))
+        if (_cacheMap.Remove(key, out LruCacheItem ov))
         {
+            _count--;
             KeyToOffset[ov.Offset] = default;
             ClearAccessed(ov.Offset);
             FreeOffsets.Enqueue(ov.Offset);
@@ -148,7 +157,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         using var lockRelease = _lock.Acquire();
 
         base.Clear();
-        _cacheMap.Clear();
+        _cacheMap.NoResizeClear();
     }
 
     public bool Contains(TKey key)
@@ -157,11 +166,10 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         return _cacheMap.ContainsKey(key);
     }
 
-    public int Count => _cacheMap.Count;
-
-    private class LruCacheItem(int offset, TValue v)
+    [StructLayout(LayoutKind.Auto)]
+    private readonly struct LruCacheItem(TValue v, int offset)
     {
+        public readonly TValue Value = v;
         public readonly int Offset = offset;
-        public TValue Value = v;
     }
 }

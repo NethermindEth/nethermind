@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -14,9 +15,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
@@ -28,10 +32,12 @@ public class BodiesSyncFeedTests
     private IBlockTree _syncingFromBlockTree = null!;
     private IBlockTree _syncingToBlockTree = null!;
     private TestMemDb _blocksDb = null!;
+    private ISyncPointers _syncPointers = null!;
     private BodiesSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
     private MemDb _metadataDb = null!;
     private Block _pivotBlock = null!;
+    private ISyncPeerPool _syncPeerPool = null!;
 
     [SetUp]
     public void Setup()
@@ -42,6 +48,7 @@ public class BodiesSyncFeedTests
 
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
+        _syncPointers = new MemorySyncPointers();
         _syncingToBlockTree = Build.A.BlockTree()
             .WithBlocksDb(_blocksDb)
             .TestObject;
@@ -54,7 +61,7 @@ public class BodiesSyncFeedTests
 
         _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
 
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
@@ -62,11 +69,14 @@ public class BodiesSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
+        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
+        _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            Substitute.For<ISyncPeerPool>(),
+            _syncPointers,
+            _syncPeerPool,
             _syncConfig,
             new NullSyncReport(),
             _blocksDb,
@@ -82,6 +92,7 @@ public class BodiesSyncFeedTests
         _blocksDb?.Dispose();
         _feed?.Dispose();
         _metadataDb?.Dispose();
+        _syncPeerPool?.DisposeAsync();
     }
 
     [Test]
@@ -114,6 +125,29 @@ public class BodiesSyncFeedTests
         await HandleAndPrepareNextRequest();
         _blocksDb.FlushCount.Should().Be(3);
         req.Dispose();
+    }
+
+    [Test]
+    public async Task ShouldNotReDownloadExistingBlock()
+    {
+        _feed.InitializeFeed();
+
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 2)!);
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 4)!);
+
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Infos
+            .Where(static (bi) => bi is not null)
+            .Select(static (bi) => bi!.BlockNumber)
+            .Take(4)
+            .Should()
+            .BeEquivalentTo([
+                _pivotBlock.Number,
+                _pivotBlock.Number - 1,
+                // Skipped
+                _pivotBlock.Number - 3,
+                // Skipped
+                _pivotBlock.Number - 5]);
     }
 
     [Test]
@@ -175,12 +209,22 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
-        _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
+        _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
-        _syncingToBlockTree.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
         _feed.IsFinished.Should().Be(shouldfinish);
+    }
+
+    [Test]
+    public async Task ShouldLimitBatchSizeToPeerEstimate()
+    {
+        _feed.InitializeFeed();
+        _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Bodies, default)
+            .Returns(Task.FromResult<int?>(5));
+        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Infos.Length.Should().Be(5);
     }
 }

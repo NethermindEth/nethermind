@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -32,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public TestRpcModuleProvider(T module)
         {
             _jsonRpcConfig = new JsonRpcConfig();
-            _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, LimboLogs.Instance);
+            _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
 
             _provider.Register(new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(typeof(INetRpcModule).IsAssignableFrom(typeof(T)) ? (INetRpcModule)module : Substitute.For<INetRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(typeof(IEthRpcModule).IsAssignableFrom(typeof(T)) ? (IEthRpcModule)module : Substitute.For<IEthRpcModule>()), true));
@@ -54,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
                 {
-                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] { rpcModuleAttribute.ModuleType }).ToArray();
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union([rpcModuleAttribute.ModuleType]).ToArray();
                 }
             }
         }

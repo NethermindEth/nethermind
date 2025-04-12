@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -15,8 +18,8 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -39,14 +42,17 @@ namespace Nethermind.Consensus.AuRa
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IWorldState stateProvider,
             IReceiptStorage receiptStorage,
+            IBeaconBlockRootHandler beaconBlockRootHandler,
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
+            ITransactionProcessor transactionProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null)
+            IBlockCachePreWarmer? preWarmer = null,
+            IExecutionRequestsProcessor? executionRequestsProcessor = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -54,10 +60,13 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
+                transactionProcessor,
+                beaconBlockRootHandler,
                 new BlockhashStore(specProvider, stateProvider),
                 logManager,
                 withdrawalProcessor,
-                preWarmer: preWarmer)
+                preWarmer: preWarmer,
+                executionRequestsProcessor: executionRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -74,21 +83,21 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator AuRaValidator { get; }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
         {
             ValidateAuRa(block);
             _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
         {
-            return base.ProcessBlock(block, blockTracer, options);
+            return base.ProcessBlock(block, blockTracer, options, token);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
@@ -142,7 +151,7 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature is not null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
-                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new(_specProvider.ChainId);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
@@ -172,7 +181,7 @@ namespace Nethermind.Consensus.AuRa
 
         private class NullAuRaValidator : IAuRaValidator
         {
-            public Address[] Validators => Array.Empty<Address>();
+            public Address[] Validators => [];
             public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
             public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
         }

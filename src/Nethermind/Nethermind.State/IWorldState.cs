@@ -55,7 +55,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>
     /// Reset all storage
     /// </summary>
-    void Reset(bool resizeCollections = false);
+    void Reset(bool resetBlockChanges = true);
 
     /// <summary>
     /// Creates a restartable snapshot.
@@ -86,11 +86,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
 
-    void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+    void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
@@ -104,14 +104,15 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
+    void SetNonce(Address address, in UInt256 nonce);
+
     /* snapshots */
 
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true);
+    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitStorageRoots = true);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitRoots = true);
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
-
-    bool ClearCache() => false;
+    void ResetTransient();
 }

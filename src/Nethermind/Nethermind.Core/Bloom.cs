@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
@@ -17,10 +18,9 @@ namespace Nethermind.Core
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
 
-        public Bloom()
-        {
-            Bytes = new byte[ByteLength];
-        }
+        private BloomData _bloomData;
+
+        public Bloom() { }
 
         public Bloom(Bloom?[] blooms) : this()
         {
@@ -34,19 +34,17 @@ namespace Nethermind.Core
 
         public Bloom(LogEntry[]? logEntries, Bloom? blockBloom = null)
         {
-            Bytes = new byte[ByteLength];
-
             if (logEntries is null) return;
 
             Add(logEntries, blockBloom);
         }
 
-        public Bloom(byte[] bytes)
+        public Bloom(ReadOnlySpan<byte> bytes)
         {
-            Bytes = bytes;
+            bytes.CopyTo(Bytes);
         }
 
-        public byte[] Bytes { get; }
+        public Span<byte> Bytes => _bloomData.AsSpan();
 
         public void Set(ReadOnlySpan<byte> sequence)
         {
@@ -114,17 +112,14 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes.GetSimplifiedHashCode();
-        }
+        public override int GetHashCode() => Bytes.FastHash();
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
                 LogEntry logEntry = logEntries[entryIndex];
-                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
+                byte[] addressBytes = logEntry.Address.Bytes;
                 Set(addressBytes, blockBloom);
                 Hash256[] topics = logEntry.Topics;
                 for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
@@ -142,12 +137,12 @@ namespace Nethermind.Core
                 return;
             }
 
-            Bytes.AsSpan().Or(bloom.Bytes);
+            Bytes.Or(bloom.Bytes);
         }
 
         public bool Matches(LogEntry logEntry)
         {
-            if (Matches(logEntry.LoggersAddress))
+            if (Matches(logEntry.Address))
             {
                 Hash256[] topics = logEntry.Topics;
                 for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
@@ -221,8 +216,15 @@ namespace Nethermind.Core
         public Bloom Clone()
         {
             Bloom clone = new();
-            Bytes.CopyTo(clone.Bytes, 0);
+            Bytes.CopyTo(clone.Bytes);
             return clone;
+        }
+
+        [InlineArray(ByteLength)]
+        public struct BloomData
+        {
+            private byte _element0;
+            public Span<byte> AsSpan() => MemoryMarshal.CreateSpan(ref _element0, ByteLength);
         }
     }
 
@@ -278,14 +280,11 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override readonly int GetHashCode()
-        {
-            return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
-        }
+        public override readonly int GetHashCode() => Bytes.FastHash();
 
         public readonly bool Matches(LogEntry logEntry)
         {
-            if (Matches(logEntry.LoggersAddress))
+            if (Matches(logEntry.Address))
             {
                 Hash256[] topics = logEntry.Topics;
                 for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)

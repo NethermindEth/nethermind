@@ -48,9 +48,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 }
 
-                return !isLocal ?
-                    AcceptTxResult.NonceGap :
-                    AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                return AcceptTxResult.NonceGap;
             }
 
             return AcceptTxResult.Accepted;

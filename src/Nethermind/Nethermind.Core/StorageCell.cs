@@ -3,9 +3,11 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -17,17 +19,16 @@ namespace Nethermind.Core
         private readonly bool _isHash;
 
         public Address Address { get; }
+        public bool IsHash => _isHash;
         public UInt256 Index => _index;
 
         public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
-
-        public bool IsHash => _isHash;
 
         private ValueHash256 GetHash()
         {
             Span<byte> key = stackalloc byte[32];
             Index.ToBigEndian(key);
-            return ValueKeccak.Compute(key);
+            return KeccakCache.Compute(key);
         }
 
         public StorageCell(Address address, in UInt256 index)
@@ -43,7 +44,10 @@ namespace Nethermind.Core
             _isHash = true;
         }
 
-        public bool Equals(StorageCell other) => Address.Equals(other.Address) && Index.Equals(other.Index);
+        public bool Equals(StorageCell other) =>
+            _isHash == other._isHash &&
+            Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)) &&
+            Address.Equals(other.Address);
 
         public override bool Equals(object? obj)
         {
@@ -57,12 +61,8 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            uint hash = (uint)Address.GetHashCode();
-            hash = BitOperations.Crc32C(hash, _index.u0);
-            hash = BitOperations.Crc32C(hash, _index.u1);
-            hash = BitOperations.Crc32C(hash, _index.u2);
-            hash = BitOperations.Crc32C(hash, _index.u3);
-            return (int)hash;
+            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
+            return hash ^ Address.GetHashCode();
         }
 
         public override string ToString()

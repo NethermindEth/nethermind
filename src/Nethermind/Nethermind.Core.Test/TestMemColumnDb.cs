@@ -30,4 +30,6 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
     {
         return new InMemoryColumnWriteBatch<TKey>(this);
     }
+    public void Dispose() { }
+    public void Flush(bool onlyWal = false) { }
 }

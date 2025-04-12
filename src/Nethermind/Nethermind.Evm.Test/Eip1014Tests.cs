@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -88,7 +87,7 @@ namespace Nethermind.Evm.Test
 
             TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
             account.Balance.Should().Be(1.Ether());
-            AssertEip1014(expectedAddress, Array.Empty<byte>());
+            AssertEip1014(expectedAddress, []);
         }
 
         [Test]
@@ -126,7 +125,7 @@ namespace Nethermind.Evm.Test
             TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
             account.Balance.Should().Be(1.Ether());
             account.StorageRoot.Should().Be(storageRoot);
-            AssertEip1014(expectedAddress, Array.Empty<byte>());
+            AssertEip1014(expectedAddress, []);
         }
 
         [Test]
@@ -171,7 +170,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] salt = Bytes.FromHexString(saltHex);
 
-            byte[] deployedCode = Array.Empty<byte>();
+            byte[] deployedCode = [];
 
             byte[] initCode = Bytes.FromHexString(initCodeHex);
 
@@ -184,8 +183,7 @@ namespace Nethermind.Evm.Test
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
                 .Done;
-
-            GethLikeTxTrace trace = ExecuteAndTrace(code);
+            _ = ExecuteAndTrace(code);
 
             Address expectedAddress = new(resultHex);
             AssertEip1014(expectedAddress, deployedCode);

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -19,7 +20,7 @@ namespace Nethermind.State
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
-        public static readonly byte[] EmptyBytes = [0];
+        public static readonly byte[] ZeroBytes = [0];
 
         private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
@@ -46,12 +47,16 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        private static void ComputeKey(in UInt256 index, ref Span<byte> key)
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ComputeKey(in UInt256 index, Span<byte> key)
         {
             index.ToBigEndian(key);
 
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
+            // We can't direct ComputeTo the key as its also the input, so need a separate variable
+            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
+            // Which we can then directly assign to fast update the key
+            Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }
 
         [SkipLocalsInit]
@@ -62,25 +67,29 @@ namespace Nethermind.State
                 return GetArray(Lookup[index], storageRoot);
             }
 
-            Span<byte> key = stackalloc byte[32];
-            ComputeKey(index, ref key);
-            return GetArray(key, storageRoot);
+            return GetWithKeyGenerate(in index, storageRoot);
+
+            [SkipLocalsInit]
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                return GetArray(key, storageRoot);
+            }
         }
 
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
-            ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
+            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
 
             if (value.IsEmpty)
             {
-                return EmptyBytes;
+                return ZeroBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
-
-        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null) => GetArray(rawKey, rootHash);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
@@ -91,8 +100,14 @@ namespace Nethermind.State
             }
             else
             {
+                SetWithKeyGenerate(in index, value);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, byte[] value)
+            {
                 Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, ref key);
+                ComputeKey(index, key);
                 SetInternal(key, value);
             }
         }
@@ -106,7 +121,7 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                Set(rawKey, Array.Empty<byte>());
+                Set(rawKey, []);
             }
             else
             {

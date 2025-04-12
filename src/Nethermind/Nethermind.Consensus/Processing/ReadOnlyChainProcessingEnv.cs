@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
@@ -44,9 +45,6 @@ namespace Nethermind.Consensus.Processing
             _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
-            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
-            BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
         }
 
         protected virtual IBlockProcessor CreateBlockProcessor(
@@ -67,6 +65,8 @@ namespace Nethermind.Consensus.Processing
                 transactionsExecutor,
                 scope.WorldState,
                 receiptStorage,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(specProvider, scope.WorldState),
                 logManager);
         }

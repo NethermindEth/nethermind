@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -32,5 +33,27 @@ namespace Nethermind.Stats
         SyncPeerNodeDetails EthNodeDetails { get; }
         SyncPeerNodeDetails LesNodeDetails { get; }
         CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
+
+        /// <summary>
+        /// Run a request sizer for the specific request type. The function passed in will receive a closure with the
+        /// Original request size clamped down to a calculated limit. Depending on the latency and response size,
+        /// the limit will be adjusted for subsequent calls.
+        /// </summary>
+        Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(
+            RequestType requestType,
+            IReadOnlyList<TRequest> request,
+            Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func)
+            where TResponse : IReadOnlyList<TResponseItem>;
+
+        /// <summary>
+        /// Run a request sizer for the specific request type. The function passed in will receive a closure with a limit
+        /// Depending on the latency, the limit will be adjusted for subsequent calls.
+        /// </summary>
+        Task<TResponse> RunLatencyRequestSizer<TResponse>(RequestType requestType, Func<int, Task<TResponse>> func);
+
+        /// <summary>
+        /// Get the current request limit for the specific request type.
+        /// </summary>
+        int GetCurrentRequestLimit(RequestType requestType);
     }
 }

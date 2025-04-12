@@ -5,187 +5,322 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
+using FluentAssertions;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.EthStats;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore.Config;
+using Nethermind.Era1;
+using Nethermind.Hive;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Db.Blooms;
+using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.TxPool;
+using Nethermind.Runner.Test.Ethereum;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
+using Nethermind.Taiko;
+using Nethermind.Taiko.TaikoSpec;
+using Nethermind.UPnP.Plugin;
+using NSubstitute;
 using NUnit.Framework;
-using LogLevel = NLog.LogLevel;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Runner.Test;
+
+[TestFixture, Parallelizable(ParallelScope.None)]
+public class EthereumRunnerTests
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class EthereumRunnerTests
+    static EthereumRunnerTests()
     {
-        static EthereumRunnerTests()
+        AssemblyLoadContext.Default.Resolving += static (_, _) => null;
+    }
+
+    private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+
+    private static ICollection InitOnce()
+    {
+        // we need this to discover ChainSpecEngineParameters
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+
+        // by pre-caching configs providers we make the tests do lot less work
+        ConcurrentQueue<(string, ConfigProvider)> result = new();
+        Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            AssemblyLoadContext.Default.Resolving += (context, name) =>
-            {
-                return null;
-            };
+            Console.Error.WriteLine($"{configFile}");
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource(configFile));
+            configProvider.Initialize();
+            result.Enqueue((configFile, configProvider));
+        });
+
+        {
+            // Special case for verify trie on state sync finished
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
+            result.Enqueue(("mainnet-verify-trie-starter", configProvider));
         }
 
-        private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+        return result;
+    }
 
-        private static ICollection InitOnce()
+    [OneTimeTearDown]
+    public void OneTimeTearDown()
+    {
+        // Optimism override decoder globally, which mess up other test
+        Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+        if (assembly is not null)
         {
-            // by pre-caching configs providers we make the tests do lot less work
-            ConcurrentQueue<(string, ConfigProvider)> result = new();
-            Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
-            {
-                var configProvider = new ConfigProvider();
-                configProvider.AddSource(new JsonConfigSource(configFile));
-                configProvider.Initialize();
-                result.Enqueue((configFile, configProvider));
-            });
+            Rlp.RegisterDecoders(assembly, true);
+        }
+    }
 
-            return result;
+    public static IEnumerable ChainSpecRunnerTests
+    {
+        get
+        {
+            int index = 0;
+            foreach (var cachedProvider in _cachedProviders!.Value)
+            {
+                yield return new TestCaseData(cachedProvider, index);
+                index++;
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
+        {
+            // some weird thing, not worth investigating
+            return;
         }
 
-        public static IEnumerable ChainSpecRunnerTests
+        await SmokeTest(testCase.configProvider, testIndex, 30330);
+    }
+
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
         {
-            get
+            // some weird thing, not worth investigating
+            return;
+        }
+
+        await SmokeTest(testCase.configProvider, testIndex, 30430, true);
+    }
+
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(300000)]
+    public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
+        {
+            return;
+        }
+
+        PluginLoader pluginLoader = new(
+            "plugins",
+            new FileSystem(),
+            NullLogger.Instance,
+            typeof(AuRaPlugin),
+            typeof(CliquePlugin),
+            typeof(OptimismPlugin),
+            typeof(TaikoPlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin),
+            typeof(HivePlugin),
+            typeof(UPnPPlugin)
+        );
+        pluginLoader.Load();
+
+        ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+
+        INethermindApi api = runner.Api;
+        api.FileSystem = Substitute.For<IFileSystem>();
+        api.BlockTree = Substitute.For<IBlockTree>();
+        api.ReceiptStorage = Substitute.For<IReceiptStorage>();
+        api.DbProvider = Substitute.For<IDbProvider>();
+        api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
+
+        try
+        {
+            var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (var step in stepsLoader.ResolveStepsImplementations())
             {
-                int index = 0;
-                foreach (var cachedProvider in _cachedProviders!.Value)
+                runner.LifetimeScope.Resolve(step.StepType);
+            }
+
+            // Many components are not part of the step constructor param, so we have resolve them manually here
+
+            // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
+            Build.MockOutNethermindApi((NethermindApi)api);
+
+            foreach (var propertyInfo in api.GetType().Properties())
+            {
+                // Property with `SkipServiceCollection` make property from container.
+                if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
                 {
-                    yield return new TestCaseData(cachedProvider, index);
-                    index++;
+                    propertyInfo.GetValue(api);
+                }
+
+                if (propertyInfo.GetSetMethod() is not null)
+                {
+                    if (runner.LifetimeScope.ComponentRegistry.TryGetRegistration(new TypedService(propertyInfo.PropertyType), out var registration))
+                    {
+                        var isFallback = registration.Metadata.ContainsKey(FallbackToFieldFromApi<INethermindApi>.FallbackMetadata);
+                        if (!isFallback)
+                        {
+                            Assert.Fail($"A setter in {nameof(INethermindApi)} of type {propertyInfo.PropertyType} also has a container registration that is not a fallback to api. This is likely a bug.");
+                        }
+                    }
                 }
             }
-        }
 
-        [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
-        {
-            if (testCase.configProvider is null)
+            if (api.Context.ResolveOptional<IBlockCacheService>() is not null)
             {
-                // some weird thing, not worth investigating
-                return;
+                api.Context.Resolve<IBlockCacheService>();
+                api.Context.Resolve<InvalidChainTracker>();
+                api.Context.Resolve<IBeaconPivot>();
+                api.Context.Resolve<BeaconPivot>();
             }
-
-            await SmokeTest(testCase.configProvider, testIndex, 30330);
+            api.Context.Resolve<IPoSSwitcher>();
+            api.Context.Resolve<ISynchronizer>();
+            api.Context.Resolve<IAdminEraService>();
         }
-
-        [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
+        finally
         {
-            if (testCase.configProvider is null)
-            {
-                // some weird thing, not worth investigating
-                return;
-            }
-
-            await SmokeTest(testCase.configProvider, testIndex, 30430, true);
+            await runner.StopAsync();
         }
+    }
 
-        private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
+    private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
+    {
+        // An ugly hack to keep unused types
+        Console.WriteLine(typeof(IHiveConfig));
+
+        var tempPath = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(tempPath.Path);
+
+        Exception? exception = null;
+        try
         {
-            Type type1 = typeof(ITxPoolConfig);
-            Type type2 = typeof(INetworkConfig);
-            Type type3 = typeof(IKeyStoreConfig);
-            Type type4 = typeof(IDbConfig);
-            Type type7 = typeof(IEthStatsConfig);
-            Type type8 = typeof(ISyncConfig);
-            Type type9 = typeof(IBloomConfig);
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            initConfig.BaseDbPath = tempPath.Path;
 
-            Console.WriteLine(type1.Name);
-            Console.WriteLine(type2.Name);
-            Console.WriteLine(type3.Name);
-            Console.WriteLine(type4.Name);
-            Console.WriteLine(type7.Name);
-            Console.WriteLine(type8.Name);
-            Console.WriteLine(type9.Name);
+            IDbConfig dbConfig = configProvider.GetConfig<IDbConfig>();
+            dbConfig.FlushOnExit = false;
 
-            var tempPath = TempPath.GetTempDirectory();
-            Directory.CreateDirectory(tempPath.Path);
+            INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+            int port = basePort + testIndex;
+            networkConfig.P2PPort = port;
+            networkConfig.DiscoveryPort = port;
 
-            Exception? exception = null;
+            PluginLoader pluginLoader = new(
+                "plugins",
+                new FileSystem(),
+                NullLogger.Instance,
+                typeof(AuRaPlugin),
+                typeof(CliquePlugin),
+                typeof(OptimismPlugin),
+                typeof(TaikoPlugin),
+                typeof(EthashPlugin),
+                typeof(NethDevPlugin),
+                typeof(HivePlugin),
+                typeof(UPnPPlugin)
+            );
+            pluginLoader.Load();
+
+            ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+            IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+            EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+
+            using CancellationTokenSource cts = new();
+
             try
             {
-                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                initConfig.BaseDbPath = tempPath.Path;
-
-                INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
-                int port = basePort + testIndex;
-                networkConfig.P2PPort = port;
-                networkConfig.DiscoveryPort = port;
-
-                INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
-                nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
-                EthereumRunner runner = new(nethermindApi);
-
-                using CancellationTokenSource cts = new();
-
-                try
+                Task task = runner.Start(cts.Token);
+                if (cancel)
                 {
-                    Task task = runner.Start(cts.Token);
-                    if (cancel)
-                    {
-                        cts.Cancel();
-                    }
+                    cts.Cancel();
+                }
 
-                    await task;
-                }
-                catch (Exception e)
-                {
-                    exception = e;
-                }
-                finally
-                {
-                    try
-                    {
-                        await runner.StopAsync();
-                    }
-                    catch (Exception e)
-                    {
-                        if (exception is not null)
-                        {
-                            await TestContext.Error.WriteLineAsync(e.ToString());
-                        }
-                        else
-                        {
-                            throw;
-                        }
-                    }
-                }
+                await task;
+            }
+            catch (Exception e)
+            {
+                exception = e;
             }
             finally
             {
                 try
                 {
-                    tempPath.Dispose();
+                    await runner.StopAsync();
                 }
-                catch
+                catch (Exception e)
                 {
                     if (exception is not null)
                     {
-                        // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
-                        // await TestContext.Error.WriteLineAsync(e.ToString());
+                        await TestContext.Error.WriteLineAsync(e.ToString());
                     }
                     else
                     {
                         throw;
                     }
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                tempPath.Dispose();
+            }
+            catch
+            {
+                if (exception is not null)
+                {
+                    // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
+                    // await TestContext.Error.WriteLineAsync(e.ToString());
+                }
+                else
+                {
+                    throw;
                 }
             }
         }

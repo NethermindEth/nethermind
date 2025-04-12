@@ -11,6 +11,7 @@ using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -71,17 +72,12 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-                _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
+                _session.RemoteHost = ipEndPoint.Address.ToString();
+                _session.RemotePort = ipEndPoint.Port;
             }
 
-            CheckHandshakeInitTimeout().ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error("Error during handshake timeout logic", x.Exception);
-                }
-            });
+            _ = CheckHandshakeInitTimeout();
         }
 
         public override void ChannelInactive(IChannelHandlerContext context)
@@ -203,20 +199,31 @@ namespace Nethermind.Network.Rlpx
 
         private async Task CheckHandshakeInitTimeout()
         {
-            Task<object> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+            try
+            {
+                Task<object> receivedInitMsgTask = _initCompletionSource.Task;
+                CancellationTokenSource delayCancellation = new();
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
 
-            if (firstTask != receivedInitMsgTask)
-            {
-                Metrics.HandshakeTimeouts++;
-                if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
-                //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
-                await _channel.DisconnectAsync();
+                if (firstTask != receivedInitMsgTask)
+                {
+                    Metrics.HandshakeTimeouts++;
+                    if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
+                    //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
+                    await _channel.DisconnectAsync();
+                }
+                else
+                {
+                    delayCancellation.Cancel();
+                }
             }
-            else
+            catch (Exception ex)
             {
-                delayCancellation.Cancel();
+
+                if (_logger.IsError)
+                {
+                    _logger.Error("Error during handshake timeout logic", ex);
+                }
             }
         }
     }

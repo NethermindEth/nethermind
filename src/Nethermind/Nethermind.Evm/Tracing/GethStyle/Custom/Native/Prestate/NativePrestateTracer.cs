@@ -7,6 +7,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -18,6 +19,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public const string PrestateTracer = "prestateTracer";
 
     private readonly IWorldState? _worldState;
+    private readonly Hash256? _txHash;
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
@@ -31,6 +33,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public NativePrestateTracer(
         IWorldState worldState,
         GethTraceOptions options,
+        Hash256? txHash,
         Address? from,
         Address? to = null,
         Address? beneficiary = null)
@@ -42,6 +45,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         IsTracingStack = true;
 
         _worldState = worldState;
+        _txHash = txHash;
 
         NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
@@ -63,6 +67,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
 
+        result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace
         {
             Value = _diffMode
@@ -73,14 +78,14 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         if (_diffMode)
             ProcessDiffState();
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         if (_diffMode)

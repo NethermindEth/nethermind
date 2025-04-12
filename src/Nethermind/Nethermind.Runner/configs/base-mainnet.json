@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/base-mainnet.json.zst",
+    "GenesisHash": "0xf712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd",
+    "BaseDbPath": "nethermind_db/base-mainnet",
+    "LogFileName": "base-mainnet.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "PivotNumber": 28540000,
+    "PivotHash": "0x0fb39fe70c090defc30fafe826fd062360e434d2e4b486c30be4967c2e2eb80a"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://mainnet-sequencer.base.org"
+  }
+}

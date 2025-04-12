@@ -9,6 +9,8 @@ namespace Nethermind.Network
 {
     public interface INetworkStorage
     {
+        public const string PeerDb = "PeerDb";
+
         NetworkNode[] GetPersistedNodes();
         int PersistedNodesCount { get; }
 

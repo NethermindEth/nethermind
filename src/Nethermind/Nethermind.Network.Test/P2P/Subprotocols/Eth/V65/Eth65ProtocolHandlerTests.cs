@@ -10,6 +10,7 @@ using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,6 +20,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -46,6 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private Block _genesisBlock = null!;
         private Eth65ProtocolHandler _handler = null!;
         private ITxGossipPolicy _txGossipPolicy = null!;
+        private CompositeDisposable _disposables = null!;
 
         [SetUp]
         public void Setup()
@@ -54,9 +57,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             NetworkDiagTracer.IsEnabled = true;
 
+            _disposables = new();
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
+            _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
             _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
@@ -89,6 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _handler?.Dispose();
             _session?.Dispose();
             _syncManager?.Dispose();
+            _disposables.Dispose();
         }
 
         [Test]
@@ -154,7 +160,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     return true;
                 });
             using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
-            PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
 
@@ -178,7 +184,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     return true;
                 });
             using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
-            PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
 
@@ -191,7 +197,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IReadOnlyList<Hash256>>());
+            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IOwnedReadOnlyList<Hash256>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
@@ -203,7 +209,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
         private void HandleIncomingStatusMessage()
         {
-            var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();

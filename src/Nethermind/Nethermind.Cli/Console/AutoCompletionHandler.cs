@@ -23,7 +23,7 @@ namespace Nethermind.Cli.Console
         // index - The index of the terminal cursor within {text}
         public string[] GetSuggestions(string text, int index)
         {
-            string[] suggestions = Array.Empty<string>();
+            string[] suggestions = [];
             if (!text.Contains('.'))
             {
                 suggestions = _cliModuleLoader.ModuleNames.OrderBy(x => x).Where(x => x.StartsWith(text)).ToArray();

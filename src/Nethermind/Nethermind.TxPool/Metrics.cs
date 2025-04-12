@@ -104,7 +104,7 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of pending transactions added to transaction pool.")]
-        public static long PendingTransactionsAdded { get; set; }
+        public static long PendingTransactionsAdded;
 
         [CounterMetric]
         [Description("Number of pending 1559-type transactions added to transaction pool.")]
@@ -121,6 +121,10 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Ratio of 1559-type transactions in the block.")]
         public static float Eip1559TransactionsRatio { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of 7702-type transactions in the block.")]
+        public static long Eip7702TransactionsInBlock { get; set; }
 
         [GaugeMetric]
         [Description("Number of blob transactions in the block.")]

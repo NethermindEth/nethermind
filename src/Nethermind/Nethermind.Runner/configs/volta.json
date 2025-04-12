@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "IsMining": false,
+    "ChainSpecPath": "chainspec/volta.json",
+    "GenesisHash": "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5",
+    "BaseDbPath": "nethermind_db/volta",
+    "LogFileName": "volta.log",
+    "MemoryHint": 768000000
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Network": {
+    "ActivePeersMaxCount": 25
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 31590000,
+    "PivotHash": "0x12deb56ff78b4b298527344a3bd9e65d5620a1ecbacde13be3e6e21062f3cb52",
+    "PivotTotalDifficulty": "10749519971032446060808003848769557799514827742",
+    "UseGethLimitsInFastBlocks": false,
+    "FastSyncCatchUpHeightDelta": 10000000000
+  },
+  "EthStats": {
+    "Name": "Nethermind Volta"
+  },
+  "Metrics": {
+    "NodeName": "Volta"
+  },
+  "Mining": {
+    "MinGasPrice": 1
+  },
+  "Blocks": {
+    "GasToken": "VT"
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

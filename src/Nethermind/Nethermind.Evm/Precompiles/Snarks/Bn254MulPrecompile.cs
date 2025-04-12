@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -14,15 +13,15 @@ namespace Nethermind.Evm.Precompiles.Snarks;
 /// </summary>
 public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 {
-    public static Bn254MulPrecompile Instance = new Bn254MulPrecompile();
+    public static readonly Bn254MulPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
         Span<byte> inputDataSpan = stackalloc byte[96];

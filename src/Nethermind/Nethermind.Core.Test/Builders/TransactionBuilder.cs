@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -64,7 +63,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithChainId(ulong chainId)
+        public TransactionBuilder<T> WithChainId(ulong? chainId)
         {
             TestObjectInternal.ChainId = chainId;
             return this;
@@ -184,6 +183,11 @@ namespace Nethermind.Core.Test.Builders
                     proofs: new byte[blobCount][]
                     );
 
+                if (!KzgPolynomialCommitments.IsInitialized)
+                {
+                    KzgPolynomialCommitments.InitializeAsync().Wait();
+                }
+
                 for (int i = 0; i < blobCount; i++)
                 {
                     TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
@@ -192,20 +196,11 @@ namespace Nethermind.Core.Test.Builders
                     wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
                     wrapper.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
 
-                    if (KzgPolynomialCommitments.IsInitialized)
-                    {
-                        KzgPolynomialCommitments.KzgifyBlob(
-                            wrapper.Blobs[i],
-                            wrapper.Commitments[i],
-                            wrapper.Proofs[i],
-                            TestObjectInternal.BlobVersionedHashes[i].AsSpan());
-                    }
-                    else
-                    {
-                        TestObjectInternal.BlobVersionedHashes[i]![0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
-                        wrapper.Commitments[i][0] = (byte)(i % 256);
-                        wrapper.Proofs[i][0] = (byte)(i % 256);
-                    }
+                    KzgPolynomialCommitments.KzgifyBlob(
+                        wrapper.Blobs[i],
+                        wrapper.Commitments[i],
+                        wrapper.Proofs[i],
+                        TestObjectInternal.BlobVersionedHashes[i].AsSpan());
                 }
 
                 TestObjectInternal.NetworkWrapper = wrapper;
@@ -215,6 +210,22 @@ namespace Nethermind.Core.Test.Builders
                 return WithBlobVersionedHashes(blobCount);
             }
 
+            return this;
+        }
+
+        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
+        {
+            return TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
+        }
+
+        public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple authTuple)
+        {
+            TestObjectInternal.AuthorizationList = TestObjectInternal.AuthorizationList is not null ? [.. TestObjectInternal.AuthorizationList, authTuple] : [authTuple];
+            return this;
+        }
+        public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple[] authList)
+        {
+            TestObjectInternal.AuthorizationList = authList;
             return this;
         }
 
@@ -236,12 +247,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> Signed(PrivateKey? privateKey = null)
+        public TransactionBuilder<T> Signed(PrivateKey? privateKey = null, bool isEip155Enabled = true)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId);
 
-            return Signed(ecdsa, privateKey, isEip155Enabled: true);
+            return Signed(ecdsa, privateKey, isEip155Enabled);
         }
 
         // TODO: auto create ecdsa here
@@ -256,7 +267,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId);
             ecdsa.Sign(privateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
@@ -280,6 +291,18 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
         {
             TestObjectInternal.IsServiceTransaction = isServiceTransaction;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithSourceHash(Hash256? sourceHash)
+        {
+            TestObjectInternal.SourceHash = sourceHash;
+            return this;
+        }
+
+        public TransactionBuilder<T> From(T item)
+        {
+            TestObjectInternal = item;
             return this;
         }
     }

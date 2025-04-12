@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -90,7 +92,7 @@ public class ChainParameters
     /// <summary>
     /// Optional, address where burnt EIP-1559 fees will go
     /// </summary>
-    public Address Eip1559FeeCollector { get; set; }
+    public Address FeeCollector { get; set; }
 
     /// <summary>
     /// Block from which EIP1559 base fee cannot drop below <see cref="Eip1559BaseFeeMinValue"/>
@@ -107,6 +109,7 @@ public class ChainParameters
     public long? TerminalPoWBlockNumber { get; set; }
 
     public UInt256? TerminalTotalDifficulty { get; set; }
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }
     public ulong? Eip3860TransitionTimestamp { get; set; }
@@ -117,9 +120,21 @@ public class ChainParameters
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
+    public ulong? Eip6110TransitionTimestamp { get; set; }
+    public Address DepositContractAddress { get; set; }
+    public ulong? Eip7002TransitionTimestamp { get; set; }
+    public Address Eip7002ContractAddress { get; set; }
+    public ulong? Eip7251TransitionTimestamp { get; set; }
+    public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702TransitionTimestamp { get; set; }
+    public ulong? OpGraniteTransitionTimestamp { get; set; }
+    public ulong? OpHoloceneTransitionTimestamp { get; set; }
+    public ulong? Eip7623TransitionTimestamp { get; set; }
+
+    public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
 
     #region EIP-4844 parameters
     /// <summary>
@@ -129,21 +144,14 @@ public class ChainParameters
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
 
     /// <summary>
-    /// Gets or sets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
-    /// </summary>
-    public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
-
-    /// <summary>
     /// Gets or sets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei, defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
     /// </summary>
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
 
     /// <summary>
-    /// Gets or sets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
+    /// Enables blob gas fee collection for Gnosis chain
     /// </summary>
-    public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
+    public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     #endregion
 }

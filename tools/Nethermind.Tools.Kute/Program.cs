@@ -1,7 +1,6 @@
 using App.Metrics.Formatters;
 using App.Metrics.Formatters.Ascii;
 using App.Metrics.Formatters.Json;
-using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.FlowManager;
@@ -15,30 +14,52 @@ using Nethermind.Tools.Kute.ProgressReporter;
 using Nethermind.Tools.Kute.ResponseTracer;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
+using System.CommandLine;
 
 namespace Nethermind.Tools.Kute;
 
 static class Program
 {
-    public static async Task Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
-        await Parser.Default.ParseArguments<Config>(args).WithParsedAsync(async config =>
+        CliRootCommand rootCommand =
+        [
+            Config.MessagesFilePath,
+            Config.HostAddress,
+            Config.JwtSecretFilePath,
+            Config.AuthTtl,
+            Config.DryRun,
+            Config.ShowProgress,
+            Config.MetricsOutputFormatter,
+            Config.MethodFilters,
+            Config.ResponsesTraceFile,
+            Config.RequestsPerSecond,
+            Config.UnwrapBatch
+        ];
+        rootCommand.SetAction((parseResult, cancellationToken) =>
         {
-            IServiceProvider serviceProvider = BuildServiceProvider(config);
+            IServiceProvider serviceProvider = BuildServiceProvider(parseResult);
             Application app = serviceProvider.GetService<Application>()!;
 
-            await app.Run();
+            return app.Run();
         });
+
+        CliConfiguration cli = new(rootCommand);
+
+        return await cli.InvokeAsync(args);
     }
 
-    static IServiceProvider BuildServiceProvider(Config config)
+    private static IServiceProvider BuildServiceProvider(ParseResult parseResult)
     {
+        bool dryRun = parseResult.GetValue(Config.DryRun);
+        bool unwrapBatch = parseResult.GetValue(Config.UnwrapBatch);
+        string? responsesTraceFile = parseResult.GetValue(Config.ResponsesTraceFile);
         IServiceCollection collection = new ServiceCollection();
 
         collection.AddSingleton<Application>();
         collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>();
-        collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
+        collection.AddSingleton<ISecretProvider>(new FileSecretProvider(parseResult.GetValue(Config.JwtSecretFilePath)!));
         collection.AddSingleton<IAuth>(provider =>
             new TtlAuth(
                 new JwtAuth(
@@ -46,42 +67,39 @@ static class Program
                     provider.GetRequiredService<ISecretProvider>()
                 ),
                 provider.GetRequiredService<ISystemClock>(),
-                config.AuthTtl
+                parseResult.GetValue(Config.AuthTtl)
             )
         );
-        collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
+        collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!));
         collection.AddSingleton<IMessageProvider<JsonRpc?>>(serviceProvider =>
         {
             var messageProvider = serviceProvider.GetRequiredService<IMessageProvider<string>>();
             var jsonMessageProvider = new JsonRpcMessageProvider(messageProvider);
 
-            return config.UnwrapBatch
-                ? new UnwrapBatchJsonRpcMessageProvider(jsonMessageProvider)
-                : jsonMessageProvider;
+            return unwrapBatch ? new UnwrapBatchJsonRpcMessageProvider(jsonMessageProvider) : jsonMessageProvider;
         });
-        collection.AddSingleton<IJsonRpcValidator>(
-            config.DryRun
-                ? new NullJsonRpcValidator()
-                : new ComposedJsonRpcValidator(new List<IJsonRpcValidator>
-                {
-                    new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator(),
-                })
+        collection.AddSingleton<IJsonRpcValidator>(dryRun
+            ? new NullJsonRpcValidator()
+            : new ComposedJsonRpcValidator(new List<IJsonRpcValidator>
+            {
+                new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator(),
+            })
         );
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
-                config.MethodFilters
+                parseResult.GetValue(Config.MethodFilters)!
                     .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
                     .ToList()
             )
         );
         collection.AddSingleton<IJsonRpcSubmitter>(provider =>
         {
-            if (!config.DryRun)
+            if (!dryRun)
             {
                 return new HttpJsonRpcSubmitter(
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<IAuth>(),
-                    config.HostAddress
+                    parseResult.GetValue(Config.HostAddress)!
                 );
             }
 
@@ -92,13 +110,13 @@ static class Program
             return new NullJsonRpcSubmitter();
         });
         collection.AddSingleton<IResponseTracer>(
-            config is { DryRun: false, ResponsesTraceFile: not null }
-                ? new FileResponseTracer(config.ResponsesTraceFile)
+            !dryRun && responsesTraceFile is not null
+                ? new FileResponseTracer(responsesTraceFile)
                 : new NullResponseTracer()
         );
         collection.AddSingleton<IProgressReporter>(provider =>
         {
-            if (config.ShowProgress)
+            if (parseResult.GetValue(Config.ShowProgress))
             {
                 // NOTE:
                 // Terrible, terrible hack since it forces a double enumeration:
@@ -107,7 +125,7 @@ static class Program
                 // We can reduce the cost by not parsing each message on the first enumeration
                 // only when we're not unwrapping batches. If we are, we need to parse.
                 // This optimization relies on implementation details.
-                IMessageProvider<object?> messagesProvider = config.UnwrapBatch
+                IMessageProvider<object?> messagesProvider = unwrapBatch
                     ? provider.GetRequiredService<IMessageProvider<JsonRpc?>>()
                     : provider.GetRequiredService<IMessageProvider<string>>();
                 var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
@@ -118,14 +136,15 @@ static class Program
         });
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         collection.AddSingleton<IMetricsOutputFormatter>(
-            config.MetricsOutputFormatter switch
+            parseResult.GetValue(Config.MetricsOutputFormatter) switch
             {
                 MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
                 MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
-        collection.AddSingleton<IJsonRpcFlowManager>(new JsonRpcFlowManager(config.RequestsPerSecond, config.UnwrapBatch));
+        collection.AddSingleton<IJsonRpcFlowManager>(new JsonRpcFlowManager(
+            parseResult.GetValue(Config.RequestsPerSecond), unwrapBatch));
 
         return collection.BuildServiceProvider();
     }

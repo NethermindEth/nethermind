@@ -109,7 +109,7 @@ public class TestMemDb : MemDb, ITunableDb
         return new InMemoryWriteBatch(this);
     }
 
-    public override void Flush()
+    public override void Flush(bool onlyWal)
     {
         FlushCount++;
     }

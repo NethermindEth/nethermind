@@ -3,12 +3,11 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.JsonRpc;
+using Nethermind.ExternalSigner.Plugin;
 using Nethermind.JsonRpc.Client;
 using NSubstitute;
 using NUnit.Framework;
@@ -30,7 +29,7 @@ namespace Nethermind.Blockchain.Test.Consensus
 
             var result = sut.Sign(Keccak.Zero);
 
-            Assert.That(new Signature(returnValue).Bytes, Is.EqualTo(result.Bytes));
+            Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes));
         }
 
         [Test]

@@ -23,6 +23,6 @@ namespace Nethermind.Specs.Forks
             IsEip1234Enabled = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Constantinople());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Constantinople());
     }
 }

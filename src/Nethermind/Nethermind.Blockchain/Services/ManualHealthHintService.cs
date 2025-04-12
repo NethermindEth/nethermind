@@ -1,5 +1,3 @@
-using System;
-
 namespace Nethermind.Blockchain.Services;
 
 public class ManualHealthHintService : IHealthHintService

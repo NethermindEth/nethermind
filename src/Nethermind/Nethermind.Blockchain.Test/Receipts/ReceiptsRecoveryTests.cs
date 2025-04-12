@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -20,12 +19,12 @@ public class ReceiptsRecoveryTests
     public void Setup()
     {
         MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-        EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
+        EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId);
 
         _receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(5, 5, true, ReceiptsRecoveryResult.NeedReinsert)]
     [TestCase(5, 5, false, ReceiptsRecoveryResult.Skipped)]
     [TestCase(0, 0, true, ReceiptsRecoveryResult.Skipped)]

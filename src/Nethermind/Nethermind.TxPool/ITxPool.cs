@@ -16,11 +16,13 @@ namespace Nethermind.TxPool
         int GetPendingBlobTransactionsCount();
         Transaction[] GetPendingTransactions();
 
+        public event EventHandler<Block>? TxPoolHeadChanged;
+
         /// <summary>
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender();
+        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
 
         /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
@@ -38,13 +40,20 @@ namespace Nethermind.TxPool
         bool ContainsTx(Hash256 hash, TxType txType);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
+        Transaction? GetBestTx();
+        IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
+        bool TryGetBlobAndProof(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;
+        public bool AcceptTxWhenNotSynced { get; set; }
+        bool SupportsBlobs { get; }
     }
 }

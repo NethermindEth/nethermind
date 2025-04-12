@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 [TestFixture]
 public class TxTraceFilterTests
 {

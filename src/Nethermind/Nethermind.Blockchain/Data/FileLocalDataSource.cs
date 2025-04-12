@@ -9,7 +9,6 @@ using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Polly;
 
 namespace Nethermind.Blockchain.Data

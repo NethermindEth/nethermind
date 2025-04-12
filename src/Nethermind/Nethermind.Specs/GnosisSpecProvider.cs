@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
@@ -15,9 +16,12 @@ public class GnosisSpecProvider : ISpecProvider
     public const long IstanbulBlockNumber = 7_298_030;
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
-    public const ulong BeaconChainGenesisTimestamp = 0x61b10dbc;
+    public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
+    //TODO correct this timestamp!
+    public const ulong PragueTimestamp = ulong.MaxValue - 2;
+    public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }
 
@@ -32,9 +36,10 @@ public class GnosisSpecProvider : ISpecProvider
             < LondonBlockNumber => Berlin.Instance,
             _ => forkActivation.Timestamp switch
             {
-                null or < ShanghaiTimestamp => London.Instance,
-                < CancunTimestamp => Shanghai.Instance,
-                _ => Cancun.Instance
+                null or < ShanghaiTimestamp => LondonGnosis.Instance,
+                < CancunTimestamp => ShanghaiGnosis.Instance,
+                < PragueTimestamp => CancunGnosis.Instance,
+                _ => PragueGnosis.Instance
             }
         };
     }
@@ -53,8 +58,10 @@ public class GnosisSpecProvider : ISpecProvider
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("8626000000000000000000058750000000000000000000");
     public IReleaseSpec GenesisSpec => Byzantium.Instance;
     public long? DaoBlockNumber => null;
+    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
+    public string SealEngine => SealEngineType.AuRa;
     public ForkActivation[] TransitionActivations { get; }
 
     public static GnosisSpecProvider Instance { get; } = new();

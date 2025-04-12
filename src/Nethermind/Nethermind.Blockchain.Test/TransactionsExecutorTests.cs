@@ -266,8 +266,6 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
-            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();

@@ -6,16 +6,14 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
 {
-    private readonly Dictionary<Hash256AsKey, Block> _blockDict = new();
-    private readonly Dictionary<long, Block> _blockNumDict = new();
-    private readonly Dictionary<byte[], byte[]> _metadataDict = new(Bytes.EqualityComparer);
+    private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
+    private readonly Dictionary<long, Block> _blockNumDict = [];
     private readonly BlockDecoder _blockDecoder = new();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -45,24 +43,14 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         return block;
     }
 
-    public byte[]? GetRaw(long blockNumber, Hash256 blockHash)
+    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
             using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
             return newRlp.AsSpan().ToArray();
         }
-        return readonlyBaseBlockStore.GetRaw(blockNumber, blockHash);
-    }
-
-    public IEnumerable<Block> GetAll()
-    {
-        var allBlocks = new HashSet<Block>(readonlyBaseBlockStore.GetAll());
-        foreach (Block block in _blockDict.Values)
-        {
-            allBlocks.Add(block);
-        }
-        return allBlocks;
+        return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
@@ -77,18 +65,8 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     }
 
     public void Cache(Block block)
-    {
-        Insert(block);
-    }
+        => Insert(block);
 
-    public void SetMetadata(byte[] key, byte[] value)
-    {
-        _metadataDict[key] = value;
-        readonlyBaseBlockStore.SetMetadata(key, value);
-    }
-
-    public byte[]? GetMetadata(byte[] key)
-    {
-        return _metadataDict.TryGetValue(key, out var value) ? value : readonlyBaseBlockStore.GetMetadata(key);
-    }
+    public bool HasBlock(long blockNumber, Hash256 blockHash)
+        => _blockNumDict.ContainsKey(blockNumber);
 }

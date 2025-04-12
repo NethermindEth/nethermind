@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -60,7 +59,7 @@ namespace Nethermind.Db.FullPruning
             return value;
         }
 
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Span<byte> value = _currentDb.GetSpan(key, flags); // we are reading from the main DB
             if (!value.IsNull() && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
@@ -145,11 +144,11 @@ namespace Nethermind.Db.FullPruning
         public IDb Innermost => this;
 
         // we need to flush both DB's
-        public void Flush()
+        public void Flush(bool onlyWal)
         {
-            _currentDb.Flush();
+            _currentDb.Flush(onlyWal);
             IDb? cloningDb = _pruningContext?.CloningDb;
-            cloningDb?.Flush();
+            cloningDb?.Flush(onlyWal);
         }
 
         // we need to clear both DB's

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using DotNetty.Buffers;
 using Nethermind.Api;
@@ -123,7 +122,7 @@ namespace Nethermind.Init
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            long hashCacheMemory = txPoolConfig.Size / 4L * 1024L * 128L;
+            long hashCacheMemory = txPoolConfig.Size / 1024L * 128L;
             if ((_remainingMemory * 0.05) < hashCacheMemory)
             {
                 hashCacheMemory = Math.Min((long)(_remainingMemory * 0.05), hashCacheMemory);
@@ -155,7 +154,7 @@ namespace Nethermind.Init
                     FastBlocksMemory = Math.Min(1.GB(), (long)(0.1 * _remainingMemory));
                 }
 
-                Synchronization.MemoryAllowance.FastBlocksMemory = (ulong)FastBlocksMemory;
+                syncConfig.FastHeadersMemoryBudget = (ulong)FastBlocksMemory;
             }
         }
 
@@ -203,10 +202,11 @@ namespace Nethermind.Init
         {
             ValidateCpuCount(cpuCount);
 
-            NettyMemory = Math.Min(512.MB(), (long)(0.2 * _remainingMemory));
+            NettyMemory = Math.Min(256.MB(), (long)(0.2 * _remainingMemory));
 
             uint arenaCount = (uint)Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
 
+            NettyMemoryEstimator.SetPageSize();
             long estimate = NettyMemoryEstimator.Estimate(arenaCount, networkConfig.NettyArenaOrder);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */

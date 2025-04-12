@@ -14,13 +14,13 @@ namespace Nethermind.Network
     {
         private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
 
-        public T Deserialize<T>(byte[] bytes) where T : MessageBase
+        public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
                 throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
-            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Length);
-            byteBuffer.WriteBytes(bytes);
+            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Count);
+            byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
             try
             {
                 return zeroMessageSerializer.Deserialize(byteBuffer);

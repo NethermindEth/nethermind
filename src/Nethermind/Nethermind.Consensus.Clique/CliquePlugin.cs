@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -15,38 +16,37 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.State;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliquePlugin : IConsensusPlugin
+    public class CliquePlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
-        public string Name => "Clique";
+        public string Name => SealEngineType;
 
-        public string Description => "Clique Consensus Engine";
+        public string Description => $"{SealEngineType} Consensus Engine";
 
         public string Author => "Nethermind";
+
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Core.SealEngineType.Clique)
-            {
-                return Task.CompletedTask;
-            }
 
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
 
+            var chainSpec = getFromApi!.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<CliqueChainSpecEngineParameters>();
             _cliqueConfig = new CliqueConfig
             {
-                BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
-                Epoch = getFromApi.ChainSpec.Clique.Epoch
+                BlockPeriod = chainSpec.Period,
+                Epoch = chainSpec.Epoch,
+                MinimumOutOfTurnDelay = nethermindApi.Config<ICliqueConfig>().MinimumOutOfTurnDelay
             };
 
             _snapshotManager = new SnapshotManager(
@@ -56,7 +56,9 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.EthereumEcdsa!,
                 getFromApi.LogManager);
 
-            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
+            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager,
+                getFromApi.ChainSpec.EngineChainSpecParametersProvider
+                    .GetChainSpecParameters<CliqueChainSpecEngineParameters>());
 
             setInApi.SealValidator = new CliqueSealValidator(
                 _cliqueConfig,
@@ -111,6 +113,8 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
@@ -140,7 +144,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
+            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
             CliqueBlockProducer blockProducer = new(
                 additionalTxSource.Then(txPoolTxSource),
@@ -158,14 +162,14 @@ namespace Nethermind.Consensus.Clique
             return blockProducer;
         }
 
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             _blockProducerRunner = new CliqueBlockProducerRunner(
                 _nethermindApi.BlockTree,
                 _nethermindApi.Timestamper,
                 _nethermindApi.CryptoRandom,
                 _snapshotManager,
-                (CliqueBlockProducer)_nethermindApi.BlockProducer!,
+                (CliqueBlockProducer)blockProducer,
                 _cliqueConfig,
                 _nethermindApi.LogManager);
             _nethermindApi.DisposeStack.Push(_blockProducerRunner);

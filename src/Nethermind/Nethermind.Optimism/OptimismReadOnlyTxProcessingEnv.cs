@@ -18,16 +18,14 @@ public class OptimismReadOnlyTxProcessingEnv(
       ISpecProvider specProvider,
       ILogManager logManager,
       IL1CostHelper l1CostHelper,
-      IOptimismSpecHelper opSpecHelper,
-      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
+      IOptimismSpecHelper opSpecHelper) : ReadOnlyTxProcessingEnv(
       worldStateManager,
       readOnlyBlockTree,
       specProvider,
-      logManager,
-      worldStateToWarmUp
+      logManager
      )
 {
-    protected override TransactionProcessor CreateTransactionProcessor()
+    protected override ITransactionProcessor CreateTransactionProcessor()
     {
         ArgumentNullException.ThrowIfNull(LogManager);
 

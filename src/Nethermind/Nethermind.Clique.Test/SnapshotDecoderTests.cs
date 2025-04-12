@@ -67,8 +67,7 @@ namespace Nethermind.Clique.Test
             tally[candidate].Votes = 2;
             tally[_signer2] = new Tally(false);
             tally[_signer2].Votes = 1;
-            Snapshot snapshot = new(number, hash, signers, tally);
-            snapshot.Votes = votes;
+            Snapshot snapshot = new(number, hash, signers, tally) { Votes = votes };
             return snapshot;
         }
     }

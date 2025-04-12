@@ -6,13 +6,14 @@ using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm.Test;
 
 public class DebugTracerTests : VirtualMachineTestsBase
 {
-    public GethLikeTxMemoryTracer GethLikeTxTracer => new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+    private GethLikeTxMemoryTracer GethLikeTxTracer => new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
 
     [SetUp]
     public override void Setup()
@@ -67,7 +68,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         }
 
-        Assert.False(TestFailed);
+        Assert.That(TestFailed, Is.False);
     }
 
     [TestCase("0x5b601760005600")]
@@ -119,7 +120,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             }
         }
 
-        Assert.False(TestFailed);
+        Assert.That(TestFailed, Is.False);
     }
 
     [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
@@ -251,7 +252,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
-        Assert.IsFalse(resultTraces.Failed);
+        Assert.That(resultTraces.Failed, Is.False);
     }
 
     [TestCase("5b6017600160005700")]
@@ -276,7 +277,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
-                EvmStack<VirtualMachine.IsTracing> stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
+                EvmStack<VirtualMachine.IsTracing> stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
                 stack.PopLimbo();
                 stack.PushByte(0x00);
 
@@ -286,7 +287,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
-        Assert.IsFalse(resultTraces.Failed);
+        Assert.That(resultTraces.Failed, Is.False);
     }
 
     [TestCase("6017806000526000511460005260206000f3")]
@@ -319,7 +320,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
-        Assert.IsTrue(resultTraces.ReturnValue[31] == 0);
+        Assert.That(resultTraces.ReturnValue[31] == 0, Is.True);
     }
 
     [TestCase("6017806000526000511460005260206000f3")]
@@ -386,7 +387,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
-        Assert.IsTrue(resultTraces.Failed);
+        Assert.That(resultTraces.Failed, Is.True);
     }
 
 

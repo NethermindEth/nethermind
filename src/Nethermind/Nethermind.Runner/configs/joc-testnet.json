@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/joc-testnet.json",
+    "GenesisHash": "0x0fb7b4779aae36dc557227283f182bc9a3b232c07fae4a2553734c5817df1d06",
+    "BaseDbPath": "nethermind_db/joc-testnet",
+    "LogFileName": "joc-testnet.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 10460000,
+    "PivotHash": "0x37383991d05b1d446cd28a8aff95e95af80b35dd5cbc23b050a56d95fcb83ba4",
+    "PivotTotalDifficulty": "18002820"
+  },
+  "Metrics": {
+    "NodeName": "JOC-Testnet"
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 30000000,
+    "GasToken": "JOC"
+  },
+  "JsonRpc": {
+    "Enabled": true
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

@@ -10,10 +10,10 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -89,15 +89,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    Eip4844Constants.TargetBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock * 4 },
+                    Cancun.Instance.GetTargetBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock() * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock })
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock() })
             {
                 TestName = "Different values",
                 ExpectedResult = (

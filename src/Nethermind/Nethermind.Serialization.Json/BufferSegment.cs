@@ -30,7 +30,7 @@ internal sealed class BufferSegment : ReadOnlySequenceSegment<byte>
             Debug.Assert(value <= AvailableMemory.Length);
 
             _end = value;
-            Memory = AvailableMemory.Slice(0, value);
+            Memory = AvailableMemory[..value];
         }
     }
 

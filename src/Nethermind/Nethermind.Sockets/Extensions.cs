@@ -57,7 +57,15 @@ public static class Extensions
             }
             catch (WebSocketException ex)
             {
-                logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                if (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+                {
+                    // Websocket closed
+                    if (logger.IsDebug) logger.Debug($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex}");
+                }
+                else
+                {
+                    if (logger.IsError) logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                }
             }
             catch (Exception ex)
             {

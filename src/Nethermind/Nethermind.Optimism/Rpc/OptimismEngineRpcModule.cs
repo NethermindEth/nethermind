@@ -6,12 +6,17 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class OptimismEngineRpcModule : IOptimismEngineRpcModule
+public class OptimismEngineRpcModule(
+    IEngineRpcModule engineRpcModule,
+    IOptimismSignalSuperchainV1Handler signalSuperchainHandler
+) : IOptimismEngineRpcModule
 {
-    private readonly IEngineRpcModule _engineRpcModule;
+    private readonly IEngineRpcModule _engineRpcModule = engineRpcModule;
+    private readonly IOptimismSignalSuperchainV1Handler _signalSuperchainHandler = signalSuperchainHandler;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
     {
@@ -59,8 +64,19 @@ public class OptimismEngineRpcModule : IOptimismEngineRpcModule
         return _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
     }
 
-    public OptimismEngineRpcModule(IEngineRpcModule engineRpcModule)
+    public ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal)
     {
-        _engineRpcModule = engineRpcModule;
+        OptimismProtocolVersion currentVersion = _signalSuperchainHandler.CurrentVersion;
+
+        if (currentVersion < signal.Recommended)
+        {
+            _signalSuperchainHandler.OnBehindRecommended(signal.Recommended);
+        }
+        if (currentVersion < signal.Required)
+        {
+            _signalSuperchainHandler.OnBehindRequired(signal.Required);
+        }
+
+        return ResultWrapper<OptimismSignalSuperchainV1Result>.Success(new OptimismSignalSuperchainV1Result(currentVersion));
     }
 }

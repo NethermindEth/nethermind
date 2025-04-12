@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
+    public class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
         private const StateSyncBatch EmptyBatch = null;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.FastSync
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
         }
 

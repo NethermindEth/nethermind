@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
-        private readonly TxDecoder _decoder = new();
+        private readonly TxDecoder _decoder = TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -19,9 +19,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             nettyRlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Transactions.Count; i++)
+            foreach (Transaction tx in message.Transactions.AsSpan())
             {
-                nettyRlpStream.Encode(message.Transactions[i], RlpBehaviors.InMempoolForm);
+                nettyRlpStream.Encode(tx, RlpBehaviors.InMempoolForm);
             }
         }
 

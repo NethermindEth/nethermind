@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -53,7 +54,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     {
         _specHelper = specHelper;
         _l1CostHelper = l1CostHelper;
-        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
+        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
@@ -86,7 +87,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
+            readOnlyTxProcessingEnv.TransactionProcessor,
             new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),

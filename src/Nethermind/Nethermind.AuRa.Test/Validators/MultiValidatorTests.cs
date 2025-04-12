@@ -12,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -106,7 +105,7 @@ namespace Nethermind.AuRa.Test.Validators
                     Build.A.BlockHeader.WithNumber(blockNumber + 1).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject));
             }
 
-            _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(x => x == 0 ? 1 : x + 2));
+            _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(static x => x == 0 ? 1 : x + 2));
         }
 
         [TestCase(AuRaParameters.ValidatorType.Contract, 1)]
@@ -175,7 +174,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
-            _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, (l, pair) => l.CompareTo(pair.Key), out KeyValuePair<long, AuRaParameters.Validator> validatorInfo);
+            _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, static (l, pair) => l.CompareTo(pair.Key), out KeyValuePair<long, AuRaParameters.Validator> validatorInfo);
             _finalizationManager.GetFinalizationLevel(validatorInfo.Key).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?)null);
             _block.Header.Number = blockNumber;
             validator.OnBlockProcessingStart(_block);
@@ -188,7 +187,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 _block.Header.Number = i;
                 validator.OnBlockProcessingStart(_block);
-                validator.OnBlockProcessingEnd(_block, Array.Empty<TxReceipt>());
+                validator.OnBlockProcessingEnd(_block, []);
 
                 int finalizedBlock = i - blocksToFinalization;
                 if (finalizedBlock >= 1)
@@ -208,13 +207,13 @@ namespace Nethermind.AuRa.Test.Validators
 
                 innerValidator.Received(calls).OnBlockProcessingStart(Arg.Any<Block>());
                 innerValidator.Received(calls).OnBlockProcessingEnd(Arg.Any<Block>(),
-                    Array.Empty<TxReceipt>());
+                    []);
             }
         }
 
         private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
         {
-            return validator.Validators.ToDictionary(x => x.Value, x => Math.Max(x.Key + 1, 1));
+            return validator.Validators.ToDictionary(static x => x.Value, static x => Math.Max(x.Key + 1, 1));
         }
 
         private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType)

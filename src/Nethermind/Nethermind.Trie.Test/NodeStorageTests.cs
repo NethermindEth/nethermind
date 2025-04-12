@@ -7,9 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Trie.Test;
 

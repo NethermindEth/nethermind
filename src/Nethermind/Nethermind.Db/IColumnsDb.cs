@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IColumnsDb<TKey> : IDbMeta
+    public interface IColumnsDb<TKey> : IDbMeta, IDisposable
     {
         IDb GetColumnDb(TKey key);
         IEnumerable<TKey> ColumnKeys { get; }

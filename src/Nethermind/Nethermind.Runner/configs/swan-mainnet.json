@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/swan-mainnet.json.zst",
+    "GenesisHash": "0x834c39d79eb75c4c52d745e624750b817b66eb13e483b035c42ec3aa5cfa7429",
+    "BaseDbPath": "nethermind_db/swan-mainnet",
+    "LogFileName": "swan-mainnet.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 5
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://sequencer-mainnet.swanchain.org"
+  }
+}

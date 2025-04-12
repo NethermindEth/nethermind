@@ -9,6 +9,8 @@ namespace Nethermind.Core
 {
     public class TxReceipt
     {
+        private Bloom? _boom;
+
         public TxReceipt()
         {
         }
@@ -60,7 +62,7 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get; set; }
+        public Bloom? Bloom { get => _boom ?? CalculateBloom(); set => _boom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
@@ -69,6 +71,9 @@ namespace Nethermind.Core
         /// Output is either StateRoot or StatusCode depending on eip configuration.
         /// </summary>
         public bool SkipStateAndStatusInRlp { get; set; }
+
+        public Bloom CalculateBloom()
+            => _boom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
     }
 
     public ref struct TxReceiptStructRef

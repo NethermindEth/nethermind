@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -172,7 +172,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -181,7 +181,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -289,7 +289,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
+    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -298,7 +298,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportMemoryChange(long offset, byte data)
+    public void ReportMemoryChange(UInt256 offset, byte data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)

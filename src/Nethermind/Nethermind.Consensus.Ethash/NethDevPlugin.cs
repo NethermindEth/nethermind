@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -14,24 +15,26 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class NethDevPlugin : IConsensusPlugin
+    public class NethDevPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
+        public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
-        public string Name => "NethDev";
+        public string Name => NethDev;
 
-        public string Description => "NethDev (Spaceneth)";
+        public string Description => $"{NethDev} (Spaceneth)";
 
         public string Author => "Nethermind";
+
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {
@@ -41,11 +44,6 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
-            {
-                return null;
-            }
-
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
@@ -81,6 +79,8 @@ namespace Nethermind.Consensus.Ethash
                 new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager);
 
@@ -105,8 +105,9 @@ namespace Nethermind.Consensus.Ethash
             return blockProducer;
         }
 
-        public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public string SealEngineType => NethDev;
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
                 .IfPoolIsNotEmpty(_nethermindApi.TxPool)
@@ -114,7 +115,7 @@ namespace Nethermind.Consensus.Ethash
             return new StandardBlockProducerRunner(
                 trigger,
                 _nethermindApi.BlockTree,
-                _nethermindApi.BlockProducer!);
+                blockProducer);
         }
     }
 }

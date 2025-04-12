@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -15,10 +13,6 @@ namespace Nethermind.TxPool;
 /// </summary>
 public class LightTransaction : Transaction
 {
-    private static readonly Dictionary<int, byte[][]> _blobVersionedHashesCache =
-        Enumerable.Range(1, Eip4844Constants.GetMaxBlobsPerBlock()).ToDictionary(i => i, i => new byte[i][]);
-
-
     public LightTransaction(Transaction fullTx)
     {
         Type = TxType.Blob;
@@ -30,7 +24,7 @@ public class LightTransaction : Transaction
         GasPrice = fullTx.GasPrice; // means MaxPriorityFeePerGas
         DecodedMaxFeePerGas = fullTx.DecodedMaxFeePerGas;
         MaxFeePerBlobGas = fullTx.MaxFeePerBlobGas;
-        BlobVersionedHashes = _blobVersionedHashesCache[fullTx.BlobVersionedHashes!.Length];
+        BlobVersionedHashes = fullTx.BlobVersionedHashes;
         GasBottleneck = fullTx.GasBottleneck;
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;

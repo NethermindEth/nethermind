@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
-    private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
+    private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
     private const string? WithLog = """{"withLog":true}""";
     private const string? OnlyTopCall = """{"onlyTopCall":true}""";
     private const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
@@ -25,16 +25,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
-
-        GethLikeTxTrace callTrace = Execute(
-                tracer,
-                code,
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-        return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions)
-            // fix for windows, can be done better in .NET 9: https://github.com/dotnet/runtime/issues/84117
-            .ReplaceLineEndings("\n");
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
+        using GethLikeTxTrace callTrace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+        return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
     }
 
     private static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with

@@ -86,9 +86,9 @@ public class PooledTransactionsMessageSerializerTests
         SerializerTester.TestZero(
             new PooledTransactionsMessageSerializer(),
             transactionsMessage,
-            additionallyExcluding: (o) =>
-                o.For(msg => msg.Transactions)
-                    .Exclude(tx => tx.SenderAddress));
+            additionallyExcluding: static (o) =>
+                o.For(static msg => msg.Transactions)
+                    .Exclude(static tx => tx.SenderAddress));
         transactionsMessage.Dispose();
     }
 
@@ -99,12 +99,12 @@ public class PooledTransactionsMessageSerializerTests
         PooledTransactionsMessageSerializer serializer = new();
         serializer.Serialize(buffer, transactionsMessage);
         using PooledTransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => tx.Type == TxType.Blob))
+        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.Type == TxType.Blob))
         {
             Assert.That(tx.NetworkWrapper, Is.Not.Null);
         }
 
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => tx.Type != TxType.Blob))
+        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.Type != TxType.Blob))
         {
             Assert.That(tx.NetworkWrapper, Is.Null);
         }
@@ -112,5 +112,5 @@ public class PooledTransactionsMessageSerializerTests
 
     private static IEnumerable<PooledTransactionsMessage> GetTransactionMessages() =>
         TransactionsMessageSerializerTests.GetTransactions()
-            .Select(txs => new PooledTransactionsMessage(txs.ToPooledList(3)));
+            .Select(static txs => new PooledTransactionsMessage(txs.ToPooledList(3)));
 }

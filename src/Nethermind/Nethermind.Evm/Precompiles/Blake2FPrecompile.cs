@@ -15,13 +15,13 @@ namespace Nethermind.Evm.Precompiles
 
         private readonly Blake2Compression _blake = new();
 
-        public static readonly Blake2FPrecompile Instance = new Blake2FPrecompile();
+        public static readonly Blake2FPrecompile Instance = new();
 
         public static Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Precompiles
             return rounds;
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {

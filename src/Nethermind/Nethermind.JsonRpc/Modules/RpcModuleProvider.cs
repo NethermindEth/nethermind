@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using System.Threading;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -31,12 +32,12 @@ namespace Nethermind.JsonRpc.Modules
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
-        private readonly object _updateRegistrationsLock = new();
+        private readonly Lock _updateRegistrationsLock = new();
 
-        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            Serializer = new EthereumJsonSerializer();
+            Serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
@@ -186,7 +187,7 @@ namespace Nethermind.JsonRpc.Modules
                         ThrowNotJsonRpc();
                     }
 
-                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke(Span<object>.Empty));
+                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke([]));
 
                     [DoesNotReturn]
                     [StackTraceHidden]
@@ -216,7 +217,7 @@ namespace Nethermind.JsonRpc.Modules
 
             public ResolvedMethodInfo()
             {
-                ExpectedParameters = Array.Empty<ExpectedParameter>();
+                ExpectedParameters = [];
             }
 
             public ResolvedMethodInfo(
@@ -237,7 +238,7 @@ namespace Nethermind.JsonRpc.Modules
                     ParameterDetails details = ParameterDetails.None;
                     if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
-                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Array.Empty<Type>()));
+                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, []));
                     }
 
                     if (IsNullableParameter(parameter))

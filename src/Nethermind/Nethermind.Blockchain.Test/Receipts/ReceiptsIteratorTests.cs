@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -107,7 +106,7 @@ public class ReceiptsIteratorTests
         Span<byte> span = stream.AsSpan();
         TestMemDb blockDb = new TestMemDb();
         ReceiptsRecovery recovery = new ReceiptsRecovery(
-            new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId, LimboLogs.Instance),
+            new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             MainnetSpecProvider.Instance,
             false
         );

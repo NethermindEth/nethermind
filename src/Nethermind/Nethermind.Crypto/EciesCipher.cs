@@ -48,7 +48,7 @@ public class EciesCipher : IEciesCipher
     {
         byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
         PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
-        IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
+        EthereumIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
         byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
 
         byte[] prefixedBytes = ephemeralPrivateKey.PublicKey.PrefixedBytes;
@@ -71,13 +71,13 @@ public class EciesCipher : IEciesCipher
 
     private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
     {
-        IIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
+        EthereumIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
         return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
     }
 
-    private static readonly IesParameters _iesParameters = new IesWithCipherParameters(Array.Empty<byte>(), Array.Empty<byte>(), KeySize, KeySize);
+    private static readonly IesParameters _iesParameters = new IesWithCipherParameters([], [], KeySize, KeySize);
 
-    private static IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
+    private static EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
     {
         IBlockCipher aesFastEngine = AesUtilities.CreateEngine();
 

@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         UpdatingPivot = 8192,
 
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad |
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | Full | DbLoad |
               FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
     }
 

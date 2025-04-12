@@ -98,15 +98,11 @@ namespace Nethermind.KeyStore
 
         private static byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
         {
-            using (var memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter)))
-            {
-                using (var cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true))
-                {
-                    cryptoStream.Write(data, 0, data.Length);
-                    cryptoStream.FlushFinalBlock();
-                    return memoryStream.ToArray();
-                }
-            }
+            using var memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter));
+            using var cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true);
+            cryptoStream.Write(data, 0, data.Length);
+            cryptoStream.FlushFinalBlock();
+            return memoryStream.ToArray();
         }
 
         private static void AesCtr(byte[] key, byte[] salt, Stream inputStream, Stream outputStream)

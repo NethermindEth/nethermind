@@ -4,12 +4,21 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Find;
-using Nethermind.Facade.Eth;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Blockchain.TestBlockchain;
 using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -18,6 +27,7 @@ public class EthSimulateTestsHiveBase
 {
     private static readonly object[] HiveTestCases =
          {
+new object[] {"baseFee", "{\"blockStateCalls\": [\r\n                {\r\n                    \"blockOverrides\": {\r\n                        \"blobBaseFee\": \"0x0\"\r\n                    },\r\n                    \"stateOverrides\": {\r\n                        \"0xc000000000000000000000000000000000000000\": {\r\n                            \"balance\": \"0x5f5e100\"\r\n                        },\r\n                        \"0xc200000000000000000000000000000000000000\": {\r\n                            \"code\": \"0x\"\r\n                        }\r\n                    },\r\n                    \"calls\": [\r\n                        {\r\n                            \"from\": \"0xc000000000000000000000000000000000000000\",\r\n                            \"to\": \"0xc200000000000000000000000000000000000000\",\r\n                            \"maxFeePerBlobGas\": \"0xa\",\r\n                            \"blobVersionedHashes\": [\r\n                                \"0x010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014\"\r\n                            ]\r\n                        }\r\n                    ]\r\n                },\r\n                {\r\n                    \"blockOverrides\": {\r\n                        \"blobBaseFee\": \"0x1\"\r\n                    },\r\n                    \"calls\": [\r\n                        {\r\n                            \"from\": \"0xc000000000000000000000000000000000000000\",\r\n                            \"to\": \"0xc200000000000000000000000000000000000000\",\r\n                            \"maxFeePerBlobGas\": \"0xa\",\r\n                            \"blobVersionedHashes\": [\r\n                                \"0x010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014\"\r\n                            ]\r\n                        }\r\n                    ]\r\n                }\r\n            ]\r\n        }"},
 new object[] {"multicall-add-more-non-defined-BlockStateCalls-than-fit-but-now-with-fit", "{\"blockStateCalls\": [{\"blockOverrides\": {\"number\": \"0xa\"}, \"stateOverrides\": {\"0xc100000000000000000000000000000000000000\": {\"code\": \"0x608060405234801561001057600080fd5b506000366060484641444543425a3a60014361002c919061009b565b406040516020016100469a99989796959493929190610138565b6040516020818303038152906040529050915050805190602001f35b6000819050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b60006100a682610062565b91506100b183610062565b92508282039050818111156100c9576100c861006c565b5b92915050565b6100d881610062565b82525050565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b6000610109826100de565b9050919050565b610119816100fe565b82525050565b6000819050919050565b6101328161011f565b82525050565b60006101408201905061014e600083018d6100cf565b61015b602083018c6100cf565b610168604083018b610110565b610175606083018a6100cf565b61018260808301896100cf565b61018f60a08301886100cf565b61019c60c08301876100cf565b6101a960e08301866100cf565b6101b76101008301856100cf565b6101c5610120830184610129565b9b9a505050505050505050505056fea26469706673582212205139ae3ba8d46d11c29815d001b725f9840c90e330884ed070958d5af4813d8764736f6c63430008120033\"}}, \"calls\": [{\"from\": \"0xc000000000000000000000000000000000000000\", \"to\": \"0xc100000000000000000000000000000000000000\", \"input\": \"0x\"}]}, {\"calls\": [{\"from\": \"0xc000000000000000000000000000000000000000\", \"to\": \"0xc100000000000000000000000000000000000000\", \"input\": \"0x\"}]}, {\"blockOverrides\": {\"number\": \"0x14\"}, \"calls\": [{\"from\": \"0xc000000000000000000000000000000000000000\", \"to\": \"0xc100000000000000000000000000000000000000\", \"input\": \"0x\"}]}, {\"calls\": [{\"from\": \"0xc000000000000000000000000000000000000000\", \"to\": \"0xc100000000000000000000000000000000000000\", \"input\": \"0x\"}]}]}"},
 new object[] {"multicall-basefee-too-low-without-validation-38012", "{\"blockStateCalls\": [{\"blockOverrides\": {\"baseFeePerGas\": \"0xa\"}, \"stateOverrides\": {\"0xc000000000000000000000000000000000000000\": {\"balance\": \"0x7d0\"}}, \"calls\": [{\"from\": \"0xc100000000000000000000000000000000000000\", \"to\": \"0xc100000000000000000000000000000000000000\", \"maxFeePerGas\": \"0x0\", \"maxPriorityFeePerGas\": \"0x0\"}]}]}"},
 //new object[] {"multicall-block-override-reflected-in-contract-simple", "{\"blockStateCalls\": [{\"blockOverrides\": {\"number\": \"0x12a\", \"time\": \"0x64\"}}, {\"blockOverrides\": {\"number\": \"0x14\", \"time\": \"0x65\"}}, {\"blockOverrides\": {\"number\": \"0x15\", \"time\": \"0xc8\"}}]}"},
@@ -72,11 +82,67 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine($"current test: {name}");
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
 
         Console.WriteLine();
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Data, Is.Not.Null);
+    }
+
+    /// <remarks>
+    /// See: https://github.com/ethereum/execution-apis/blob/e56d3208789259d0b09fa68e9d8594aa4d73c725/docs/ethsimulatev1-notes.md?plain=1#L18
+    /// </remarks>
+    [Combinatorial]
+    public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
+        [Values(2, 12)] int secondsPerSlot,
+        [Values(0, 1, 2, 5)] int blockNumber)
+    {
+        string data = $$"""
+                              {
+                                "blockStateCalls": [
+                                  {
+                                    "stateOverrides": {
+                                      "{{TestItem.AddressA}}": {
+                                        "balance": "0xf00000000"
+                                      }
+                                    },
+                                    "calls": [
+                                      {
+                                        "from": "{{TestItem.AddressA}}",
+                                        "to": "{{TestItem.AddressB}}",
+                                        "value": "0x1"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            """;
+        var serializer = new EthereumJsonSerializer();
+        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+
+        var chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
+            .WithBlocksConfig(new BlocksConfig
+            {
+                SecondsPerSlot = (ulong)secondsPerSlot
+            })
+            .Build((builder) => builder
+                .ConfigureTestConfiguration((config) => config.AddBlockOnStart = false)
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance)));
+
+        await chain.AddBlock();
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
+
+        var blockParameter = new BlockParameter(blockNumber);
+        var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;
+        var simulated = chain.EthRpcModule.eth_simulateV1(payload, blockParameter).Data[0];
+
+        simulated.ParentHash.Should().Be(parent.Hash);
+        (simulated.Number - parent.Number).Should().Be(1);
+        (simulated.Timestamp - parent.Timestamp).Should().Be((UInt256)secondsPerSlot);
     }
 }

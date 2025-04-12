@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
@@ -86,9 +85,9 @@ public class TransactionsMessageSerializerTests
         SerializerTester.TestZero(
             new TransactionsMessageSerializer(),
             transactionsMessage,
-            additionallyExcluding: (o) =>
-                o.For(msg => msg.Transactions)
-                    .Exclude(tx => tx.SenderAddress));
+            additionallyExcluding: static (o) =>
+                o.For(static msg => msg.Transactions)
+                    .Exclude(static tx => tx.SenderAddress));
         transactionsMessage.Dispose();
     }
 
@@ -100,19 +99,19 @@ public class TransactionsMessageSerializerTests
         serializer.Serialize(buffer, transactionsMessage);
         transactionsMessage.Dispose();
         using TransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => tx.SupportsBlobs))
+        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.SupportsBlobs))
         {
             Assert.That(tx.NetworkWrapper, Is.Not.Null);
         }
 
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => !tx.SupportsBlobs))
+        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => !tx.SupportsBlobs))
         {
             Assert.That(tx.NetworkWrapper, Is.Null);
         }
     }
 
     private static IEnumerable<TransactionsMessage> GetTransactionMessages() =>
-        GetTransactions().Select(txs => new TransactionsMessage(txs.ToPooledList(3)));
+        GetTransactions().Select(static txs => new TransactionsMessage(txs.ToPooledList(3)));
 
     public static IEnumerable<IEnumerable<Transaction>> GetTransactions()
     {
@@ -121,7 +120,7 @@ public class TransactionsMessageSerializerTests
         {
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject
         };
 
@@ -130,36 +129,36 @@ public class TransactionsMessageSerializerTests
             Build.A.Transaction
                 .WithType(TxType.Legacy)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(3)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
         };
 
@@ -169,12 +168,12 @@ public class TransactionsMessageSerializerTests
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject
         };
     }

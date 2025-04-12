@@ -42,7 +42,7 @@ public class ColumnDb : IDb
         return _mainDb.GetWithColumnFamily(key, _columnFamily, _iteratorManager, flags);
     }
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, flags);
     }
@@ -128,9 +128,9 @@ public class ColumnDb : IDb
         return _mainDb.KeyExistsWithColumn(key, _columnFamily);
     }
 
-    public void Flush()
+    public void Flush(bool onlyWal)
     {
-        _mainDb.Flush();
+        _mainDb.Flush(onlyWal);
     }
 
     public void Compact()

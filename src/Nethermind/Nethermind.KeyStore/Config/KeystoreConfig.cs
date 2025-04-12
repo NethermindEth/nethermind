@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.KeyStore.Config
 {
     /// <summary>
@@ -43,10 +41,10 @@ namespace Nethermind.KeyStore.Config
 
         public string EnodeKeyFile { get; set; }
 
-        public string[] Passwords { get; set; } = Array.Empty<string>();
+        public string[] Passwords { get; set; } = [];
 
-        public string[] PasswordFiles { get; set; } = Array.Empty<string>();
+        public string[] PasswordFiles { get; set; } = [];
 
-        public string[] UnlockAccounts { get; set; } = Array.Empty<string>();
+        public string[] UnlockAccounts { get; set; } = [];
     }
 }
