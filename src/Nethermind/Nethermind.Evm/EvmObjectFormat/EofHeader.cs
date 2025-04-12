@@ -13,6 +13,7 @@ public readonly struct EofContainer
     public readonly ReadOnlyMemory<byte> Container;
     public bool IsEmpty => Container.IsEmpty;
 
+    // https://eips.ethereum.org/EIPS/eip-3540#section-structure
     public EofContainer(ReadOnlyMemory<byte> container, EofHeader eofHeader)
     {
         Container = container;
