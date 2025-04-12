@@ -988,7 +988,7 @@ internal class Eof1 : IEofVersionHandler
             jumpDestinations.Clear();
 
             ReadOnlySpan<byte> currentTypeSection = eofContainer.TypeSections[sectionId].Span;
-            bool isCurrentSectionNonReturning = currentTypeSection[OUTPUTS_OFFSET] == 0x80;
+            bool isCurrentSectionNonReturning = currentTypeSection[OUTPUTS_OFFSET] == NON_RETURNING;
             // If the section is non–returning, an exit is already implied.
             bool hasRequiredSectionExit = isCurrentSectionNonReturning;
 
@@ -1063,7 +1063,7 @@ internal class Eof1 : IEofVersionHandler
 
                     ReadOnlySpan<byte> targetTypeSection = eofContainer.TypeSections[targetSectionId].Span;
                     byte targetSectionOutputCount = targetTypeSection[OUTPUTS_OFFSET];
-                    bool isTargetSectionNonReturning = targetTypeSection[OUTPUTS_OFFSET] == 0x80;
+                    bool isTargetSectionNonReturning = targetTypeSection[OUTPUTS_OFFSET] == NON_RETURNING;
                     byte currentSectionOutputCount = currentTypeSection[OUTPUTS_OFFSET];
 
                     // Check that the jump target does not require more outputs than the current section.
@@ -1397,7 +1397,7 @@ internal class Eof1 : IEofVersionHandler
         ReadOnlySpan<byte> targetTypeSection = eofContainer.TypeSections[targetSectionId].Span;
         byte targetSectionOutputCount = targetTypeSection[OUTPUTS_OFFSET];
 
-        if (targetSectionOutputCount == 0x80)
+        if (targetSectionOutputCount == NON_RETURNING)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, {Instruction.CALLF} into non-returning function");
@@ -1514,8 +1514,8 @@ internal class Eof1 : IEofVersionHandler
                 .Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH)
                 .ReadEthUInt16();
 
-            // Determine the output count for this section. A value of 0x80 indicates non-returning.
-            ushort currentSectionOutputs = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80
+            // Determine the output count for this section. A value of NON_RETURNING indicates non-returning.
+            ushort currentSectionOutputs = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == NON_RETURNING
                 ? (ushort)0
                 : typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
 
@@ -1701,7 +1701,7 @@ internal class Eof1 : IEofVersionHandler
                     ushort targetSectionId = code.Slice(posPostInstruction, immediateCount).ReadEthUInt16();
                     result.InputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
                     result.OutputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                    result.IsTargetSectionNonReturning = result.OutputCount == 0x80;
+                    result.IsTargetSectionNonReturning = result.OutputCount == NON_RETURNING;
                     if (result.IsTargetSectionNonReturning)
                     {
                         result.OutputCount = 0;
