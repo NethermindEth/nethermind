@@ -172,6 +172,8 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
@@ -179,7 +181,7 @@ namespace Nethermind.Evm.Test
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
-                bool isEofContext = timestamp >= MainnetSpecProvider.PragueActivation.Timestamp;
+                bool isEofContext = timestamp >= MainnetSpecProvider.OsakaActivation.Timestamp;
                 bool isValidOpcode = false;
 
                 Instruction opcode = (Instruction)i;
