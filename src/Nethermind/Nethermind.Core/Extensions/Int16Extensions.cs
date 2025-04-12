@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 
 namespace Nethermind.Core.Extensions;
 
-public static class short16Extensions
+public static class Short16Extensions
 {
     public static byte[] ToByteArray(this short value)
     {

@@ -143,8 +143,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
         // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
-        if (state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec) &&
-            _codeCache.Get(in codeHash) is null)
+        if (_codeCache.Get(in codeHash) is null && state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec))
         {
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
