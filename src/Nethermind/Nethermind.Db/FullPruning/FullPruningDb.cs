@@ -227,6 +227,8 @@ namespace Nethermind.Db.FullPruning
         {
             private readonly FullPruningDb _db;
             private long _processedKeys;
+            private bool _committed = false;
+            private bool _disposed = false;
             public IDb CloningDb { get; }
             public bool DuplicateReads { get; }
 
@@ -241,9 +243,9 @@ namespace Nethermind.Db.FullPruning
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 CloningDb.Set(key, value, flags);
-                _processedKeys++;
-                _db._progressLogger?.Update(_processedKeys);
-                if (_processedKeys % 100000 == 0)
+                long currentCount = Interlocked.Increment(ref _processedKeys);
+                _db._progressLogger?.Update(currentCount);
+                if (currentCount % 100000 == 0)
                 {
                     _db._progressLogger?.LogProgress();
                 }
@@ -254,13 +256,12 @@ namespace Nethermind.Db.FullPruning
                 return new ProgressTrackingWriteBatch(CloningDb.StartWriteBatch(), this);
             }
 
-            /// <inheritdoc />
             public void Commit()
             {
                 _db.FinishPruning();
+                _committed = true;
             }
 
-            /// <inheritdoc />
             public void MarkStart()
             {
                 Metrics.StateDbPruning = 1;
@@ -268,12 +269,20 @@ namespace Nethermind.Db.FullPruning
 
             public CancellationTokenSource CancellationTokenSource { get; } = new();
 
-            /// <inheritdoc />
             public void Dispose()
             {
-                _db.FinishPruning(this, true);
-                CancellationTokenSource.Dispose();
-                Metrics.StateDbPruning = 0;
+                if (!_disposed)
+                {
+                    _db.FinishPruning(this, _committed);
+                    if (!_committed)
+                    {
+                        // if the context was not committed, then pruning failed and we delete the cloned DB
+                        CloningDb.Clear();
+                    }
+                    CancellationTokenSource.Dispose();
+                    Metrics.StateDbPruning = 0;
+                    _disposed = true;
+                }
             }
         }
 
@@ -325,7 +334,7 @@ namespace Nethermind.Db.FullPruning
             {
                 _writeBatch.Set(key, value, flags);
                 _batchProcessedKeys++;
-                if (_batchProcessedKeys % 1000 == 0)
+                if (_batchProcessedKeys % 100000 == 0)
                 {
                     _context._db._progressLogger?.Update(_context._processedKeys + _batchProcessedKeys);
                     _context._db._progressLogger?.LogProgress();
