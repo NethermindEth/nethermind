@@ -1001,7 +1001,7 @@ internal class Eof1 : IEofVersionHandler
                 int nextPosition = position + 1;
 
                 // Check for undefined opcodes in the EOF context.
-                if (!opcode.IsValid(IsEofContext: true))
+                if (!opcode.IsValid(isEofContext: true))
                 {
                     if (Logger.IsTrace)
                         Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains undefined opcode {opcode}");
@@ -1531,7 +1531,7 @@ internal class Eof1 : IEofVersionHandler
             while (programCounter < code.Length)
             {
                 Instruction opcode = (Instruction)code[programCounter];
-                (ushort? baseInput, ushort? baseOutput, ushort? baseImmediate) = opcode.StackRequirements();
+                (ushort inputCount, ushort outputCount, ushort immediateCount) = opcode.StackRequirements();
 
                 int posPostInstruction = programCounter + 1;
                 if (posPostInstruction > code.Length)
@@ -1541,9 +1541,6 @@ internal class Eof1 : IEofVersionHandler
                     return false;
                 }
 
-                ushort inputCount = baseInput ?? 0;
-                ushort outputCount = baseOutput ?? 0;
-                ushort immediateCount = baseImmediate ?? 0;
                 bool isTargetSectionNonReturning = false;
 
                 // Apply opcode-specific modifications for opcodes that carry immediate data.
