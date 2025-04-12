@@ -44,7 +44,7 @@ public static class EofValidator
     /// <returns></returns>
     public static bool IsEof(ReadOnlySpan<byte> container, [NotNullWhen(true)] out byte version)
     {
-        if (container.Length >= MAGIC.Length + 1)
+        if (container.Length > MAGIC.Length)
         {
             version = container[MAGIC.Length];
             return container.StartsWith(MAGIC);

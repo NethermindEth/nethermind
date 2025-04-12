@@ -710,7 +710,8 @@ internal class Eof1 : IEofVersionHandler
         }
 
         // 2. Validate the container sections count.
-        if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS + 1)
+        // Is one extra from the initial so greater than equal
+        if (header.ContainerSections?.Count >= MAXIMUM_NUM_CONTAINER_SECTIONS)
         {
             // NOTE: This check could be moved to the header parsing phase.
             if (Logger.IsTrace)
