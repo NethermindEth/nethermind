@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private readonly ISpecProvider _specProvider;
         private readonly IRlpStreamDecoder<TxReceipt> _decoder;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetStreamDecoder<TxReceipt>()) { }
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetStreamDecoder<TxReceipt>()!) { }
 
         protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpStreamDecoder<TxReceipt> decoder)
         {
@@ -75,8 +75,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(static itemContext =>
-                itemContext.DecodeArray(static nestedContext => _decoder.Decode(nestedContext)) ?? [], true);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(itemContext =>
+                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? [], true);
             ReceiptsMessage message = new(data);
 
             return message;
