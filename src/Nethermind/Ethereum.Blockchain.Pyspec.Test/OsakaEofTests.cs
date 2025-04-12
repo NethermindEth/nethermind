@@ -22,7 +22,7 @@ public class OsakaEofTests : EofTestBase
             ArchiveName = "fixtures_eip7692.tar.gz",
             ArchiveVersion = "eip7692@v2.3.0"
         }, $"fixtures/eof_tests/osaka");
-        return loader.LoadTests().Cast<EofTest>().Select(t => new TestCaseData(t)
+        return loader.LoadTests<EofTest>().Select(t => new TestCaseData(t)
             .SetName(t.Name)
             .SetCategory(t.Category));
     }

@@ -17,7 +17,7 @@ public class EofTestsRunner(ITestSourceLoader testsSource, string? filter) : Eof
     public IEnumerable<EthereumTestResult> RunTests()
     {
         List<EthereumTestResult> testResults = new();
-        var tests = (IEnumerable<EofTest>)_testsSource.LoadTests();
+        var tests = _testsSource.LoadTests<EofTest>();
         foreach (EofTest test in tests)
         {
             if (filter is not null && !Regex.Match(test.Name, $"^({filter})").Success)
