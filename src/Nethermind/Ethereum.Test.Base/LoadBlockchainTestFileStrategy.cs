@@ -12,8 +12,7 @@ namespace Ethereum.Test.Base
         public IEnumerable<EthereumTest> Load(string testName, string? wildcard = null)
         {
             FileTestsSource fileTestsSource = new(testName, wildcard);
-            IEnumerable<BlockchainTest> tests = fileTestsSource.LoadBlockchainTests();
-            return tests;
+            return fileTestsSource.LoadTests(TestType.Blockchain);
         }
     }
 }
