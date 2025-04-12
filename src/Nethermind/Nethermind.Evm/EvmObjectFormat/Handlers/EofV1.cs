@@ -1600,10 +1600,10 @@ internal class Eof1 : IEofVersionHandler
                 unreachedBytes -= 1 + immediateCount;
                 programCounter += 1 + immediateCount;
 
-                // Propagate recorded stack bounds for subsequent instructions.
-                if (opcode.IsTerminating())
+                if (programCounter < code.Length)
                 {
-                    if (programCounter < code.Length)
+                    // Propagate recorded stack bounds for subsequent instructions.
+                    if (opcode.IsTerminating())
                     {
                         ref StackBounds recordedBounds = ref recordedStackHeight[programCounter];
                         if (recordedBounds.Max < 0)
@@ -1614,10 +1614,7 @@ internal class Eof1 : IEofVersionHandler
                         }
                         currentStackBounds = recordedBounds;
                     }
-                }
-                else
-                {
-                    if (programCounter < code.Length)
+                    else
                     {
                         ref StackBounds recordedBounds = ref recordedStackHeight[programCounter];
                         recordedBounds.Combine(currentStackBounds);
