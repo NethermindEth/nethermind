@@ -321,27 +321,14 @@ namespace Ethereum.Test.Base
             foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
             {
                 (string name, string category) = GetNameAndCategory(namedTest.Key);
-
-                string? description = null;
-                string? url = null;
-                string? spec = null;
-                var info = namedTest.Value?.Info;
-                if (info is not null)
-                {
-                    description = info.Description;
-                    url = info.Url;
-                    spec = info.Spec;
-                }
+                GetTestMetaData(namedTest, out string? description, out string? url, out string? spec);
 
                 foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
                 {
                     VectorTestJson vectorJson = pair.Value;
                     VectorTest vector = new();
                     vector.Code = Bytes.FromHexString(vectorJson.Code);
-                    vector.ContainerKind =
-                        ("INITCODE".Equals(vectorJson.ContainerKind)
-                            ? ValidationStrategy.ValidateInitCodeMode
-                            : ValidationStrategy.ValidateRuntimeMode);
+                    vector.ContainerKind = ParseContainerKind(vectorJson.ContainerKind);
 
                     foreach (var result in vectorJson.Results)
                     {
@@ -354,17 +341,36 @@ namespace Ethereum.Test.Base
                             Spec = spec
                         };
                         test.Vector = vector;
-
-                        test.Result = result.Value.Result
-                            ? new Result { Fork = result.Key, Success = true }
-                            : new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
+                        test.Result = result.ToTestResult();
                         tests.Add(test);
                     }
                 }
             }
 
             return tests;
+
+            static ValidationStrategy ParseContainerKind(string containerKind)
+                => ("INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode);
+
+            static void GetTestMetaData(KeyValuePair<string, EofTestJson> namedTest, out string? description, out string? url, out string? spec)
+            {
+                description = null;
+                url = null;
+                spec = null;
+                GeneralStateTestInfoJson info = namedTest.Value?.Info;
+                if (info is not null)
+                {
+                    description = info.Description;
+                    url = info.Url;
+                    spec = info.Spec;
+                }
+            }
         }
+
+        private static Result ToTestResult(this KeyValuePair<string, TestResultJson> result)
+            => result.Value.Result ?
+                new Result { Fork = result.Key, Success = true } :
+                new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
 
         public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
