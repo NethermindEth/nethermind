@@ -592,7 +592,7 @@ internal class Eof1 : IEofVersionHandler
         }
 
         // After processing, all expected work items must have been visited.
-        if (!containerQueue.IsAllVisited())
+        if (!containerQueue.IsAllVisitedAndNotAmbiguous())
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, Not all containers visited");
@@ -856,7 +856,7 @@ internal class Eof1 : IEofVersionHandler
         }
 
         // After processing, confirm that all expected code sections were visited.
-        return sectionQueue.IsAllVisited();
+        return sectionQueue.IsAllVisitedAndNotAmbiguous();
     }
 
     /// <summary>
@@ -1891,11 +1891,18 @@ internal class Eof1 : IEofVersionHandler
 
         public void Enqueue(int index, ValidationStrategy strategy) => ContainerQueue.Enqueue((index, strategy));
 
-        public void MarkVisited(int index, ValidationStrategy strategy) => VisitedContainers[index] = strategy;
+        public void MarkVisited(int index, ValidationStrategy strategy) => VisitedContainers[index] |= strategy;
 
         public bool TryDequeue(out (int Index, ValidationStrategy Strategy) worklet) => ContainerQueue.TryDequeue(out worklet);
 
-        public bool IsAllVisited() => VisitedContainers.All(x => x != 0);
+        public bool IsAllVisitedAndNotAmbiguous() => VisitedContainers.All(validation =>
+        {
+            bool isEofCreate = validation.HasFlag(ValidationStrategy.InitCodeMode);
+            bool isReturnCode = validation.HasFlag(ValidationStrategy.RuntimeMode);
+
+            // Should be referenced but not by both EofCreate and ReturnCode.
+            return validation != 0 && !(isEofCreate && isReturnCode);
+        });
     }
 
     [StructLayout(LayoutKind.Auto)]
