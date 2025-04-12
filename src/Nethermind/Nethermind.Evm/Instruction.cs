@@ -195,6 +195,7 @@ namespace Nethermind.Evm
         EXTDELEGATECALL = 0xf9, // DelegateCallEnabled
         STATICCALL = 0xfa,
         EXTSTATICCALL = 0xfb, // StaticCallEnabled
+        PAY = 0xfc,
         REVERT = 0xfd,
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
