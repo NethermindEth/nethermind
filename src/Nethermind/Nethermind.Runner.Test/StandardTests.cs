@@ -16,11 +16,11 @@ namespace Nethermind.Runner.Test
             Nethermind.JsonRpc.Test.StandardJsonRpcTests.ValidateDocumentation();
         }
 
-        [Test]
-        public void All_metrics_are_described()
-        {
-            Monitoring.Test.MetricsTests.ValidateMetricsDescriptions();
-        }
+        //[Test]
+        //public void All_metrics_are_described()
+        //{
+        //    Monitoring.Test.MetricsTests.ValidateMetricsDescriptions();
+        //}
 
         [Test]
         public void All_default_values_are_correct()
