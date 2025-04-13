@@ -83,6 +83,8 @@ namespace Nethermind.TxPool
 
         public bool AreBlobsAvailable(byte[][] blobVersionedHashes) => false;
 
+        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
+
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
 

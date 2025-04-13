@@ -215,6 +215,9 @@ namespace Nethermind.TxPool
         public bool AreBlobsAvailable(byte[][] blobVersionedHashes)
             => _blobTransactions.AreBlobsAvailable(blobVersionedHashes);
 
+        public int GetBlobCounts(byte[][] blobVersionedHashes)
+            => _blobTransactions.GetBlobCounts(blobVersionedHashes);
+
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
