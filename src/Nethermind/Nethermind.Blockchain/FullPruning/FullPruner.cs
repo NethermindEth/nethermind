@@ -38,6 +38,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningTrieStore _trieStore;
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
+        private readonly ProgressLogger _pruningProgressLogger;
         private DateTime _lastPruning = DateTime.MinValue;
 
         public FullPruner(
@@ -69,6 +70,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
+            _pruningProgressLogger = new ProgressLogger("Full Pruning", logManager);
 
             if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)
             {
@@ -185,7 +187,17 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
+
+            // Initialize progress logger for overall pruning process
+            _pruningProgressLogger.Reset(0, 1);
+            _pruningProgressLogger.SetFormat(formatter =>
+                $"Full Pruning | Main process | state: {stateToCopy}");
+
             await CopyTrie(pruningContext, header.StateRoot!, cancellationToken);
+
+            // Mark completion
+            _pruningProgressLogger.Update(1);
+            _pruningProgressLogger.MarkEnd();
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;

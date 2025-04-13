@@ -31,6 +31,7 @@ namespace Nethermind.Db.Rocks;
 
 public partial class DbOnTheRocks : IDb, ITunableDb
 {
+    protected readonly ILogManager _logManager;
     protected ILogger _logger;
 
     private string? _fullPath;
@@ -87,7 +88,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     private readonly IteratorManager _iteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
-
     public DbOnTheRocks(
         string basePath,
         DbSettings dbSettings,
@@ -98,6 +98,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         IFileSystem? fileSystem = null,
         IntPtr? sharedCache = null)
     {
+        _logManager = logManager;
+        _logger = logManager.GetClassLogger();
         _logger = logManager.GetClassLogger();
         _settings = dbSettings;
         Name = _settings.DbName;
@@ -254,12 +256,23 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             // Not all of the available memory is actually available so we are probably over reading things.
             .Reverse()
             .ToList();
+        // Create a progress logger for warming up the database
+        ProgressLogger progressLogger = new ProgressLogger($"DB Warmup ({Name})", _logManager);
+        progressLogger.Reset(0, totalSize);
+        progressLogger.SetFormat(formatter =>
+            $"DB Warmup: {formatter.CurrentValue * 100 / Math.Max(formatter.TargetValue, 1):0.00}% | " +
+            $"{((long)formatter.CurrentValue).SizeToString()}/{((long)formatter.TargetValue).SizeToString()} | " +
+            $"speed: {((long)formatter.CurrentPerSecond).SizeToString()}/s");
+
+        // Start a timer to regularly update the progress
+        using System.Timers.Timer progressTimer = new System.Timers.Timer(1000);
+        progressTimer.Elapsed += (_, _) => progressLogger.LogProgress();
+        progressTimer.Start();
 
         long totalRead = 0;
         Parallel.ForEach(fileMetadatas, (task) =>
         {
             string fullPath = Path.Join(basePath, task.metadata.FileName);
-            _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
 
             try
             {
@@ -269,7 +282,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 while (readCount == buffer.Length)
                 {
                     readCount = stream.Read(buffer);
-                    Interlocked.Add(ref totalRead, readCount);
+                    long currentRead = Interlocked.Add(ref totalRead, readCount);
+                    progressLogger.Update(currentRead);
                 }
             }
             catch (FileNotFoundException)
@@ -282,6 +296,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 _logger.Warn($"Exception warming up {fullPath} {e}");
             }
         });
+
+        // Stop the timer and mark the end of the progress logging
+        progressTimer.Stop();
+        progressLogger.MarkEnd();
+        progressLogger.LogProgress();
     }
 
     private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)

@@ -11,6 +11,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using System.Timers;
 
 namespace Nethermind.Blockchain.FullPruning
 {
@@ -30,6 +31,8 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
         private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
+        private readonly ProgressLogger _progressLogger;
+        private readonly System.Timers.Timer _progressTimer;
 
         public CopyTreeVisitor(
             INodeStorage nodeStorage,
@@ -42,6 +45,9 @@ namespace Nethermind.Blockchain.FullPruning
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
             _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
+            _progressLogger = new ProgressLogger("Full Pruning", logManager);
+            _progressTimer = new System.Timers.Timer(1000); // Update every second
+            _progressTimer.Elapsed += (_, _) => _progressLogger.LogProgress();
         }
 
         public bool IsFullDbScan => true;
@@ -54,6 +60,11 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _stopwatch.Start();
             if (_logger.IsInfo) _logger.Info($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
+
+            // Reset and start progress logger with target value 0 initially (we don't know the total nodes yet)
+            _progressLogger.Reset(0, 0);
+            _progressLogger.SetFormat(formatter => $"Full Pruning | nodes: {formatter.CurrentValue:N0} | current: {formatter.CurrentPerSecond:N0} nodes/s | total: {formatter.TotalPerSecond:N0} nodes/s | elapsed: {_stopwatch.Elapsed}");
+            _progressTimer.Start();
         }
 
         [DoesNotReturn]
@@ -83,10 +94,13 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 // simple copy of nodes RLP
                 _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
-                Interlocked.Increment(ref _persistedNodes);
+                long nodes = Interlocked.Increment(ref _persistedNodes);
+
+                // Update the progress logger with current node count
+                _progressLogger.Update(nodes);
 
                 // log message every 1 mln nodes
-                if (_persistedNodes % Million == 0)
+                if (nodes % Million == 0)
                 {
                     LogProgress("In Progress");
                 }
@@ -101,6 +115,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void Dispose()
         {
+            _progressTimer.Stop();
+            _progressTimer.Dispose();
+
             if (_logger.IsWarn && !_finished)
             {
                 _logger.Warn($"Full Pruning Cancelled: Full pruning didn't finish, progress is lost.");
@@ -110,6 +127,13 @@ namespace Nethermind.Blockchain.FullPruning
         public void Finish()
         {
             _finished = true;
+            _progressTimer.Stop();
+
+            // Log final progress
+            _progressLogger.SetMeasuringPoint();
+            _progressLogger.LogProgress();
+            _progressLogger.MarkEnd();
+
             LogProgress("Finished");
             _concurrentWriteBatcher.Dispose();
         }

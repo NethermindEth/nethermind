@@ -79,5 +79,32 @@ namespace Nethermind.Core.Extensions
             double num = Math.Round(bytes / Math.Pow(useSi ? 1000 : 1024, place), precision);
             return (Math.Sign(@this) * num).ToString() + suf[place];
         }
+
+        /// <summary>
+        /// Convert a byte size to a human-readable string (e.g., "1.23 MB")
+        /// </summary>
+        /// <param name="value">The value in bytes</param>
+        /// <returns>A human-readable string representation with appropriate suffix</returns>
+        public static string ToByteSize(this long value)
+        {
+            if (value == 0)
+                return "0 B";
+
+            long absValue = Math.Abs(value);
+            int place = Convert.ToInt32(Math.Floor(Math.Log(absValue, 1024)));
+            double num = Math.Round(absValue / Math.Pow(1024, place), 2);
+            
+            return $"{(value < 0 ? "-" : "")}{num:0.##} {(place == 0 ? "B" : place == 1 ? "KB" : place == 2 ? "MB" : place == 3 ? "GB" : place == 4 ? "TB" : place == 5 ? "PB" : "EB")}";
+        }
+        
+        /// <summary>
+        /// Convert a byte size to a human-readable string (e.g., "1.23 MB")
+        /// </summary>
+        /// <param name="value">The value in bytes</param>
+        /// <returns>A human-readable string representation with appropriate suffix</returns>
+        public static string ToByteSize(this decimal value)
+        {
+            return ((long)value).ToByteSize();
+        }
     }
 }
