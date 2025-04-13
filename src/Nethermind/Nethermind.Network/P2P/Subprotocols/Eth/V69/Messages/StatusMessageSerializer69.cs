@@ -15,8 +15,9 @@ public class StatusMessageSerializer69 :
 
     StatusMessage69 IZeroMessageSerializer<StatusMessage69>.Deserialize(IByteBuffer byteBuffer)
     {
-        V62.Messages.StatusMessage? message = base.Deserialize(byteBuffer);
-        return new(message);
+        var message = new StatusMessage69();
+        DeserializeInto(message, byteBuffer);
+        return message;
     }
 
     int IZeroInnerMessageSerializer<StatusMessage69>.GetLength(StatusMessage69 message, out int contentLength)

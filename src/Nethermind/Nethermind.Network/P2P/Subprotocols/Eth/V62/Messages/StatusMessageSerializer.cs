@@ -75,9 +75,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public StatusMessage Deserialize(IByteBuffer byteBuffer)
         {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-
             StatusMessage statusMessage = new();
+            DeserializeInto(statusMessage, byteBuffer);
+            return statusMessage;
+        }
+
+        protected void DeserializeInto(StatusMessage statusMessage, IByteBuffer byteBuffer)
+        {
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.ReadSequenceLength();
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
             statusMessage.NetworkId = rlpStream.DecodeUInt256();
@@ -95,8 +100,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 ForkId forkId = new(forkHash, next);
                 statusMessage.ForkId = forkId;
             }
-
-            return statusMessage;
         }
     }
 }
