@@ -33,8 +33,14 @@ namespace Nethermind.JsonRpc.Modules
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
         private readonly Lock _updateRegistrationsLock = new();
+        private readonly MethodInfo _registerMethod;
 
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, ILogManager logManager)
+            : this(fileSystem, jsonRpcConfig, serializer, [], logManager)
+        {
+        }
+
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, IReadOnlyList<RpcModuleInfo> rpcModules, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             Serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
@@ -44,6 +50,12 @@ namespace Nethermind.JsonRpc.Modules
                 if (_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
             }
+
+            _registerMethod = GetType().GetMethods().First(m => m.Name == nameof(Register));
+            foreach (var rpcModuleInfo in rpcModules)
+            {
+                RegisterNonGeneric(rpcModuleInfo.ModuleType, rpcModuleInfo.Pool);
+            }
         }
 
         public IJsonSerializer Serializer { get; }
@@ -52,15 +64,24 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => _modules;
 
+        private void RegisterNonGeneric(Type moduleType, IRpcModulePool pool)
+        {
+            // Hey its either this of changing like, 5 class.
+            MethodInfo generic = _registerMethod.MakeGenericMethod(moduleType);
+            generic.Invoke(this, [pool]);
+        }
+
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
-            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
+            Type moduleClass = typeof(T);
+            RpcModuleAttribute attribute = moduleClass.GetCustomAttribute<RpcModuleAttribute>();
             if (attribute is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot register {moduleClass.Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
                 return;
             }
 
+            if (_logger.IsTrace) _logger.Trace($"Registering module {moduleClass.Name} as part of {attribute.ModuleType} module");
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
@@ -289,4 +310,6 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
     }
+
+    public record RpcModuleInfo(Type ModuleType, IRpcModulePool Pool);
 }

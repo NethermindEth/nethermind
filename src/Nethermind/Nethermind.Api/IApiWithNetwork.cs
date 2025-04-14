@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -37,7 +38,9 @@ namespace Nethermind.Api
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
         IRlpxHost? RlpxPeer { get; set; }
-        IRpcModuleProvider? RpcModuleProvider { get; set; }
+
+        [SkipServiceCollection]
+        IRpcModuleProvider? RpcModuleProvider { get; }
         IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }

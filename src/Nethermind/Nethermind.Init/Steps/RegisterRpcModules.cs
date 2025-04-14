@@ -97,9 +97,8 @@ public class RegisterRpcModules : IStep
             _api.SyncModeSelector!,
             _api.SyncProgressResolver!,
             _api.LogManager);
-        _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, JsonRpcConfig, _api.EthereumJsonSerializer, _api.LogManager);
 
-        IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
+        IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
         ILogger logger = _api.LogManager.GetClassLogger();
