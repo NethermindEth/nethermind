@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Init.Modules;
@@ -14,6 +15,7 @@ public class RpcModules: Module
         base.Load(builder);
 
         builder
+            .Add<IEthSyncingInfo, EthSyncingInfo>()
             .Add<IRpcModuleProvider, RpcModuleProvider>()
             ;
     }

@@ -8,11 +8,9 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -89,15 +87,6 @@ public class RegisterRpcModules : IStep
             return;
         }
 
-        // Used only by rpc
-        _api.EthSyncingInfo = new EthSyncingInfo(
-            _api.BlockTree,
-            _api.SyncPointers!,
-            _api.Config<ISyncConfig>(),
-            _api.SyncModeSelector!,
-            _api.SyncProgressResolver!,
-            _api.LogManager);
-
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
@@ -135,7 +124,7 @@ public class RegisterRpcModules : IStep
 
         _api.SubscriptionFactory = new SubscriptionFactory();
         // Register the standard subscription types in the dictionary
-        _api.SubscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool, _api.RlpxPeer);
+        _api.SubscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo!, _api.PeerPool, _api.RlpxPeer);
         SubscriptionManager subscriptionManager = new(_api.SubscriptionFactory, _api.LogManager);
 
         AdminRpcModule adminRpcModule = new(

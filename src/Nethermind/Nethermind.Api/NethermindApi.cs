@@ -224,7 +224,7 @@ namespace Nethermind.Api
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
-        public IEthSyncingInfo? EthSyncingInfo { get; set; }
+        public IEthSyncingInfo? EthSyncingInfo => Context.Resolve<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
