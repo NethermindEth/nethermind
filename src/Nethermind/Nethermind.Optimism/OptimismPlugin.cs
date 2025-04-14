@@ -180,9 +180,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             await Task.Delay(100);
         await Task.Delay(5000);
 
+        // Single block shouldn't take a full slot to run
+        double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * 0.3;
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
