@@ -20,6 +20,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -53,6 +54,7 @@ public class BoundedModulePoolTests
             Substitute.For<IGasPriceOracle>(),
             Substitute.For<IEthSyncingInfo>(),
             Substitute.For<IFeeHistoryOracle>(),
+            Substitute.For<ISyncConfig>(),
             new BlocksConfig().SecondsPerSlot),
              1, 1000);
 

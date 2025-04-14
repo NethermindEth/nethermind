@@ -43,12 +43,14 @@ public class RegisterRpcModules : IStep
     protected readonly IJsonRpcConfig JsonRpcConfig;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBlocksConfig _blocksConfig;
+    private readonly ISyncConfig _syncConfig;
 
     public RegisterRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher)
     {
         _api = api;
         JsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _blocksConfig = _api.Config<IBlocksConfig>();
+        _syncConfig = _api.Config<ISyncConfig>();
         _poSSwitcher = poSSwitcher;
     }
 
@@ -280,6 +282,7 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _syncConfig,
             secondsPerSlot);
     }
 

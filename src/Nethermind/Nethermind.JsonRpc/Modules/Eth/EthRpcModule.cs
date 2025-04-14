@@ -12,6 +12,7 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -59,6 +60,7 @@ public partial class EthRpcModule(
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
+    ISyncConfig syncConfig,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -76,6 +78,7 @@ public partial class EthRpcModule(
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    protected readonly ISyncConfig _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
@@ -367,8 +370,27 @@ public partial class EthRpcModule(
         return GetBlock(blockParameter, returnFullTransactionObjects);
     }
 
+    private bool IsBlockPruned(BlockParameter blockParameter)
+    {
+        if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+        {
+            var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+            if (blockParameter.BlockNumber < lowestBlock)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
+        if (IsBlockPruned(blockParameter))
+        {
+            var error = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
+            return GetFailureResult<BlockForRpc, Block>(error, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+        }
+
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {

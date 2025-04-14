@@ -181,6 +181,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            new SyncConfig(),
             @this.BlocksConfig.SecondsPerSlot);
 
         private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
