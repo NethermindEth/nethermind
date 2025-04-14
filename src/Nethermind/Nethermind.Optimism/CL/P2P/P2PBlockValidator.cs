@@ -86,10 +86,11 @@ public class P2PBlockValidator : IP2PBlockValidator
     private bool IsBlockHashValid(ExecutionPayloadV3 payload)
     {
         // [REJECT] if the block_hash in the payload is not valid
-        payload.TryGetBlock(out Block? block);
+        BlockDecodingResult blockDecodingResult = payload.TryGetBlock();
+        Block? block = blockDecodingResult.Block;
         if (block is null)
         {
-            if (_logger.IsError) _logger.Error($"Error creating block");
+            if (_logger.IsError) _logger.Error($"Error creating block: {blockDecodingResult.Error}");
             return false;
         }
 

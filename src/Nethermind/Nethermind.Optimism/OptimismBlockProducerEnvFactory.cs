@@ -54,7 +54,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     {
         _specHelper = specHelper;
         _l1CostHelper = l1CostHelper;
-        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
+        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
