@@ -308,13 +308,13 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
         builder
             .AddSingleton<NethermindApi, OptimismNethermindApi>()
-            .AddSource(new FallbackToFieldFromApi<OptimismNethermindApi>())
 
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
             .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
