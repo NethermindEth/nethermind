@@ -372,7 +372,7 @@ public partial class EthRpcModule(
 
     private bool IsBlockPruned(BlockParameter blockParameter)
     {
-        if (_syncConfig.AncientReceiptsBarrierCalc > 0 && _syncConfig.AncientBodiesBarrierCalc > 0)
+        if (_syncConfig.AncientReceiptsBarrierCalc > 1 && _syncConfig.AncientBodiesBarrierCalc > 1)
         {
             var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
             if (blockParameter.BlockNumber < lowestBlock)
