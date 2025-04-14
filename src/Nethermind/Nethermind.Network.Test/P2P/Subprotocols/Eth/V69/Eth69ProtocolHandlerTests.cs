@@ -192,6 +192,26 @@ public class Eth69ProtocolHandlerTests
         action.Should().Throw<SubprotocolException>();
     }
 
+    [Test]
+    public void Can_handle_BlockRangeUpdate()
+    {
+        using var msg = new BlockRangeUpdateMessage
+        {
+            EarliestBlock = 1,
+            LatestBlock = 2,
+            LatestBlockHash = Keccak.Compute("2")
+        };
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.HeadNumber, Is.EqualTo(msg.LatestBlock));
+            Assert.That(_handler.HeadHash, Is.EqualTo(msg.LatestBlockHash));
+        }
+    }
+
     private void HandleIncomingStatusMessage()
     {
         using var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };

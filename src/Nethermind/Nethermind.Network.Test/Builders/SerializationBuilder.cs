@@ -93,7 +93,8 @@ namespace Nethermind.Network.Test.Builders
         {
             return WithEth68()
                 .With<ReceiptsMessage69>(new ReceiptsMessageSerializer69(specProvider))
-                .With(new StatusMessageSerializer69());
+                .With(new StatusMessageSerializer69())
+                .With(new BlockRangeUpdateMessageSerializer());
         }
 
         public SerializationBuilder WithNodeData()

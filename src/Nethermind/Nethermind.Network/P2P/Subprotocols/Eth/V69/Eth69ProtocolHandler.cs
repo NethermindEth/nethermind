@@ -67,6 +67,11 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
                 ReportIn(getReceiptsMessage, size);
                 BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, this.Handle);
                 break;
+            case Eth69MessageCode.BlockRangeUpdate:
+                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
+                ReportIn(blockRangeUpdateMsg, size);
+                this.Handle(blockRangeUpdateMsg);
+                break;
             default:
                 base.HandleMessage(message);
                 break;
@@ -99,6 +104,13 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         HeadNumber = status.LatestBlock; // TODO: clarify if correct thing to do
         HeadHash = status.LatestBlockHash;
         ProtocolInitialized?.Invoke(this, eventArgs);
+    }
+
+    private void Handle(BlockRangeUpdateMessage blockRangeUpdate)
+    {
+        _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
+        HeadNumber = blockRangeUpdate.LatestBlock;
+        HeadHash = blockRangeUpdate.LatestBlockHash;
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)

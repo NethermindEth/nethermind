@@ -11,4 +11,5 @@ public static class Eth69MessageCode
     public const int Status = Eth62MessageCode.Status;
     public const int GetReceipts = Eth63MessageCode.GetReceipts;
     public const int Receipts = Eth63MessageCode.Receipts;
+    public const int BlockRangeUpdate = 0x11;
 }
