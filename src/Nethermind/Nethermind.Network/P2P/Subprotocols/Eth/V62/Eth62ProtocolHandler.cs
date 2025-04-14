@@ -211,7 +211,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return true;
         }
 
-        protected void Handle(StatusMessage status)
+        private void Handle(StatusMessage status)
         {
             if (_statusReceived)
             {
