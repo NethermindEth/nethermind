@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -50,6 +51,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
+        ISyncConfig syncConfig,
         ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
@@ -69,6 +71,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        gasPriceOracle,
        ethSyncingInfo,
        feeHistoryOracle,
+       syncConfig,
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;

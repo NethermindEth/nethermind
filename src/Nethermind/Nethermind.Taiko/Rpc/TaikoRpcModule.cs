@@ -50,11 +50,12 @@ public class TaikoRpcModule(
    gasPriceOracle,
    ethSyncingInfo,
    feeHistoryOracle,
+   syncConfig,
    secondsPerSlot), ITaikoRpcModule
 {
     private static readonly ResultWrapper<L1Origin?> NotFound = ResultWrapper<L1Origin?>.Fail("not found");
 
-    public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
+    public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(_syncConfig switch
     {
         { SnapSync: true } => "snap",
         _ => "full",
