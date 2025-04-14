@@ -263,7 +263,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             Thread.Sleep(5000);
 
             // Single block shouldn't take a full slot to run
-            double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * 0.3;
+            // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+            double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * 0.25;
             IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
                 if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
