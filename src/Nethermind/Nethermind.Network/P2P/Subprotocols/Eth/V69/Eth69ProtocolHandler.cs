@@ -81,7 +81,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         }
 
         _statusReceived = true;
-        _remoteHeadBlockHash = status.LatestBlockHash; // TODO: handle nullability
+        _remoteHeadBlockHash = status.LatestBlockHash;
 
         ReceivedProtocolInitMsg(status);
 
