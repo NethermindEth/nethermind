@@ -35,6 +35,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -222,6 +223,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IPoSSwitcher>();
             api.Context.Resolve<ISynchronizer>();
             api.Context.Resolve<IAdminEraService>();
+            api.Context.Resolve<IRpcModuleProvider>();
         }
         finally
         {

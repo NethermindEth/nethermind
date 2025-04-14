@@ -47,10 +47,7 @@ namespace Nethermind.Api
         ITrustedNodesManager? TrustedNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; }
         ISyncModeSelector SyncModeSelector { get; }
-        ISyncProgressResolver? SyncProgressResolver { get; }
-        ISyncPointers? SyncPointers { get; }
         ISyncPeerPool? SyncPeerPool { get; }
-        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }

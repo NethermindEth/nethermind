@@ -75,6 +75,8 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<IBlockValidator>())
                     .AddSingleton(Substitute.For<IHeaderValidator>())
                     .AddSingleton(Substitute.For<IUnclesValidator>())
+                    .AddSingleton(Substitute.For<IRpcModuleProvider>())
+                    .AddSingleton(Substitute.For<IEthSyncingInfo>())
                     .Build()
             );
 
@@ -126,13 +128,11 @@ namespace Nethermind.Runner.Test.Ethereum
             api.TxSender = Substitute.For<ITxSender>();
             api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
-            api.RpcModuleProvider = Substitute.For<IRpcModuleProvider>();
             api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
             api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
-            api.EthSyncingInfo = Substitute.For<IEthSyncingInfo>();
             api.HealthHintService = Substitute.For<IHealthHintService>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();

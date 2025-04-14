@@ -246,7 +246,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         {
             ArgumentNullException.ThrowIfNull(_api.BlockTree);
             ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
-            ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
             ArgumentNullException.ThrowIfNull(_api.Sealer);
             ArgumentNullException.ThrowIfNull(_api.BlockValidator);
             ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);

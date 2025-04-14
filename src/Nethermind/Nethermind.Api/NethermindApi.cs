@@ -194,10 +194,7 @@ namespace Nethermind.Api
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
-        public ISyncProgressResolver? SyncProgressResolver => Context.Resolve<ISyncProgressResolver>();
-        public ISyncPointers? SyncPointers => Context.Resolve<ISyncPointers>();
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => Context.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
