@@ -51,19 +51,13 @@ public class RegisterRpcModules : IStep
     public virtual async Task Execute(CancellationToken cancellationToken)
     {
         StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
-        StepDependencyException.ThrowIfNull(_api.BloomStorage);
         StepDependencyException.ThrowIfNull(_api.LogManager);
-        StepDependencyException.ThrowIfNull(_api.TxPool);
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.KeyStore);
         StepDependencyException.ThrowIfNull(_api.PeerPool);
         StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
-        StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
-        StepDependencyException.ThrowIfNull(_api.SyncServer);
-        StepDependencyException.ThrowIfNull(_api.EngineSignerStore);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.TrustedNodesManager);
 
@@ -127,24 +121,6 @@ public class RegisterRpcModules : IStep
             subscriptionManager);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
-        TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.SpecProvider);
-        rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
-
-        NetRpcModule netRpcModule = new(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
-        rpcModuleProvider.RegisterSingle<INetRpcModule>(netRpcModule);
-
-        ParityRpcModule parityRpcModule = new(
-            _api.EthereumEcdsa,
-            _api.TxPool,
-            _api.BlockTree,
-            _api.ReceiptFinder,
-            _api.Enode,
-            _api.EngineSignerStore,
-            _api.KeyStore,
-            _api.SpecProvider,
-            _api.PeerManager);
-        rpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
-
         JsonRpcLocalStats jsonRpcLocalStats = new(
             _api.Timestamper,
             JsonRpcConfig,
@@ -154,9 +130,6 @@ public class RegisterRpcModules : IStep
 
         SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
         rpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
-
-        Web3RpcModule web3RpcModule = new(_api.LogManager);
-        rpcModuleProvider.RegisterSingle<IWeb3RpcModule>(web3RpcModule);
 
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
