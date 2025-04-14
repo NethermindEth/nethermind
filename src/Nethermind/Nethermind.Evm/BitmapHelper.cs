@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 
@@ -85,46 +87,125 @@ public static class BitmapHelper
         bitVector[pos / 8 + 2] = (byte)~a;
     }
 
-    public static bool CheckCollision(ReadOnlySpan<byte> codeSegments, ReadOnlySpan<byte> jumpmask)
+    public static bool CheckCollision(ReadOnlySpan<byte> codeSegments, ReadOnlySpan<byte> jumpMask)
     {
-        int count = Math.Min(codeSegments.Length, jumpmask.Length);
-
-        int i = 0;
+        nuint count = (nuint)Math.Min(codeSegments.Length, jumpMask.Length);
 
         ref byte left = ref MemoryMarshal.GetReference<byte>(codeSegments);
-        ref byte right = ref MemoryMarshal.GetReference<byte>(jumpmask);
+        ref byte right = ref MemoryMarshal.GetReference<byte>(jumpMask);
 
-        if (Vector256.IsHardwareAccelerated && count >= Vector256<byte>.Count)
+        if (Vector512.IsHardwareAccelerated && count >= (nuint)Vector512<byte>.Count)
         {
-            for (; (uint)(i + Vector256<byte>.Count) <= (uint)count; i += Vector256<byte>.Count)
+            nuint offset = 0;
+            nuint lengthToExamine = count - (nuint)Vector512<byte>.Count;
+            // Unsigned, so it shouldn't have overflowed larger than length (rather than negative)
+            Debug.Assert(lengthToExamine < count);
+            if (lengthToExamine != 0)
             {
-                Vector256<byte> result = Vector256.LoadUnsafe(ref left, (uint)i) & Vector256.LoadUnsafe(ref right, (uint)i);
-                if (result != default)
+                do
                 {
-                    return true;
+                    if ((Vector512.LoadUnsafe(ref count, offset) &
+                        Vector512.LoadUnsafe(ref count, offset)) != default)
+                    {
+                        goto Collision;
+                    }
+                    offset += (nuint)Vector512<byte>.Count;
+                } while (lengthToExamine > offset);
+            }
+
+            // Do final compare as Vector512<byte>.Count from end rather than start
+            if ((Vector512.LoadUnsafe(ref left, lengthToExamine) &
+                Vector512.LoadUnsafe(ref right, lengthToExamine)) == default)
+            {
+                // C# compiler inverts this test, making the outer goto the conditional jmp.
+                goto NoCollision;
+            }
+
+            // This becomes a conditional jmp forward to not favor it.
+            goto Collision;
+        }
+        else if (Vector256.IsHardwareAccelerated && count >= (nuint)Vector256<byte>.Count)
+        {
+            nuint offset = 0;
+            nuint lengthToExamine = count - (nuint)Vector256<byte>.Count;
+            // Unsigned, so it shouldn't have overflowed larger than length (rather than negative)
+            Debug.Assert(lengthToExamine < count);
+            if (lengthToExamine != 0)
+            {
+                do
+                {
+                    if ((Vector256.LoadUnsafe(ref count, offset) &
+                        Vector256.LoadUnsafe(ref count, offset)) != default)
+                    {
+                        goto Collision;
+                    }
+                    offset += (nuint)Vector256<byte>.Count;
+                } while (lengthToExamine > offset);
+            }
+
+            // Do final compare as Vector512<byte>.Count from end rather than start
+            if ((Vector256.LoadUnsafe(ref left, lengthToExamine) &
+                Vector256.LoadUnsafe(ref right, lengthToExamine)) == default)
+            {
+                // C# compiler inverts this test, making the outer goto the conditional jmp.
+                goto NoCollision;
+            }
+
+            // This becomes a conditional jmp forward to not favor it.
+            goto Collision;
+        }
+        else if (Vector128.IsHardwareAccelerated && count >= (nuint)Vector128<byte>.Count)
+        {
+            nuint offset = 0;
+            nuint lengthToExamine = count - (nuint)Vector128<byte>.Count;
+            // Unsigned, so it shouldn't have overflowed larger than length (rather than negative)
+            Debug.Assert(lengthToExamine < count);
+            if (lengthToExamine != 0)
+            {
+                do
+                {
+                    if ((Vector128.LoadUnsafe(ref count, offset) &
+                        Vector128.LoadUnsafe(ref count, offset)) != default)
+                    {
+                        goto Collision;
+                    }
+                    offset += (nuint)Vector128<byte>.Count;
+                } while (lengthToExamine > offset);
+            }
+
+            // Do final compare as Vector512<byte>.Count from end rather than start
+            if ((Vector128.LoadUnsafe(ref left, lengthToExamine) &
+                Vector128.LoadUnsafe(ref right, lengthToExamine)) == default)
+            {
+                // C# compiler inverts this test, making the outer goto the conditional jmp.
+                goto NoCollision;
+            }
+
+            // This becomes a conditional jmp forward to not favor it.
+            goto Collision;
+        }
+        else
+        {
+            for (nuint i = 0; i < count; i++)
+            {
+                if ((Unsafe.Add(ref left, i) & Unsafe.Add(ref right, i)) != 0)
+                {
+                    goto Collision;
                 }
             }
         }
-        else if (Vector128.IsHardwareAccelerated && count >= Vector128<byte>.Count)
-        {
-            for (; (i + Vector128<byte>.Count) <= (uint)count; i += Vector128<byte>.Count)
-            {
-                Vector128<byte> result = Vector128.LoadUnsafe(ref left, (uint)i) & Vector128.LoadUnsafe(ref right, (uint)i);
-                if (result != default)
-                {
-                    return true;
-                }
-            }
-        }
 
-        for (; i < count; i++)
-        {
-            if ((codeSegments[i] & jumpmask[i]) != 0)
-            {
-                return true;
-            }
-        }
+    // As there are so many true/false exit points the Jit will coalesce them to one location.
+    // We want them at the end so the conditional early exit jmps are all jmp forwards so the
+    // branch predictor in a uninitialized state will not take them e.g.
+    // - loops are conditional jmps backwards and predicted
+    // - exceptions are conditional forwards jmps and not predicted
 
+    // When no collision happens; which is the longest execution, we want it to determine that
+    // as fast as possible so we do not want the early outs to be "predicted not taken" branches.
+    NoCollision:
         return false;
+    Collision:
+        return true;
     }
 }
