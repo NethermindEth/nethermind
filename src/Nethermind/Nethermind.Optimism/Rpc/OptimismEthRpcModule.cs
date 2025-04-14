@@ -78,7 +78,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         _opSpecHelper = opSpecHelper;
     }
 
-    public new ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
@@ -92,7 +92,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
         L1BlockGasInfo l1BlockGasInfo = new(block, _opSpecHelper);
 
-        ReceiptForRpc[]? result = [.. receipts
+        OptimismReceiptForRpc[]? result = [.. receipts
                 .Zip(block.Transactions, (receipt, tx) =>
                     receipt is OptimismTxReceipt optimismTxReceipt
                         ? new OptimismReceiptForRpc(
@@ -101,7 +101,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                             tx.GetGasInfo(spec, block.Header),
                             l1BlockGasInfo.GetTxGasInfo(tx),
                             receipts.GetBlockLogFirstIndex(receipt.Index))
-                        : new ReceiptForRpc(
+                        : new OptimismReceiptForRpc(
                             tx.Hash!,
                             receipt,
                             tx.GetGasInfo(spec, block.Header),
@@ -141,7 +141,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         return ResultWrapper<Hash256>.Success(result);
     }
 
-    public new ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
+    public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
@@ -157,7 +157,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
         Block block = foundBlock.Object;
         L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, _opSpecHelper);
-        ReceiptForRpc result =
+        OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
                 ? new OptimismReceiptForRpc(
                         txHash,
@@ -165,7 +165,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                         gasInfo.Value,
                         l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)),
                         logIndexStart)
-                : new ReceiptForRpc(
+                : new OptimismReceiptForRpc(
                         txHash,
                         receipt,
                         gasInfo.Value,

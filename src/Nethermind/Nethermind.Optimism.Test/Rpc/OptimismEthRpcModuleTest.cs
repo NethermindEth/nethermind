@@ -342,7 +342,6 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
-    [Ignore("Currently broken due to array serialization with subtypes")]
     public async Task GetBlockReceipts_ReturnsDefaultAndOptimismReceipts()
     {
         Transaction txA = Build.A.Transaction
@@ -374,6 +373,7 @@ public class OptimismEthRpcModuleTest
             BlockNumber = 1,
             Index = 0,
             DepositReceiptVersion = 1,
+            DepositNonce = 2,
         };
 
         TxReceipt receiptB = new()
@@ -427,6 +427,7 @@ public class OptimismEthRpcModuleTest
                                     "status": "0x0",
                                     "type": "0x7e",
                                     "depositReceiptVersion": "0x1",
+                                    "depositNonce": "0x2",
                                 },
                                 {
                                     "transactionHash": "{{txB.Hash!.Bytes.ToHexString(withZeroX: true)}}",
