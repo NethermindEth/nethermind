@@ -12,7 +12,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 
 namespace Nethermind.Init.Modules;
 
-public class RpcModules: Module
+public class RpcModules : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

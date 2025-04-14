@@ -7,7 +7,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.Era1.JsonRpc;
 
 [RpcModule(ModuleType.Admin)]
-public interface IEraAdminRpcModule: IRpcModule
+public interface IEraAdminRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Exports a range of historic block in era1 format.",
     EdgeCaseHint = "",

@@ -37,6 +37,6 @@ public class FlashbotsModule(IFlashbotsConfig flashbotsConfig, IJsonRpcConfig js
             .RegisterSingletonJsonRpcModule<IRbuilderRpcModule, RbuilderRpcModule>()
             .RegisterBoundedJsonRpcModule<IFlashbotsRpcModule, FlashbotsRpcModuleFactory>(
                 flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout);
-            ;
+        ;
     }
 }

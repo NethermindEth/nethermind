@@ -5,7 +5,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Era1.JsonRpc;
 
-public class EraAdminRpcModule(IAdminEraService eraService): IEraAdminRpcModule
+public class EraAdminRpcModule(IAdminEraService eraService) : IEraAdminRpcModule
 {
     public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start = 0, int end = 0)
     {
