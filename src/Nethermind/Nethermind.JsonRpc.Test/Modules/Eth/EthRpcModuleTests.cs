@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -743,6 +744,25 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "1000000", "false");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+    }
+
+
+    [Test]
+    public async Task Eth_get_block_by_number_pruned()
+    {
+        using Context ctx = await Context.Create(configurer: builder =>
+        {
+            builder.AddDecorator<ISyncConfig>((ctx, config) =>
+            {
+                config.AncientBodiesBarrier = 1000000;
+                config.AncientReceiptsBarrier = 1000000;
+                Console.WriteLine($"test cfg: {config}");
+                return config;
+            });
+        });
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "100", "false");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
