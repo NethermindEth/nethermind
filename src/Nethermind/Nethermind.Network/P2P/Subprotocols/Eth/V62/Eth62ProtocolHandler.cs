@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
     {
-        private bool _statusReceived;
+        protected bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;

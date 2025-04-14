@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -9,6 +10,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -20,7 +22,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 
 /// <summary>
-/// https://github.com/MariusVanDerWijden/EIPs/blob/eth69_v2/EIPS/eip-7642.md
+/// https://eips.ethereum.org/EIPS/eip-7642
 /// </summary>
 public class Eth69ProtocolHandler : Eth68ProtocolHandler
 {
@@ -42,6 +44,8 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     public override string Name => "eth69";
 
     public override byte ProtocolVersion => EthVersions.Eth69;
+
+    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
     public override void HandleMessage(ZeroPacket message)
     {
@@ -75,8 +79,29 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
     private void Handle(StatusMessage69 status)
     {
-        status.TotalDifficulty = 0; // TODO handle properly for eth/69
-        base.Handle(status);
+        if (_statusReceived)
+        {
+            throw new SubprotocolException("StatusMessage has already been received in the past");
+        }
+
+        _statusReceived = true;
+        _remoteHeadBlockHash = status.LatestBlockHash; // TODO: handle nullability
+
+        ReceivedProtocolInitMsg(status);
+
+        SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
+        {
+            NetworkId = (ulong)status.NetworkId,
+            BestHash = status.LatestBlockHash,
+            GenesisHash = status.GenesisHash,
+            Protocol = status.Protocol,
+            ProtocolVersion = status.ProtocolVersion,
+            ForkId = status.ForkId
+        };
+
+        Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+        HeadHash = status.LatestBlockHash;
+        ProtocolInitialized?.Invoke(this, eventArgs);
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
@@ -89,13 +114,14 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     {
         StatusMessage69 statusMessage = new()
         {
-            NetworkId = SyncServer.NetworkId,
             ProtocolVersion = ProtocolVersion,
-            BestHash = head.Hash!,
-            GenesisHash = SyncServer.Genesis.Hash!
+            NetworkId = SyncServer.NetworkId,
+            GenesisHash = SyncServer.Genesis.Hash!,
+            ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
+            EarliestBlock = 0, // TODO: clarify
+            LatestBlock = head.Number,
+            LatestBlockHash = head.Hash!
         };
-
-        EnrichStatusMessage(statusMessage);
 
         Send(statusMessage);
     }

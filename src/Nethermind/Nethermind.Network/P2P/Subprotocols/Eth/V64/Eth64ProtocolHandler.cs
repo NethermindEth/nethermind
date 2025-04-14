@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
     /// </summary>
     public class Eth64ProtocolHandler : Eth63ProtocolHandler
     {
-        private readonly ForkInfo _forkInfo;
+        protected readonly ForkInfo _forkInfo;
 
         public Eth64ProtocolHandler(ISession session,
             IMessageSerializationService serializer,

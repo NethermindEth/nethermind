@@ -28,7 +28,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
@@ -53,7 +52,7 @@ public class Eth69ProtocolHandlerTests
     private IGossipPolicy _gossipPolicy = null!;
     private ISpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
-    private Eth68ProtocolHandler _handler = null!;
+    private Eth69ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
     private ITimerFactory _timerFactory = null!;
 
@@ -220,7 +219,7 @@ public class Eth69ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        using var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+        using var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
         IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
         statusPacket.ReadByte();
