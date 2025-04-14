@@ -104,8 +104,8 @@ public static class BitmapHelper
             {
                 do
                 {
-                    if ((Vector512.LoadUnsafe(ref count, offset) &
-                        Vector512.LoadUnsafe(ref count, offset)) != default)
+                    if ((Vector512.LoadUnsafe(ref left, offset) &
+                        Vector512.LoadUnsafe(ref right, offset)) != default)
                     {
                         goto Collision;
                     }
@@ -134,8 +134,8 @@ public static class BitmapHelper
             {
                 do
                 {
-                    if ((Vector256.LoadUnsafe(ref count, offset) &
-                        Vector256.LoadUnsafe(ref count, offset)) != default)
+                    if ((Vector256.LoadUnsafe(ref left, offset) &
+                        Vector256.LoadUnsafe(ref right, offset)) != default)
                     {
                         goto Collision;
                     }
@@ -164,8 +164,8 @@ public static class BitmapHelper
             {
                 do
                 {
-                    if ((Vector128.LoadUnsafe(ref count, offset) &
-                        Vector128.LoadUnsafe(ref count, offset)) != default)
+                    if ((Vector128.LoadUnsafe(ref left, offset) &
+                        Vector128.LoadUnsafe(ref right, offset)) != default)
                     {
                         goto Collision;
                     }

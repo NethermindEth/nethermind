@@ -115,30 +115,54 @@ public class BitmapHelperTests
     [Test]
     [TestCase(1)]
     [TestCase(8)]
+    [TestCase(12)]
     [TestCase(16)]
+    [TestCase(24)]
     [TestCase(32)]
+    [TestCase(48)]
     [TestCase(64)]
+    [TestCase(96)]
     [TestCase(128)]
     [TestCase(256)]
     [TestCase(512)]
-    [TestCase(1024)]
-    public void CheckCollision_RandomizedFuzzTest(int length)
+    public void CheckCollision_Exhaustive(int length)
     {
-        var rand = new Random(42); // fixed seed for repeatability
+        var codeSegments = new byte[length];
+        var jumpMask = new byte[length];
 
-        // We'll do multiple trials per length
-        for (int trial = 0; trial < 256; trial++)
+        for (int i = 0; i < length; i++)
         {
-            var codeSegments = new byte[length];
-            var jumpMask = new byte[length];
-            rand.NextBytes(codeSegments);
-            rand.NextBytes(jumpMask);
+            foreach (byte b in _lookup)
+            {
+                codeSegments[i] = b;
+                TestSegments(codeSegments, jumpMask);
+                jumpMask[i] = b;
+                TestSegments(codeSegments, jumpMask);
+                codeSegments[i] = 0;
+                TestSegments(codeSegments, jumpMask);
+                jumpMask[i] = 0;
+            }
+        }
 
+        static void TestSegments(byte[] codeSegments, byte[] jumpMask)
+        {
             bool expected = NaiveCheckCollision(codeSegments, jumpMask);
             bool actual = BitmapHelper.CheckCollision(codeSegments, jumpMask);
 
-            expected.Should().Be(actual,
-                $"Mismatch in collision check for random arrays (length={length}, trial={trial}).");
+            expected.Should().Be(actual);
         }
     }
+
+    private static readonly byte[] _lookup =
+    {
+        0b0000_0000,
+        0b0000_0001,
+        0b0000_0010,
+        0b0000_0100,
+        0b0000_1000,
+        0b0001_0000,
+        0b0010_0000,
+        0b0100_0000,
+        0b1000_0000
+    };
 }
