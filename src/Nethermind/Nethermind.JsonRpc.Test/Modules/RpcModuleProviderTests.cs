@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -109,7 +110,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
             _moduleProvider.Register(pool);
-            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool);
+            _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool);
         }
 
         [Test]
@@ -121,7 +122,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
             _moduleProvider.Register(pool2);
 
-            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool2);
+            _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool2);
         }
 
         [Test]
@@ -137,7 +138,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Can_register_multiple_module_interface_of_same_rpc_module()
+        public async Task Can_register_multiple_module_interface_of_same_rpc_module()
         {
             JsonRpcConfig jsonRpcConfig = new();
             jsonRpcConfig.EnabledModules = [ModuleType.Admin];
@@ -149,6 +150,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             moduleProvider.Check("admin_exportHistory", _context).Should().Be(ModuleResolution.Enabled);
             moduleProvider.Check("admin_addPeer", _context).Should().Be(ModuleResolution.Enabled);
+
+            var adminClass = await moduleProvider.Rent("admin_addPeer", true);
+            (adminClass is IAdminRpcModule).Should().BeTrue();
+            var historyClass = await moduleProvider.Rent("admin_exportHistory", true);
+            (historyClass is IEraAdminRpcModule).Should().BeTrue();
         }
     }
 }

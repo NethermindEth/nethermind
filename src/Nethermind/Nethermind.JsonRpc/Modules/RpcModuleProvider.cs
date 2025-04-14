@@ -14,6 +14,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Threading;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -85,10 +86,15 @@ namespace Nethermind.JsonRpc.Modules
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
+                using var methods = GetMethods<T>(moduleType).ToPooledList(0);
+                var poolRecord = GetPool(pool);
+
                 // FrozenDictionary can't be directly updated (which makes it fast for reading) so we combine the two sets of
                 // data as an Enumerable create an new FrozenDictionary from it and then update the reference
-                _pools = GetPools<T>(moduleType, pool).ToFrozenDictionary(StringComparer.Ordinal);
-                _methods = _methods.Concat(GetMethods<T>(moduleType)).ToFrozenDictionary(StringComparer.Ordinal);
+                _pools = _pools.Concat(methods
+                    .Select(method => new KeyValuePair<string, Pool>(method.Key, poolRecord)))
+                    .ToFrozenDictionary<string, Pool>(StringComparer.Ordinal);
+                _methods = _methods.Concat(methods).ToFrozenDictionary(StringComparer.Ordinal);
 
                 _modules.Add(moduleType);
 
@@ -99,14 +105,9 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private IEnumerable<KeyValuePair<string, Pool>> GetPools<T>(string moduleType, IRpcModulePool<T> pool) where T : IRpcModule
+        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
-            foreach (KeyValuePair<string, Pool> item in _pools)
-            {
-                yield return item;
-            }
-
-            yield return new(moduleType, (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool));
+            return (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
         }
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
@@ -158,7 +159,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
-            return _pools[result.ModuleType].RentModule(canBeShared);
+            return _pools[methodName].RentModule(canBeShared);
         }
 
         public void Return(string methodName, IRpcModule rpcModule)
@@ -166,10 +167,10 @@ namespace Nethermind.JsonRpc.Modules
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            _pools[result.ModuleType].ReturnModule(rpcModule);
+            _pools[methodName].ReturnModule(rpcModule);
         }
 
-        public IRpcModulePool? GetPool(string moduleType) => _pools.TryGetValue(moduleType, out var poolInfo) ? poolInfo.ModulePool : null;
+        public IRpcModulePool? GetPoolForMethod(string methodName) => _pools.TryGetValue(methodName, out var poolInfo) ? poolInfo.ModulePool : null;
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
