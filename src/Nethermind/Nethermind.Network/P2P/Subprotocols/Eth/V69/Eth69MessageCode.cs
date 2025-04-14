@@ -9,8 +9,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 public static class Eth69MessageCode
 {
     public const int Status = Eth62MessageCode.Status;
-    public const int NewBlockHashes = Eth62MessageCode.NewBlockHashes;
-    public const int NewBlock = Eth62MessageCode.NewBlock;
     public const int GetReceipts = Eth63MessageCode.GetReceipts;
     public const int Receipts = Eth63MessageCode.Receipts;
 }

@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -23,8 +22,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -193,28 +190,6 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
         action.Should().Throw<SubprotocolException>();
-    }
-
-    [Test]
-    public void Ignores_NewBlock_message()
-    {
-        using var msg = new NewBlockMessage { TotalDifficulty = 1, Block = Build.A.Block.TestObject };
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(msg, Eth62MessageCode.NewBlock);
-
-        _syncManager.DidNotReceiveWithAnyArgs().AddNewBlock(Arg.Any<Block>(), Arg.Any<ISyncPeer>());
-    }
-
-    [Test]
-    public void Ignores_NewBlockHashes_message()
-    {
-        using var msg = new NewBlockHashesMessage((Keccak.MaxValue, 111));
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
-
-        _syncManager.DidNotReceiveWithAnyArgs().HintBlock(Arg.Any<Hash256>(), Arg.Any<long>(), Arg.Any<ISyncPeer>());
     }
 
     private void HandleIncomingStatusMessage()
