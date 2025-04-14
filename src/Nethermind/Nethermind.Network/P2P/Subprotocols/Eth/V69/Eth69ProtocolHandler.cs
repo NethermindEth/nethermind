@@ -96,6 +96,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         };
 
         Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+        HeadNumber = status.LatestBlock; // TODO: clarify if correct thing to do
         HeadHash = status.LatestBlockHash;
         ProtocolInitialized?.Invoke(this, eventArgs);
     }
