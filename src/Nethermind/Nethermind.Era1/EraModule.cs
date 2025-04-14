@@ -29,6 +29,7 @@ public class EraModule : Module
             .AddSingleton<EraCliRunner>()
             .AddSingleton<IAdminEraService, AdminEraService>()
 
+            // The admin export/import history method is here
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
             ;
 

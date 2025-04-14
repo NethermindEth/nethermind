@@ -18,4 +18,20 @@ public static class IContainerBuilderExtensions
                 return new RpcModuleInfo(typeof(T), new SingletonModulePool<T>(instance, true));
             });
     }
+
+    public static ContainerBuilder RegisterBoundedJsonRpcModule<T, TFactory>(
+        this ContainerBuilder builder,
+        int maxCount,
+        int timeout)
+        where T : IRpcModule
+        where TFactory : IRpcModuleFactory<T>
+    {
+        return builder
+            .AddSingleton<TFactory>()
+            .AddSingleton<RpcModuleInfo>((ctx) =>
+            {
+                TFactory factory = ctx.Resolve<TFactory>();
+                return new RpcModuleInfo(typeof(T), new BoundedModulePool<T>(factory, maxCount, timeout));
+            });
+    }
 }

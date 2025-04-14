@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -42,6 +43,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .Bind<IBlockFinder, IBlockTree>()
             .Bind<IEcdsa, IEthereumEcdsa>()
+            .AddSingleton<IReadOnlyTxProcessingEnvFactory, ReadOnlyTxProcessingEnvFactory>()
 
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .Bind<ITxValidator, TxValidator>()

@@ -33,6 +33,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.Flashbots;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules;
@@ -75,7 +76,6 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            Console.Error.WriteLine($"{configFile}");
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
@@ -89,6 +89,15 @@ public class EthereumRunnerTests
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Enqueue(("mainnet-verify-trie-starter", configProvider));
+        }
+
+        {
+            // Flashbots
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
+            result.Enqueue(("flashbots", configProvider));
         }
 
         return result;
