@@ -115,7 +115,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();
-            api.MonitoringService = Substitute.For<IMonitoringService>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
             api.RlpxPeer = Substitute.For<IRlpxHost>();
