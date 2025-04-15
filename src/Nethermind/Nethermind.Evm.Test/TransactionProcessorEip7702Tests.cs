@@ -30,6 +30,7 @@ internal class TransactionProcessorEip7702Tests
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateGuard;
 
     [SetUp]
     public void Setup()
@@ -38,10 +39,17 @@ internal class TransactionProcessorEip7702Tests
         _specProvider = new TestSpecProvider(Prague.Instance);
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        _worldStateGuard = _stateProvider.BeginScope();
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateGuard.Dispose();
     }
 
     [Test]

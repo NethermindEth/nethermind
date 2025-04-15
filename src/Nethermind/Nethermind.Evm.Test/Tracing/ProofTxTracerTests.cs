@@ -80,13 +80,8 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
     [Test]
     public void Can_trace_touch_only_preexisting_accounts()
     {
-        using (TestState.BeginScope(TestState.StateRoot))
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100);
-            TestState.Commit(Spec);
-            TestState.CommitTree(0);
-        }
-
+        TestState.CreateAccount(TestItem.AddressC, 100);
+        TestState.Commit(Spec);
 
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
@@ -285,7 +280,6 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
 
     protected (ProofTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
     {
-        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
         ProofTxTracer tracer = new(_treatSystemAccountDifferently);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);

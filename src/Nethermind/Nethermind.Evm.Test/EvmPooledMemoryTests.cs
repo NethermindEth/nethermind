@@ -119,6 +119,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             0x5b, 0x36, 0x59, 0x3a, 0x34, 0x60, 0x5b, 0x59, 0x05, 0x30, 0xf4, 0x3a,
             0x56};
 
+
         var a = Run(second).ToString();
         Run(first);
         var b = Run(second).ToString();
@@ -169,6 +170,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 codeInfoRepository,
                 LimboLogs.Instance);
 
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 

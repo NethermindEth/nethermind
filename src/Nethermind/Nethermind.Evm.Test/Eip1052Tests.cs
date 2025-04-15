@@ -25,12 +25,7 @@ public class Eip1052Tests : VirtualMachineTestsBase
     [Test]
     public void Account_without_code_returns_empty_data_hash()
     {
-        using (TestState.BeginScope())
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
-            TestState.Commit(Spec);
-            TestState.CommitTree(0);
-        }
+        TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
@@ -116,13 +111,8 @@ public class Eip1052Tests : VirtualMachineTestsBase
         byte[] addressWithGarbage = TestItem.AddressC.Bytes.PadLeft(32);
         addressWithGarbage[11] = 88;
 
-        using (TestState.BeginScope())
-        {
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, "some code"u8.ToArray(), Spec);
-            TestState.Commit(Spec);
-            TestState.CommitTree(0);
-        }
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.InsertCode(TestItem.AddressC, "some code"u8.ToArray(), Spec);
 
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
@@ -248,13 +238,8 @@ public class Eip1052Tests : VirtualMachineTestsBase
             .Create(initCode, 0)
             .Op(Instruction.REVERT).Done;
 
-        using(TestState.BeginScope())
-        {
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-            TestState.Commit(Spec);
-            TestState.CommitTree(0);
-        }
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 50000)

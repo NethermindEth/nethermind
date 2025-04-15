@@ -36,6 +36,7 @@ public class VirtualMachineTestsBase
     protected VirtualMachine Machine { get; private set; }
     protected CodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
+    private IDisposable _worldStateGuard;
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -65,6 +66,7 @@ public class VirtualMachineTestsBase
         _stateDb = new MemDb();
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
+        _worldStateGuard = TestState.BeginScope();
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new CodeInfoRepository();
@@ -73,11 +75,14 @@ public class VirtualMachineTestsBase
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.Dispose();
+    public virtual void TearDown()
+    {
+        _stateDb?.Dispose();
+        _worldStateGuard?.Dispose();
+    }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
-        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true });
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -86,7 +91,6 @@ public class VirtualMachineTestsBase
 
     protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
     {
-        using var _ = TestState.BeginScope();
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -95,7 +99,6 @@ public class VirtualMachineTestsBase
 
     protected GethLikeTxTrace ExecuteAndTrace(long gasLimit, params byte[] code)
     {
-        using var _ = TestState.BeginScope();
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -104,7 +107,6 @@ public class VirtualMachineTestsBase
 
     protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
     {
-        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxFileTracer tracer = new(dumpCallback, options);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -121,7 +123,6 @@ public class VirtualMachineTestsBase
 
     protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code)
     {
-        using var _ = TestState.BeginScope();
         (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -131,7 +132,6 @@ public class VirtualMachineTestsBase
 
     protected TestAllTracerWithOutput Execute(ForkActivation activation, Transaction tx)
     {
-        using var __ = TestState.BeginScope();
         (Block block, _) = PrepareTx(activation, 100000, null);
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -152,7 +152,6 @@ public class VirtualMachineTestsBase
 
     protected T ExecuteBlock<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : IBlockTracer
     {
-        using var _ = TestState.BeginScope(TestState.StateRoot);
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         tracer.StartNewBlockTrace(block);
         ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
@@ -164,7 +163,6 @@ public class VirtualMachineTestsBase
 
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
-        using var _ = TestState.BeginScope();
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer;
@@ -176,7 +174,6 @@ public class VirtualMachineTestsBase
     protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code,
         long blockGasLimit = DefaultBlockGasLimit, byte[][] blobVersionedHashes = null)
     {
-        using var _ = TestState.BeginScope();
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
@@ -187,7 +184,6 @@ public class VirtualMachineTestsBase
     protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, byte[] code,
         long blockGasLimit = DefaultBlockGasLimit, byte[][] blobVersionedHashes = null)
     {
-        using var _ = TestState.BeginScope();
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
@@ -222,7 +218,6 @@ public class VirtualMachineTestsBase
         ulong excessBlobGas = 0,
         Transaction transaction = null)
     {
-        using var _ = TestState.BeginScope();
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
         // checking if account exists - because creating new accounts overwrites already existing accounts,
@@ -279,7 +274,6 @@ public class VirtualMachineTestsBase
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
-        using var _ = TestState.BeginScope();
         // checking if account exists - because creating new accounts overwrites already existing accounts,
         // thus overwriting storage roots - essentially clearing the storage slots
         // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
@@ -314,7 +308,6 @@ public class VirtualMachineTestsBase
     protected (Block block, Transaction transaction) PrepareInitTx(ForkActivation activation, long gasLimit, byte[] code,
         SenderRecipientAndMiner senderRecipientAndMiner = null)
     {
-        using var _ = TestState.BeginScope();
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
         TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
         TestState.Commit(SpecProvider.GenesisSpec);
@@ -359,25 +352,21 @@ public class VirtualMachineTestsBase
 
     protected void AssertStorage(UInt256 address, Address value)
     {
-        using var _ = TestState.BeginScope();
         Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
     }
 
     protected void AssertStorage(UInt256 address, Hash256 value)
     {
-        using var _ = TestState.BeginScope();
         Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
     }
 
     protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
     {
-        using var _ = TestState.BeginScope();
         Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
     }
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
-        using var _ = TestState.BeginScope();
         byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
         byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
         Assert.That(actualValue, Is.EqualTo(expected), "storage");
@@ -385,7 +374,6 @@ public class VirtualMachineTestsBase
 
     protected void AssertStorage(UInt256 address, UInt256 expectedValue)
     {
-        using var _ = TestState.BeginScope();
         byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
         byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
@@ -396,7 +384,6 @@ public class VirtualMachineTestsBase
 
     protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
     {
-        using var _ = TestState.BeginScope();
         _callIndex++;
         if (!TestState.AccountExists(storageCell.Address))
         {
@@ -411,7 +398,6 @@ public class VirtualMachineTestsBase
 
     protected void AssertCodeHash(Address address, Hash256 codeHash)
     {
-        using var _ = TestState.BeginScope();
         Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
     }
 }

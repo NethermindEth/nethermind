@@ -417,7 +417,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     private byte[] NestedCalls()
     {
-        using var _ = TestState.BeginScope(TestState.StateRoot);
+
         byte[] deployedCode = new byte[3];
 
         byte[] initCode = Prepare.EvmCode

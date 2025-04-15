@@ -29,6 +29,7 @@ public class TransactionProcessorFeeTests
     private TransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
+    private IDisposable _worldStateGuard;
 
     [SetUp]
     public void Setup()
@@ -39,6 +40,7 @@ public class TransactionProcessorFeeTests
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        _worldStateGuard = _stateProvider.BeginScope();
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -47,6 +49,12 @@ public class TransactionProcessorFeeTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateGuard.Dispose();
     }
 
     [TestCase(true, true)]
