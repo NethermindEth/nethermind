@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -44,7 +45,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
-        private const int MaxTxInBuffer = 200000;
+        private readonly int _maxTxInBuffer = 200000;
         private const int MinEstimateTxPerBlock = 10;
 
         // Header lookup need to be limited, because `IForwardHeaderProvider.GetBlockHeaders` can be slow.
@@ -60,7 +61,7 @@ namespace Nethermind.Synchronization.Blocks
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the current batch
         // size of batch size and number of desired concurrent peer. It is capped because of memory limit and to
         // reduce workload by `_forwardHeaderProvider`.
-        private int HeaderLookupSize => Math.Min(MaxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
+        private int HeaderLookupSize => Math.Min(_maxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
 
         private ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
@@ -76,8 +77,8 @@ namespace Nethermind.Synchronization.Blocks
             IFullStateFinder fullStateFinder,
             IForwardHeaderProvider forwardHeaderProvider,
             ISyncPeerPool syncPeerPool,
-            ILogManager? logManager,
-            SyncBatchSize? syncBatchSize = null)
+            ISyncConfig syncConfig,
+            ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -89,6 +90,7 @@ namespace Nethermind.Synchronization.Blocks
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _maxTxInBuffer = syncConfig.MaxTxInForwardSyncBuffer;
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
@@ -117,7 +119,7 @@ namespace Nethermind.Synchronization.Blocks
 
             while (true)
             {
-                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize, cancellation);
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize + 1, cancellation);
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return null;
 

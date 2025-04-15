@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -34,10 +35,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IFullStateFinder fullStateFinder,
             IForwardHeaderProvider forwardHeaderProvider,
             ISyncPeerPool syncPeerPool,
-            ILogManager logManager,
-            SyncBatchSize? syncBatchSize = null)
+            ISyncConfig syncConfig,
+            ILogManager logManager)
             : base(blockTree, blockValidator, syncReport, receiptStorage,
-                specProvider, betterPeerStrategy, fullStateFinder, forwardHeaderProvider, syncPeerPool, logManager, syncBatchSize)
+                specProvider, betterPeerStrategy, fullStateFinder, forwardHeaderProvider, syncPeerPool, syncConfig, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _beaconPivot = beaconPivot;

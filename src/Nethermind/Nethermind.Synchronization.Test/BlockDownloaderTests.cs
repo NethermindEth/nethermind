@@ -233,9 +233,12 @@ public partial class BlockDownloaderTests
             .Returns(ci =>
             {
                 IList<Hash256> blockHashes = ci.ArgAt<IList<Hash256>>(0);
-                int toTake = availableBlock - requestedHashes.Count;
-                blockHashes = blockHashes.Take(toTake).ToList();
-                requestedHashes.AddRange(blockHashes);
+                lock (requestedHashes)
+                {
+                    int toTake = availableBlock - requestedHashes.Count;
+                    blockHashes = blockHashes.Take(toTake).ToList();
+                    requestedHashes.AddRange(blockHashes);
+                }
 
                 if (blockHashes.Count == 0)
                 {
@@ -379,7 +382,13 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Prune_download_requests_map()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(Always.Invalid));
+        await using IContainer node = CreateNode(builder => builder
+            .AddDecorator<ISyncConfig>((_, syncConfig) =>
+            {
+                syncConfig.MaxTxInForwardSyncBuffer = 3200;
+                return syncConfig;
+            })
+            .AddSingleton<IBlockValidator>(Always.Invalid));
         Context ctx = node.Resolve<Context>();
 
         SyncPeerMock syncPeer = new(40, true, Response.AllCorrect);
@@ -400,8 +409,8 @@ public partial class BlockDownloaderTests
         (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
         forwardSyncController.DownloadRequestBufferSize.Should().Be(96);
 
-        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
-        forwardSyncController.DownloadRequestBufferSize.Should().Be(39);
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().BeNull();
+        forwardSyncController.DownloadRequestBufferSize.Should().Be(32);
     }
 
     [TestCase(true)]
