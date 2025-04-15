@@ -49,6 +49,8 @@ public class BlobsBundleV1
         }
     }
 
+    public BlobsBundleV1() { Commitments = []; Blobs = []; Proofs = []; }
+
     public byte[][] Commitments { get; }
     public byte[][] Blobs { get; }
     public byte[][] Proofs { get; }
