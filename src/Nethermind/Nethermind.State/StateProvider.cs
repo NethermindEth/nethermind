@@ -441,40 +441,35 @@ namespace Nethermind.State
 
         public Task CommitCode()
         {
-            if (_codeInsertBatch.Count == 0)
-            {
-                return Task.CompletedTask;
-            }
-
-            // Take copy as may be cleared early by changing root.
-            Dictionary<ValueHash256, ReadOnlyMemory<byte>> codeInsertCopy = new(_codeInsertBatch);
-            return Task.Run(() =>
-            {
-                using (var batch = _codeDb.StartWriteBatch())
+            return _codeInsertBatch.Count == 0 ?
+                Task.CompletedTask :
+                Task.Run(() =>
                 {
-                    bool preferWriteByArray = _codeDb.PreferWriteByArray;
-                    foreach (var kvp in codeInsertCopy.OrderBy(static kvp => kvp.Key))
+                    using (var batch = _codeDb.StartWriteBatch())
                     {
-                        ReadOnlySpan<byte> codeHash = kvp.Key.Bytes;
-                        ReadOnlyMemory<byte> code = kvp.Value;
-                        if (!preferWriteByArray)
+                        bool preferWriteByArray = _codeDb.PreferWriteByArray;
+                        foreach (var kvp in _codeInsertBatch.OrderBy(static kvp => kvp.Key))
                         {
-                            batch.PutSpan(codeHash, code.Span);
-                        }
-                        else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
-                                && codeArray.Offset == 0
-                                && codeArray.Count == code.Length)
-                        {
-                            batch[codeHash] = codeArray.Array;
-                        }
-                        else
-                        {
-                            batch[codeHash] = code.ToArray();
+                            ReadOnlySpan<byte> codeHash = kvp.Key.Bytes;
+                            ReadOnlyMemory<byte> code = kvp.Value;
+                            if (!preferWriteByArray)
+                            {
+                                batch.PutSpan(codeHash, code.Span);
+                            }
+                            else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                                    && codeArray.Offset == 0
+                                    && codeArray.Count == code.Length)
+                            {
+                                batch[codeHash] = codeArray.Array;
+                            }
+                            else
+                            {
+                                batch[codeHash] = code.ToArray();
+                            }
                         }
                     }
-                }
-                _codeInsertBatch.Clear();
-            });
+                    _codeInsertBatch.Clear();
+                });
         }
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
