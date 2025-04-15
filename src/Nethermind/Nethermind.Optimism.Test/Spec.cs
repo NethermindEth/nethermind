@@ -33,8 +33,9 @@ public static class Spec
     {
         var spec = Substitute.For<ReleaseSpec>();
 
-        spec.IsOpHoloceneEnabled = Spec.Instance.IsHolocene(header);
-        spec.IsOpGraniteEnabled = Spec.Instance.IsGranite(header);
+        spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
+        spec.IsOpGraniteEnabled = Instance.IsGranite(header);
+        spec.IsOpIsthmusEnabled = Instance.IsIsthmus(header);
 
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(header).Returns(spec);

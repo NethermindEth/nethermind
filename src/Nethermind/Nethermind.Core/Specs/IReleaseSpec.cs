@@ -329,6 +329,9 @@ namespace Nethermind.Core.Specs
         /// OP Holocene
         bool IsOpHoloceneEnabled { get; }
 
+        // OP Isthmus
+        bool IsOpIsthmusEnabled { get; }
+
         /// <summary>
         ///  Increase call data cost
         /// </summary>
@@ -427,6 +430,6 @@ namespace Nethermind.Core.Specs
 
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
-        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled || IsOpIsthmusEnabled;
     }
 }
