@@ -122,7 +122,7 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        using(worldState.BeginScope(worldState.StateRoot))
+        using(worldState.BeginScope())
         {
             worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
             worldState.RecalculateStateRoot();
@@ -216,7 +216,7 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        using(worldState.BeginScope(worldState.StateRoot))
+        using(worldState.BeginScope())
         {
             worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
             worldState.RecalculateStateRoot();

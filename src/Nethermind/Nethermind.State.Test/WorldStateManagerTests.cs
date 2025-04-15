@@ -87,7 +87,7 @@ public class WorldStateManagerTests
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
             worldState.StateRoot = Keccak.EmptyTreeHash;
-            using var _ = worldState.BeginScope(Keccak.EmptyTreeHash);
+            using var _ = worldState.BeginScope();
             worldState.CreateAccount(TestItem.AddressA, 1, 2);
             worldState.Commit(Cancun.Instance);
             worldState.CommitTree(1);

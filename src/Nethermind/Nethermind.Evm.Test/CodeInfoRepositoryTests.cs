@@ -187,7 +187,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
-        using var _ = stateProvider.BeginScope(stateProvider.StateRoot);
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 

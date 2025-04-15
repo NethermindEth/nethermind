@@ -155,7 +155,7 @@ public class HealingTreeTests
         {
             IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
-            using var _ = mainWorldState.BeginScope(Keccak.EmptyTreeHash);
+            using var _ = mainWorldState.BeginScope();
 
             for (int i = 0; i < 100; i++)
             {
