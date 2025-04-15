@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Stats;
 
@@ -51,7 +52,7 @@ public class NodeStatsLight : INodeStats
 
     private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
         minRequestLimit: 1,
-        maxRequestLimit: 128,
+        maxRequestLimit: Stats.SyncLimits.GethSyncLimits.MaxBodyFetch, // Using Geth limits as default max
 
         // In addition to the byte limit, we also try to keep the latency of the get block bodies between these two
         // watermark. This reduce timeout rate, and subsequently disconnection rate.
@@ -68,7 +69,7 @@ public class NodeStatsLight : INodeStats
 
     private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
         minRequestLimit: 1,
-        maxRequestLimit: 128,
+        maxRequestLimit: Stats.SyncLimits.GethSyncLimits.MaxReceiptFetch, // Using Geth limits as default max
 
         // In addition to the byte limit, we also try to keep the latency of the get receipts between these two
         // watermark. This reduce timeout rate, and subsequently disconnection rate.
@@ -427,16 +428,14 @@ public class NodeStatsLight : INodeStats
         if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
         if (requestType == RequestType.Headers)
         {
-            switch (Node.ClientType)
+            return Node.ClientType switch
             {
-                // TODO: Find out other clients limit
-                case NodeClientType.Nethermind:
-                    return 1024;
-                case NodeClientType.Geth:
-                    return 192;
-                default:
-                    return 192;
-            }
+                NodeClientType.Nethermind => Stats.SyncLimits.NethermindSyncLimits.MaxHeaderFetch,
+                NodeClientType.Geth => Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch,
+                NodeClientType.Parity => Stats.SyncLimits.ParitySyncLimits.MaxHeaderFetch,
+                NodeClientType.Besu => Stats.SyncLimits.BeSuSyncLimits.MaxHeaderFetch,
+                _ => Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch, // Default to Geth limits for unknown clients
+            };
         }
 
         throw new ArgumentException($"Unsupported request type: {requestType}");

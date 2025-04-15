@@ -10,4 +10,8 @@
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="SyncLimits\" />
+  </ItemGroup>
+
 </Project>
