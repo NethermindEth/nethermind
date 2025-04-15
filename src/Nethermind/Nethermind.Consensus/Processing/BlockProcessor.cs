@@ -224,7 +224,7 @@ public partial class BlockProcessor(
 
     private void QueueClearCaches(Task? preWarmTask)
     {
-        _codeBatchTask =_stateProvider.CommitCode();
+        _codeBatchTask = _stateProvider.CommitCode();
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
