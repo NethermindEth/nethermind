@@ -96,7 +96,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(
+                ? new(new ReadOnlyTxProcessingEnvFactory(
                         _api.WorldStateManager!,
                         _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider!,

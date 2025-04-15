@@ -38,7 +38,6 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
@@ -46,7 +45,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -159,7 +157,6 @@ namespace Nethermind.Api
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
-        public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public IPeerManager? PeerManager { get; set; }
         public IPeerPool? PeerPool { get; set; }
         public IProtocolsManager? ProtocolsManager { get; set; }
@@ -169,7 +166,7 @@ namespace Nethermind.Api
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxHost? RlpxPeer { get; set; }
-        public IRpcModuleProvider? RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
+        public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
@@ -194,10 +191,7 @@ namespace Nethermind.Api
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
-        public ISyncProgressResolver? SyncProgressResolver => Context.Resolve<ISyncProgressResolver>();
-        public ISyncPointers? SyncPointers => Context.Resolve<ISyncPointers>();
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => Context.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
@@ -224,7 +218,7 @@ namespace Nethermind.Api
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
-        public IEthSyncingInfo? EthSyncingInfo { get; set; }
+        public IEthSyncingInfo? EthSyncingInfo => Context.Resolve<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
