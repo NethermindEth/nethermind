@@ -16,16 +16,10 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
-using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
-using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -190,18 +184,11 @@ namespace Nethermind.Synchronization.Test
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
-            ManualResetEvent resetEvent = new(false);
-            Synchronizer.SyncEvent += (_, args) =>
-            {
-                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
-            };
-
             SyncPeerPool.Start();
             Synchronizer.Start();
             SyncPeerPool.AddPeer(miner1);
 
-            resetEvent.WaitOne(_standardTimeoutUnit);
-
+            Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After(1000, 100));
             miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, options => options.Excluding(h => h!.MaybeParent), "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block
@@ -217,12 +204,9 @@ namespace Nethermind.Synchronization.Test
 
             splitBlockChild.Header.Should().BeEquivalentTo(miner1Tree.BestSuggestedHeader, "split as expected");
 
-            resetEvent.Reset();
-
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
-            resetEvent.WaitOne(_standardTimeoutUnit);
-
+            Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After(1000, 100));
             Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash), "client agrees with miner after split");
         }
 
@@ -232,31 +216,19 @@ namespace Nethermind.Synchronization.Test
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
-            ManualResetEvent resetEvent = new(false);
-            Synchronizer.SyncEvent += (_, args) =>
-            {
-                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
-            };
-
             SyncPeerPool.Start();
             Synchronizer.Start();
             SyncPeerPool.AddPeer(miner1);
 
-            resetEvent.WaitOne(_standardTimeoutUnit);
-
-            Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash), "client agrees with miner before split");
+            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash).After(1000, 100), "client agrees with miner before split");
 
             miner1Tree.AddBranch(7, 0, 1);
 
-            Assert.That(_blockTree.BestSuggestedHeader.Hash, Is.Not.EqualTo(miner1Tree.BestSuggestedHeader.Hash), "client does not agree with miner after split");
-
-            resetEvent.Reset();
+            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.Not.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After(1000, 100), "client does not agree with miner after split");
 
             SyncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock()!, miner1);
 
-            resetEvent.WaitOne(_standardTimeoutUnit);
-
-            Assert.That(_blockTree.BestSuggestedHeader.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash), "client agrees with miner after split");
+            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After(1000, 100), "client agrees with miner after split");
         }
 
         [Test]

@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Blocks
             ReceiptsRequests?.Dispose();
             OwnedBodies?.Dispose();
             Receipts?.Dispose();
-            DownloadTask.Dispose();
+            DownloadTask?.Dispose();
         }
     }
 }

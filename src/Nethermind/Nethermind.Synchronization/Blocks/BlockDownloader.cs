@@ -445,7 +445,7 @@ namespace Nethermind.Synchronization.Blocks
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
+            if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {shouldProcess}");
             return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         }
 
@@ -606,7 +606,7 @@ namespace Nethermind.Synchronization.Blocks
 #endif
                     }
 
-                    if (peerInfo is not null) // fix this for node data sync
+                    if (peerInfo is not null && !t.HasTimeoutException() && !t.HasCanceledException()) // fix this for node data sync
                     {
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.ForwardSyncFailed, reason);
                         // redirect sync event from block downloader here (move this one inside)

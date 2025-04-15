@@ -16,17 +16,23 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
 {
     public async Task Dispatch(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
-        if (request.BodiesRequests.Count > 0)
+        request.DownloadTask = Task.Run(async () =>
         {
-            using IOwnedReadOnlyList<Hash256> bodiesHash = request.BodiesRequests.Select(b => b.Hash).ToPooledList(request.BodiesRequests.Count);
-            request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
-        }
+            if (request.BodiesRequests.Count > 0)
+            {
+                using IOwnedReadOnlyList<Hash256> bodiesHash = request.BodiesRequests.Select(b => b.Hash)
+                    .ToPooledList(request.BodiesRequests.Count);
+                request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
+            }
 
-        if (request.ReceiptsRequests.Count > 0)
-        {
-            using IOwnedReadOnlyList<Hash256> receiptsHash = request.ReceiptsRequests.Select(b => b.Hash).ToPooledList(request.ReceiptsRequests.Count);
-            var ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
-            request.Receipts = ownedReceipts;
-        }
+            if (request.ReceiptsRequests.Count > 0)
+            {
+                using IOwnedReadOnlyList<Hash256> receiptsHash = request.ReceiptsRequests.Select(b => b.Hash)
+                    .ToPooledList(request.ReceiptsRequests.Count);
+                var ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
+                request.Receipts = ownedReceipts;
+            }
+        }, cancellationToken);
+        await request.DownloadTask;
     }
 }
