@@ -1,9 +1,6 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,6 +12,10 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -284,5 +285,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc?> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
+
+        [JsonRpcMethod(IsImplemented = true, Description = "Gets some data", IsSharable = false)]
+        ResultWrapper<BadBlockData> eth_badBlockData();
     }
 }

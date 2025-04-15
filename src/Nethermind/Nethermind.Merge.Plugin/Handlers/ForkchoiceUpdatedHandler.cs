@@ -94,13 +94,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     protected virtual bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
-        {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
-            errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-            return false;
-        }
-
         errorResult = null;
         return true;
     }

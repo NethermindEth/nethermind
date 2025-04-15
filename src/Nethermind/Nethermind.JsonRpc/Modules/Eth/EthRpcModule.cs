@@ -1,13 +1,6 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -37,6 +30,13 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -122,6 +122,24 @@ public partial class EthRpcModule(
             return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
         }
         return ResultWrapper<UInt256?>.Success(feePerBlobGas);
+    }
+
+    public ResultWrapper<BadBlockData> eth_badBlockData()
+    {
+        return ResultWrapper<BadBlockData>.Success(new BadBlockData
+        {
+            ParentBeaconBlockRoot = Bad.Block.ParentBeaconBlockRoot,
+            BlobVersionedHashes = Bad.Block.Transactions
+                .Where(t => t.Type is TxType.Blob)
+                .SelectMany(t => t.BlobVersionedHashes)
+                .ToArray(),
+        });
+    }
+
+    public class BadBlockData
+    {
+        public Hash256 ParentBeaconBlockRoot { get; internal set; }
+        public byte[][] BlobVersionedHashes { get; internal set; }
     }
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
