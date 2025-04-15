@@ -23,12 +23,53 @@ namespace Nethermind.State
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
 
+        private const int StorageValuesCount = 1024 * 1024;
+        private const UIntPtr StorageValuesSize = StorageValue.MemorySize * StorageValuesCount;
+        private readonly unsafe StorageValue* _values;
+
+        protected unsafe void ClearStorageValuesMap()
+        {
+            NativeMemory.Clear(_values,StorageValuesSize);
+        }
+
+        protected unsafe StorageValue.Ptr Map(in StorageValue value)
+        {
+            if (value.IsZero)
+                return StorageValue.Ptr.Null;
+
+            var hash = value.GetHashCode();
+            var values = _values;
+
+            for (var i = 0; i < StorageValuesCount; i++)
+            {
+                var at = (hash + i) % StorageValuesCount;
+                var ptr = values + at;
+
+                if (ptr->Equals(value))
+                {
+                    return new StorageValue.Ptr(ptr);
+                }
+
+                if (ptr->IsZero)
+                {
+                    *ptr = value;
+                    return new StorageValue.Ptr(ptr);
+                }
+            }
+
+            // Return null
+            return default;
+        }
+
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected PartialStorageProviderBase(ILogManager? logManager)
+        protected unsafe PartialStorageProviderBase(ILogManager? logManager)
         {
+            _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
+            NativeMemory.Clear(_values, StorageValuesSize);
+
             _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ??
                       throw new ArgumentNullException(nameof(logManager));
         }
@@ -50,7 +91,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
-            PushUpdate(in storageCell, newValue);
+            PushUpdate(in storageCell, Map(newValue));
         }
 
         /// <summary>
@@ -155,23 +196,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(StorageValue.Zero, StorageValue.Zero);
+            public static readonly ChangeTrace _zeroBytes = new(StorageValue.Ptr.Null, StorageValue.Ptr.Null);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(StorageValue before, StorageValue after)
+            public ChangeTrace(StorageValue.Ptr before, StorageValue.Ptr after)
             {
                 After = after;
                 Before = before;
             }
 
-            public ChangeTrace(StorageValue after)
+            public ChangeTrace(StorageValue.Ptr after)
             {
                 After = after;
-                Before = StorageValue.Zero;
+                Before = StorageValue.Ptr.Null;
             }
 
-            public StorageValue Before;
-            public StorageValue After;
+            public StorageValue.Ptr Before;
+            public StorageValue.Ptr After;
         }
 
         /// <summary>
@@ -210,6 +251,7 @@ namespace Nethermind.State
             _changes.Clear();
             _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
+            ClearStorageValuesMap();
         }
 
         /// <summary>
@@ -222,6 +264,7 @@ namespace Nethermind.State
             _changes.Clear();
             _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
+            ClearStorageValuesMap();
         }
 
         /// <summary>
@@ -234,7 +277,7 @@ namespace Nethermind.State
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
-                return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndex].Value;
+                return ref _changes[lastChangeIndex].Value.Ref;
             }
 
             return ref Unsafe.NullRef<StorageValue>();
@@ -252,7 +295,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, in StorageValue value)
+        private void PushUpdate(in StorageCell cell, in StorageValue.Ptr value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -297,7 +340,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, StorageValue value)
+            public Change(ChangeType changeType, StorageCell storageCell, StorageValue.Ptr value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -306,7 +349,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly StorageValue Value;
+            public readonly StorageValue.Ptr Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

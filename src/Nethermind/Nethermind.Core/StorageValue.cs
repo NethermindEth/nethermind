@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -22,7 +23,7 @@ namespace Nethermind.Core;
 public readonly struct StorageValue : IEquatable<StorageValue>
 {
     private readonly Vector256<byte> _bytes;
-    private const int MemorySize = 32;
+    public const int MemorySize = 32;
 
     /// <summary>
     /// Creates a new storage value, ensuring proper endianess of the copied bytes.
@@ -155,5 +156,35 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// A not so managed reference to <see cref="StorageValue"/>.
+    /// Allows quick equality checks and ref returning semantics.
+    /// </summary>
+    public readonly unsafe struct Ptr : IEquatable<Ptr>
+    {
+        private readonly StorageValue* _pointer;
+
+        public Ptr(StorageValue* pointer)
+        {
+            _pointer = pointer;
+        }
+
+        public bool IsZero => _pointer == null;
+
+        public static readonly Ptr Null = default;
+
+        public ref readonly StorageValue Ref =>
+            ref _pointer == null ? ref Zero : ref Unsafe.AsRef<StorageValue>(_pointer);
+
+        public override bool Equals([NotNullWhen(true)] object? obj)
+        {
+            return obj is Ptr other && Equals(other);
+        }
+
+        public bool Equals(Ptr other) => _pointer == other._pointer;
+
+        public override int GetHashCode() => unchecked((int)(long)_pointer);
     }
 }

@@ -40,7 +40,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// EIP-1283
     /// </summary>
-    private readonly Dictionary<StorageCell, StorageValue> _originalValues = new();
+    private readonly Dictionary<StorageCell, StorageValue.Ptr> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
     private readonly Dictionary<AddressAsKey, DefaultableDictionary> _blockChanges = new(4_096);
@@ -83,6 +83,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _blockChanges.Clear();
             _storages.Clear();
             _toUpdateRoots.Clear();
+            ClearStorageValuesMap();
         }
     }
 
@@ -119,12 +120,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
-                    return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndexBeforeOriginalSnapshot].Value;
+                    return ref _changes[lastChangeIndexBeforeOriginalSnapshot].Value.Ref;
                 }
             }
         }
 
-        return ref original;
+        return ref original.Ref;
     }
 
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
@@ -196,7 +197,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.Ref.ToHexString(true)}");
                 }
 
                 SaveChange(toUpdateRoots, change);
@@ -338,12 +339,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int skipped = 0;
             foreach (var kvp in dict)
             {
-                StorageValue after = kvp.Value.After;
+                StorageValue.Ptr after = kvp.Value.After;
                 // Force the update if the change is to zero. This means a removal.
                 if (after.IsZero || !kvp.Value.Before.Equals(after))
                 {
                     dict[kvp.Key] = new(after, after);
-                    storageTree.SetValue(kvp.Key, after);
+                    storageTree.SetValue(kvp.Key, after.Ref);
                     writes++;
                 }
                 else
@@ -375,8 +376,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private void SaveChange(HashSet<AddressAsKey> toUpdateRoots, Change change)
     {
-        if (_originalValues.TryGetValue(change.StorageCell, out StorageValue initialValue) &&
-            initialValue.Equals(in change.Value))
+        if (_originalValues.TryGetValue(change.StorageCell, out StorageValue.Ptr initialValue) &&
+            initialValue.Ref.Equals(in change.Value.Ref))
         {
             // no need to update the tree if the value is the same
             return;
@@ -477,7 +478,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 LoadFromTreeReadPreWarmCache(in storageCell) :
                 LoadFromTreePopulatePrewarmCache(in storageCell);
 
-            valueChange = new(value, value);
+            var mapped = Map(value);
+            valueChange = new(mapped,mapped);
         }
         else
         {
@@ -485,7 +487,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         if (!storageCell.IsHash) PushToRegistryOnly(storageCell, valueChange.After);
-        return ref valueChange.After;
+        return ref valueChange.After.Ref;
     }
 
     private StorageValue LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)
@@ -531,7 +533,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return !storageCell.IsHash ? tree.GetValue(storageCell.Index) : tree.GetValue(storageCell.Hash.Bytes);
     }
 
-    private void PushToRegistryOnly(in StorageCell cell, StorageValue value)
+    private void PushToRegistryOnly(in StorageCell cell, StorageValue.Ptr value)
     {
         StackList<int> stack = SetupRegistry(cell);
         _originalValues[cell] = value;
@@ -543,13 +545,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         foreach ((StorageCell address, ChangeTrace change) in trace)
         {
-            StorageValue before = change.Before;
-            StorageValue after = change.After;
+            StorageValue.Ptr before = change.Before;
+            StorageValue.Ptr after = change.After;
 
             if (!before.Equals(after))
             {
-                // TODO: consider non allocating report
-                tracer.ReportStorageChange(address, before, after);
+                tracer.ReportStorageChange(address, before.Ref, after.Ref);
             }
         }
     }
