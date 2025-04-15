@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -237,7 +236,6 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(tracer, commitRoots);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
         }
-        public Task CommitCode() => _stateProvider.CommitCode();
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
