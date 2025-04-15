@@ -189,10 +189,30 @@ public partial class BlockDownloaderTests
     {
         Action<ContainerBuilder> configurer = builder =>
         {
+            builder.AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>());
         };
 
         await using IContainer node = mergeDownloader ? CreateMergeNode(configurer) : CreateNode(configurer);
         Context ctx = node.Resolve<Context>();
+        ISyncPeerPool peerPool = node.Resolve<ISyncPeerPool>();
+
+        int requestCount = 0;
+        peerPool.EstimateRequestLimit(
+                Arg.Any<RequestType>(),
+                Arg.Any<IPeerAllocationStrategy>(),
+                Arg.Any<AllocationContexts>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<int?>>((_) =>
+            {
+                if (requestCount < 3)
+                {
+                    requestCount++;
+                    return Task.FromResult<int?>(null);
+                }
+
+                // Randomly not trigger timeout
+                return Task.FromResult<int?>(FullBatch - 1);
+            });
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())

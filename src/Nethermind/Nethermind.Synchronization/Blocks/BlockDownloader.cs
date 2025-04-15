@@ -445,7 +445,6 @@ namespace Nethermind.Synchronization.Blocks
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {shouldProcess}");
             return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         }
 
@@ -458,6 +457,7 @@ namespace Nethermind.Synchronization.Blocks
             TxReceipt[]? receipts)
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
+            if (_logger.IsTrace) _logger.Trace($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
