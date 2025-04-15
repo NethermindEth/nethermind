@@ -14,7 +14,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Threading;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -28,8 +28,10 @@ namespace Nethermind.JsonRpc.Modules
         private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
-        private FrozenDictionary<string, ResolvedMethodInfo> _methods = FrozenDictionary<string, ResolvedMethodInfo>.Empty;
-        private FrozenDictionary<string, Pool> _pools = FrozenDictionary<string, Pool>.Empty;
+        private Dictionary<string, ResolvedMethodInfo> _methods = new();
+        private Dictionary<string, Pool> _pools = new();
+        private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
+        private FrozenDictionary<string, Pool>? _frozenPools = null;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -86,15 +88,17 @@ namespace Nethermind.JsonRpc.Modules
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
-                using var methods = GetMethods<T>(moduleType).ToPooledList(0);
+                var methods = GetMethods<T>(moduleType).ToArray();
                 var poolRecord = GetPool(pool);
 
-                // FrozenDictionary can't be directly updated (which makes it fast for reading) so we combine the two sets of
-                // data as an Enumerable create an new FrozenDictionary from it and then update the reference
-                _pools = _pools.Concat(methods
-                    .Select(method => new KeyValuePair<string, Pool>(method.Key, poolRecord)))
-                    .ToFrozenDictionary<string, Pool>(StringComparer.Ordinal);
-                _methods = _methods.Concat(methods).ToFrozenDictionary(StringComparer.Ordinal);
+                methods
+                    .ForEach((method) =>
+                    {
+                        _pools[method.Key] = poolRecord;
+                        _methods[method.Key] = method.Value;
+                    });
+                _frozenPools = null;
+                _frozenMethods = null;
 
                 _modules.Add(moduleType);
 
@@ -122,11 +126,18 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
+        private void EnsureFrozenCollection()
+        {
+            _frozenPools ??= _pools.ToFrozenDictionary(StringComparer.Ordinal);
+            _frozenMethods ??= _methods.ToFrozenDictionary(StringComparer.Ordinal);
+        }
+
         public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
         {
+            EnsureFrozenCollection();
             module = null;
 
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
             {
                 return ModuleResolution.Unknown;
             }
@@ -150,27 +161,34 @@ namespace Nethermind.JsonRpc.Modules
 
         public ResolvedMethodInfo? Resolve(string methodName)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
+            EnsureFrozenCollection();
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
             return result;
         }
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
+            EnsureFrozenCollection();
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
-            return _pools[methodName].RentModule(canBeShared);
+            return _frozenPools[methodName].RentModule(canBeShared);
         }
 
         public void Return(string methodName, IRpcModule rpcModule)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            EnsureFrozenCollection();
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            _pools[methodName].ReturnModule(rpcModule);
+            _frozenPools[methodName].ReturnModule(rpcModule);
         }
 
-        public IRpcModulePool? GetPoolForMethod(string methodName) => _pools.TryGetValue(methodName, out var poolInfo) ? poolInfo.ModulePool : null;
+        public IRpcModulePool? GetPoolForMethod(string methodName)
+        {
+            EnsureFrozenCollection();
+            return _frozenPools.TryGetValue(methodName, out var poolInfo) ? poolInfo.ModulePool : null;
+        }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
