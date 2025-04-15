@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
         }
 
-        public bool SupportsBlobs => _txSource.SupportsBlobs;
+        public bool SupportsBlobs => TxSource.SupportsBlobs;
 
         public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {

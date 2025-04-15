@@ -405,7 +405,8 @@ public class NodeStatsLight : INodeStats
         return rlpxReputation;
     }
 
-    public async Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem> {
+    public async Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem>
+    {
         if (requestType == RequestType.Bodies) return await _bodiesRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
         if (requestType == RequestType.Receipts) return await _receiptsRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
 

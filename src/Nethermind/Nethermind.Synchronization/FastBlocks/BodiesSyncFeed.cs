@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 // Set the request size depending on the approximate allocation strategy.
                 int requestSize =
-                    (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _approximateAllocationStrategy, AllocationContexts.Blocks, token))
+                    (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _approximateAllocationStrategy, AllocationContexts.Bodies, token))
                     ?? GethSyncLimits.MaxBodyFetch;
 
                 while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>

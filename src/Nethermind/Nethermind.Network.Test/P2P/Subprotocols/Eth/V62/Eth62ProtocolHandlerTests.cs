@@ -414,7 +414,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public async Task Can_LimitGetBlockBodiesRequestSize()
         {
-            using BlockBodiesMessage msg4 = new( Build.A.Block.TestObjectNTimes(4));
+            using BlockBodiesMessage msg4 = new(Build.A.Block.TestObjectNTimes(4));
             Transaction signedTransaction = Build.A.Transaction.SignedAndResolved().TestObject;
             Block largerBlock = Build.A.Block.WithTransactions(Enumerable.Repeat(signedTransaction, 1000).ToArray()).TestObject;
 
