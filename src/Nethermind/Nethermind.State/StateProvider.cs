@@ -138,7 +138,6 @@ namespace Nethermind.State
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _needsStateRootUpdate = true;
             bool inserted = false;
 
             // Don't reinsert if already inserted. This can be the case when the same
@@ -168,6 +167,7 @@ namespace Nethermind.State
             Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when updating code hash");
             if (account.CodeHash.ValueHash256 != codeHash)
             {
+                _needsStateRootUpdate = true;
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
                 PushUpdate(address, changedAccount);
