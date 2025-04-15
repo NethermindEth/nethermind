@@ -41,7 +41,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         OverridableCodeInfoRepository codeInfoRepository,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.StateRoot = parent.StateRoot!;
+        using var _ = stateProvider.BeginScope(parent.StateRoot!);
         stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
@@ -163,7 +163,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
     {
-        stateProvider.StateRoot = processedBlock.StateRoot!;
+        using var _ = stateProvider.BeginScope(processedBlock.StateRoot!);
         stateProvider.Commit(currentSpec);
         stateProvider.CommitTree(currentBlock.Number);
         blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
@@ -204,6 +204,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         [NotNullWhen(false)] out string? error)
     {
         IWorldState stateProvider = env.WorldState;
+        using var _ = stateProvider.BeginScope();
         Snapshot shoot = stateProvider.TakeSnapshot();
         currentBlock = new Block(callHeader);
         LinkedHashSet<Transaction> testedTxs = new();
@@ -257,6 +258,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         Dictionary<Address, UInt256> nonceCache,
         bool validate)
     {
+        using var _ = stateProvider.BeginScope();
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
         transaction.Data ??= Memory<byte>.Empty;

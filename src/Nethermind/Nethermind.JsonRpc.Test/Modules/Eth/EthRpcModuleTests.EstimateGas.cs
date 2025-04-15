@@ -254,6 +254,7 @@ public partial class EthRpcModuleTests
         {
             To = TestItem.AddressB
         };
+        using var _ = ctx.Test.WorldStateManager.GlobalWorldState.BeginScope();
         ctx.Test.WorldStateManager.GlobalWorldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
 
         string serialized =

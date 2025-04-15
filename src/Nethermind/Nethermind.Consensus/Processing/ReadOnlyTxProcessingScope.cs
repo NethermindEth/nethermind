@@ -25,7 +25,11 @@ public class ReadOnlyTxProcessingScope(
     public IWorldState WorldState => worldState;
     public void Reset()
     {
-        worldState.StateRoot = originalStateRoot;
-        worldState.Reset();
+        // this means the scope was not initialized here, so don't need to reset anything
+        if (worldStateScopeGuard is not null)
+        {
+            worldState.StateRoot = originalStateRoot;
+            worldState.Reset();
+        }
     }
 }

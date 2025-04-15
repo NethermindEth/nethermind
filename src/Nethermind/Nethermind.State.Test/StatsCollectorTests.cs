@@ -28,6 +28,7 @@ namespace Nethermind.Store.Test
             NodeStorage nodeStorage = new NodeStorage(stateDb);
             TrieStore trieStore = new(nodeStorage, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            using var _ = stateProvider.BeginScope();
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
             stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);

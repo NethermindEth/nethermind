@@ -58,6 +58,7 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)), initScope);
         if (stateOverride is not null)
         {
+            using var _ = scope.WorldState.BeginScope();
             scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);
             header.StateRoot = scope.WorldState.StateRoot;
         }
