@@ -12,7 +12,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public class JournalSet<T> : IReadOnlySet<T>, ICollection<T>, IJournal<int>
+    public sealed class JournalSet<T> : IReadOnlySet<T>, ICollection<T>, IJournal<int>
     {
         private readonly List<T> _items = new();
         private readonly HashSet<T> _set = new();
