@@ -204,6 +204,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             // TODO: when direct / calls are treated same we should not need such differentiation
                             goto Failure;
                         }
+
+                        // burn remaining precompile gas supplied to call on failure
+                        currentState.GasAvailable = 0;
                     }
                 }
                 else

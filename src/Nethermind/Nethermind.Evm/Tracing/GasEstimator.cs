@@ -41,7 +41,6 @@ namespace Nethermind.Evm.Tracing
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
             tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
-            tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
 
             // Calculate and return additional gas required in case of insufficient funds.
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);

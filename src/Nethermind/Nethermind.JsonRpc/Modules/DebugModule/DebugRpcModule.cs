@@ -80,7 +80,16 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
-        call.EnsureDefaults(_jsonRpcConfig.GasCap);
+
+        long? gasCap = _jsonRpcConfig.GasCap;
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (!searchResult.IsError)
+        {
+            gasCap = searchResult.Object.GasLimit;
+        }
+
+        call.EnsureDefaults(gasCap);
+
         Transaction tx = call.ToTransaction();
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;

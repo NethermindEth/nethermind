@@ -49,11 +49,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
-                Dictionary<Address, AccountOverride>? stateOverride = null)
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
-                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
-                return base.Execute(transactionCall, blockParameter, stateOverride);
+
+                long? gasCap = _rpcConfig.GasCap;
+                if (gasCap is null)
+                {
+                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                    if (!searchResult.Value.IsError)
+                    {
+                        gasCap = searchResult.Value.Object.GasLimit;
+                    }
+                }
+
+                transactionCall.EnsureDefaults(gasCap);
+
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
