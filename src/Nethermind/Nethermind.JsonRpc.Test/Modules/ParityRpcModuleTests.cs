@@ -69,6 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
 
+            using var _ = stateProvider.BeginScope();
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
                 .WithSpecProvider(specProvider)

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -31,6 +32,7 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
+            using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             Preallocate(genesis);
 
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet

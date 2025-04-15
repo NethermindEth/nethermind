@@ -659,7 +659,7 @@ public partial class EngineModuleTests
         TimeSpan? delay = null
     )
     {
-        MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
+        MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, logManager: SimpleConsoleLogManager.Instance);
         IBlockImprovementContextFactory improvementContextFactory = factoryFactory(chain);
         ConfigureBlockchainWithImprovementContextFactory(chain, improvementContextFactory, timePerSlot, delay);
         return chain;

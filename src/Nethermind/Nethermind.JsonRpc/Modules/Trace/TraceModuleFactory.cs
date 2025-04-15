@@ -66,7 +66,7 @@ public class TraceModuleFactory(
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
         OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv(overridableScope);
-        OverridableTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        OverridableTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash, false);
 
         IRewardCalculator rewardCalculator =
             new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,7 +19,8 @@ public class ReadOnlyTxProcessingScopeTests
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
             Substitute.For<IWorldState>(),
-            TestItem.KeccakB
+            TestItem.KeccakB,
+            null
         );
 
         env.Dispose();

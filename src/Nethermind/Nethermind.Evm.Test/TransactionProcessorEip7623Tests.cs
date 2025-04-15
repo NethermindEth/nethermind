@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Grpc.Core;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -27,6 +28,7 @@ public class TransactionProcessorEip7623Tests
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateGuard;
 
     [SetUp]
     public void Setup()
@@ -35,10 +37,17 @@ public class TransactionProcessorEip7623Tests
         _specProvider = new TestSpecProvider(Prague.Instance);
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        _worldStateGuard = _stateProvider.BeginScope();
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateGuard.Dispose();
     }
 
     [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
