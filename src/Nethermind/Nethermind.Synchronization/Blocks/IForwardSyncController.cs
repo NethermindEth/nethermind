@@ -8,6 +8,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks;
 
+/// <summary>
+/// This class act like a shared `ISyncFeed` for both fastsync and full sync.
+/// </summary>
 public interface IForwardSyncController
 {
     public Task<BlocksRequest> PrepareRequest(DownloaderOptions buildOptions, int fastSyncLag, CancellationToken token);

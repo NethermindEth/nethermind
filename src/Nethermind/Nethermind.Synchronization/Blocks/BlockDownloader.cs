@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -58,9 +60,8 @@ namespace Nethermind.Synchronization.Blocks
         // the request.
         private static readonly TimeSpan RequestHardTimeout = TimeSpan.FromSeconds(30);
 
-        // The forward lookup size determine the buffer size of concurrent download. Estimated from the current batch
-        // size of batch size and number of desired concurrent peer. It is capped because of memory limit and to
-        // reduce workload by `_forwardHeaderProvider`.
+        // The forward lookup size determine the buffer size of concurrent download. Estimated from the _maxTxInBuffer
+        // and _estimateTxPerBlock. It is capped because of memory limit and to reduce workload by `_forwardHeaderProvider`.
         private int HeaderLookupSize => Math.Min(_maxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
 
         private ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
@@ -339,7 +340,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (!_blockValidator.ValidateSuggestedBlock(block, out string? errorMessage))
                 {
-                    if (_logger.IsTrace) _logger.Debug($"Invalid block from {peer}, {errorMessage}");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block from {peer}, {errorMessage}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -457,7 +458,7 @@ namespace Nethermind.Synchronization.Blocks
             TxReceipt[]? receipts)
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
-            if (_logger.IsTrace) _logger.Trace($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
+            if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
