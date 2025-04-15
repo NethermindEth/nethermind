@@ -72,7 +72,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet --data-dir .data",
+      "commandLineArgs": "-c mainnet -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
