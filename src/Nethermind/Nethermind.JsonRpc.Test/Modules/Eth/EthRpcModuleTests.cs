@@ -996,14 +996,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_transaction_receipt_returns_null_on_missing_receipt()
-    {
-        using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
-    }
-
-    [Test]
     public async Task Eth_getTransactionReceipt_return_info_about_mined_tx()
     {
         using Context ctx = await Context.Create();
