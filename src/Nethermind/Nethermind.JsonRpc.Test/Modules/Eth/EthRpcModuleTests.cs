@@ -11,6 +11,7 @@ using Autofac;
 using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -747,25 +748,6 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
-
-    [Test]
-    public async Task Eth_get_block_by_number_pruned()
-    {
-        using Context ctx = await Context.Create(configurer: builder =>
-        {
-            builder.AddDecorator<ISyncConfig>((ctx, config) =>
-            {
-                config.AncientBodiesBarrier = 1000000;
-                config.AncientReceiptsBarrier = 1000000;
-                Console.WriteLine($"test cfg: {config}");
-                return config;
-            });
-        });
-
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "100", "false");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
-    }
-
     [Test]
     public async Task Eth_protocol_version()
     {
@@ -1020,7 +1002,6 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
-
 
     [Test]
     public async Task Eth_getTransactionReceipt_return_info_about_mined_tx()
@@ -1375,6 +1356,93 @@ public partial class EthRpcModuleTests
         JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
         Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
+
+
+    [Test]
+    public async Task Eth_get_block_by_number_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "100", "false");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_tx_count_by_number_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByNumber", 100);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_uncle_count_by_block_number_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", 100);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_by_block_number_and_index_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", 100, "1");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_by_hash_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "true");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_tx_count_by_hash_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_uncle_count_by_hash_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_by_block_hash_and_index_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
+        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockHashAndIndex", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "1");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_getBlockReceipts_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", 100);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+
+    [Test]
+    public async Task Eth_get_transaction_receipt_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
     public class AllowNullAuthorizationTuple : AuthorizationTuple
     {
         public AllowNullAuthorizationTuple(ulong chainId, Address? codeAddress, ulong nonce, Signature? sig)
@@ -1443,6 +1511,23 @@ public partial class EthRpcModuleTests
             OverridableReleaseSpec releaseSpec = new(Cancun.Instance);
             TestSpecProvider specProvider = new(releaseSpec);
             return await Create(specProvider);
+        }
+
+
+        public static async Task<Context> CreateWithAncientBarriers(long blockNumber)
+        {
+            return await Create(configurer: builder =>
+            {
+                builder.AddDecorator<ISyncConfig>((_, config) =>
+                {
+                    var cutBlock = blockNumber;
+                    config.AncientBodiesBarrier = cutBlock;
+                    config.AncientReceiptsBarrier = cutBlock;
+                    config.PivotNumber = cutBlock.ToString();
+                    config.SnapSync = true;
+                    return config;
+                });
+            });
         }
 
         public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)

@@ -55,7 +55,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
-        public ISyncConfig SyncConfig { get; private set; } = new SyncConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -131,12 +130,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Builder<T> WithSyncConfig(ISyncConfig config)
-            {
-                _blockchain.SyncConfig = config;
-                return this;
-            }
-
             public Task<T> Build()
             {
                 return Build((ISpecProvider?)null);
@@ -184,11 +177,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.SyncConfig,
-                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
-            @this.SyncConfig,
+            @this.Container.Resolve<ISyncConfig>(),
             @this.BlocksConfig.SecondsPerSlot);
 
         private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
