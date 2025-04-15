@@ -1089,7 +1089,7 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
-                using var _ = worldState.BeginScope(K);
+                using var _ = worldState.BeginScope();
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
