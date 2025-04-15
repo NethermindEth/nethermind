@@ -23,7 +23,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 {
-    private readonly OptimismSpecHelper _specHelper;
+    private readonly IOptimismSpecHelper _specHelper;
     private readonly OPL1CostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
@@ -37,7 +37,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        OptimismSpecHelper specHelper,
+        IOptimismSpecHelper specHelper,
         OPL1CostHelper l1CostHelper,
         ILogManager logManager) : base(
             worldStateManager,

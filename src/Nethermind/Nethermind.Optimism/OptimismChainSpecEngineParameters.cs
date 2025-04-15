@@ -28,6 +28,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? HoloceneTimestamp { get; set; }
 
+    public ulong? IsthmusTimestamp { get; set; }
+
     public Address? L1FeeRecipient { get; set; }
 
     public Address? L1BlockAddress { get; set; }
