@@ -6,6 +6,7 @@ using System.IO;
 using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
@@ -37,6 +38,7 @@ namespace Nethermind.Init
             INetworkConfig networkConfig,
             ISyncConfig syncConfig,
             ITxPoolConfig txPoolConfig,
+            IKeccakCacheConfig cacheConfig,
             uint cpuCount)
         {
             TotalMemory = initConfig.MemoryHint ?? 2.GB();
@@ -51,21 +53,31 @@ namespace Nethermind.Init
                 _remainingMemory = initConfig.MemoryHint ?? 2.GB();
                 _remainingMemory -= GeneralMemory;
                 if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
+
+                AssignKeccakCacheMemory(cacheConfig);
+                _remainingMemory -= KeccakCacheMemory;
+                if (_logger.IsInfo) _logger.Info($"  Keccak cache memory:{KeccakCacheMemory / 1000 / 1000,5} MB");
+
                 AssignPeersMemory(networkConfig);
                 _remainingMemory -= PeersMemory;
                 if (_logger.IsInfo) _logger.Info($"  Peers memory:       {PeersMemory / 1000 / 1000,5} MB");
+
                 AssignNettyMemory(networkConfig, cpuCount);
                 _remainingMemory -= NettyMemory;
                 if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000,5} MB");
+
                 AssignTxPoolMemory(txPoolConfig);
                 _remainingMemory -= TxPoolMemory;
                 if (_logger.IsInfo) _logger.Info($"  Mempool memory:     {TxPoolMemory / 1000 / 1000,5} MB");
+
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
                 if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
+
                 AssignTrieCacheMemory(dbConfig);
                 _remainingMemory -= TrieCacheMemory;
                 if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
+
                 UpdateDbConfig(dbConfig, initConfig);
                 _remainingMemory -= DbMemory;
                 if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
@@ -96,12 +108,21 @@ namespace Nethermind.Init
 
         public long TotalMemory = 1024 * 1024 * 1024;
         public long GeneralMemory { get; } = 32.MB();
+
+        public long KeccakCacheMemory { get; private set; }
         public long FastBlocksMemory { get; private set; }
         public long DbMemory { get; private set; }
         public long NettyMemory { get; private set; }
         public long TxPoolMemory { get; private set; }
         public long PeersMemory { get; private set; }
         public long TrieCacheMemory { get; private set; }
+
+        private void AssignKeccakCacheMemory(IKeccakCacheConfig cacheConfig)
+        {
+            // For each 1 GB assign 12MB of KeccakCache. As the general memory is deducted first, it will be 12MB for 2GB.
+            KeccakCacheMemory = KeccakCache.CalculateActualMemorySize(_remainingMemory / 1024 * 12);
+            cacheConfig.MaxMemory = KeccakCacheMemory;
+        }
 
         private void AssignTrieCacheMemory(IDbConfig dbConfig)
         {

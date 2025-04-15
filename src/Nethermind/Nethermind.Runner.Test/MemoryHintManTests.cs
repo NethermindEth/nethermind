@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
@@ -22,6 +23,7 @@ namespace Nethermind.Runner.Test
     {
         private const long GB = 1000 * 1000 * 1000;
         private const long MB = 1000 * 1000;
+        private const long MiB = 1024 * 1024;
 
         private IDbConfig _dbConfig;
         private ISyncConfig _syncConfig;
@@ -30,6 +32,7 @@ namespace Nethermind.Runner.Test
         private INetworkConfig _networkConfig;
         private MemoryHintMan _memoryHintMan;
         private MallocHelper _mallocHelper;
+        private KeccakCacheConfig _cacheConfig;
 
         [SetUp]
         public void Setup()
@@ -39,6 +42,7 @@ namespace Nethermind.Runner.Test
             _initConfig = new InitConfig();
             _txPoolConfig = new TxPoolConfig();
             _networkConfig = new NetworkConfig();
+            _cacheConfig = new KeccakCacheConfig();
             _mallocHelper = Substitute.For<MallocHelper>();
             _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
         }
@@ -51,6 +55,7 @@ namespace Nethermind.Runner.Test
                 _networkConfig,
                 _syncConfig,
                 _txPoolConfig,
+                _cacheConfig,
                 cpuCount);
         }
 
@@ -142,6 +147,16 @@ namespace Nethermind.Runner.Test
             {
                 _mallocHelper.DidNotReceive().MallOpt(Arg.Any<MallocHelper.Option>(), Arg.Any<int>());
             }
+        }
+
+        [TestCase((long)(1.5 * GB), 12 * MiB)]
+        [TestCase(2 * GB, 12 * MiB)]
+        [TestCase(3 * GB, 24 * MiB)]
+        public void KeccakCache(long memoryHint, long expected)
+        {
+            _initConfig.MemoryHint = memoryHint;
+            SetMemoryAllowances(1);
+            _cacheConfig.MaxMemory.Should().Be(expected);
         }
     }
 }
