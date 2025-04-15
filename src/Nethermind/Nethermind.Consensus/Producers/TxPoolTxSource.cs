@@ -44,12 +44,14 @@ namespace Nethermind.Consensus.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             long blockNumber = parent.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(parent);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
+            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
+                _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
+                _transactionPool.GetPendingTransactionsBySender();
             IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
@@ -155,7 +157,7 @@ namespace Nethermind.Consensus.Producers
 
                 if (txBlobCount == 1 && candidates is null)
                 {
-                    selectedBlobTxs.Add(blobTx);
+                    selectedBlobTxs.Add(fullBlobTx);
                     if (selectedBlobTxs.Count == maxBlobsPerBlock)
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees

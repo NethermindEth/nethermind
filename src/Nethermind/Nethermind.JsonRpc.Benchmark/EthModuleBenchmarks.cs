@@ -148,6 +148,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     new ReadOnlyBlockTree(blockTree),
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,
+                    SimulateTransactionProcessorFactory.Instance,
                     LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,

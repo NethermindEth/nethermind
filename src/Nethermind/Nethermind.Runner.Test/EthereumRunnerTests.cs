@@ -13,30 +13,42 @@ using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
+using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Era1;
+using Nethermind.Flashbots;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Serialization.Json;
+using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
 using Nethermind.Taiko;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.UPnP.Plugin;
@@ -69,6 +81,24 @@ public class EthereumRunnerTests
             configProvider.Initialize();
             result.Enqueue((configFile, configProvider));
         });
+
+        {
+            // Special case for verify trie on state sync finished
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
+            result.Enqueue(("mainnet-verify-trie-starter", configProvider));
+        }
+
+        {
+            // Flashbots
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
+            result.Enqueue(("flashbots", configProvider));
+        }
 
         return result;
     }
@@ -155,16 +185,54 @@ public class EthereumRunnerTests
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.BlockValidator = Substitute.For<IBlockValidator>();
         api.DbProvider = Substitute.For<IDbProvider>();
+        api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
 
         try
         {
             var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (var step in stepsLoader.ResolveStepsImplementations(runner.Api.GetType()))
+            foreach (var step in stepsLoader.ResolveStepsImplementations())
             {
                 runner.LifetimeScope.Resolve(step.StepType);
             }
+
+            // Many components are not part of the step constructor param, so we have resolve them manually here
+
+            // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
+            Build.MockOutNethermindApi((NethermindApi)api);
+
+            foreach (var propertyInfo in api.GetType().Properties())
+            {
+                // Property with `SkipServiceCollection` make property from container.
+                if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
+                {
+                    propertyInfo.GetValue(api);
+                }
+
+                if (propertyInfo.GetSetMethod() is not null)
+                {
+                    if (runner.LifetimeScope.ComponentRegistry.TryGetRegistration(new TypedService(propertyInfo.PropertyType), out var registration))
+                    {
+                        var isFallback = registration.Metadata.ContainsKey(FallbackToFieldFromApi<INethermindApi>.FallbackMetadata);
+                        if (!isFallback)
+                        {
+                            Assert.Fail($"A setter in {nameof(INethermindApi)} of type {propertyInfo.PropertyType} also has a container registration that is not a fallback to api. This is likely a bug.");
+                        }
+                    }
+                }
+            }
+
+            if (api.Context.ResolveOptional<IBlockCacheService>() is not null)
+            {
+                api.Context.Resolve<IBlockCacheService>();
+                api.Context.Resolve<InvalidChainTracker>();
+                api.Context.Resolve<IBeaconPivot>();
+                api.Context.Resolve<BeaconPivot>();
+            }
+            api.Context.Resolve<IPoSSwitcher>();
+            api.Context.Resolve<ISynchronizer>();
+            api.Context.Resolve<IAdminEraService>();
+            api.Context.Resolve<IRpcModuleProvider>();
         }
         finally
         {
@@ -212,8 +280,6 @@ public class EthereumRunnerTests
             ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);
-            INethermindApi nethermindApi = runner.Api;
-            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
 
             using CancellationTokenSource cts = new();
 

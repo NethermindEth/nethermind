@@ -8,10 +8,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -284,7 +286,7 @@ namespace Nethermind.Benchmarks.Store
                 {
                     // Its an existing write
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         currentItems[(int)(rand.NextInt64() % currentItems.Count)],
                         new Account((UInt256)rand.NextInt64()));
                 }
@@ -294,7 +296,7 @@ namespace Nethermind.Benchmarks.Store
                     Hash256 newAccount = Keccak.Compute(i.ToBigEndianByteArray());
                     currentItems.Add(newAccount);
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         newAccount,
                         new Account((UInt256)rand.NextInt64()));
                 }
@@ -359,6 +361,91 @@ namespace Nethermind.Benchmarks.Store
                     tempTree.Get(address);
                 }
             }
+        }
+
+        [Benchmark]
+        public void LargeInsertAndCommit()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.Commit();
+        }
+
+        TrieStore _largeUncommittedFullTree;
+        StateTree _largeUncommittedStateTree;
+
+        [IterationSetup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+        ])]
+        public void SetupLargeUncommittedTree()
+        {
+            TrieStore trieStore = _largeUncommittedFullTree = new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+            StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+        }
+
+        [IterationCleanup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+        ])]
+        public void CleanupLargeUncommittedTree()
+        {
+            _largeUncommittedFullTree.Dispose();
+        }
+
+        [Benchmark]
+        public void LargeCommit()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.Commit();
+        }
+
+        [Benchmark]
+        public void LargeHash()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void LargeHashNoParallel()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
         }
 
         [Benchmark]

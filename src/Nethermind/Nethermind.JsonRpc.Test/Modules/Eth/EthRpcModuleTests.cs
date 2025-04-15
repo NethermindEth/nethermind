@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Blockchain;
@@ -21,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -390,7 +392,14 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.Create(configurer: builder =>
+        {
+            builder.AddDecorator<IPruningConfig>((_, config) =>
+            {
+                config.Mode = PruningMode.Full;
+                return config;
+            });
+        });
         ctx.Test.StateDb.Clear();
         BlockParameter? blockParameter = null;
         BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);
@@ -1095,7 +1104,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"Invalid\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"Invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
 
     [Test]
@@ -1416,12 +1425,25 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null) =>
-            new()
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)
+        {
+            Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
-                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge!).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 }).Build(specProvider),
-                AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
+                if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                configurer?.Invoke(builder);
             };
+
+            return new Context
+            {
+                // Did it make... both? all the time?
+                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                    .WithBlockchainBridge(blockchainBridge!)
+                    .WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
+                    .Build(wrappedConfigurer),
+                AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa)
+                    .Build(wrappedConfigurer)
+            };
+        }
 
         public void Dispose()
         {

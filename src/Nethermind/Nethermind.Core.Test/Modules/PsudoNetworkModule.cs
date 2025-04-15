@@ -32,19 +32,17 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class NetworkModule(IInitConfig initConfig) : Module
+public class PsudoNetworkModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
-            .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
-            .AddSingleton<IPivot, Pivot>()
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()

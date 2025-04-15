@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -30,33 +31,28 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
 using Nethermind.Init.Steps;
 using Nethermind.Optimism.CL;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Synchronization;
 using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
-    private OptimismChainSpecEngineParameters? _chainSpecParameters;
     private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     private IBlocksConfig _blocksConfig = null!;
-    private BlockCacheService? _blockCacheService;
+    private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
-    private IPeerRefresher? _peerRefresher;
-    private IBeaconPivot? _beaconPivot;
-    private BeaconSync? _beaconSync;
+    private OptimismPayloadPreparationService? _payloadPreparationService;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -106,7 +102,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             _api.L1CostHelper,
             _api.LogManager);
 
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
 
         BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
@@ -116,7 +112,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
             producerEnv.ReadOnlyStateProvider,
-            _api.GasLimitCalculator,
+            gasLimitCalculator,
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
@@ -125,10 +121,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     }
 
     #endregion
-
-    public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-        ILogManager logManager, ChainSpec chainSpec) =>
-        new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
@@ -150,80 +142,16 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _chainSpecParameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
-        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _chainSpecParameters.BedrockBlockNumber!.Value);
-
-        _blockCacheService = new BlockCacheService();
+        _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
-        _api.InvalidChainTracker = _invalidChainTracker = new InvalidChainTracker(
-            _api.PoSSwitcher,
-            _api.BlockTree,
-            _blockCacheService,
-            _api.LogManager);
-        _api.DisposeStack.Push(_invalidChainTracker);
-
+        _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker>();
         _api.FinalizationManager = _blockFinalizationManager = new ManualBlockFinalizationManager();
 
         _api.RewardCalculatorSource = NoBlockRewards.Instance;
         _api.SealValidator = NullSealEngine.Instance;
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
-        _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.PoSSwitcher));
-
-        return Task.CompletedTask;
-    }
-
-    public Task InitSynchronization()
-    {
-        if (_api is null)
-            return Task.CompletedTask;
-
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.BetterPeerStrategy);
-
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
-        ArgumentNullException.ThrowIfNull(_invalidChainTracker);
-
-        _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor);
-
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
-        _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
-        _api.Pivot = _beaconPivot;
-
-        ContainerBuilder builder = new ContainerBuilder();
-        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
-            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton(_beaconPivot)
-            .AddSingleton(_api.PoSSwitcher)
-            .AddSingleton(_mergeConfig)
-            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
-
-        builder.RegisterModule(new SynchronizerModule(_syncConfig));
-        builder.RegisterModule(new MergeSynchronizerModule());
-        builder.RegisterModule(new OptimismSynchronizerModule(_chainSpecParameters!, _api.SpecProvider));
-
-        IContainer container = builder.Build();
-
-        _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Push((IAsyncDisposable)container);
-
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
-        _ = new UnsafePivotUpdator(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool!,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.DbProvider.MetadataDb,
-            _api.LogManager);
+        _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
         return Task.CompletedTask;
     }
@@ -242,12 +170,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
 
-        ArgumentNullException.ThrowIfNull(_beaconSync);
-        ArgumentNullException.ThrowIfNull(_beaconPivot);
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
-        ArgumentNullException.ThrowIfNull(_peerRefresher);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -255,9 +180,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             await Task.Delay(100);
         await Task.Delay(5000);
 
+        // Single block shouldn't take a full slot to run
+        // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+        double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
@@ -266,48 +194,60 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             _api.TimerFactory,
             _api.LogManager,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        _payloadPreparationService = payloadPreparationService;
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
+        var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
+        var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+        var beaconSync = _api.Context.Resolve<BeaconSync>();
+
+        IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
+
+        NewPayloadHandler newPayloadHandler = new(
+                _api.BlockValidator,
+                _api.BlockTree,
+                posSwitcher,
+                beaconSync,
+                beaconPivot,
+                _blockCacheService,
+                _api.BlockProcessingQueue,
+                _invalidChainTracker,
+                beaconSync,
+                _api.LogManager,
+                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+                _api.Config<IReceiptConfig>().StoreReceipts);
+        bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+        if (simulateBlockProduction)
+        {
+            newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+        }
+
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new NewPayloadHandler(
-                _api.BlockValidator,
-                _api.BlockTree,
-                _syncConfig,
-                _api.PoSSwitcher,
-                _beaconSync,
-                _beaconPivot,
-                _blockCacheService,
-                _api.BlockProcessingQueue,
-                _invalidChainTracker,
-                _beaconSync,
-                _api.LogManager,
-                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts),
+            newPayloadHandler,
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,
-                _api.PoSSwitcher,
+                posSwitcher,
                 payloadPreparationService,
                 _api.BlockProcessingQueue,
                 _blockCacheService,
                 _invalidChainTracker,
-                _beaconSync,
-                _beaconPivot,
-                _peerRefresher,
+                beaconSync,
+                beaconPivot,
+                peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
+                simulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
+            new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
             _api.SpecProvider,
@@ -348,7 +288,39 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             blockProducer);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize => true;
+
+    public Type ApiType => typeof(OptimismNethermindApi);
+
+    public IModule Module => new OptimismModule(chainSpec);
+}
+
+public class OptimismModule(ChainSpec chainSpec) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder
+            .AddSingleton<NethermindApi, OptimismNethermindApi>()
+            .AddModule(new BaseMergePluginModule())
+            .AddModule(new OptimismSynchronizerModule(chainSpec))
+
+            .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+
+            .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
+            .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
+
+            .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
+            .AddSingleton<IUnclesValidator>(Always.Valid)
+            ;
+
+    }
 }

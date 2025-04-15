@@ -15,4 +15,5 @@ public class EraConfig : IEraConfig
     public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
+    public long ImportBlocksBufferSize { get; set; } = 1024 * 4;
 }

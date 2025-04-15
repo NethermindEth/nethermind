@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -25,7 +26,8 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public class TrieStore : ITrieStore, IPruningTrieStore
 {
-    private const int ShardedDirtyNodeCount = 256;
+    private readonly int _shardedDirtyNodeCount = 256;
+    private readonly int _shardBit = 8;
 
     private int _isFirst;
 
@@ -77,10 +79,19 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         if (pruningStrategy.PruningEnabled)
         {
-            _dirtyNodes = new TrieStoreDirtyNodesCache[ShardedDirtyNodeCount];
-            _dirtyNodesTasks = new Task[ShardedDirtyNodeCount];
-            _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[ShardedDirtyNodeCount];
-            for (int i = 0; i < ShardedDirtyNodeCount; i++)
+            _shardBit = _pruningStrategy.ShardBit;
+            _shardedDirtyNodeCount = 1 << _shardBit;
+
+            // 30 because of the 1 << 31 become negative
+            if (_shardBit is <= 0 or > 30)
+            {
+                throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
+            }
+
+            _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
+            _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
+            _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+            for (int i = 0; i < _shardedDirtyNodeCount; i++)
             {
                 _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, _logger);
                 _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
@@ -266,11 +277,16 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 
-    private int GetNodeShardIdx(in TreePath path, Hash256 hash) =>
+    private int GetNodeShardIdx(in TreePath path, Hash256 hash)
+    {
         // When enabled, the shard have dictionaries for tracking past path hash also.
         // So the same path need to be in the same shard for the remove logic to work.
-        // Using the address first byte however, causes very uneven distribution. So the path is used.
-        _livePruningEnabled ? path.Path.Bytes[0] : hash.Bytes[0];
+        uint hashCode = (uint)(_livePruningEnabled
+            ? path.GetHashCode()
+            : hash.GetHashCode());
+
+        return (int)(hashCode % _shardedDirtyNodeCount);
+    }
 
     private int GetNodeShardIdx(in TrieStoreDirtyNodesCache.Key key) => GetNodeShardIdx(key.Path, key.Keccak);
 
@@ -693,8 +709,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _pruningStrategy.PrunePersistedNodePortion);
             targetPruneMemory = Math.Max(targetPruneMemory, _pruningStrategy.PrunePersistedNodeMinimumTarget);
 
-            int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * ShardedDirtyNodeCount);
-            shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, ShardedDirtyNodeCount));
+            int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * _shardedDirtyNodeCount);
+            shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, _shardedDirtyNodeCount));
 
             if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
             long start = Stopwatch.GetTimestamp();
@@ -708,7 +724,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     dirtyNode.PruneCache(prunePersisted: true);
                 }));
-                _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % ShardedDirtyNodeCount;
+                _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % _shardedDirtyNodeCount;
             }
 
             Task.WaitAll(pruneTask.AsSpan());
@@ -858,7 +874,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         INodeStorage.IWriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
         const int parallelBoundaryPathLength = 2;
 
-        using ArrayPoolList<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new(ShardedDirtyNodeCount);
+        using ArrayPoolList<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new(_shardedDirtyNodeCount);
 
         void TopLevelPersist(TrieNode tn, Hash256? address2, TreePath path)
         {

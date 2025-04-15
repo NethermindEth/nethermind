@@ -38,7 +38,6 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
@@ -46,7 +45,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -55,23 +53,33 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
-using Nethermind.Era1;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
 {
     public class NethermindApi : INethermindApi
     {
-        public NethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
+        public NethermindApi(Dependencies dependencies)
         {
-            ConfigProvider = configProvider;
-            EthereumJsonSerializer = jsonSerializer;
-            LogManager = logManager;
-            ChainSpec = chainSpec;
+            _dependencies = dependencies;
             CryptoRandom = new CryptoRandom();
-            DisposeStack = new DisposableStack(logManager);
+            DisposeStack = new DisposableStack(dependencies.LogManager);
             DisposeStack.Push(CryptoRandom);
         }
+
+        // A simple class to prevent having to modify subclass of NethermindApi many time
+        public record Dependencies(
+            IConfigProvider ConfigProvider,
+            IJsonSerializer JsonSerializer,
+            ILogManager LogManager,
+            ChainSpec ChainSpec,
+            ISpecProvider SpecProvider,
+            IReadOnlyList<INethermindPlugin> Plugins,
+            IProcessExitSource ProcessExitSource,
+            ILifetimeScope Context
+        );
+
+        private Dependencies _dependencies;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
@@ -90,6 +98,7 @@ namespace Nethermind.Api
                     readOnlyTree,
                     DbProvider!,
                     SpecProvider!,
+                    SimulateTransactionProcessorFactory,
                     LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
@@ -118,10 +127,10 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner? BlockProducerRunner { get; set; }
         public IBlockTree? BlockTree { get; set; }
-        public IBlockValidator? BlockValidator { get; set; }
+        public IBlockValidator? BlockValidator => Context.Resolve<IBlockValidator>();
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
-        public IConfigProvider ConfigProvider { get; set; }
+        public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
@@ -134,23 +143,20 @@ namespace Nethermind.Api
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
-        public IUnclesValidator? UnclesValidator { get; set; }
+        public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
-        public IHeaderValidator? HeaderValidator { get; set; }
+        public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
 
         public IIPResolver? IpResolver { get; set; }
-        public IJsonSerializer EthereumJsonSerializer { get; set; }
+        public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
-        public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
-        public ILogManager LogManager { get; set; }
+        public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
-        public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
-        public INodeStatsManager? NodeStatsManager { get; set; }
         public IPeerManager? PeerManager { get; set; }
         public IPeerPool? PeerPool { get; set; }
         public IProtocolsManager? ProtocolsManager { get; set; }
@@ -160,13 +166,14 @@ namespace Nethermind.Api
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxHost? RlpxPeer { get; set; }
-        public IRpcModuleProvider? RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
+        public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
         public string SealEngineType => ChainSpec.SealEngineType;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         private ISealEngine? _sealEngine;
+
         public ISealEngine SealEngine
         {
             get
@@ -181,18 +188,12 @@ namespace Nethermind.Api
         }
 
         public ISessionMonitor? SessionMonitor { get; set; }
-        public ISpecProvider? SpecProvider { get; set; }
-        public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
+        public ISpecProvider SpecProvider => _dependencies.SpecProvider;
+        public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
-        public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
-        public ISyncPointers? SyncPointers => ApiWithNetworkServiceContainer?.Resolve<ISyncPointers>();
-        public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
-        public IPivot? Pivot { get; set; }
-        public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
-        public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
-        public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
+        public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
+        public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();
+        public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
         public INodeStorage? MainNodeStorage { get; set; }
@@ -210,20 +211,18 @@ namespace Nethermind.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
-        public TxValidator? TxValidator { get; set; }
+        public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-        public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
-        public IEthSyncingInfo? EthSyncingInfo { get; set; }
+        public IEthSyncingInfo? EthSyncingInfo => Context.Resolve<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
-        public IAdminEraService AdminEraService { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
@@ -237,13 +236,13 @@ namespace Nethermind.Api
         /// </summary>
         public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
-        public ChainSpec ChainSpec { get; set; }
+        public ChainSpec ChainSpec => _dependencies.ChainSpec;
         public DisposableStack DisposeStack { get; }
-        public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
+        public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
-        public IProcessExitSource? ProcessExit { get; set; }
+        public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-
-        public IContainer? ApiWithNetworkServiceContainer { get; set; }
+        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory { get; set; } = Nethermind.Facade.Simulate.SimulateTransactionProcessorFactory.Instance;
+        public ILifetimeScope Context => _dependencies.Context;
     }
 }
