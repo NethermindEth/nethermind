@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -68,6 +69,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         innerState.CreateAccountIfNotExists(address, in balance, in nonce);
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
         innerState.InsertCode(address, in codeHash, code, spec, isGenesis);
+
+    public Task CommitCode() => innerState.CommitCode();
 
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
         innerState.AddToBalance(address, in balanceChange, spec);

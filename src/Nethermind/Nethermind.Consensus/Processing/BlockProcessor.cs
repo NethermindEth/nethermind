@@ -62,7 +62,7 @@ public partial class BlockProcessor(
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
-
+    private Task _codeBatchTask = Task.CompletedTask;
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
@@ -216,10 +216,15 @@ public partial class BlockProcessor(
         return (prewarmCancellation, preWarmTask);
     }
 
-    private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
+    private void WaitForCacheClear()
+    {
+        _codeBatchTask.GetAwaiter().GetResult();
+        _clearTask.GetAwaiter().GetResult();
+    }
 
     private void QueueClearCaches(Task? preWarmTask)
     {
+        _codeBatchTask =_stateProvider.CommitCode();
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
