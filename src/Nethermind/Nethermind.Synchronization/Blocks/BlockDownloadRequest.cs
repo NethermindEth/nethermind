@@ -8,7 +8,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class BlocksRequest: IDisposable
+    public class BlocksRequest : IDisposable
     {
         public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
         public OwnedBlockBodies? OwnedBodies { get; set; }
