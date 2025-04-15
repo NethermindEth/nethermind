@@ -77,7 +77,6 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
         dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
         peerPool.ActivePeers.Returns(dict);
-        IAdminEraService eraService = Substitute.For<IAdminEraService>();
         _peerPool = peerPool;
         _existingSession1 = Substitute.For<ISession>();
         _existingSession2 = Substitute.For<ISession>();
@@ -113,7 +112,6 @@ public class AdminModuleTests
             _verifyTrieStarter,
             _stateReader,
             enode,
-            eraService,
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters,
@@ -321,7 +319,6 @@ public class AdminModuleTests
             Substitute.For<IVerifyTrieStarter>(),
             Substitute.For<IStateReader>(),
             new Enode(_enodeString),
-            Substitute.For<IAdminEraService>(),
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters,
@@ -366,7 +363,6 @@ public class AdminModuleTests
             Substitute.For<IVerifyTrieStarter>(),
             Substitute.For<IStateReader>(),
             new Enode(_enodeString),
-            Substitute.For<IAdminEraService>(),
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters,
