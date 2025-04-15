@@ -81,7 +81,7 @@ public class PruningTrieStateFactory(
             syncConfig.DownloadBodiesInFastSync = true;
         }
 
-        IKeyValueStore codeDb = dbProvider.CodeDb;
+        IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
         IKeyValueStoreWithBatching stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;

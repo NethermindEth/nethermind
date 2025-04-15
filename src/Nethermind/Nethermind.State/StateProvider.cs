@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -36,7 +37,8 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
-        private readonly IKeyValueStore _codeDb;
+        private readonly IKeyValueStoreWithBatching _codeDb;
+        private IWriteBatch _codeBatch;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
@@ -45,7 +47,7 @@ namespace Nethermind.State
         private readonly bool _populatePreBlockCache;
 
         public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStore codeDb,
+            IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
             ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
@@ -56,6 +58,7 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _tree = stateTree ?? new StateTree(trieStore, logManager);
+            _codeBatch = _codeDb.StartWriteBatch();
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
@@ -147,17 +150,17 @@ namespace Nethermind.State
             {
                 if (!_codeDb.PreferWriteByArray)
                 {
-                    _codeDb.PutSpan(codeHash.Bytes, code.Span);
+                    _codeBatch.PutSpan(codeHash.Bytes, code.Span);
                 }
                 else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0
                         && codeArray.Count == code.Length)
                 {
-                    _codeDb[codeHash.Bytes] = codeArray.Array;
+                    _codeBatch[codeHash.Bytes] = codeArray.Array;
                 }
                 else
                 {
-                    _codeDb[codeHash.Bytes] = code.ToArray();
+                    _codeBatch[codeHash.Bytes] = code.ToArray();
                 }
 
                 _codeInsertFilter.Set(codeHash);
@@ -418,26 +421,26 @@ namespace Nethermind.State
             Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
         }
 
-        private struct ChangeTrace
+        private struct ChangeTrace(Account? before, Account? after)
         {
-            public ChangeTrace(Account? before, Account? after)
+            public ChangeTrace(Account? after) : this(null, after)
             {
-                After = after;
-                Before = before;
             }
 
-            public ChangeTrace(Account? after)
-            {
-                After = after;
-                Before = null;
-            }
-
-            public Account? Before { get; set; }
-            public Account? After { get; set; }
+            public Account? Before { get; set; } = before;
+            public Account? After { get; set; } = after;
         }
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
+            Task codeFlushTask = !commitRoots
+                ? Task.CompletedTask
+                : Task.Run(() =>
+                {
+                    using var batch = _codeBatch;
+                    _codeBatch = _codeDb.StartWriteBatch();
+                });
+
             var currentPosition = _changes.Count - 1;
             if (currentPosition < 0)
             {
@@ -593,6 +596,8 @@ namespace Nethermind.State
             {
                 FlushToTree();
             }
+
+            codeFlushTask.GetAwaiter().GetResult();
         }
 
         private void FlushToTree()
@@ -640,6 +645,7 @@ namespace Nethermind.State
 
                 if (beforeCodeHash != afterCodeHash)
                 {
+                    // TODO: This might break with write batch, do we need to make it also in-memory?
                     byte[]? beforeCode = beforeCodeHash is null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
@@ -873,6 +879,7 @@ namespace Nethermind.State
             _nullAccountReads.Clear();
             _changes.Clear();
             _needsStateRootUpdate = false;
+            _codeBatch = _codeDb.StartWriteBatch();
         }
 
         public void CommitTree()
