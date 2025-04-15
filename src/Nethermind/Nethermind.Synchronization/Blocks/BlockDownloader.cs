@@ -212,8 +212,8 @@ namespace Nethermind.Synchronization.Blocks
         {
             bool? bodiesOnly = null; // Otherwise receipts only
 
-            IList<BlockHeader> receiptsToDownload = new List<BlockHeader>();
-            IList<BlockHeader> bodiesToDownload = new List<BlockHeader>();
+            ArrayPoolList<BlockHeader> receiptsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+            ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -262,7 +262,12 @@ namespace Nethermind.Synchronization.Blocks
 
             if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies and {receiptsToDownload.Count} receipts.");
 
-            if (receiptsToDownload.Count + bodiesToDownload.Count == 0) return null;
+            if (receiptsToDownload.Count + bodiesToDownload.Count == 0)
+            {
+                bodiesToDownload.Dispose();
+                receiptsToDownload.Dispose();
+                return null;
+            }
 
             return new BlocksRequest()
             {
@@ -298,6 +303,10 @@ namespace Nethermind.Synchronization.Blocks
 
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
+            using var _ = response;
+            BlockBody[]? bodies = response.OwnedBodies?.Bodies;
+            response.OwnedBodies?.Disown();
+
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
@@ -311,13 +320,13 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if ((response.Bodies?.Length ?? 0) <= i)
+                if ((bodies?.Length ?? 0) <= i)
                 {
                     entry.RetryBlockRequest();
                     continue;
                 }
 
-                BlockBody? body = response.Bodies[i];
+                BlockBody? body = bodies[i];
                 if (body is null)
                 {
                     entry.RetryBlockRequest();
