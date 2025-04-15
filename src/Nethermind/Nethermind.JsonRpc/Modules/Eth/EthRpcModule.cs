@@ -227,10 +227,6 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(new BlockParameter(blockHash)))
-            {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            }
             return GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
@@ -243,10 +239,6 @@ public partial class EthRpcModule(
 
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(blockParameter))
-            {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            }
             return GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
@@ -259,10 +251,6 @@ public partial class EthRpcModule(
 
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(new BlockParameter(blockHash)))
-            {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            }
             return GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
@@ -275,10 +263,6 @@ public partial class EthRpcModule(
 
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(blockParameter))
-            {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            }
             return GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
         return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
@@ -400,48 +384,15 @@ public partial class EthRpcModule(
         return GetBlock(blockParameter, returnFullTransactionObjects);
     }
 
-    private bool IsBlockPruned(BlockParameter blockParameter)
-    {
-        var requestedBlock = blockParameter.BlockNumber;
-        if (requestedBlock == null)
-        {
-            SearchResult<BlockHeader> headerResult = _blockFinder.SearchForHeader(blockParameter);
-            if (!headerResult.IsError)
-            {
-                requestedBlock = headerResult.Object.Number;
-            }
-        }
-        if (_syncConfig.AncientReceiptsBarrierCalc > 1 && _syncConfig.AncientBodiesBarrierCalc > 1)
-        {
-            var lowestBlock = _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
-            if (requestedBlock < lowestBlock)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(blockParameter))
-            {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            }
             return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block? block = searchResult.Object;
-
-        if (block is null && IsBlockPruned(blockParameter))
-        {
-            searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
-        }
-
         if (returnFullTransactionObjects && block is not null)
         {
             _blockchainBridge.RecoverTxSenders(block);
@@ -528,10 +479,6 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(blockParameter))
-            {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-            }
             return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
@@ -859,9 +806,8 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            if (searchResult.ErrorCode == ErrorCodes.ResourceNotFound && IsBlockPruned(blockParameter))
+            if (searchResult.ErrorCode == ErrorCodes.PrunedHistoryUnavailable)
             {
-                searchResult = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
                 return GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
             }
             return ResultWrapper<ReceiptForRpc[]>.Success(null);
