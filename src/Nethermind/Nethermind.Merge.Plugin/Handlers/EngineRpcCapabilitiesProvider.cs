@@ -49,8 +49,11 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             #endregion
 
             #region Prague
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
+
+            var v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4 , v4);
             #endregion
         }
 

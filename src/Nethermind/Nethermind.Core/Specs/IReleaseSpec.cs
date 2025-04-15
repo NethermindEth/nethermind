@@ -430,6 +430,6 @@ namespace Nethermind.Core.Specs
 
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
-        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled || IsOpIsthmusEnabled;
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }

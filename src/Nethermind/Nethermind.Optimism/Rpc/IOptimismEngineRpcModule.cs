@@ -72,6 +72,12 @@ public interface IOptimismEngineRpcModule : IRpcModule
         byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
 
     [JsonRpcMethod(
+        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
+
+    [JsonRpcMethod(
         Description = "Signals which protocol version is recommended and required.",
         IsSharable = true,
         IsImplemented = false
