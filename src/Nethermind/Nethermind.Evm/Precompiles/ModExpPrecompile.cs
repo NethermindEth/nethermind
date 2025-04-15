@@ -59,12 +59,12 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
-                UInt256 complexity = MultComplexity(baseLength, modulusLength, releaseSpec);
+                UInt256 complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
                 UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
-                UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec);
+                UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
                 return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? 500L : 200L, (long)result);
@@ -173,12 +173,12 @@ namespace Nethermind.Evm.Precompiles
         /// return words**2
         /// </summary>
         /// <returns></returns>
-        private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength, IReleaseSpec spec)
+        private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength, bool isEip7883Enabled)
         {
             UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
             UInt256.Mod(maxLength, 8, out UInt256 mod8);
             UInt256 words = (maxLength / 8) + ((mod8.IsZero) ? UInt256.Zero : UInt256.One);
-            return maxLength > 32 && spec.IsEip7883Enabled ? 2 * words * words : words * words;
+            return maxLength > 32 && isEip7883Enabled ? 2 * words * words : words * words;
         }
 
         /// <summary>
@@ -191,9 +191,9 @@ namespace Nethermind.Evm.Precompiles
         /// </summary>
         /// <param name="exponentLength"></param>
         /// <param name="exponent"></param>
-        /// <param name="spec"></param>
+        /// <param name="isEip7883Enabled"></param>
         /// <returns></returns>
-        private static UInt256 CalculateIterationCount(UInt256 exponentLength, UInt256 exponent, IReleaseSpec spec)
+        private static UInt256 CalculateIterationCount(UInt256 exponentLength, UInt256 exponent, bool isEip7883Enabled)
         {
             try
             {
@@ -210,7 +210,7 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    var multiplier = (UInt256)(spec.IsEip7883Enabled ? 16 : 8);
+                    var multiplier = (UInt256)(isEip7883Enabled ? 16 : 8);
                     bool overflow = UInt256.MultiplyOverflow(exponentLength - 32, multiplier, out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
