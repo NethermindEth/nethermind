@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             Synchronizer.Start();
             SyncPeerPool.AddPeer(miner1);
 
-            Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After(1000, 100));
+            Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After(_standardTimeoutUnit.Milliseconds, 100));
             miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, options => options.Excluding(h => h!.MaybeParent), "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block
@@ -206,7 +206,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
-            Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After(1000, 100));
+            Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After(_standardTimeoutUnit.Milliseconds, 100));
             Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash), "client agrees with miner after split");
         }
 
@@ -220,15 +220,15 @@ namespace Nethermind.Synchronization.Test
             Synchronizer.Start();
             SyncPeerPool.AddPeer(miner1);
 
-            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash).After(1000, 100), "client agrees with miner before split");
+            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash).After(_standardTimeoutUnit.Milliseconds, 100), "client agrees with miner before split");
 
             miner1Tree.AddBranch(7, 0, 1);
 
-            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.Not.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After(1000, 100), "client does not agree with miner after split");
+            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.Not.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After(_standardTimeoutUnit.Milliseconds, 100), "client does not agree with miner after split");
 
             SyncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock()!, miner1);
 
-            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After(1000, 100), "client agrees with miner after split");
+            Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After(_standardTimeoutUnit.Milliseconds, 100), "client agrees with miner after split");
         }
 
         [Test]
