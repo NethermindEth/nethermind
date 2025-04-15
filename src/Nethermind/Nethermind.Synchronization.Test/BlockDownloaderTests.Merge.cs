@@ -34,9 +34,9 @@ public partial class BlockDownloaderTests
     [TestCase(16L, 32L, false, 32, 32)]
     [TestCase(16L, 32L, false, 32, 29)]
     [TestCase(16L, 32L, true, 0, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, true, 32, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, false, 32, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, false, 32, SyncBatchSize.Max * 8 - 16L)]
+    [TestCase(16L, SyncBatchSizeMax * 8, true, 32, 32)]
+    [TestCase(16L, SyncBatchSizeMax * 8, false, 32, 32)]
+    [TestCase(16L, SyncBatchSizeMax * 8, false, 32, SyncBatchSizeMax * 8 - 16L)]
     public async Task Merge_Happy_path(long beaconPivot, long headNumber, bool enableFastSync, int fastSyncLag, long insertedBeaconBlocks)
     {
         bool withReceipts = enableFastSync;

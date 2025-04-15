@@ -55,6 +55,9 @@ namespace Nethermind.Synchronization.Test;
 [Parallelizable(ParallelScope.All)]
 public partial class BlockDownloaderTests
 {
+    private const int FullBatch = 24;
+    private const int SyncBatchSizeMax = 128;
+
     [TestCase(1L, false, 0)]
     [TestCase(32L, false, 0)]
     [TestCase(32L, true, 0)]
@@ -62,8 +65,8 @@ public partial class BlockDownloaderTests
     [TestCase(2L, true, 0)]
     [TestCase(3L, true, 0)]
     [TestCase(32L, true, 0)]
-    [TestCase(SyncBatchSize.Max * 8, true, 0)]
-    [TestCase(SyncBatchSize.Max * 8, false, 0)]
+    [TestCase(SyncBatchSizeMax * 8, true, 0)]
+    [TestCase(SyncBatchSizeMax * 8, false, 0)]
     [TestCase(1L, false, 32)]
     [TestCase(32L, false, 32)]
     [TestCase(32L, true, 32)]
@@ -71,8 +74,8 @@ public partial class BlockDownloaderTests
     [TestCase(2L, true, 32)]
     [TestCase(3L, true, 32)]
     [TestCase(32L, true, 32)]
-    [TestCase(SyncBatchSize.Max * 8, true, 32)]
-    [TestCase(SyncBatchSize.Max * 8, false, 32)]
+    [TestCase(SyncBatchSizeMax * 8, true, 32)]
+    [TestCase(SyncBatchSizeMax * 8, false, 32)]
     public async Task Happy_path(long headNumber, bool enableFastSync, int fastSynclag)
     {
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
@@ -182,13 +185,10 @@ public partial class BlockDownloaderTests
     [TestCase(32, false)]
     [TestCase(1, false)]
     [TestCase(0, false)]
-    public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int ignoredBlocks, bool mergeDownloader)
+    public async Task Can_sync_with_peer_when_it_times_out(int ignoredBlocks, bool mergeDownloader)
     {
         Action<ContainerBuilder> configurer = builder =>
         {
-            SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
-            syncBatchSize.ExpandUntilMax();
-            builder.AddSingleton<SyncBatchSize>(syncBatchSize);
         };
 
         await using IContainer node = mergeDownloader ? CreateMergeNode(configurer) : CreateNode(configurer);
@@ -202,7 +202,7 @@ public partial class BlockDownloaderTests
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns((int)Math.Ceiling(SyncBatchSize.Max * SyncBatchSize.AdjustmentFactor) + ignoredBlocks);
+        syncPeer.HeadNumber.Returns(FullBatch + ignoredBlocks + 20);
 
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
@@ -1071,7 +1071,7 @@ public partial class BlockDownloaderTests
             bool justFirst = _flags.HasFlag(Response.JustFirst);
             bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
 
-            if (timeoutOnFullBatch && number == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && number >= FullBatch)
             {
                 throw new TimeoutException();
             }
@@ -1163,7 +1163,7 @@ public partial class BlockDownloaderTests
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool withTransaction = flags.HasFlag(Response.WithTransactions);
 
-            if (timeoutOnFullBatch && number == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && number >= FullBatch)
             {
                 throw new TimeoutException();
             }
@@ -1222,7 +1222,7 @@ public partial class BlockDownloaderTests
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool withTransactions = flags.HasFlag(Response.WithTransactions);
 
-            if (timeoutOnFullBatch && blockHashes.Count == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && blockHashes.Count >= FullBatch)
             {
                 throw new TimeoutException();
             }

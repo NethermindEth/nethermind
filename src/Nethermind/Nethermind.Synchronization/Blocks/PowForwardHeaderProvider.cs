@@ -28,7 +28,7 @@ public class PowForwardHeaderProvider(
     ILogManager logManager
 ) : IForwardHeaderProvider
 {
-    public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
+    public const int MaxReorganizationLength = 100 * 2;
     private ILogger _logger = logManager.GetClassLogger<PowForwardHeaderProvider>();
     private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
     private int _ancestorLookupLevel;

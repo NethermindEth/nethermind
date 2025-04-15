@@ -44,6 +44,8 @@ namespace Nethermind.Synchronization.Test;
 [Parallelizable(ParallelScope.Self)]
 public class SynchronizerTests
 {
+    private const int SyncBatchSizeMax = 128;
+
     private readonly SynchronizerType _synchronizerType;
 
     public SynchronizerTests(SynchronizerType synchronizerType)
@@ -722,10 +724,10 @@ public class SynchronizerTests
     public async Task Can_reorg_on_add_peer()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         SyncPeerMock peerB = new("B");
-        peerB.AddBlocksUpTo(SyncBatchSize.Max * 2, 0, 1);
+        peerB.AddBlocksUpTo(SyncBatchSizeMax * 2, 0, 1);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -842,7 +844,7 @@ public class SynchronizerTests
     public async Task Can_sync_more_than_a_batch()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max * 3);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax * 3);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -855,7 +857,7 @@ public class SynchronizerTests
     public async Task Can_sync_exactly_one_batch()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -868,7 +870,7 @@ public class SynchronizerTests
     public async Task Can_stop()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         await When.Syncing
             .StopAsync();

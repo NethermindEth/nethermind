@@ -218,7 +218,6 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeStorageRequests);
 
-
             ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
             for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
             {
