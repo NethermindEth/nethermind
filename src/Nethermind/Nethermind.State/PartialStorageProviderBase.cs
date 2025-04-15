@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -24,6 +25,7 @@ namespace Nethermind.State
         private readonly List<Change> _keptInCache = new();
 
         private const int StorageValuesCount = 1024 * 1024;
+        private const int StorageValuesCountMask = StorageValuesCount - 1;
         private const UIntPtr StorageValuesSize = StorageValue.MemorySize * StorageValuesCount;
         private readonly unsafe StorageValue* _values;
 
@@ -42,18 +44,21 @@ namespace Nethermind.State
 
             for (var i = 0; i < StorageValuesCount; i++)
             {
-                var at = (hash + i) % StorageValuesCount;
-                var ptr = values + at;
+                var at = (hash + i) & StorageValuesCountMask;
 
-                if (ptr->Equals(value))
+                Debug.Assert(0 <= at && at < StorageValuesCount);
+
+                var ptr = new StorageValue.Ptr(values + at);
+
+                if (ptr.Ref.Equals(value))
                 {
-                    return new StorageValue.Ptr(ptr);
+                    return ptr;
                 }
 
-                if (ptr->IsZero)
+                if (ptr.Ref.IsZero)
                 {
-                    *ptr = value;
-                    return new StorageValue.Ptr(ptr);
+                    ptr.SetValue(value);
+                    return ptr;
                 }
             }
 
@@ -251,7 +256,6 @@ namespace Nethermind.State
             _changes.Clear();
             _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
-            ClearStorageValuesMap();
         }
 
         /// <summary>

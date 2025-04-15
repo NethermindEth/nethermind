@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Contracts;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -186,5 +187,12 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         public bool Equals(Ptr other) => _pointer == other._pointer;
 
         public override int GetHashCode() => unchecked((int)(long)_pointer);
+
+        public override string ToString() => $"{Ref} @ {new UIntPtr(_pointer)}";
+
+        public void SetValue(in StorageValue value)
+        {
+            *_pointer = value;
+        }
     }
 }
