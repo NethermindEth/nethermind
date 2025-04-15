@@ -11,11 +11,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Comparison;
 
 [assembly: InternalsVisibleTo("Nethermind.AuRa.Test")]
 
@@ -48,58 +48,15 @@ namespace Nethermind.Consensus.Producers
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
-            long blockNumber = parent.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(parent);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
-            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
-                .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
+            IReleaseSpec spec = _specProvider.GetSpec(Bad.Block.Header);
 
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
-            IEnumerable<Transaction> blobTransactions = GetOrderedTransactions(pendingBlobTransactionsEquivalences, comparer);
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
+            EthereumEcdsa ecdsa = new(1);
 
-            int checkedTransactions = 0;
-            int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new(_eip4844Config.GetMaxBlobsPerBlock());
-
-            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
-
-            foreach (Transaction tx in transactions)
+            foreach (Transaction tx in Bad.Block.Transactions)
             {
-                checkedTransactions++;
-
-                if (tx.SenderAddress is null)
-                {
-                    _transactionPool.RemoveTransaction(tx.Hash!);
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
-                    continue;
-                }
-
-                bool success = _txFilterPipeline.Execute(tx, parent);
-                if (!success) continue;
-
-                foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
-                {
-                    yield return blobTx;
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
-
-                selectedTransactions++;
+                tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                 yield return tx;
             }
-
-            if (selectedBlobTxs.Count > 0)
-            {
-                foreach (Transaction blobTx in selectedBlobTxs)
-                {
-                    yield return blobTx;
-                }
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
         }
 
         private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)

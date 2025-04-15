@@ -39,6 +39,16 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
+        forkchoiceState = new ForkchoiceStateV1(Bad.Block.ParentHash!, Bad.Block.ParentHash!, Bad.Block.ParentHash!);
+        payloadAttributes = new PayloadAttributes()
+        {
+            ParentBeaconBlockRoot = Bad.Block.ParentBeaconBlockRoot!,
+            PrevRandao = Bad.Block.MixHash!,
+            Timestamp = Bad.Block.Timestamp,
+            Withdrawals = Bad.Block.Withdrawals,
+            SuggestedFeeRecipient = Bad.Block.Beneficiary!,
+        };
+
         if (await _locker.WaitAsync(_timeout))
         {
             long startTime = Stopwatch.GetTimestamp();
