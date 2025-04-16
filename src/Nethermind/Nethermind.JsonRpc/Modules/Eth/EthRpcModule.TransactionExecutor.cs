@@ -54,8 +54,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
 
-                long? gasCap = _rpcConfig.GasCap;
-
                 // default to previous block gas if unspecified
                 if (transactionCall.Gas is null)
                 {
@@ -67,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 // enforces gas cap
-                transactionCall.EnsureDefaults(gasCap);
+                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }

@@ -81,8 +81,6 @@ public class DebugRpcModule : IDebugRpcModule
     {
         blockParameter ??= BlockParameter.Latest;
 
-        long? gasCap = _jsonRpcConfig.GasCap;
-
         // default to previous block gas if unspecified
         if (call.Gas is null)
         {
@@ -94,7 +92,7 @@ public class DebugRpcModule : IDebugRpcModule
         }
 
         // enforces gas cap
-        call.EnsureDefaults(gasCap);
+        call.EnsureDefaults(_jsonRpcConfig.GasCap);
 
         Transaction tx = call.ToTransaction();
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
