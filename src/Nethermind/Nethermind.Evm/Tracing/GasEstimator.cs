@@ -20,6 +20,8 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         public const int DefaultErrorMargin = 150;
 
+        private const int MaxErrorMargin = 10000;
+
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
@@ -38,10 +40,21 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
-        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
+        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(errorMargin, nameof(errorMargin));
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(errorMargin, 10000, nameof(errorMargin));
+            err = null;
+
+            if (errorMargin < 0)
+            {
+                err = "Invalid error margin, cannot be negative.";
+                return 0;
+            }
+            else if (errorMargin >= MaxErrorMargin)
+            {
+                err = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
+                return 0;
+            }
+
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
             tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
@@ -65,7 +78,10 @@ namespace Nethermind.Evm.Tracing
 
             //This would mean that header gas limit is lower than both intrinsic gas and tx gas limit
             if (leftBound > rightBound)
-                throw new GasEstimateException("Cannot estimate gas, tx gas limit is greater than header gas limit");
+            {
+                err = "Cannot estimate gas, tx gas limit is greater than header gas limit";
+                return 0;
+            }
 
             // Execute binary search to find the optimal gas estimation.
             return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);

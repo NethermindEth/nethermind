@@ -183,30 +183,19 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
 
-            long estimate = 0;
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
 
-            try
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
+            if (err is not null)
             {
-                gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
-            }
-            catch (Exception e)
-            {
-                if (e is GasEstimator.GasEstimateException || e is ArgumentOutOfRangeException)
-                {
-                    error ??= e.Message;
-                }
-                else
-                {
-                    throw;
-                }
+                error ??= err;
             }
 
             return new CallOutput
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success
+                InputError = !tryCallResult.Success || err is not null
             };
         }
 
