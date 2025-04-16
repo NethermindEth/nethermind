@@ -44,6 +44,7 @@ namespace Nethermind.Network
             new(Protocol.Eth, 66),
             new(Protocol.Eth, 67),
             new(Protocol.Eth, 68),
+            new(Protocol.Eth, 69),
             new(Protocol.NodeData, 1)
         };
 

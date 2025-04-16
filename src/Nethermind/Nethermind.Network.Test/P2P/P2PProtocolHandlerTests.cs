@@ -91,6 +91,7 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.NodeData, 1));
 
             p2PProtocolHandler.Init();
