@@ -23,7 +23,7 @@ namespace Nethermind.TxPool.Filters
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
-            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _)
+            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, spec, out _)
                 && !pendingDelegations.HasPending(tx.SenderAddress!))
                 return AcceptTxResult.Accepted;
             //If the account is delegated or has pending delegation we only accept the next transaction nonce 

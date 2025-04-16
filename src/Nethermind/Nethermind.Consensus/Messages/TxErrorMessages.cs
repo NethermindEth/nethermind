@@ -84,4 +84,16 @@ public static class TxErrorMessages
 
     public const string InvalidProofVersion
         = "InvalidTxProofVersion: Version of network wrapper is not supported.";
+
+    public const string InvalidCreateTxData
+        = "InvalidCreateTxData: Legacy createTx cannot create Eof code";
+
+    public const string TooManyEofInitcodes
+        = $"TooManyEofInitcodes: Eof initcodes count exceeded limit";
+
+    public const string EmptyEofInitcodesField
+        = $"EmptyEofInitcodesField: Eof initcodes count must be greater than 0";
+
+    public const string EofContractSizeInvalid
+        = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
 }

@@ -2347,5 +2347,69 @@ namespace Nethermind.TxPool.Test
             _blockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
             await waitTask;
         }
+
+        [Test]
+        public async Task should_bring_back_reorganized_txs()
+        {
+            const long blockNumber = 358;
+
+            ITxPoolConfig txPoolConfig = new TxPoolConfig()
+            {
+                Size = 128,
+                BlobsSupport = BlobsSupportMode.Disabled
+            };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
+
+            Transaction[] txsA = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
+            Transaction[] txsB = { GetTx(TestItem.PrivateKeyC) };
+
+            _txPool.SubmitTx(txsA[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(txsA[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(txsB[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txsA.Length + txsB.Length);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
+
+            // adding block A
+            Block blockA = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsA).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txsB.Length);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
+            _txPool.TryGetPendingTransaction(txsA[0].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(txsA[1].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(txsB[0].Hash!, out _).Should().BeTrue();
+
+            // reorganized from block A to block B
+            Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsB).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
+
+            // tx from block B should be removed from tx pool
+            _txPool.TryGetPendingTransaction(txsB[0].Hash!, out _).Should().BeFalse();
+
+            // txs from reorganized blockA should be readded to tx pool
+            _txPool.GetPendingTransactionsCount().Should().Be(txsA.Length);
+            _txPool.TryGetPendingTransaction(txsA[0].Hash!, out Transaction tx1).Should().BeTrue();
+            _txPool.TryGetPendingTransaction(txsA[1].Hash!, out Transaction tx2).Should().BeTrue();
+
+            tx1.Should().BeEquivalentTo(txsA[0], static options => options
+                .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
+
+            tx2.Should().BeEquivalentTo(txsA[1], static options => options
+                .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
+        }
+
+        private Transaction GetTx(PrivateKey sender)
+        {
+            return Build.A.Transaction
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+        }
     }
 }

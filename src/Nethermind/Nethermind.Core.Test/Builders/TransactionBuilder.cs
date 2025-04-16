@@ -294,6 +294,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithIsOPSystemTransaction(bool isOPSystemTransaction)
+        {
+            TestObjectInternal.IsOPSystemTransaction = isOPSystemTransaction;
+            return this;
+        }
+
         public TransactionBuilder<T> From(T item)
         {
             TestObjectInternal = item;

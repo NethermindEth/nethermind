@@ -5,16 +5,12 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Era1;
-using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -55,34 +51,13 @@ public class RegisterRpcModules : IStep
     public virtual async Task Execute(CancellationToken cancellationToken)
     {
         StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
-        StepDependencyException.ThrowIfNull(_api.BloomStorage);
         StepDependencyException.ThrowIfNull(_api.LogManager);
-        StepDependencyException.ThrowIfNull(_api.FileSystem);
-        StepDependencyException.ThrowIfNull(_api.TxPool);
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.SyncModeSelector);
-        StepDependencyException.ThrowIfNull(_api.TxSender);
-        StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.PeerManager);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.KeyStore);
         StepDependencyException.ThrowIfNull(_api.PeerPool);
-        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
-        StepDependencyException.ThrowIfNull(_api.PeerManager);
-        StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
-        StepDependencyException.ThrowIfNull(_api.Enode);
         StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
-        StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
-        StepDependencyException.ThrowIfNull(_api.SyncServer);
-        StepDependencyException.ThrowIfNull(_api.EngineSignerStore);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.TrustedNodesManager);
 
@@ -91,17 +66,7 @@ public class RegisterRpcModules : IStep
             return;
         }
 
-        // Used only by rpc
-        _api.EthSyncingInfo = new EthSyncingInfo(
-            _api.BlockTree,
-            _api.SyncPointers!,
-            _api.Config<ISyncConfig>(),
-            _api.SyncModeSelector!,
-            _api.SyncProgressResolver!,
-            _api.LogManager);
-        _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, JsonRpcConfig, _api.EthereumJsonSerializer, _api.LogManager);
-
-        IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
+        IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
         ILogger logger = _api.LogManager.GetClassLogger();
@@ -138,7 +103,7 @@ public class RegisterRpcModules : IStep
 
         _api.SubscriptionFactory = new SubscriptionFactory();
         // Register the standard subscription types in the dictionary
-        _api.SubscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool, _api.RlpxPeer);
+        _api.SubscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo!, _api.PeerPool, _api.RlpxPeer);
         SubscriptionManager subscriptionManager = new(_api.SubscriptionFactory, _api.LogManager);
 
         AdminRpcModule adminRpcModule = new(
@@ -149,31 +114,12 @@ public class RegisterRpcModules : IStep
             _api.VerifyTrieStarter!,
             _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
-            _api.Context.Resolve<IAdminEraService>(),
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters,
             _api.TrustedNodesManager,
             subscriptionManager);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
-
-        TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.SpecProvider);
-        rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
-
-        NetRpcModule netRpcModule = new(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
-        rpcModuleProvider.RegisterSingle<INetRpcModule>(netRpcModule);
-
-        ParityRpcModule parityRpcModule = new(
-            _api.EthereumEcdsa,
-            _api.TxPool,
-            _api.BlockTree,
-            _api.ReceiptFinder,
-            _api.Enode,
-            _api.EngineSignerStore,
-            _api.KeyStore,
-            _api.SpecProvider,
-            _api.PeerManager);
-        rpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
 
         JsonRpcLocalStats jsonRpcLocalStats = new(
             _api.Timestamper,
@@ -184,9 +130,6 @@ public class RegisterRpcModules : IStep
 
         SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
         rpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
-
-        Web3RpcModule web3RpcModule = new(_api.LogManager);
-        rpcModuleProvider.RegisterSingle<IWeb3RpcModule>(web3RpcModule);
 
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
