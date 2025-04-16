@@ -34,7 +34,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
-    public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMillisecondsDelay = TimeSpan.FromMilliseconds(50);
+    public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMsDelay = TimeSpan.FromMilliseconds(50);
 
     /// <summary>
     /// Delay between block improvements
@@ -380,7 +380,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         blockContext.CancelOngoingImprovements();
 
                         using CancellationTokenSource cts = new();
-                        Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
+                        Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMsDelay, cts.Token);
                         Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
                         if (completedTask != timeout)
                         {

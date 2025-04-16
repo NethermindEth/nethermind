@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -33,6 +34,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
+            private static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMsDelay = TimeSpan.FromMilliseconds(50);
             private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
             private readonly ILogger _logger = logManager.GetClassLogger();
 
@@ -80,6 +82,8 @@ namespace Nethermind.Consensus.Processing
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
 
+                long start = Stopwatch.GetTimestamp();
+
                 BlockToProduce? blockToProduce = block as BlockToProduce;
 
                 // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
@@ -108,6 +112,11 @@ namespace Nethermind.Consensus.Processing
                             blockToProduce.TxByteLength += currentTx.GetLength();
                         }
                     }
+                }
+
+                if (Stopwatch.GetElapsedTime(start) > GetPayloadWaitForNonEmptyBlockMsDelay)
+                {
+                    token.ThrowIfCancellationRequested();
                 }
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());

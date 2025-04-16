@@ -128,8 +128,8 @@ public partial class EngineModuleTests
         get
         {
             yield return new TestCaseData(TimeSpan.Zero, TimeSpan.Zero, 50, 50) { TestName = "Production manages to finish" };
-            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 4, 2, 5) { TestName = "Production makes partial block" };
-            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, 0, 0) { TestName = "Production takes too long" };
+            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMsDelay / 4, 2, 5) { TestName = "Production makes partial block" };
+            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMsDelay * 2, 0, 0) { TestName = "Production takes too long" };
         }
     }
 
@@ -172,11 +172,11 @@ public partial class EngineModuleTests
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
 
-        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
+        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMsDelay);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
+        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMsDelay);
 
         Assert.That(getPayloadResult.Transactions, Has.Length.InRange(minCount, maxCount));
     }
