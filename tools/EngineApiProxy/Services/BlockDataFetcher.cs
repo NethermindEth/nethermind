@@ -26,7 +26,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// </summary>
         /// <param name="blockHash">The block hash</param>
         /// <returns>Block data as a JObject</returns>
-        public async Task<JObject?> GetBlockByHash(string blockHash)
+        public virtual async Task<JObject?> GetBlockByHash(string blockHash)
         {
             _logger.Debug($"Fetching block data for hash: {blockHash}");
             
@@ -68,7 +68,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 _logger.Debug($"Sending block data fetch request with Authorization header: {authHeaderAdded}");
-                _logger.Info($"PR (M) -> EL: {requestJson}");
+                _logger.Info($"PR -> EL|{request.Method}|V|{requestJson}");
                 var response = await _httpClient.SendAsync(requestMessage);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -77,7 +77,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 var responseJson = await response.Content.ReadAsStringAsync();
-                _logger.Info($"EL -> PR|M|{request.Method}|{responseJson}");
+                _logger.Info($"EL -> PR|{request.Method}|V|{responseJson}");
                 var jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 
                 if (jsonResponse?.Result is JObject blockData)
@@ -100,7 +100,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// Fetches the latest block from the execution client
         /// </summary>
         /// <returns>Latest block data as a JObject</returns>
-        public async Task<JObject?> GetLatestBlock()
+        public virtual async Task<JObject?> GetLatestBlock()
         {
             _logger.Debug("Fetching latest block data");
             

@@ -3,7 +3,8 @@ namespace Nethermind.EngineApiProxy.Config
     public enum ValidationMode
     {
         Fcu,
-        NewPayload
+        NewPayload,
+        Merged
     }
 
     public class ProxyConfig
@@ -44,7 +45,10 @@ namespace Nethermind.EngineApiProxy.Config
         public int TimestampOffsetSeconds { get; set; } = 12;
 
         /// <summary>
-        /// Mode for block validation (Fcu or NewPayload)
+        /// Mode for block validation:
+        /// - Fcu: Validation happens at FCU time
+        /// - NewPayload: Validation happens at new payload time
+        /// - Merged: FCU stores PayloadID without validation, and validation happens at next new_payload request
         /// </summary>
         public ValidationMode ValidationMode { get; set; } = ValidationMode.NewPayload;
 

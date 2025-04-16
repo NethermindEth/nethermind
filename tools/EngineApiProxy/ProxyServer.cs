@@ -9,8 +9,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
+using Nethermind.EngineApiProxy.Handlers;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Services;
+using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -28,10 +30,14 @@ namespace Nethermind.EngineApiProxy
         private readonly MessageQueue _messageQueue;
         private readonly PayloadTracker _payloadTracker;
         
-        // New components for validation flow
-        private readonly BlockDataFetcher _blockDataFetcher;
-        private readonly PayloadAttributesGenerator _payloadAttributesGenerator;
-        private readonly RequestOrchestrator _requestOrchestrator;
+        // Handlers for different request types
+        private readonly ForkChoiceUpdatedHandler _forkChoiceUpdatedHandler;
+        private readonly NewPayloadHandler _newPayloadHandler;
+        private readonly GetPayloadHandler _getPayloadHandler;
+        private readonly DefaultRequestHandler _defaultRequestHandler;
+        
+        // Utility services
+        private readonly RequestForwarder _requestForwarder;
         
         public ProxyServer(ProxyConfig config, ILogManager logManager)
         {
@@ -62,16 +68,46 @@ namespace Nethermind.EngineApiProxy
             _messageQueue = new MessageQueue(logManager);
             _payloadTracker = new PayloadTracker(logManager);
             
-            // Initialize new components for validation flow
-            _blockDataFetcher = new BlockDataFetcher(_httpClient, logManager);
-            _payloadAttributesGenerator = new PayloadAttributesGenerator(config, logManager);
-            _requestOrchestrator = new RequestOrchestrator(
+            // Initialize utilities
+            _requestForwarder = new RequestForwarder(_httpClient, config, logManager);
+            
+            // Initialize specialized components
+            var blockDataFetcher = new BlockDataFetcher(_httpClient, logManager);
+            var payloadAttributesGenerator = new PayloadAttributesGenerator(config, logManager);
+            var requestOrchestrator = new RequestOrchestrator(
                 _httpClient, 
-                _blockDataFetcher,
-                _payloadAttributesGenerator,
+                blockDataFetcher,
+                payloadAttributesGenerator,
                 _messageQueue,
                 _payloadTracker,
                 config,
+                logManager);
+                
+            // Initialize request handlers
+            _forkChoiceUpdatedHandler = new ForkChoiceUpdatedHandler(
+                config, 
+                _requestForwarder, 
+                _messageQueue, 
+                _payloadTracker, 
+                requestOrchestrator, 
+                logManager);
+                
+            _newPayloadHandler = new NewPayloadHandler(
+                config, 
+                _requestForwarder, 
+                _messageQueue, 
+                _payloadTracker, 
+                requestOrchestrator, 
+                logManager);
+                
+            _getPayloadHandler = new GetPayloadHandler(
+                config, 
+                _requestForwarder, 
+                _payloadTracker, 
+                logManager);
+                
+            _defaultRequestHandler = new DefaultRequestHandler(
+                _requestForwarder,
                 logManager);
 
             _webHost = new WebHostBuilder()
@@ -201,43 +237,18 @@ namespace Nethermind.EngineApiProxy
             
             try
             {
-                // Process the request based on method
-                switch (request.Method)
+                // Process the request or queue it as needed
+                if (request.Method.StartsWith("engine_newPayload") && _config.ValidationMode == ValidationMode.NewPayload)
                 {
-                    case "engine_forkChoiceUpdated":
-                    case "engine_forkChoiceUpdatedV2":
-                    case "engine_forkchoiceUpdatedV3":
-                    case "engine_forkChoiceUpdatedV4":
-                        response = await HandleForkChoiceUpdated(request);
-                        
-                        break;
-                        
-                    case "engine_newPayload":
-                    case "engine_newPayloadV2":
-                    case "engine_newPayloadV3":
-                        // Queue the newPayload message and return a placeholder response
-                        // The actual request will be processed by the message queue
-                        // Queue the newPayload message. No needs to to queue other requests since they will be send bt CL after the newPayload is processed
-                        Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
-
-                        // Always wait for the actual response from execution client
-                        response = await responseTask;
-                        
-                        // Log the response received from the message queue
-                        _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
-                        
-                        // response = await HandleNewPayload(request);
-                        break;
-                        
-                    case "engine_getPayloadV3":
-                    case "engine_getPayloadV2":
-                        response = await HandleGetPayload(request);
-                        break;
-                        
-                    default:
-                        // Forward any other methods directly to EC
-                        response = await HandleRequest(request);
-                        break;
+                    // Queue the newPayload message and wait for the response
+                    Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
+                    response = await responseTask;
+                    _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
+                }
+                else
+                {
+                    // Handle the request directly
+                    response = await HandleRequest(request);
                 }
             }
             catch (Exception ex)
@@ -253,496 +264,35 @@ namespace Nethermind.EngineApiProxy
             await context.Response.WriteAsync(JsonConvert.SerializeObject(response));
         }
 
-        private async Task<JsonRpcResponse> HandleForkChoiceUpdated(JsonRpcRequest request)
+        private async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
         {
-            // Log the forkChoiceUpdated request
-            if (_config.ValidationMode == ValidationMode.NewPayload)
-            {
-                _logger.Debug($"Processing engine_forkChoiceUpdated (NewPayload flow): {request}");
-                return await ForwardRequestToExecutionClient(request);
-            }
-            else
-            {
-            // Log the forkChoiceUpdated request
-            _logger.Info($"--------------------------------");
-            _logger.Debug($"Processing engine_forkChoiceUpdated (FCU flow): {request}");
+            _logger.Debug($"Handle request: {request}");
             
             try
             {
-                // Check if we should validate this block
-                bool shouldValidate = _config.ValidateAllBlocks && 
-                                      request.Params != null && 
-                                      request.Params.Count > 0 &&
-                                      (request.Params.Count == 1 || 
-                                       request.Params[1] == null || 
-                                       (request.Params[1] is Newtonsoft.Json.Linq.JValue jv && jv.Type == Newtonsoft.Json.Linq.JTokenType.Null) ||
-                                       (request.Params[1]?.Type == Newtonsoft.Json.Linq.JTokenType.Null)) &&
-                                      !(request.Params.Count > 1 && request.Params[1] is JObject);
-                
-                // Add detailed logging to show validation decision
-                if (_config.ValidateAllBlocks) 
+                // Route request to appropriate handler based on method
+                return request.Method switch
                 {
-                    _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
+                    // Fork choice updated methods
+                    var method when method.StartsWith("engine_forkChoiceUpdated") || method == "engine_forkchoiceUpdatedV3" || method == "engine_forkchoiceUpdatedV4" =>
+                        await _forkChoiceUpdatedHandler.HandleRequest(request),
                     
-                    if (request.Params?.Count > 1 && request.Params[1] is JObject)
-                    {
-                        _logger.Debug("Skipping validation because request already contains payload attributes");
-                    }
+                    // New payload methods
+                    var method when method.StartsWith("engine_newPayload") =>
+                        await _newPayloadHandler.HandleRequest(request),
                     
-                    _logger.Info($"shouldValidate evaluated to: {shouldValidate}");
-                }
-                
-                if (shouldValidate)
-                {
-                    _logger.Info("Validation enabled, pausing engine_forkChoiceUpdated original request");
-                    _messageQueue.PauseProcessing();
+                    // Get payload methods
+                    var method when method.StartsWith("engine_getPayload") =>
+                        await _getPayloadHandler.HandleRequest(request),
                     
-                    try
-                    {
-                        // Get the head block hash
-                        if (request.Params?[0] is JObject forkChoiceState && 
-                            forkChoiceState["headBlockHash"] != null)
-                        {
-                            string headBlockHashStr = forkChoiceState["headBlockHash"]?.ToString() ?? string.Empty;
-                            
-                            if (!string.IsNullOrEmpty(headBlockHashStr))
-                            {
-                                _logger.Info($"Starting validation flow ({_config.ValidationMode} mode) for head block: {headBlockHashStr}");
-                                
-                                try
-                                {
-                                    // Use the orchestrator to handle the validation flow
-                                    string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
-                                    
-                                    if (string.IsNullOrEmpty(payloadId)){
-                                        _logger.Warn("Validation flow failed, payloadId is empty. Seems like the node is not synced yet.");
-                                    } else {
-                                        // Instead of creating a synthetic response with payloadId,
-                                        // forward the original request to EL and return that response to CL
-                                        _logger.Info($"Validation flow for payloadId {payloadId} completed successfully, forwarding original request to EL for actual response");
-                                    }
-                                    return await ForwardRequestToExecutionClient(request);
-                        
-                                }
-                                catch (Exception ex)
-                                {
-                                    // If the validation flow fails due to unsupported methods, log and fall back to normal flow
-                                    if (ex.ToString().Contains("engine_getPayloadV3 is not supported") ||
-                                        ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported"))
-                                    {
-                                        _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
-                                        _logger.Info("Falling back to direct forwarding of request to execution client");
-                                        return await ForwardRequestToExecutionClient(request);
-                                    }
-                                    
-                                    // For other errors, throw to be caught by the outer try/catch
-                                    throw;
-                                }
-                            }
-                        }
-                        
-                        // If we couldn't get the head block hash, just forward the request
-                        _logger.Warn("Could not extract head block hash, forwarding request as-is");
-                        return await ForwardRequestToExecutionClient(request);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error($"Error in validation flow: {ex.Message}", ex);
-                        return await ForwardRequestToExecutionClient(request);
-                    }
-                    finally
-                    {
-                        // Always resume processing, even if there was an error
-                        _logger.Info("Resuming message queue processing");
-                        _messageQueue.ResumeProcessing();
-                    }
-                }
-                
-                // Forward the request to EC without modification if not validating
-                var response = await ForwardRequestToExecutionClient(request);
-                
-                // If response contains payloadId, store it for tracking
-                if (response.Result is JObject resultObj && 
-                    resultObj["payloadId"] != null && 
-                    request.Params != null && 
-                    request.Params.Count > 0 && 
-                    request.Params[0] is JObject fcState &&
-                    fcState["headBlockHash"] != null)
-                {
-                    string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
-                    string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
-                    
-                    if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
-                    {
-                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
-                        _payloadTracker.TrackPayload(headBlockHash, payloadId);
-                        _logger.Debug($"Tracked payloadId {payloadId} for head block {headBlockHash}");
-                    }
-                }
-                
-                return response;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling forkChoiceUpdated: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
-            }
-            }
-            
-        }
-
-        private async Task<JsonRpcResponse> HandleNewPayload(JsonRpcRequest request)
-        {
-            if (_config.ValidationMode == ValidationMode.Fcu)
-            {
-                // Log the getPayload request
-                _logger.Debug($"Processing engine_newPayload (FCU flow): {request}");
-                
-            try
-            {
-                // Forward the request to EC
-                var response = await ForwardRequestToExecutionClient(request);
-                
-                // If a payload was returned and the response was successful, handle it
-                if (response.Result is JObject payloadObj && 
-                    request.Params != null && 
-                    request.Params.Count > 0)
-                {
-                    string payloadId = request.Params[0]?.ToString() ?? string.Empty;
-                    if (!string.IsNullOrEmpty(payloadId))
-                    {
-                        _logger.Debug($"Retrieved payload for payloadId {payloadId}");
-                    }
-                    
-                }
-                
-                return response;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling engine_newPayload: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling getPayloadV3: {ex.Message}");
-            }
-                
-            } else  {
-                _logger.Info($"--------------------------------");
-                // This is a placeholder implementation - will be expanded in the NewPayloadHandler
-                _logger.Debug($"Processing engine_newPayload (NewPayload flow): {request}");
-                
-            // return await ForwardRequestToExecutionClient(request);
-            try
-            {
-                // Check if we should validate this block
-                bool shouldValidate = _config.ValidateAllBlocks && 
-                                      request.Params != null && 
-                                      request.Params.Count > 0 &&
-                                      IsEmptyOrMissingPayloadAttributes(request.Params);
-                
-                // Add detailed logging to show validation decision
-                if (_config.ValidateAllBlocks) 
-                {
-                    _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
-                    
-                    if (request.Params?.Count > 1 && request.Params[1] is JObject)
-                    {
-                        _logger.Debug("Skipping validation because request already contains payload attributes");
-                    }
-                    
-                    _logger.Info($"shouldValidate evaluated to: {shouldValidate}");
-                }
-                
-                if (shouldValidate)
-                {
-                    _logger.Info("Validation enabled, pausing engine_newPayload original request");
-                    _messageQueue.PauseProcessing();
-                    
-                    try
-                    {
-                        string parentHash = request.Params != null 
-                            ? ExtractParentHash(request.Params) 
-                            : string.Empty;
-                            
-                        if (!string.IsNullOrEmpty(parentHash))
-                        {
-                            _logger.Info($"Starting validation flow ({_config.ValidationMode} mode) for parent hash: {parentHash}");
-                            
-                            try
-                            {
-                                // Extract the block hash from the payload to use as headBlockHash
-                                string blockHash = string.Empty;
-                                if (request.Params != null && request.Params.Count > 0 && request.Params[0] is JObject payload)
-                                {
-                                    blockHash = payload["blockHash"]?.ToString() ?? string.Empty;
-                                }
-
-                                if (string.IsNullOrEmpty(blockHash))
-                                {
-                                    _logger.Warn("Could not extract blockHash from payload, using parentHash as fallback");
-                                    blockHash = parentHash;
-                                }
-                                // Generate a synthetic FCU request
-                                _logger.Debug($"Generating synthetic FCU request using parentHash: {parentHash}");
-                                JsonRpcRequest fcuRequest = request.Method switch
-                                {
-                                    "engine_newPayloadV3" or "engine_newPayloadV4" => new JsonRpcRequest(
-                                        "engine_forkchoiceUpdatedV3",
-                                        new JArray(
-                                            new JObject
-                                            {
-                                                ["headBlockHash"] = parentHash,
-                                                ["finalizedBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000", // Use parentHash for finalized
-                                                ["safeBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000" // Use parentHash for safe
-                                            }
-                                        ),
-                                                Guid.NewGuid().ToString()
-                                            ),
-                                    _ => throw new InvalidOperationException($"Method {request.Method} is not supported"),
-                                };
-
-
-                                // Copy headers from original request
-                                fcuRequest.OriginalHeaders = request.OriginalHeaders;
-
-                                // Use the existing FCU validation flow
-                                _logger.Debug("Using existing FCU validation flow with synthetic request");
-                                string payloadId = await _requestOrchestrator.HandleFCUWithValidation(fcuRequest, parentHash);
-                                
-                                // After validation, forward the original request to the execution client
-                                _logger.Info($"Validation flow with payloadId {payloadId} completed, forwarding original request to EL for actual response");
-                                return await ForwardRequestToExecutionClient(request);
-                            }
-                            catch (Exception ex)
-                            {
-                                // For specific errors, we can fall back to normal flow
-                                if (ex.ToString().Contains("engine_getPayloadV3 is not supported") ||
-                                    ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported"))
-                                {
-                                    _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
-                                    _logger.Info("Falling back to direct forwarding of request to execution client");
-                                    return await ForwardRequestToExecutionClient(request);
-                                }
-                                
-                                // For other errors, throw to be caught by the outer try/catch
-                                throw;
-                            }
-                        }
-                        
-                        // If we couldn't get the parent hash, just forward the request
-                        _logger.Warn("Could not extract parent hash, forwarding request as-is");
-                        return await ForwardRequestToExecutionClient(request);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error($"Error in validation flow: {ex.Message}", ex);
-                        return await ForwardRequestToExecutionClient(request);
-                    }
-                    finally
-                    {
-                        // Always resume processing, even if there was an error
-                        _logger.Info("Resuming message queue processing");
-                        _messageQueue.ResumeProcessing();
-                    }
-                }
-                
-                // Forward the request to EC without modification if not validating
-                var response = await ForwardRequestToExecutionClient(request);
-                
-                // If response contains payloadId, store it for tracking
-                if (response.Result is JObject resultObj && 
-                    resultObj["payloadId"] != null && 
-                    request.Params != null && 
-                    request.Params.Count > 0 && 
-                    request.Params[0] is JObject fcState &&
-                    fcState["headBlockHash"] != null)
-                {
-                    string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
-                    string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
-                    
-                    if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
-                    {
-                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
-                        _payloadTracker.TrackPayload(headBlockHash, payloadId);
-                        _logger.Debug($"Tracked payloadId {payloadId} for head block {headBlockHash}");
-                    }
-                }
-                
-                return response;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling forkChoiceUpdated: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
-            }
-        }
-        }
-
-        private bool IsEmptyOrMissingPayloadAttributes(JArray parameters)
-        {
-            // No second parameter
-            if (parameters.Count == 1)
-                return true;
-                
-            // Second parameter is null, empty array, or has a null type
-            var secondParam = parameters[1];
-            if (secondParam == null)
-                return true;
-                
-            if (secondParam.Type == JTokenType.Null)
-                return true;
-                
-            if (secondParam is JArray arr && arr.Count == 0)
-                return true;
-                
-            // Not a JObject (which would contain payload attributes)
-            return !(secondParam is JObject);
-        }
-        
-        private string ExtractParentHash(JArray parameters)
-        {
-            if (parameters == null || parameters.Count == 0)
-                return string.Empty;
-                
-            var param = parameters[0];
-            if (param == null)
-                return string.Empty;
-                
-            if (param is JObject payload && payload["parentHash"] != null)
-                return payload["parentHash"]?.ToString() ?? string.Empty;
-                
-            if (param is JArray array && 
-                array.Count > 0 && 
-                array[0] is JObject obj && 
-                obj["parentHash"] != null)
-                return obj["parentHash"]?.ToString() ?? string.Empty;
-                
-            return string.Empty;
-        }
-
-        private async Task<JsonRpcResponse> HandleGetPayload(JsonRpcRequest request)
-        {
-            // Log the getPayload request
-            _logger.Debug($"Processing engine_getPayloadV3: {request}");
-            
-            try
-            {
-                // Forward the request to EC
-                var response = await ForwardRequestToExecutionClient(request);
-                
-                // If a payload was returned and the response was successful, handle it
-                if (response.Result is JObject payloadObj && 
-                    request.Params != null && 
-                    request.Params.Count > 0)
-                {
-                    string payloadId = request.Params[0]?.ToString() ?? string.Empty;
-                    if (!string.IsNullOrEmpty(payloadId))
-                    {
-                        _logger.Debug($"Retrieved payload for payloadId {payloadId}");
-                    }
-                    
-                }
-                
-                return response;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling getPayloadV3: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling getPayloadV3: {ex.Message}");
-            }
-        }
-
-        private async Task<JsonRpcResponse> ForwardRequestToExecutionClient(JsonRpcRequest request)
-        {
-            try
-            {
-                string requestJson = JsonConvert.SerializeObject(request);
-                string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
-                _logger.Debug($"Forwarding request to EL at: {targetHost}");
-                _logger.Info($"PR -> EL|{request.Method}|{requestJson}");
-                var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-                
-                // Create a request message instead of using PostAsync directly
-                var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
-                {
-                    Content = content
+                    // Default case - forward any other methods
+                    _ => await _defaultRequestHandler.HandleRequest(request)
                 };
-                
-                // Copy all original headers from the client request
-                if (request.OriginalHeaders != null)
-                {
-                    _logger.Debug($"Forwarding {request.OriginalHeaders.Count} original headers from client request");
-                    
-                    // Log the presence of Authorization header in original headers
-                    if (request.OriginalHeaders.TryGetValue("Authorization", out var origAuthHeader))
-                    {
-                        _logger.Trace($"Found Authorization header in original request headers: {origAuthHeader.Substring(0, Math.Min(10, origAuthHeader.Length))}...");
-                    }
-                    else
-                    {
-                        _logger.Debug("No Authorization header found in original request headers");
-                    }
-                    
-                    // Special handling for Authorization header
-                    if (request.OriginalHeaders.TryGetValue("Authorization", out var authHeader))
-                    {
-                        requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                        _logger.Debug("Added Authorization header from original request headers");
-                    }
-                    
-                    foreach (var header in request.OriginalHeaders)
-                    {
-                        // Skip content-related headers that will be set by HttpClient
-                        // Also skip Authorization which was handled separately
-                        if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) && 
-                            !string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
-                        {
-                            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                            _logger.Trace($"Added header: {header.Key}");
-                        }
-                        else if (!string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _logger.Trace($"Skipped content header: {header.Key}");
-                        }
-                    }
-                }
-                else
-                {
-                    _logger.Info("No original headers to forward");
-                }
-                
-                // Always check the HttpClient's DefaultRequestHeaders for Authorization as a fallback
-                if (!requestMessage.Headers.Contains("Authorization") && _httpClient.DefaultRequestHeaders.Contains("Authorization"))
-                {
-                    var authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                    if (!string.IsNullOrEmpty(authHeader))
-                    {
-                        _logger.Debug("Adding Authorization header from HttpClient DefaultRequestHeaders as fallback");
-                        requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                    }
-                }
-                
-                var response = await _httpClient.SendAsync(requestMessage);
-                string responseBody = await response.Content.ReadAsStringAsync();
-                _logger.Debug($"Received response from EL at: {targetHost}");
-                _logger.Info($"EL -> PR|{request.Method}|{responseBody}");
-                
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.Error($"EL returned error: {response.StatusCode}, {responseBody}");
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"EL error: {response.StatusCode}");
-                }
-                
-                var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseBody);
-                if (jsonRpcResponse == null)
-                {
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Proxy error: Invalid response from EL");
-                }
-                
-                return jsonRpcResponse;
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error forwarding request to EL: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error communicating with EL: {ex.Message}");
+                _logger.Error($"Error routing request: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Engine API Proxy error: {ex.Message}");
             }
         }
 
@@ -763,47 +313,6 @@ namespace Nethermind.EngineApiProxy
             };
             
             await context.Response.WriteAsync(JsonConvert.SerializeObject(errorResponse));
-        }
-        
-        // Method added specifically for testing purposes
-        private async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
-        {
-            _logger.Debug($"Handle request: {request}");
-            
-            try
-            {
-                // Process the request based on method
-                switch (request.Method)
-                {
-                    case "engine_forkChoiceUpdated":
-                    case "engine_forkChoiceUpdatedV2":
-                    case "engine_forkchoiceUpdatedV3":
-                    case "engine_forkChoiceUpdatedV4":
-                        return await HandleForkChoiceUpdated(request);
-                        
-                    case "engine_newPayload":
-                    case "engine_newPayloadV2":
-                    case "engine_newPayloadV3":
-                    case "engine_newPayloadV4":
-                        // Direct handling without queueing for testing
-                        return await HandleNewPayload(request);
-
-                    case "engine_getPayload":    
-                    case "engine_getPayloadV2":
-                    case "engine_getPayloadV3":
-                    case "engine_getPayloadV4":
-                        return await HandleGetPayload(request);
-                        
-                    default:
-                        // Forward any other methods directly to EC
-                        return await ForwardRequestToExecutionClient(request);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error processing test request: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Engine API Proxy error: {ex.Message}");
-            }
         }
     }
 } 

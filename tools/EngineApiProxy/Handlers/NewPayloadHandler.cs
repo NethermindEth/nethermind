@@ -1,0 +1,238 @@
+using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.EngineApiProxy.Config;
+using Nethermind.EngineApiProxy.Models;
+using Nethermind.EngineApiProxy.Services;
+using Nethermind.EngineApiProxy.Utilities;
+using Nethermind.Logging;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Threading.Tasks;
+
+namespace Nethermind.EngineApiProxy.Handlers
+{
+    public class NewPayloadHandler
+    {
+        private readonly ProxyConfig _config;
+        private readonly ILogger _logger;
+        private readonly RequestForwarder _requestForwarder;
+        private readonly MessageQueue _messageQueue;
+        private readonly PayloadTracker _payloadTracker;
+        private readonly RequestOrchestrator _requestOrchestrator;
+
+        public NewPayloadHandler(
+            ProxyConfig config, 
+            RequestForwarder requestForwarder,
+            MessageQueue messageQueue,
+            PayloadTracker payloadTracker,
+            RequestOrchestrator requestOrchestrator,
+            ILogManager logManager)
+        {
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+            _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
+            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+            _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
+        }
+
+        public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
+        {
+            _logger.Debug($"Processing NewPayload request {request.Id}");
+            
+            // Check if the request should be validated
+            if (_config.ValidationMode == ValidationMode.Fcu)
+            {
+                _logger.Info("Validation for NewPayload disabled in FCU mode");
+                return await _requestForwarder.ForwardRequestToExecutionClient(request);
+            }
+            
+            // Check if we should validate this request
+            bool shouldValidate = ShouldValidateBlock(request);
+            _logger.Info($"ShouldValidateBlock for NewPayload: {shouldValidate}");
+            
+            if (shouldValidate)
+            {
+                return await ProcessWithValidation(request);
+            }
+            
+            // Directly forward to EC without validation
+            return await _requestForwarder.ForwardRequestToExecutionClient(request);
+        }
+
+        private bool ShouldValidateBlock(JsonRpcRequest request)
+        {
+            bool shouldValidate = _config.ValidateAllBlocks && 
+                                 request.Params != null && 
+                                 request.Params.Count > 0 &&
+                                 IsEmptyOrMissingPayloadAttributes(request.Params);
+            
+            // Add detailed logging to show validation decision
+            if (_config.ValidateAllBlocks) 
+            {
+                _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
+                
+                if (request.Params?.Count > 1 && request.Params[1] is JObject)
+                {
+                    _logger.Debug("Skipping validation because request already contains payload attributes");
+                }
+            }
+            
+            return shouldValidate;
+        }
+
+        private async Task<JsonRpcResponse> ProcessWithValidation(JsonRpcRequest request)
+        {
+            _logger.Info("Validation enabled, pausing engine_newPayload original request");
+            _messageQueue.PauseProcessing();
+            
+            try
+            {
+                string parentHash = request.Params != null 
+                    ? ExtractParentHash(request.Params) 
+                    : string.Empty;
+                    
+                if (string.IsNullOrEmpty(parentHash))
+                {
+                    _logger.Warn("Could not extract parent hash, forwarding request as-is");
+                    return await _requestForwarder.ForwardRequestToExecutionClient(request);
+                }
+                
+                _logger.Info($"Starting validation flow ({_config.ValidationMode} mode) for parent hash: {parentHash}");
+                
+                try
+                {
+                    // Extract the block hash from the payload to use as headBlockHash
+                    string blockHash = ExtractBlockHashFromPayload(request);
+
+                    if (string.IsNullOrEmpty(blockHash))
+                    {
+                        _logger.Warn("Could not extract blockHash from payload, using parentHash as fallback");
+                        blockHash = parentHash;
+                    }
+                    
+                    // Generate a synthetic FCU request
+                    _logger.Debug($"Generating synthetic FCU request using parentHash: {parentHash}");
+                    JsonRpcRequest fcuRequest = GenerateSyntheticFcuRequest(request, parentHash);
+
+                    // Copy headers from original request
+                    fcuRequest.OriginalHeaders = request.OriginalHeaders;
+
+                    // Use the existing FCU validation flow
+                    _logger.Debug("Using existing FCU validation flow with synthetic request");
+                    string payloadId = await _requestOrchestrator.HandleFCUWithValidation(fcuRequest, parentHash);
+                    
+                    // After validation, forward the original request to the execution client
+                    _logger.Info($"Validation flow with payloadId {payloadId} completed, forwarding original request to EL for actual response");
+                    return await _requestForwarder.ForwardRequestToExecutionClient(request);
+                }
+                catch (Exception ex)
+                {
+                    // If the validation flow fails due to unsupported methods, log and fall back to normal flow
+                    if (ex.ToString().Contains("engine_getPayloadV4 is not supported") ||
+                        ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
+                        ex.ToString().Contains("engine_getPayloadV3 is not supported") ||
+                        ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported"))
+                    {
+                        _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
+                        _logger.Info("Falling back to direct forwarding of request to execution client");
+                        return await _requestForwarder.ForwardRequestToExecutionClient(request);
+                    }
+                    
+                    // For other errors, throw to be caught by the outer try/catch
+                    throw;
+                }
+            }
+            finally
+            {
+                // Always resume processing, even if there was an error
+                _logger.Info("Resuming message queue processing");
+                _messageQueue.ResumeProcessing();
+            }
+        }
+
+        private JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
+        {
+            return originalRequest.Method switch
+            {
+                "engine_newPayloadV3" or "engine_newPayloadV4" => new JsonRpcRequest(
+                    "engine_forkchoiceUpdatedV3",
+                    new JArray(
+                        new JObject
+                        {
+                            ["headBlockHash"] = parentHash,
+                            ["finalizedBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000",
+                            ["safeBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        }
+                    ),
+                    Guid.NewGuid().ToString()
+                ),
+                _ => new JsonRpcRequest(
+                    "engine_forkChoiceUpdated",
+                    new JArray(
+                        new JObject
+                        {
+                            ["headBlockHash"] = parentHash,
+                            ["finalizedBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000",
+                            ["safeBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        }
+                    ),
+                    Guid.NewGuid().ToString()
+                )
+            };
+        }
+
+        private string ExtractBlockHashFromPayload(JsonRpcRequest request)
+        {
+            if (request.Params != null && request.Params.Count > 0 && request.Params[0] is JObject payload)
+            {
+                return payload["blockHash"]?.ToString() ?? string.Empty;
+            }
+            return string.Empty;
+        }
+
+        private bool IsEmptyOrMissingPayloadAttributes(JArray parameters)
+        {
+            // No second parameter
+            if (parameters.Count == 1)
+                return true;
+                
+            // Second parameter is null, empty array, or has a null type
+            var secondParam = parameters[1];
+            if (secondParam == null)
+                return true;
+                
+            if (secondParam.Type == JTokenType.Null)
+                return true;
+                
+            if (secondParam is JArray arr && arr.Count == 0)
+                return true;
+                
+            // Not a JObject (which would contain payload attributes)
+            return !(secondParam is JObject);
+        }
+        
+        private string ExtractParentHash(JArray parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+                return string.Empty;
+                
+            var param = parameters[0];
+            if (param == null)
+                return string.Empty;
+                
+            if (param is JObject payload && payload["parentHash"] != null)
+                return payload["parentHash"]?.ToString() ?? string.Empty;
+                
+            if (param is JArray array && 
+                array.Count > 0 && 
+                array[0] is JObject obj && 
+                obj["parentHash"] != null)
+                return obj["parentHash"]?.ToString() ?? string.Empty;
+                
+            return string.Empty;
+        }
+    }
+} 

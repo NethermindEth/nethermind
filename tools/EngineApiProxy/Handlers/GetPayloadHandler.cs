@@ -1,0 +1,63 @@
+using Nethermind.Core;
+using Nethermind.EngineApiProxy.Config;
+using Nethermind.EngineApiProxy.Models;
+using Nethermind.EngineApiProxy.Services;
+using Nethermind.EngineApiProxy.Utilities;
+using Nethermind.Logging;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Threading.Tasks;
+
+namespace Nethermind.EngineApiProxy.Handlers
+{
+    public class GetPayloadHandler
+    {
+        private readonly ProxyConfig _config;
+        private readonly ILogger _logger;
+        private readonly RequestForwarder _requestForwarder;
+        private readonly PayloadTracker _payloadTracker;
+
+        public GetPayloadHandler(
+            ProxyConfig config, 
+            RequestForwarder requestForwarder,
+            PayloadTracker payloadTracker,
+            ILogManager logManager)
+        {
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+        }
+
+        public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
+        {
+            // Log the getPayload request
+            _logger.Debug($"Processing {request.Method}: {request}");
+            
+            try
+            {
+                // Forward the request to EC
+                var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                
+                // If a payload was returned and the response was successful, handle it
+                if (response.Result is JObject payloadObj && 
+                    request.Params != null && 
+                    request.Params.Count > 0)
+                {
+                    string payloadId = request.Params[0]?.ToString() ?? string.Empty;
+                    if (!string.IsNullOrEmpty(payloadId))
+                    {
+                        _logger.Debug($"Retrieved payload for payloadId {payloadId}");
+                    }
+                }
+                
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error handling {request.Method}: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling {request.Method}: {ex.Message}");
+            }
+        }
+    }
+} 

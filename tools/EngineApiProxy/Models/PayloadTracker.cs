@@ -53,6 +53,22 @@ namespace Nethermind.EngineApiProxy.Models
         }
         
         /// <summary>
+        /// Tries to get the Payload ID associated with a head block hash
+        /// </summary>
+        /// <param name="headBlockHash">The hash of the head block</param>
+        /// <param name="payloadId">The associated Payload ID if found</param>
+        /// <returns>True if a Payload ID was found, false otherwise</returns>
+        public bool TryGetPayloadId(Hash256 headBlockHash, out string? payloadId)
+        {
+            if (headBlockHash == null)
+            {
+                payloadId = default;
+                return false;
+            }
+            return _headBlockToPayloadId.TryGetValue(headBlockHash, out payloadId);
+        }
+        
+        /// <summary>
         /// Gets the head block hash associated with a Payload ID
         /// </summary>
         /// <param name="payloadId">The Payload ID</param>
@@ -101,6 +117,20 @@ namespace Nethermind.EngineApiProxy.Models
             _headBlockToPayloadId.Clear();
             _payloadIdToHeadBlock.Clear();
             _logger.Debug("Cleared all payload tracking");
+        }
+        
+        /// <summary>
+        /// Checks if a block hash is being tracked
+        /// </summary>
+        /// <param name="blockHash">The block hash to check</param>
+        /// <returns>True if the block hash is being tracked, false otherwise</returns>
+        public bool IsPayloadTracked(Hash256 blockHash)
+        {
+            if (blockHash == null)
+            {
+                return false;
+            }
+            return _headBlockToPayloadId.ContainsKey(blockHash);
         }
     }
 } 
