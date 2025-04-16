@@ -79,7 +79,6 @@ public class ContractBasedValidatorTests
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
         IReadOnlyTxProcessingScope toReturn = new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider);
-        toReturn.Init(Keccak.EmptyTreeHash);
         _readOnlyTxProcessorSource.BuildAndInit(Arg.Any<Hash256>()).Returns(toReturn);
 
         _blockTree.Head.Returns(_block);

@@ -40,7 +40,6 @@ namespace Nethermind.AuRa.Test.Contract
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
             IReadOnlyTxProcessingScope toReturn = new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider);
-            toReturn.Init(Keccak.EmptyTreeHash);
             _readOnlyTxProcessorSource.BuildAndInit(Arg.Any<Hash256>()).Returns(toReturn);
         }
 
