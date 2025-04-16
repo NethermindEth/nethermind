@@ -33,8 +33,6 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
 
     public UInt256? Value { get; set; }
 
-    public ulong? Gas { get; set; }
-
     public bool? IsSystemTx { get; set; }
 
     public byte[]? Input { get; set; }
@@ -57,8 +55,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         To = transaction.To;
         Mint = transaction.Mint;
         Value = transaction.Value;
-        // TODO: Unsafe cast
-        Gas = (ulong)transaction.GasLimit;
+        Gas = transaction.GasLimit;
         IsSystemTx = transaction.IsOPSystemTransaction;
         Input = transaction.Data?.ToArray() ?? [];
         Nonce = receipt?.DepositNonce ?? 0;
@@ -75,8 +72,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         tx.To = To;
         tx.Mint = Mint ?? 0;
         tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
-        // TODO: Unsafe cast
-        tx.GasLimit = (long)(Gas ?? throw new ArgumentNullException(nameof(Gas)));
+        tx.GasLimit = Gas ?? throw new ArgumentNullException(nameof(Gas));
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 

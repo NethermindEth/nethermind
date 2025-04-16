@@ -29,9 +29,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     public Address? From { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Gas { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? Value { get; set; }
 
     // Required for compatibility with some CLs like Prysm
@@ -104,7 +101,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         return tx;
     }
 
-    // TODO: Can we remove this code?
     public override void EnsureDefaults(long? gasCap)
     {
         if (gasCap is null || gasCap == 0)
