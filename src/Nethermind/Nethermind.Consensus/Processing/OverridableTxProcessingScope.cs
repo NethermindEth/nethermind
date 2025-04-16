@@ -16,17 +16,11 @@ public class OverridableTxProcessingScope : IOverridableTxProcessingScope
 
     public OverridableTxProcessingScope(IOverridableCodeInfoRepository codeInfoRepository,
         ITransactionProcessor transactionProcessor,
-        IOverridableWorldState worldState,
-        Hash256 stateRoot,
-        bool initScope)
+        IOverridableWorldState worldState)
     {
         CodeInfoRepository = codeInfoRepository;
         TransactionProcessor = transactionProcessor;
         _worldState = worldState;
-        if (initScope)
-        {
-            _worldStateScopeGuard = worldState.BeginScope(stateRoot);
-        }
     }
 
     public IOverridableCodeInfoRepository CodeInfoRepository { get; }
@@ -35,11 +29,15 @@ public class OverridableTxProcessingScope : IOverridableTxProcessingScope
 
     public IWorldState WorldState => _worldState;
 
+    public void Init(Hash256 stateRoot)
+    {
+        _worldStateScopeGuard = _worldState.BeginScope(stateRoot);
+    }
+
     public void Dispose() => Reset();
 
     public void Reset()
     {
-        // _worldState.Reset();
         _worldState.ResetOverrides();
         CodeInfoRepository.ResetOverrides();
         if (_worldStateScopeGuard != null)

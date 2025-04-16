@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
-            IReadOnlyTxProcessingScope scope = producerEnv.Build(Keccak.EmptyTreeHash, false);
+            IReadOnlyTxProcessingScope scope = producerEnv.Build();
 
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,

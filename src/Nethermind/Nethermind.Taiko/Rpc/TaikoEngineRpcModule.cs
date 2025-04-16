@@ -121,7 +121,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         IReadOnlyTxProcessorSource readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot, true);
+        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.BuildAndInit(head.StateRoot);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,

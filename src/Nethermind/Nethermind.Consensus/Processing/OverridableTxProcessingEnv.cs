@@ -49,13 +49,23 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     protected virtual ITransactionProcessor CreateTransactionProcessor() =>
         new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
-    IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot, bool initScope) => Build(stateRoot, initScope);
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.Build() => Build();
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndInit(Hash256 stateRoot) => BuildAndInit(stateRoot);
 
-    public OverridableTxProcessingScope Build(Hash256 stateRoot, bool initScope) => new(CodeInfoRepository, TransactionProcessor, StateProvider, stateRoot, initScope);
-
-    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride, bool initScope)
+    public OverridableTxProcessingScope Build() => new(CodeInfoRepository, TransactionProcessor, StateProvider);
+    public OverridableTxProcessingScope BuildAndInit(Hash256 stateRoot)
     {
-        OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)), initScope);
+        var scope = new OverridableTxProcessingScope(CodeInfoRepository, TransactionProcessor, StateProvider);
+        scope.Init(stateRoot);
+        return scope;
+    }
+
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
+    {
+        OverridableTxProcessingScope scope = BuildAndInit(header.StateRoot ??
+                                                          throw new ArgumentException(
+                                                              $"Block {header.Hash} state root is null",
+                                                              nameof(header)));
         if (stateOverride is not null)
         {
             scope.WorldState.WithScope(ws => ws.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number));

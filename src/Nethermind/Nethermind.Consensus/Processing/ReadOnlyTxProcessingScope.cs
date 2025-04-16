@@ -10,15 +10,20 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingScope(
     ITransactionProcessor transactionProcessor,
-    IWorldState worldState,
-    Hash256 originalStateRoot,
-    IDisposable? worldStateScopeGuard
+    IWorldState worldState
 ) : IReadOnlyTxProcessingScope
 {
+    private IDisposable? _worldStateScopeGuard;
+    private Hash256? _originalStateRoot = worldState.StateRoot;
     public void Dispose()
     {
         Reset();
-        worldStateScopeGuard?.Dispose();
+        _worldStateScopeGuard?.Dispose();
+    }
+
+    public void Init(Hash256 stateRoot)
+    {
+        _worldStateScopeGuard = worldState.BeginScope(stateRoot);
     }
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
@@ -26,9 +31,9 @@ public class ReadOnlyTxProcessingScope(
     public void Reset()
     {
         // this means the scope was not initialized here, so don't need to reset anything
-        if (worldStateScopeGuard is not null)
+        if (_worldStateScopeGuard is not null)
         {
-            worldState.StateRoot = originalStateRoot;
+            worldState.StateRoot = _originalStateRoot;
             worldState.Reset();
         }
     }

@@ -86,7 +86,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
         OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
-        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash, false);
+        IReadOnlyTxProcessingScope scope = txEnv.Build();
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(transactionProcessorAdapter, scope.WorldState);

@@ -208,7 +208,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(api.WorldStateManager!, readonlyBlockTree, api.SpecProvider, api.LogManager);
 
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash, false);
+        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build();
 
         BlockProcessor blockProcessor =
             new(api.SpecProvider,

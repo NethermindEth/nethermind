@@ -31,7 +31,7 @@ public class ShutterEon(
     public void Update(BlockHeader header)
     {
         Hash256 stateRoot = blockTree.Head!.StateRoot!;
-        using IReadOnlyTxProcessingScope scope = envFactory.Create().Build(stateRoot, true);
+        using IReadOnlyTxProcessingScope scope = envFactory.Create().BuildAndInit(stateRoot);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         try
