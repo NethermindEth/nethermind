@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Processing;
 public class OverridableTxProcessingScope : IOverridableTxProcessingScope
 {
     private readonly IOverridableWorldState _worldState;
-    private readonly IDisposable? _worldStateScopeGuard = null;
+    private IDisposable? _worldStateScopeGuard = null;
 
     public OverridableTxProcessingScope(IOverridableCodeInfoRepository codeInfoRepository,
         ITransactionProcessor transactionProcessor,
@@ -42,6 +42,10 @@ public class OverridableTxProcessingScope : IOverridableTxProcessingScope
         // _worldState.Reset();
         _worldState.ResetOverrides();
         CodeInfoRepository.ResetOverrides();
-        _worldStateScopeGuard?.Dispose();
+        if (_worldStateScopeGuard != null)
+        {
+            _worldStateScopeGuard.Dispose();
+            _worldStateScopeGuard = null;
+        }
     }
 }
