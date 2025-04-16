@@ -134,9 +134,4 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
         Send(statusMessage);
     }
-
-    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
-    {
-        // Skip
-    }
 }
