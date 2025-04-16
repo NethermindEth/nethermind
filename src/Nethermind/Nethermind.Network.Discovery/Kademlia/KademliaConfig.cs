@@ -18,7 +18,7 @@ public class KademliaConfig<TNode>
     /// <summary>
     /// Alpha, as in the parallelism of the lookup algorith.
     /// </summary>
-    public int Alpha { get; set; }
+    public int Alpha { get; set; } = 3;
 
     /// <summary>
     /// Beta, as in B in kademlia the kademlia paper, 4.2 Accelerated Lookups
@@ -39,7 +39,7 @@ public class KademliaConfig<TNode>
     /// <summary>
     /// Use a different algorithm for the neighbour and value lookup.
     /// </summary>
-    public bool UseNewLookup { get; set; }
+    public bool UseNewLookup { get; set; } = true;
 
     /// <summary>
     /// The timeout for each find neighbour call lookup
