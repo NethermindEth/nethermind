@@ -127,7 +127,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
 
         Transaction blobTx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(numberOfBlobs)
+            .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
             .WithMaxFeePerGas(1.GWei())
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithMaxFeePerBlobGas(1000.Wei())
