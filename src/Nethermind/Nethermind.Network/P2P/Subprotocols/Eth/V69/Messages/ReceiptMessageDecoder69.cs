@@ -5,6 +5,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
+[Rlp.SkipGlobalRegistration] // Created explicitly
 public class ReceiptMessageDecoder69 : ReceiptMessageDecoder
 {
     public ReceiptMessageDecoder69() : base(includeBloom: false) { }
