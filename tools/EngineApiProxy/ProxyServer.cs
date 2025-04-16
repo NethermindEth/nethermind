@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
@@ -6,8 +5,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Handlers;
 using Nethermind.EngineApiProxy.Models;
@@ -125,7 +122,7 @@ namespace Nethermind.EngineApiProxy
                     app.UseRouting();
                     app.UseEndpoints(endpoints =>
                     {
-                        endpoints.MapPost("/", HandleJsonRpcRequest);
+                        endpoints.MapPost("/", HandleCLJsonRpcRequest);
                     });
                 })
                 .Build();
@@ -183,7 +180,7 @@ namespace Nethermind.EngineApiProxy
             }
         }
 
-        private async Task HandleJsonRpcRequest(HttpContext context)
+        private async Task HandleCLJsonRpcRequest(HttpContext context)
         {
             string requestBody;
             using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
@@ -192,7 +189,7 @@ namespace Nethermind.EngineApiProxy
             }
             
             string sourceIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            string sourceHost = context.Request.Headers.ContainsKey("Host") ? context.Request.Headers["Host"].ToString() : "unknown";
+            string sourceHost = context.Request.Headers.TryGetValue("Host", out Microsoft.Extensions.Primitives.StringValues value) ? value.ToString() : "unknown";
             string method;
             try {
                 var requestObj = JObject.Parse(requestBody);
@@ -245,6 +242,13 @@ namespace Nethermind.EngineApiProxy
                     response = await responseTask;
                     _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
                 }
+                else if (request.Method.StartsWith("engine_forkchoiceUpdated") && (_config.ValidationMode == ValidationMode.Fcu || _config.ValidationMode == ValidationMode.Merged))
+                {
+                    // Queue the forkChoiceUpdated message and wait for the response
+                    Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
+                    response = await responseTask;
+                    _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
+                }
                 else
                 {
                     // Handle the request directly
@@ -259,7 +263,7 @@ namespace Nethermind.EngineApiProxy
             
             context.Response.ContentType = "application/json";
             string destinationIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            string destinationHost = context.Request.Headers.ContainsKey("Host") ? context.Request.Headers["Host"].ToString() : "unknown";
+            string destinationHost = context.Request.Headers.TryGetValue("Host", out Microsoft.Extensions.Primitives.StringValues val) ? val.ToString() : "unknown";
             _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {destinationIp}, Headers Host: {destinationHost}): {JsonConvert.SerializeObject(response)}");
             await context.Response.WriteAsync(JsonConvert.SerializeObject(response));
         }
@@ -274,7 +278,7 @@ namespace Nethermind.EngineApiProxy
                 return request.Method switch
                 {
                     // Fork choice updated methods
-                    var method when method.StartsWith("engine_forkChoiceUpdated") || method == "engine_forkchoiceUpdatedV3" || method == "engine_forkchoiceUpdatedV4" =>
+                    var method when method.StartsWith("engine_forkchoiceUpdated") =>
                         await _forkChoiceUpdatedHandler.HandleRequest(request),
                     
                     // New payload methods
@@ -292,11 +296,11 @@ namespace Nethermind.EngineApiProxy
             catch (Exception ex)
             {
                 _logger.Error($"Error routing request: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Engine API Proxy error: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Routing request: {ex.Message}");
             }
         }
 
-        private async Task SendErrorResponse(HttpContext context, int statusCode, string message)
+        private static async Task SendErrorResponse(HttpContext context, int statusCode, string message)
         {
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
@@ -308,7 +312,7 @@ namespace Nethermind.EngineApiProxy
                 error = new
                 {
                     code = statusCode,
-                    message = message
+                    message = "Proxy error: " + message
                 }
             };
             

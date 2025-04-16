@@ -2,28 +2,18 @@ using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.Logging;
 using Newtonsoft.Json;
-using System;
-using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.EngineApiProxy.Utilities
 {
-    public class RequestForwarder
+    public class RequestForwarder(
+        HttpClient httpClient,
+        ProxyConfig config,
+        ILogManager logManager)
     {
-        private readonly HttpClient _httpClient;
-        private readonly ILogger _logger;
-        private readonly ProxyConfig _config;
-
-        public RequestForwarder(
-            HttpClient httpClient,
-            ProxyConfig config,
-            ILogManager logManager)
-        {
-            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
 
         public virtual async Task<JsonRpcResponse> ForwardRequestToExecutionClient(JsonRpcRequest request)
         {
@@ -103,7 +93,7 @@ namespace Nethermind.EngineApiProxy.Utilities
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.Error($"EL returned error: {response.StatusCode}, {responseBody}");
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"EL error: {response.StatusCode}");
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: EL error: {response.StatusCode}");
                 }
                 
                 var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseBody);
@@ -117,7 +107,7 @@ namespace Nethermind.EngineApiProxy.Utilities
             catch (Exception ex)
             {
                 _logger.Error($"Error forwarding request to EL: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error communicating with EL: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Communicating with EL: {ex.Message}");
             }
         }
     }

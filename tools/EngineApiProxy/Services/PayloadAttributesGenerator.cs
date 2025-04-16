@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using Nethermind.Core;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
@@ -9,19 +8,12 @@ namespace Nethermind.EngineApiProxy.Services
     /// <summary>
     /// Generates payload attributes for block processing
     /// </summary>
-    public class PayloadAttributesGenerator
+    public class PayloadAttributesGenerator(ProxyConfig config, ILogManager logManager)
     {
-        private readonly ProxyConfig _config;
-        private readonly ILogger _logger;
-        private readonly Random _random;
-        
-        public PayloadAttributesGenerator(ProxyConfig config, ILogManager logManager)
-        {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _random = new Random();
-        }
-        
+        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly Random _random = new();
+
         /// <summary>
         /// Generates payload attributes based on the block data
         /// </summary>
@@ -89,7 +81,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// Generates a random prevRandao value (32 bytes)
         /// </summary>
         /// <returns>Random prevRandao as 0x-prefixed hex string</returns>
-        private string GenerateRandomPrevRandao()
+        private static string GenerateRandomPrevRandao()
         {
             return GenerateRandomHash();
         }
@@ -98,7 +90,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// Generates a random 32-byte hash
         /// </summary>
         /// <returns>Random hash as 0x-prefixed hex string</returns>
-        private string GenerateRandomHash()
+        private static string GenerateRandomHash()
         {
             byte[] bytes = new byte[32];
             RandomNumberGenerator.Fill(bytes);

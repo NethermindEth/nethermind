@@ -6,21 +6,16 @@ namespace Nethermind.EngineApiProxy.Models
     /// <summary>
     /// Manages the queuing and processing of intercepted messages in the proxy
     /// </summary>
-    public class MessageQueue
+    public class MessageQueue(ILogManager logManager)
     {
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly ConcurrentQueue<QueuedMessage> _messageQueue = new();
         private readonly ConcurrentDictionary<string, QueuedMessage> _messageById = new();
         
         // Fields for pause/resume functionality
         private volatile bool _processingPaused = false;
-        private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(1, 1);
-        
-        public MessageQueue(ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
+        private readonly SemaphoreSlim _pauseSemaphore = new(1, 1);
+
         /// <summary>
         /// Pauses message processing
         /// </summary>
@@ -71,11 +66,8 @@ namespace Nethermind.EngineApiProxy.Models
         /// <returns>A task that will complete when the message is processed</returns>
         public Task<JsonRpcResponse> EnqueueMessage(JsonRpcRequest message)
         {
-            if (message == null)
-            {
-                throw new ArgumentNullException(nameof(message));
-            }
-            
+            ArgumentNullException.ThrowIfNull(message);
+
             var queuedMessage = new QueuedMessage(message);
             _messageQueue.Enqueue(queuedMessage);
             
@@ -178,28 +170,21 @@ namespace Nethermind.EngineApiProxy.Models
     /// <summary>
     /// Represents a message queued for processing
     /// </summary>
-    public class QueuedMessage
+    public class QueuedMessage(JsonRpcRequest request)
     {
         /// <summary>
         /// The original request
         /// </summary>
-        public JsonRpcRequest Request { get; }
-        
+        public JsonRpcRequest Request { get; } = request;
+
         /// <summary>
         /// Task source for completing the message
         /// </summary>
-        public TaskCompletionSource<JsonRpcResponse> CompletionTask { get; }
-        
+        public TaskCompletionSource<JsonRpcResponse> CompletionTask { get; } = new TaskCompletionSource<JsonRpcResponse>();
+
         /// <summary>
         /// When the message was enqueued
         /// </summary>
-        public DateTime EnqueuedTime { get; }
-        
-        public QueuedMessage(JsonRpcRequest request)
-        {
-            Request = request;
-            CompletionTask = new TaskCompletionSource<JsonRpcResponse>();
-            EnqueuedTime = DateTime.UtcNow;
-        }
+        public DateTime EnqueuedTime { get; } = DateTime.UtcNow;
     }
 } 

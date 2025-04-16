@@ -1,38 +1,26 @@
-using Nethermind.Core;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
-using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
-using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.EngineApiProxy.Handlers
 {
-    public class GetPayloadHandler
+    public class GetPayloadHandler(
+        ProxyConfig config,
+        RequestForwarder requestForwarder,
+        PayloadTracker payloadTracker,
+        ILogManager logManager)
     {
-        private readonly ProxyConfig _config;
-        private readonly ILogger _logger;
-        private readonly RequestForwarder _requestForwarder;
-        private readonly PayloadTracker _payloadTracker;
-
-        public GetPayloadHandler(
-            ProxyConfig config, 
-            RequestForwarder requestForwarder,
-            PayloadTracker payloadTracker,
-            ILogManager logManager)
-        {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
-            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
-        }
+        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+        private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
 
         public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
         {
             // Log the getPayload request
-            _logger.Debug($"Processing {request.Method}: {request}");
+            _logger.Info($"Processing {request.Method}: {request}");
             
             try
             {
@@ -48,6 +36,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                     if (!string.IsNullOrEmpty(payloadId))
                     {
                         _logger.Debug($"Retrieved payload for payloadId {payloadId}");
+                        // TODO: Save payloadID for Merged mode?
                     }
                 }
                 

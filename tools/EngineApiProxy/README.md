@@ -1,6 +1,62 @@
 # Engine API Proxy
 
-A proxy service that intercepts and modifies Consensus Layer requests to the Execution Layer, allowing for advanced request manipulation and sequencing.
+A proxy server that sits between Consensus Layer (CL) and Execution Layer (EL) clients to intercept and enhance Engine API messages.
+
+## Architecture
+
+The proxy is built with a modular, maintainable architecture:
+
+### Core Components
+
+1. **ProxyServer**: Main entry point and HTTP server for handling JSON-RPC requests
+2. **MessageQueue**: Manages request sequencing and pausing/resuming processing
+3. **PayloadTracker**: Tracks payload IDs and their associated block hashes
+4. **RequestOrchestrator**: Coordinates the validation flow between components
+
+### Request Handlers
+
+1. **ForkChoiceUpdatedHandler**: Processes engine_forkChoiceUpdated* requests
+2. **NewPayloadHandler**: Processes engine_newPayload* requests  
+3. **GetPayloadHandler**: Processes engine_getPayload* requests
+4. **DefaultRequestHandler**: Processes all other request types
+
+### Utilities
+
+1. **RequestForwarder**: Handles forwarding requests to the execution client
+2. **BlockDataFetcher**: Retrieves block data from the execution client
+3. **PayloadAttributesGenerator**: Generates payload attributes for validation
+
+## Validation Flows
+
+The proxy supports two validation modes:
+
+1. **FCU Mode**: Validates through the ForkChoiceUpdated pipeline
+2. **NewPayload Mode**: Validates through the NewPayload pipeline
+
+Both modes intercept requests, perform validation, and ensure proper execution client responses.
+
+## Configuration
+
+Key configuration options:
+
+- **ValidationMode**: FCU or NewPayload
+- **ValidateAllBlocks**: Whether to validate all blocks or only specific ones
+- **ExecutionClientEndpoint**: The URL of the execution client
+- **ListenPort**: The port on which the proxy listens for requests
+
+## Usage
+
+```bash
+dotnet run --project tools/EngineApiProxy -- --ec.url=http://localhost:8545 --listen.port=8551
+```
+
+## Design Principles
+
+1. **Single Responsibility**: Each class has a well-defined responsibility
+2. **Dependency Injection**: Services are injected where needed
+3. **Error Handling**: Comprehensive try/catch with proper logging
+4. **Testability**: Components are designed to be testable in isolation
+5. **Logging**: Detailed logging at appropriate levels throughout the code
 
 ## Overview
 

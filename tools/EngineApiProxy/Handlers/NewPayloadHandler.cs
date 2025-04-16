@@ -1,51 +1,35 @@
-using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
-using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.EngineApiProxy.Handlers
 {
-    public class NewPayloadHandler
+    public class NewPayloadHandler(
+        ProxyConfig config,
+        RequestForwarder requestForwarder,
+        MessageQueue messageQueue,
+        PayloadTracker payloadTracker,
+        RequestOrchestrator requestOrchestrator,
+        ILogManager logManager)
     {
-        private readonly ProxyConfig _config;
-        private readonly ILogger _logger;
-        private readonly RequestForwarder _requestForwarder;
-        private readonly MessageQueue _messageQueue;
-        private readonly PayloadTracker _payloadTracker;
-        private readonly RequestOrchestrator _requestOrchestrator;
-
-        public NewPayloadHandler(
-            ProxyConfig config, 
-            RequestForwarder requestForwarder,
-            MessageQueue messageQueue,
-            PayloadTracker payloadTracker,
-            RequestOrchestrator requestOrchestrator,
-            ILogManager logManager)
-        {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
-            _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
-            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
-            _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
-        }
+        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+        private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
+        private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+        private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
 
         public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
         {
             _logger.Debug($"Processing NewPayload request {request.Id}");
             
             // Check if the request should be validated
-            if (_config.ValidationMode == ValidationMode.Fcu)
+            if (_config.ValidationMode == ValidationMode.Fcu || _config.ValidationMode == ValidationMode.Merged)
             {
-                _logger.Info("Validation for NewPayload disabled in FCU mode");
+                _logger.Debug("Validation for NewPayload disabled in FCU and Merged mode");
                 return await _requestForwarder.ForwardRequestToExecutionClient(request);
             }
             
@@ -153,7 +137,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             }
         }
 
-        private JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
+        private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
         {
             return originalRequest.Method switch
             {
@@ -170,7 +154,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                     Guid.NewGuid().ToString()
                 ),
                 _ => new JsonRpcRequest(
-                    "engine_forkChoiceUpdated",
+                    "engine_forkchoiceUpdated",
                     new JArray(
                         new JObject
                         {
@@ -184,7 +168,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             };
         }
 
-        private string ExtractBlockHashFromPayload(JsonRpcRequest request)
+        private static string ExtractBlockHashFromPayload(JsonRpcRequest request)
         {
             if (request.Params != null && request.Params.Count > 0 && request.Params[0] is JObject payload)
             {
@@ -193,7 +177,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             return string.Empty;
         }
 
-        private bool IsEmptyOrMissingPayloadAttributes(JArray parameters)
+        private static bool IsEmptyOrMissingPayloadAttributes(JArray parameters)
         {
             // No second parameter
             if (parameters.Count == 1)
@@ -214,7 +198,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             return !(secondParam is JObject);
         }
         
-        private string ExtractParentHash(JArray parameters)
+        private static string ExtractParentHash(JArray parameters)
         {
             if (parameters == null || parameters.Count == 0)
                 return string.Empty;

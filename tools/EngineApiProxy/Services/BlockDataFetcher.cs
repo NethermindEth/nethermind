@@ -1,5 +1,4 @@
 using System.Text;
-using Nethermind.Core.Crypto;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.Logging;
 using Newtonsoft.Json;
@@ -10,17 +9,11 @@ namespace Nethermind.EngineApiProxy.Services
     /// <summary>
     /// Fetches block data from the execution client using JSON-RPC
     /// </summary>
-    public class BlockDataFetcher
+    public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager)
     {
-        private readonly HttpClient _httpClient;
-        private readonly ILogger _logger;
-        
-        public BlockDataFetcher(HttpClient httpClient, ILogManager logManager)
-        {
-            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
+        private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
         /// <summary>
         /// Fetches block data from the execution client by hash
         /// </summary>
@@ -35,7 +28,7 @@ namespace Nethermind.EngineApiProxy.Services
                 // Create JSON-RPC request
                 var request = new JsonRpcRequest(
                     "eth_getBlockByHash",
-                    new JArray { blockHash, true }, // Include transaction objects
+                    [blockHash, true], // Include transaction objects
                     Guid.NewGuid().ToString());
                 
                 // Send request to EC
@@ -109,7 +102,7 @@ namespace Nethermind.EngineApiProxy.Services
                 // Create JSON-RPC request
                 var request = new JsonRpcRequest(
                     "eth_getBlockByNumber",
-                    new JArray { "latest", true }, // Include transaction objects
+                    ["latest", true], // Include transaction objects
                     Guid.NewGuid().ToString());
                 
                 // Send request to EC

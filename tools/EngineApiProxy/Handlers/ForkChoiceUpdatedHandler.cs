@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
@@ -8,48 +6,36 @@ using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
-using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.EngineApiProxy.Handlers
 {
-    public class ForkChoiceUpdatedHandler
+    public class ForkChoiceUpdatedHandler(
+        ProxyConfig config,
+        RequestForwarder requestForwarder,
+        MessageQueue messageQueue,
+        PayloadTracker payloadTracker,
+        RequestOrchestrator requestOrchestrator,
+        ILogManager logManager)
     {
-        private readonly ProxyConfig _config;
-        private readonly ILogger _logger;
-        private readonly RequestForwarder _requestForwarder;
-        private readonly MessageQueue _messageQueue;
-        private readonly PayloadTracker _payloadTracker;
-        private readonly RequestOrchestrator _requestOrchestrator;
-
-        public ForkChoiceUpdatedHandler(
-            ProxyConfig config, 
-            RequestForwarder requestForwarder,
-            MessageQueue messageQueue,
-            PayloadTracker payloadTracker,
-            RequestOrchestrator requestOrchestrator,
-            ILogManager logManager)
-        {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
-            _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
-            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
-            _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
-        }
+        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+        private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
+        private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+        private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
 
         public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
         {
             if (_config.ValidationMode == ValidationMode.NewPayload)
             {
-                _logger.Debug($"Processing engine_forkChoiceUpdated (NewPayload flow): {request}");
+                _logger.Debug($"Processing engine_forkchoiceUpdated (NewPayload flow): {request}");
                 return await _requestForwarder.ForwardRequestToExecutionClient(request);
             }
             else if (_config.ValidationMode == ValidationMode.Merged)
             {
                 // Log the request
-                _logger.Info("--------------------------------");
-                _logger.Debug($"Processing engine_forkChoiceUpdated (Merged flow): {request}");
+                _logger.Info("---------------(Merged flow)-----------------");
+                _logger.Debug($"Processing engine_forkchoiceUpdated (Merged flow): {request}");
                 
                 try
                 {
@@ -69,8 +55,8 @@ namespace Nethermind.EngineApiProxy.Handlers
             }
 
             // Log the forkChoiceUpdated request
-            _logger.Info("--------------------------------");
-            _logger.Debug($"Processing engine_forkChoiceUpdated (FCU flow): {request}");
+            _logger.Info("---------------(FCU flow)-----------------");
+            _logger.Debug($"Processing engine_forkchoiceUpdated (FCU flow): {request}");
             
             try
             {
@@ -84,6 +70,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 }
                 
                 // Forward the request to EC without modification if not validating
+                // TODO: Add empty payloadID for merged mode?
                 return await ProcessWithoutValidation(request);
             }
             catch (Exception ex)
@@ -111,7 +98,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 
                 if (request.Params?.Count > 1 && request.Params[1] is JObject)
                 {
-                    _logger.Debug("Skipping validation because request already contains payload attributes");
+                    _logger.Info("Skipping validation because request already contains payload attributes");
                 }
             }
             
@@ -145,7 +132,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                     }
                     else
                     {
-                        _logger.Info($"Validation flow for payloadId {payloadId} completed successfully, forwarding original request to EL for actual response");
+                        _logger.Info($"Validation flow for payloadId {payloadId} completed successfully, forwarding original FCU request to EL for actual response");
                     }
                     return await _requestForwarder.ForwardRequestToExecutionClient(request);
                 }
@@ -200,7 +187,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             return response;
         }
 
-        private string ExtractHeadBlockHash(JsonRpcRequest request)
+        private static string ExtractHeadBlockHash(JsonRpcRequest request)
         {
             if (request.Params?[0] is JObject forkChoiceState && 
                 forkChoiceState["headBlockHash"] != null)

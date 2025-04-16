@@ -1,5 +1,4 @@
 using System.Text;
-using Nethermind.Core.Crypto;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.Logging;
@@ -11,34 +10,23 @@ namespace Nethermind.EngineApiProxy.Services
     /// <summary>
     /// Orchestrates the flow of requests for block validation
     /// </summary>
-    public class RequestOrchestrator
+    public class RequestOrchestrator(
+        HttpClient httpClient,
+        BlockDataFetcher blockFetcher,
+        PayloadAttributesGenerator attributesGenerator,
+        MessageQueue messageQueue,
+        PayloadTracker payloadTracker,
+        ProxyConfig config,
+        ILogManager logManager)
     {
-        private readonly BlockDataFetcher _blockFetcher;
-        private readonly PayloadAttributesGenerator _attributesGenerator;
-        private readonly MessageQueue _messageQueue;
-        private readonly PayloadTracker _payloadTracker;
-        private readonly ILogger _logger;
-        private readonly HttpClient _httpClient;
-        private readonly ProxyConfig _config;
-        
-        public RequestOrchestrator(
-            HttpClient httpClient, 
-            BlockDataFetcher blockFetcher,
-            PayloadAttributesGenerator attributesGenerator,
-            MessageQueue messageQueue,
-            PayloadTracker payloadTracker,
-            ProxyConfig config,
-            ILogManager logManager)
-        {
-            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-            _blockFetcher = blockFetcher ?? throw new ArgumentNullException(nameof(blockFetcher));
-            _attributesGenerator = attributesGenerator ?? throw new ArgumentNullException(nameof(attributesGenerator));
-            _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
-            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
+        private readonly BlockDataFetcher _blockFetcher = blockFetcher ?? throw new ArgumentNullException(nameof(blockFetcher));
+        private readonly PayloadAttributesGenerator _attributesGenerator = attributesGenerator ?? throw new ArgumentNullException(nameof(attributesGenerator));
+        private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
+        private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+
         /// <summary>
         /// Handles the fork choice updated validation flow
         /// </summary>
@@ -91,10 +79,7 @@ namespace Nethermind.EngineApiProxy.Services
                 
                 // 3. Clone the request and add payload attributes
                 var modifiedRequest = CloneRequest(originalRequest);
-                if (modifiedRequest.Params == null)
-                {
-                    modifiedRequest.Params = new JArray();
-                }
+                modifiedRequest.Params ??= [];
                 
                 // Make sure we explicitly copy the originalRequest headers to ensure auth is preserved
                 modifiedRequest.OriginalHeaders = originalRequest.OriginalHeaders != null
@@ -138,30 +123,35 @@ namespace Nethermind.EngineApiProxy.Services
                         {
                             _logger.Warn($"Payload is SYNCING, skipping validation for payloadId: {payloadId}");
                             return string.Empty;
+                        } else if (payloadStatus == "VALID") {
+                            _logger.Warn($"Payload is VALID, but payloadId is null. FCU may be already sent to EL");
+                            return string.Empty;
                         }
-                        throw new InvalidOperationException("Received empty payloadId from FCU response");
+                        throw new InvalidOperationException($"Received empty payloadId from FCU response: {resultObj}");
                     }
                     
                     _logger.Info($"Received payloadId: {payloadId} for head block: {headBlockHash}");
                     
                     // 6. Wait a short time for EL to prepare the payload
+                    // TODO: Make this configurable
                     await Task.Delay(500);
                     
                     try
                     {
-                        // 7. Get the payload using engine_getPayloadV3
+                        // 7. Get the payload using engine_getPayload
                         // Pass the parent beacon block root from the payload attributes
                         await GetAndProcessPayload(payloadId, parentBeaconBlockRoot);
                     }
                     catch (Exception ex)
                     {
-                        // If engine_getPayloadV3 fails, log it but don't throw an exception
+                        // If engine_getPayloadV4 fails, log it but don't throw an exception
                         // This allows us to gracefully handle the case where the execution client
-                        // doesn't support engine_getPayloadV3
-                        if (ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported") ||
-                            (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV3' is not supported")))
+                        // doesn't support engine_getPayloadV4
+                        // TODO: Make pectra and pre-pectra configurable
+                        if (ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
+                            (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV4' is not supported")))
                         {
-                            _logger.Warn($"Execution client does not support engine_getPayloadV3. Skipping payload validation for payloadId: {payloadId}");
+                            _logger.Warn($"Execution client does not support engine_getPayloadV4. Skipping payload validation for payloadId: {payloadId}");
                         }
                         else
                         {
@@ -200,7 +190,7 @@ namespace Nethermind.EngineApiProxy.Services
                 var getPayloadRequest = new JsonRpcRequest(
                     //TODO: add support for engine_getPayloadV3
                     "engine_getPayloadV4",
-                    new JArray { payloadId },
+                    [payloadId],
                     Guid.NewGuid().ToString());
                 
                 // Make sure any authorization headers from HttpClient are included
@@ -414,7 +404,7 @@ namespace Nethermind.EngineApiProxy.Services
                     _logger.Error($"HTTP request failed with status code: {response.StatusCode}, Content: {errorContent}");
                     
                     // Return an error response instead of throwing in tests
-                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"HTTP error: {response.StatusCode}");
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: HTTP error: {response.StatusCode}");
                 }
                 
                 // Parse response
@@ -436,7 +426,7 @@ namespace Nethermind.EngineApiProxy.Services
                             return GenerateDefaultResponse(request);
                         }
                         
-                        return JsonRpcResponse.CreateErrorResponse(request.Id, -32700, "Parse error: Invalid JSON response");
+                        return JsonRpcResponse.CreateErrorResponse(request.Id, -32700, "Proxy error: Invalid JSON response");
                     }
                     
                     // Check for JSON-RPC error
@@ -460,7 +450,7 @@ namespace Nethermind.EngineApiProxy.Services
                 _logger.Error($"Error sending JSON-RPC request: {ex.Message}", ex);
                 
                 // Return an error response instead of throwing
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Internal error: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Sending JSON-RPC request: {ex.Message}");
             }
         }
         
@@ -470,52 +460,43 @@ namespace Nethermind.EngineApiProxy.Services
         private JsonRpcResponse GenerateDefaultResponse(JsonRpcRequest request)
         {
             _logger.Warn($"Generating default response for method {request.Method}");
-            
+
             // Create default responses based on method
-            switch (request.Method)
+            return request.Method switch
             {
-                case "engine_forkchoiceUpdatedV3":
-                    return new JsonRpcResponse(request.Id, new JObject
-                    {
-                        ["payloadStatus"] = new JObject
-                        {
-                            ["status"] = "VALID",
-                            ["latestValidHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                            ["validationError"] = null
-                        },
-                        ["payloadId"] = "0x0123456789abcdef"
-                    });
-                    
-                case "engine_getPayloadV4":
-                    return new JsonRpcResponse(request.Id, new JObject
-                    {
-                        ["executionPayload"] = new JObject
-                        {
-                            ["blockHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                            ["parentHash"] = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-                        }
-                    });
-                    
-                case "engine_newPayloadV4":
-                    return new JsonRpcResponse(request.Id, new JObject
+                "engine_forkchoiceUpdatedV3" => new JsonRpcResponse(request.Id, new JObject
+                {
+                    ["payloadStatus"] = new JObject
                     {
                         ["status"] = "VALID",
                         ["latestValidHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
                         ["validationError"] = null
-                    });
-                    
-                case "eth_getBlockByHash":
-                    return new JsonRpcResponse(request.Id, new JObject
+                    },
+                    ["payloadId"] = "0x0123456789abcdef"
+                }),
+                "engine_getPayloadV4" => new JsonRpcResponse(request.Id, new JObject
+                {
+                    ["executionPayload"] = new JObject
                     {
-                        ["hash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                        ["number"] = "0x1",
-                        ["timestamp"] = "0x64",
-                        ["transactions"] = new JArray()
-                    });
-                    
-                default:
-                    return new JsonRpcResponse(request.Id, new JObject());
-            }
+                        ["blockHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                        ["parentHash"] = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    }
+                }),
+                "engine_newPayloadV4" => new JsonRpcResponse(request.Id, new JObject
+                {
+                    ["status"] = "VALID",
+                    ["latestValidHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                    ["validationError"] = null
+                }),
+                "eth_getBlockByHash" => new JsonRpcResponse(request.Id, new JObject
+                {
+                    ["hash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                    ["number"] = "0x1",
+                    ["timestamp"] = "0x64",
+                    ["transactions"] = new JArray()
+                }),
+                _ => new JsonRpcResponse(request.Id, new JObject()),
+            };
         }
         
         /// <summary>
@@ -523,7 +504,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// </summary>
         /// <param name="request">The request to clone</param>
         /// <returns>A clone of the request</returns>
-        private JsonRpcRequest CloneRequest(JsonRpcRequest request)
+        private static JsonRpcRequest CloneRequest(JsonRpcRequest request)
         {
             return new JsonRpcRequest(
                 request.Method,

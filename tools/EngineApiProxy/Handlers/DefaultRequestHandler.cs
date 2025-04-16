@@ -6,22 +6,16 @@ using System.Threading.Tasks;
 
 namespace Nethermind.EngineApiProxy.Handlers
 {
-    public class DefaultRequestHandler
+    public class DefaultRequestHandler(
+        RequestForwarder requestForwarder,
+        ILogManager logManager)
     {
-        private readonly ILogger _logger;
-        private readonly RequestForwarder _requestForwarder;
-
-        public DefaultRequestHandler(
-            RequestForwarder requestForwarder,
-            ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
-        }
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
 
         public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
         {
-            _logger.Debug($"Processing default request for method {request.Method}");
+            _logger.Info($"Processing default request for method {request.Method}");
             
             try
             {
