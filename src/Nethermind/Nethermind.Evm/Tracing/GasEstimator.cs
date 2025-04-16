@@ -34,6 +34,10 @@ namespace Nethermind.Evm.Tracing
             _blocksConfig = blocksConfig;
         }
 
+        public class GasEstimateException(string message) : Exception(message)
+        {
+        }
+
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
         {
             ArgumentOutOfRangeException.ThrowIfNegative(errorMargin, nameof(errorMargin));
@@ -61,7 +65,7 @@ namespace Nethermind.Evm.Tracing
 
             //This would mean that header gas limit is lower than both intrinsic gas and tx gas limit
             if (leftBound > rightBound)
-                return 0;
+                throw new GasEstimateException("Cannot estimate gas, tx gas limit is greater than header gas limit");
 
             // Execute binary search to find the optimal gas estimation.
             return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);

@@ -182,11 +182,29 @@ namespace Nethermind.Facade
                 estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+
+            long estimate = 0;
+            string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
+
+            try
+            {
+                gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                if (e is GasEstimator.GasEstimateException || e is ArgumentOutOfRangeException)
+                {
+                    error ??= e.Message;
+                }
+                else
+                {
+                    throw;
+                }
+            }
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit),
+                Error = error,
                 GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
@@ -415,7 +433,7 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
         {
             if (txResult.Success) return tracerError;
             return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
