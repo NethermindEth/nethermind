@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
@@ -14,6 +18,43 @@ using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// A not so managed reference to <see cref="StorageValue"/>.
+    /// Allows quick equality checks and ref returning semantics.
+    /// </summary>
+    internal readonly unsafe struct Ptr : IEquatable<Ptr>
+    {
+        private readonly StorageValue* _pointer;
+
+        public Ptr(StorageValue* pointer)
+        {
+            _pointer = pointer;
+        }
+
+        public bool IsZero => _pointer == null;
+
+        public static readonly Ptr Null = default;
+
+        public ref readonly StorageValue Ref =>
+            ref _pointer == null ? ref StorageValue.Zero : ref Unsafe.AsRef<StorageValue>(_pointer);
+
+        public override bool Equals([NotNullWhen(true)] object? obj)
+        {
+            return obj is Ptr other && Equals(other);
+        }
+
+        public bool Equals(Ptr other) => _pointer == other._pointer;
+
+        public override int GetHashCode() => unchecked((int)(long)_pointer);
+
+        public override string ToString() => $"{Ref} @ {new UIntPtr(_pointer)}";
+
+        public void SetValue(in StorageValue value)
+        {
+            *_pointer = value;
+        }
+    }
+
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
@@ -27,28 +68,40 @@ namespace Nethermind.State
         private const int StorageValuesCount = 1024 * 1024;
         private const int StorageValuesCountMask = StorageValuesCount - 1;
         private const UIntPtr StorageValuesSize = StorageValue.MemorySize * StorageValuesCount;
-        private readonly unsafe StorageValue* _values;
+        private unsafe volatile StorageValue* _values;
 
         protected unsafe void ClearStorageValuesMap()
         {
-            NativeMemory.Clear(_values,StorageValuesSize);
+            var values = _values;
+            _values = null;
+
+            Task.Run(
+                () =>
+                {
+                    NativeMemory.Clear(values, StorageValuesSize);
+                    _values = values;
+                });
         }
 
-        protected unsafe StorageValue.Ptr Map(in StorageValue value)
+        [SkipLocalsInit]
+        protected unsafe Ptr Map(in StorageValue value)
         {
             if (value.IsZero)
-                return StorageValue.Ptr.Null;
+                return Ptr.Null;
 
             var hash = value.GetHashCode();
             var values = _values;
+
+            if (values == null)
+            {
+                values = SpinGet();
+            }
 
             for (var i = 0; i < StorageValuesCount; i++)
             {
                 var at = (hash + i) & StorageValuesCountMask;
 
-                Debug.Assert(0 <= at && at < StorageValuesCount);
-
-                var ptr = new StorageValue.Ptr(values + at);
+                var ptr = new Ptr(values + at);
 
                 if (ptr.Ref.Equals(value))
                 {
@@ -64,6 +117,19 @@ namespace Nethermind.State
 
             // Return null
             return default;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private unsafe StorageValue* SpinGet()
+        {
+            StorageValue* values = _values;
+            while (values == null)
+            {
+                default(SpinWait).SpinOnce();
+                values = _values;
+            }
+
+            return values;
         }
 
         // stack of snapshot indexes on changes for start of each transaction
@@ -201,23 +267,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(StorageValue.Ptr.Null, StorageValue.Ptr.Null);
+            public static readonly ChangeTrace _zeroBytes = new(Ptr.Null, Ptr.Null);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(StorageValue.Ptr before, StorageValue.Ptr after)
+            public ChangeTrace(Ptr before, Ptr after)
             {
                 After = after;
                 Before = before;
             }
 
-            public ChangeTrace(StorageValue.Ptr after)
+            public ChangeTrace(Ptr after)
             {
                 After = after;
-                Before = StorageValue.Ptr.Null;
+                Before = Ptr.Null;
             }
 
-            public StorageValue.Ptr Before;
-            public StorageValue.Ptr After;
+            public Ptr Before;
+            public Ptr After;
         }
 
         /// <summary>
@@ -299,7 +365,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, in StorageValue.Ptr value)
+        private void PushUpdate(in StorageCell cell, in Ptr value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -344,7 +410,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, StorageValue.Ptr value)
+            public Change(ChangeType changeType, StorageCell storageCell, Ptr value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -353,7 +419,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly StorageValue.Ptr Value;
+            public readonly Ptr Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

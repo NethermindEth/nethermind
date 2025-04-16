@@ -40,7 +40,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// EIP-1283
     /// </summary>
-    private readonly Dictionary<StorageCell, StorageValue.Ptr> _originalValues = new();
+    private readonly Dictionary<StorageCell, Ptr> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
     private readonly Dictionary<AddressAsKey, DefaultableDictionary> _blockChanges = new(4_096);
@@ -339,7 +339,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int skipped = 0;
             foreach (var kvp in dict)
             {
-                StorageValue.Ptr after = kvp.Value.After;
+                Ptr after = kvp.Value.After;
                 // Force the update if the change is to zero. This means a removal.
                 if (after.IsZero || !kvp.Value.Before.Equals(after))
                 {
@@ -376,7 +376,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private void SaveChange(HashSet<AddressAsKey> toUpdateRoots, Change change)
     {
-        if (_originalValues.TryGetValue(change.StorageCell, out StorageValue.Ptr initialValue) &&
+        if (_originalValues.TryGetValue(change.StorageCell, out Ptr initialValue) &&
             initialValue.Ref.Equals(in change.Value.Ref))
         {
             // no need to update the tree if the value is the same
@@ -533,7 +533,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return !storageCell.IsHash ? tree.GetValue(storageCell.Index) : tree.GetValue(storageCell.Hash.Bytes);
     }
 
-    private void PushToRegistryOnly(in StorageCell cell, StorageValue.Ptr value)
+    private void PushToRegistryOnly(in StorageCell cell, Ptr value)
     {
         StackList<int> stack = SetupRegistry(cell);
         _originalValues[cell] = value;
@@ -545,8 +545,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         foreach ((StorageCell address, ChangeTrace change) in trace)
         {
-            StorageValue.Ptr before = change.Before;
-            StorageValue.Ptr after = change.After;
+            Ptr before = change.Before;
+            Ptr after = change.After;
 
             if (!before.Equals(after))
             {

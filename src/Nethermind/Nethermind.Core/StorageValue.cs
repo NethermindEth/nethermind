@@ -82,7 +82,20 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         return obj is StorageValue other && Equals(other);
     }
 
-    public override int GetHashCode() => Bytes.FastHash();
+    public override int GetHashCode()
+    {
+        var b = Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes));
+
+        uint hash = 13;
+
+        uint hash0 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
+        uint hash1 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
+        uint hash2 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
+
+        // Omit the highest that are likely 00000.
+
+        return (unchecked((int)BitOperations.Crc32C(hash1, ((ulong)hash0 << (sizeof(uint) * 8)) | hash2)));
+    }
 
     private Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
 
@@ -157,42 +170,5 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// A not so managed reference to <see cref="StorageValue"/>.
-    /// Allows quick equality checks and ref returning semantics.
-    /// </summary>
-    public readonly unsafe struct Ptr : IEquatable<Ptr>
-    {
-        private readonly StorageValue* _pointer;
-
-        public Ptr(StorageValue* pointer)
-        {
-            _pointer = pointer;
-        }
-
-        public bool IsZero => _pointer == null;
-
-        public static readonly Ptr Null = default;
-
-        public ref readonly StorageValue Ref =>
-            ref _pointer == null ? ref Zero : ref Unsafe.AsRef<StorageValue>(_pointer);
-
-        public override bool Equals([NotNullWhen(true)] object? obj)
-        {
-            return obj is Ptr other && Equals(other);
-        }
-
-        public bool Equals(Ptr other) => _pointer == other._pointer;
-
-        public override int GetHashCode() => unchecked((int)(long)_pointer);
-
-        public override string ToString() => $"{Ref} @ {new UIntPtr(_pointer)}";
-
-        public void SetValue(in StorageValue value)
-        {
-            *_pointer = value;
-        }
     }
 }

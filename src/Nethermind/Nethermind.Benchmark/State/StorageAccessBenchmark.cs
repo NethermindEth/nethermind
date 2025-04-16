@@ -13,6 +13,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Benchmarks.State;
 
 [MemoryDiagnoser]
+[DisassemblyDiagnoser(2)]
 public class StorageAccessBenchmark
 {
     private WorldState _preCached;

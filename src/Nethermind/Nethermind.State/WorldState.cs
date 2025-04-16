@@ -110,6 +110,7 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+
         public void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)
