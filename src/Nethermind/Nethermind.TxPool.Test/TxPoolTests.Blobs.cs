@@ -461,8 +461,9 @@ namespace Nethermind.TxPool.Test
             IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
             specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
 
-            ChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
-            _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
+            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+            _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 },
+                specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
