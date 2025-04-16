@@ -80,7 +80,12 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     }
 
     // NOTE: No defaulting mechanism for Optimism transactions
-    public override void EnsureDefaults(long? gasCap) { }
+    public override void EnsureDefaults(long? gasCap) {
+        if (Gas is not null && gasCap is not null)
+        {
+            Gas = Math.Min(Gas.Value, gasCap.Value);
+        }
+    }
 
     public override bool ShouldSetBaseFee() => false;
 
