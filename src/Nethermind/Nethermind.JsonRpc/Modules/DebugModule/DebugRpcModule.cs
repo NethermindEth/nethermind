@@ -82,12 +82,18 @@ public class DebugRpcModule : IDebugRpcModule
         blockParameter ??= BlockParameter.Latest;
 
         long? gasCap = _jsonRpcConfig.GasCap;
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (!searchResult.IsError)
+
+        // default to previous block gas if unspecified
+        if (call.Gas is null)
         {
-            gasCap = searchResult.Object.GasLimit;
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            if (!searchResult.IsError)
+            {
+                call.Gas = searchResult.Object.GasLimit;
+            }
         }
 
+        // enforces gas cap
         call.EnsureDefaults(gasCap);
 
         Transaction tx = call.ToTransaction();
