@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Autofac;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
@@ -14,8 +16,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -26,19 +29,32 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
     private readonly INodesLocator _nodesLocator;
-    private readonly IDiscoveryManager _discoveryManager;
-    private readonly INodeTable _nodeTable;
+    // private readonly IDiscoveryManager _discoveryManager;
+    // private readonly INodeTable _nodeTable;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;
     private readonly INetworkConfig _networkConfig;
+    private IContainer? _kademliaServices;
+
+    private readonly IList<Node> _bootNodes;
+    private PublicKey _masterNode = null!;
+    private readonly NodeRecord _selfNodeRecorrd;
+
+#pragma warning disable CS0414 // Field is assigned but its value is never used
+    private KademliaDiscv4MessageReceiver _discv4MessageReceiver = null!;
+    private KademliaDiscv4MessageSender _discv4MessageSender = null!;
+    private IKademlia<Node> _kademlia = null!;
+#pragma warning restore CS0414 // Field is assigned but its value is never used
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
 
-    public DiscoveryApp(INodesLocator nodesLocator,
+    public DiscoveryApp(
+        NodeRecord selfNodeRecord,
+        INodesLocator nodesLocator,
         IDiscoveryManager? discoveryManager,
         INodeTable? nodeTable,
         IMessageSerializationService? msgSerializationService,
@@ -49,24 +65,54 @@ public class DiscoveryApp : IDiscoveryApp
         ITimestamper? timestamper,
         ILogManager? logManager)
     {
+        _selfNodeRecorrd = selfNodeRecord;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = _logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
-        _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-        _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+        // _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+        // _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _messageSerializationService =
             msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+        _bootNodes = new List<Node>();
         _discoveryStorage.StartBatch();
+
+        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        if (bootnodes.Length == 0)
+        {
+            if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
+            return;
+        }
+
+        for (int i = 0; i < bootnodes.Length; i++)
+        {
+            NetworkNode bootnode = bootnodes[i];
+            if (bootnode.NodeId is null)
+            {
+                _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
+            }
+
+            _bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
+        }
+    }
+
+    private class NodeNodeHashProvider : INodeHashProvider<Node>
+    {
+        public ValueHash256 GetHash(Node node)
+        {
+            return node.Id.Hash;
+        }
     }
 
     public void Initialize(PublicKey masterPublicKey)
     {
-        _discoveryManager.NodeDiscovered += OnNodeDiscovered;
+        // _discoveryManager.NodeDiscovered += OnNodeDiscovered;
+        _masterNode = masterPublicKey;
+        /*
         _nodeTable.Initialize(masterPublicKey);
         if (_nodeTable.MasterNode is null)
         {
@@ -76,6 +122,28 @@ public class DiscoveryApp : IDiscoveryApp
         }
 
         _nodesLocator.Initialize(_nodeTable.MasterNode);
+        */
+
+        _kademliaServices = new ContainerBuilder()
+            .AddModule(new KademliaModule<Node>())
+            .AddSingleton<INodeHashProvider<Node>, NodeNodeHashProvider>()
+            .AddSingleton<ITimestamper>(_timestamper)
+            .AddSingleton<INetworkConfig>(_networkConfig)
+            .AddSingleton<ILogManager>(_logManager)
+            .AddSingleton(_selfNodeRecorrd)
+            .AddSingleton<KademliaConfig<Node>>(new KademliaConfig<Node>()
+            {
+                CurrentNodeId = new Node(_masterNode, "127.0.0.1", 9999, true)
+            })
+            .AddSingleton<IKademliaMessageSender<Node>, KademliaDiscv4MessageSender>()
+            .AddSingleton<KademliaDiscv4MessageReceiver>()
+            .Build();
+
+        _kademlia = _kademliaServices.Resolve<IKademlia<Node>>();
+        _discv4MessageReceiver = _kademliaServices.Resolve<KademliaDiscv4MessageReceiver>();
+        _discv4MessageSender = _kademliaServices.Resolve<KademliaDiscv4MessageSender>();
+
+        // TODO: Setup kademlia here
     }
 
     public Task StartAsync()
@@ -112,11 +180,13 @@ public class DiscoveryApp : IDiscoveryApp
 
         Cleanup();
         if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
+
+        _kademliaServices?.DisposeAsync();
     }
 
     public void AddNodeToDiscovery(Node node)
     {
-        _discoveryManager.GetNodeLifecycleManager(node);
+        _kademlia.AddOrRefresh(node);
     }
 
     private void Initialize()
@@ -130,6 +200,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     private void ResetUnreachableStatus(object? sender, NetworkAvailabilityEventArgs e)
     {
+        /*
         if (!e.IsAvailable)
         {
             return;
@@ -139,13 +210,15 @@ public class DiscoveryApp : IDiscoveryApp
         {
             unreachable.ResetUnreachableStatus();
         }
+        */
     }
 
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService,
+        _discoveryHandler = new NettyDiscoveryHandler(_discv4MessageReceiver, channel, _messageSerializationService,
             _timestamper, _logManager);
-        _discoveryManager.MsgSender = _discoveryHandler;
+
+        _discv4MessageSender.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
         channel.Pipeline
@@ -165,23 +238,23 @@ public class DiscoveryApp : IDiscoveryApp
         Task.Factory
             .StartNew(() => OnChannelActivated(_appShutdownSource.Token), _appShutdownSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
             .ContinueWith
-        (
-            t =>
-            {
-                if (t.IsFaulted)
+            (
+                t =>
                 {
-                    string faultMessage = "Cannot activate channel.";
-                    _logger.Info(faultMessage);
-                    throw t.Exception ??
-                          (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
-                }
+                    if (t.IsFaulted)
+                    {
+                        string faultMessage = "Cannot activate channel.";
+                        _logger.Info(faultMessage);
+                        throw t.Exception ??
+                              (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
+                    }
 
-                if (t.IsCompleted && !_appShutdownSource.IsCancellationRequested)
-                {
-                    _logger.Debug("Discovery App initialized.");
+                    if (t.IsCompleted && !_appShutdownSource.IsCancellationRequested)
+                    {
+                        _logger.Debug("Discovery App initialized.");
+                    }
                 }
-            }
-        );
+            );
     }
 
     private async Task OnChannelActivated(CancellationToken cancellationToken)
@@ -207,10 +280,12 @@ public class DiscoveryApp : IDiscoveryApp
 
                 //Check if we were able to communicate with any trusted nodes or persisted nodes
                 //if so no need to replay bootstrapping, we can start discovery process
+                /*
                 if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
                 {
                     break;
                 }
+                */
 
                 _logger.Warn("Could not communicate with any nodes (bootnodes, trusted nodes, persisted nodes).");
                 await Task.Delay(1000, cancellationToken);
@@ -240,7 +315,7 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
-            if (!_discoveryManager.NodesFilter.Set(networkNode.HostIp))
+            if (!_discv4MessageSender.NodesFilter.Set(networkNode.HostIp))
             {
                 // Already seen this node ip recently
                 continue;
@@ -259,6 +334,7 @@ public class DiscoveryApp : IDiscoveryApp
                 continue;
             }
 
+            /*
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node, true);
             if (manager is null)
             {
@@ -272,6 +348,7 @@ public class DiscoveryApp : IDiscoveryApp
             }
 
             manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
+            */
             if (_logger.IsTrace)
                 _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
         }
@@ -310,94 +387,80 @@ public class DiscoveryApp : IDiscoveryApp
 
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
     {
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
-        if (bootnodes.Length == 0)
+        foreach (var bootNode in _bootNodes)
         {
-            if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
-            return true;
-        }
-
-        List<INodeLifecycleManager> managers = new();
-        for (int i = 0; i < bootnodes.Length; i++)
-        {
-            NetworkNode bootnode = bootnodes[i];
-            if (bootnode.NodeId is null)
-            {
-                _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
-            }
-
-            Node node = new(bootnode.NodeId, bootnode.Host, bootnode.Port);
-            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager is not null)
-            {
-                managers.Add(manager);
-            }
-            else
-            {
-                _logger.Warn($"Bootnode config contains self: {bootnode.NodeId}");
-            }
+            _kademlia.AddOrRefresh(bootNode);
         }
 
         //Wait for pong message to come back from Boot nodes
-        int maxWaitTime = _discoveryConfig.BootnodePongTimeout;
-        int itemTime = maxWaitTime / 100;
-        for (int i = 0; i < 100; i++)
+        /*
+    int maxWaitTime = _discoveryConfig.BootnodePongTimeout;
+    int itemTime = maxWaitTime / 100;
+    for (int i = 0; i < 100; i++)
+    {
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-
-            if (managers.Any(static x => x.State == NodeLifecycleState.Active))
-            {
-                break;
-            }
-
-            if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        "Was not able to connect to any of the bootnodes, but successfully connected to at least one persisted node.");
-                break;
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
-
-            try
-            {
-                await Task.Delay(itemTime, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            break;
         }
 
-        int reachedNodeCounter = 0;
-        for (int i = 0; i < managers.Count; i++)
+        if (managers.Any(static x => x.State == NodeLifecycleState.Active))
         {
-            INodeLifecycleManager manager = managers[i];
-            if (manager.State != NodeLifecycleState.Active)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
-            }
-            else
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
-                reachedNodeCounter++;
-            }
+            break;
         }
 
+        if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    "Was not able to connect to any of the bootnodes, but successfully connected to at least one persisted node.");
+            break;
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
+
+        try
+        {
+            await Task.Delay(itemTime, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            break;
+        }
+    }
+
+    int reachedNodeCounter = 0;
+    for (int i = 0; i < managers.Count; i++)
+    {
+        INodeLifecycleManager manager = managers[i];
+        if (manager.State != NodeLifecycleState.Active)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+        }
+        else
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+            reachedNodeCounter++;
+        }
+    }
+        */
+
+        /*
         if (_logger.IsInfo)
             _logger.Info(
                 $"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
         return reachedNodeCounter > 0;
+                */
+
+        await _kademlia.Bootstrap(cancellationToken);
+        return true;
     }
 
-    private async Task RunDiscoveryProcess()
+    private Task RunDiscoveryProcess()
     {
+        return Task.CompletedTask;
+        /*
         byte[] randomId = new byte[64];
         CancellationToken cancellationToken = _appShutdownSource.Token;
         PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
@@ -451,6 +514,7 @@ public class DiscoveryApp : IDiscoveryApp
 
             lastTickMs = Environment.TickCount64;
         }
+        */
     }
 
     [Todo(Improve.Allocations, "Remove ToArray here - address as a part of the network DB rewrite")]
@@ -460,10 +524,11 @@ public class DiscoveryApp : IDiscoveryApp
         PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryPersistenceInterval));
 
         while (!cancellationToken.IsCancellationRequested
-            && await timer.WaitForNextTickAsync(cancellationToken))
+               && await timer.WaitForNextTickAsync(cancellationToken))
         {
             try
             {
+                /*
                 IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
                 DateTime utcNow = DateTime.UtcNow;
                 //we need to update all notes to update reputation
@@ -478,6 +543,7 @@ public class DiscoveryApp : IDiscoveryApp
 
                 _discoveryStorage.Commit();
                 _discoveryStorage.StartBatch();
+                */
             }
             catch (Exception ex)
             {
@@ -486,44 +552,96 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
+    /*
     private void OnNodeDiscovered(object? sender, NodeEventArgs e)
     {
         NodeAdded?.Invoke(this, e);
     }
 
-    public event EventHandler<NodeEventArgs>? NodeAdded;
+    private event EventHandler<NodeEventArgs>? NodeAdded;
+    */
 
-    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
-        // TODO: Rewrote this to properly support throttling.
-        Channel<Node> ch = Channel.CreateBounded<Node>(64); // Some reasonably large value
-        void handler(object? _, NodeEventArgs args)
+        if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
+        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+
+        async Task DiscoverAsync(ValueHash256 hash)
         {
-            if (!ch.Writer.TryWrite(args.Node))
+            if (_logger.IsDebug) _logger.Debug($"Looking up {hash}");
+            bool anyFound = false;
+            IList<Node> newNodesFound = (await _kademlia.LookupNodesClosest(hash, token)).ToList();
+            foreach (var node in newNodesFound)
             {
-                // Keep in mind, the channel is already buffered, so forgetting this node is probably fine.
-                _nodesLocator.ShouldThrottle = true;
+                anyFound = true;
+                await ch.Writer.WriteAsync(node, token);
+            }
+
+            if (!anyFound)
+            {
+                if (_logger.IsDebug) _logger.Debug($"No node found for {hash}");
             }
             else
             {
-                _nodesLocator.ShouldThrottle = false;
+                if (_logger.IsDebug) _logger.Debug($"Found {newNodesFound.Count} nodes");
+                foreach (var node in newNodesFound)
+                {
+                    if (_logger.IsDebug) _logger.Debug($" {node}");
+                }
             }
         }
 
+        Random random = new();
+
+        const int RandomNodesToLookupCount = 3;
+
+        Task discoverTask = Task.Run(async () =>
+        {
+            ValueHash256 randomNodeId = new();
+            while (!token.IsCancellationRequested)
+            {
+                Stopwatch iterationTime = Stopwatch.StartNew();
+                foreach (var bootNode in _bootNodes)
+                {
+                    _kademlia.AddOrRefresh(bootNode);
+                }
+
+                try
+                {
+                    List<Task> discoverTasks = new List<Task>();
+                    discoverTasks.Add(DiscoverAsync(_masterNode.Hash));
+
+                    for (int i = 0; i < RandomNodesToLookupCount; i++)
+                    {
+                        random.NextBytes(randomNodeId.BytesAsSpan);
+                        discoverTasks.Add(DiscoverAsync(randomNodeId));
+                    }
+
+                    await Task.WhenAll(discoverTasks);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
+                }
+
+                // Prevent high CPU when all node is not reachable due to network connectivity issue.
+                if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+            }
+        });
+
         try
         {
-            // TODO: Use lookup like kademlia
-            NodeAdded += handler;
-
-            await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
+            await foreach (Node node in ch.Reader.ReadAllAsync(token))
             {
                 yield return node;
             }
         }
         finally
         {
-            NodeAdded -= handler;
-            _nodesLocator.ShouldThrottle = false;
+            await discoverTask;
         }
     }
 

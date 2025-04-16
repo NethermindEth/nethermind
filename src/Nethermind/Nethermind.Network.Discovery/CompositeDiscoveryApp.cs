@@ -190,6 +190,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             _logManager);
 
         _v4 = new DiscoveryApp(
+            selfNodeRecord,
             nodesLocator,
             discoveryManager,
             nodeTable,
