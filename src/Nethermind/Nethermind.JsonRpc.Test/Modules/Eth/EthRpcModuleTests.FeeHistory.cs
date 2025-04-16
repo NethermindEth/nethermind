@@ -23,6 +23,7 @@ using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
+
 public partial class EthRpcModuleTests
 {
     [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]

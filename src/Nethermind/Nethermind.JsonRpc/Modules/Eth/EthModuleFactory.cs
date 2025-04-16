@@ -13,7 +13,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -31,7 +30,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
-        ISyncConfig syncConfig,
         ulong secondsPerSlot)
         : ModuleFactoryBase<IEthRpcModule>
     {
@@ -48,7 +46,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         private readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
         private readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
-        private readonly ISyncConfig _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(SyncConfig));
 
         public override IEthRpcModule Create()
         {
@@ -66,7 +63,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _gasPriceOracle,
                 _ethSyncingInfo,
                 _feeHistoryOracle,
-                _syncConfig,
                 secondsPerSlot);
         }
     }

@@ -60,7 +60,6 @@ public partial class EthRpcModule(
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
-    ISyncConfig syncConfig,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -78,7 +77,6 @@ public partial class EthRpcModule(
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
-    protected readonly ISyncConfig _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {

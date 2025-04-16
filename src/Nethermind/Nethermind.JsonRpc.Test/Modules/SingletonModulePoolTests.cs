@@ -15,7 +15,6 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -53,7 +52,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IGasPriceOracle>(),
                 Substitute.For<IEthSyncingInfo>(),
                 Substitute.For<IFeeHistoryOracle>(),
-                Substitute.For<ISyncConfig>(),
                 new BlocksConfig().SecondsPerSlot);
             return Task.CompletedTask;
         }

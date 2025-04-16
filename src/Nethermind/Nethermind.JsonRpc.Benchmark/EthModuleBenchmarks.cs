@@ -182,7 +182,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 gasPriceOracle,
                 ethSyncingInfo,
                 feeHistoryOracle,
-                syncConfig,
                 new BlocksConfig().SecondsPerSlot);
         }
 
