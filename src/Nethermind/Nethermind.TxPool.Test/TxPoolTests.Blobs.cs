@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -452,48 +453,47 @@ namespace Nethermind.TxPool.Test
             returnedSecondTx.Should().BeEquivalentTo(shouldReplace ? secondTx : null);
         }
 
-        // [Test]
-        // public void should_allow_to_replace_blob_tx_by_the_one_with_network_wrapper_in_higher_version()
-        // {
-        //     // start with Cancun
-        //     OverridableReleaseSpec releaseSpec = new OverridableReleaseSpec(Osaka.Instance);
-        //     ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        //     specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        //
-        //     _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, specProvider);
-        //     EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-        //
-        //     Transaction firstTx = Build.A.Transaction
-        //         .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = false })
-        //         .WithNonce(UInt256.Zero)
-        //         .WithMaxFeePerGas(1.GWei())
-        //         .WithMaxPriorityFeePerGas(1.GWei())
-        //         .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-        //
-        //     Transaction secondTx = Build.A.Transaction
-        //         .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
-        //         .WithNonce(UInt256.Zero)
-        //         .WithMaxFeePerGas(2.GWei())
-        //         .WithMaxPriorityFeePerGas(1.GWei())
-        //         .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-        //
-        //     _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-        //
-        //     _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
-        //
-        //     // switch to Osaka
-        //     releaseSpec = new OverridableReleaseSpec(Osaka.Instance);
-        //
-        //     // update head and set correct current proof version
-        //     _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
-        //
-        //     _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-        //     _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
-        //     _txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx).Should().BeFalse();
-        //     _txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx).Should().BeTrue();
-        //     returnedFirstTx.Should().BeNull();
-        //     returnedSecondTx.Should().BeEquivalentTo(secondTx);
-        // }
+        [Test]
+        public void should_allow_to_replace_blob_tx_by_the_one_with_network_wrapper_in_higher_version()
+        {
+            // start with Cancun
+            OverridableReleaseSpec releaseSpec = new OverridableReleaseSpec(Cancun.Instance);
+            IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+            specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
+
+            ChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+            _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction firstTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = false })
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction secondTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+
+            // switch to Osaka
+            releaseSpec = new OverridableReleaseSpec(Osaka.Instance);
+            specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
+
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+            _txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx).Should().BeTrue();
+            returnedFirstTx.Should().BeNull();
+            returnedSecondTx.Should().BeEquivalentTo(secondTx);
+        }
 
         [Test]
         public void should_discard_tx_when_data_gas_cost_cause_overflow([Values(false, true)] bool supportsBlobs)
