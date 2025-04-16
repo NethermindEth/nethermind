@@ -67,7 +67,7 @@ public class CensorshipDetectorTests
         _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1, tx2, tx3, tx4, tx5;
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
             tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -102,7 +102,7 @@ public class CensorshipDetectorTests
         _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1, tx2, tx3, tx4, tx5;
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
             tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -156,7 +156,7 @@ public class CensorshipDetectorTests
             });
 
         Transaction tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, tx10, tx11, tx12;
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
             tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
@@ -171,7 +171,7 @@ public class CensorshipDetectorTests
         Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx7 = SubmitTxToPool(7, TestItem.PrivateKeyA, TestItem.AddressA);
             tx8 = SubmitTxToPool(8, TestItem.PrivateKeyF, TestItem.AddressF);
@@ -179,7 +179,7 @@ public class CensorshipDetectorTests
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx2, tx8]).WithParentHash(blockHash1).TestObject;
         Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx9 = SubmitTxToPool(9, TestItem.PrivateKeyB, TestItem.AddressB);
             tx10 = SubmitTxToPool(10, TestItem.PrivateKeyF, TestItem.AddressF);
@@ -188,7 +188,7 @@ public class CensorshipDetectorTests
         Hash256 blockHash3 = block3.Hash!;
         BlockProcessingWorkflow(block3);
 
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx11 = SubmitTxToPool(11, TestItem.PrivateKeyC, TestItem.AddressC);
             tx12 = SubmitTxToPool(12, TestItem.PrivateKeyF, TestItem.AddressF);
@@ -223,7 +223,7 @@ public class CensorshipDetectorTests
 
         Transaction tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, tx10;
 
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
             tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
@@ -237,7 +237,7 @@ public class CensorshipDetectorTests
         Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx6 = SubmitTxToPool(6, TestItem.PrivateKeyC, TestItem.AddressC);
             tx7 = SubmitTxToPool(7, TestItem.PrivateKeyD, TestItem.AddressD);
@@ -249,7 +249,7 @@ public class CensorshipDetectorTests
         Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
 
-        using (_stateProvider.BeginScope(_stateProvider.StateRoot))
+        using (_stateProvider.BeginScope())
         {
             tx9 = SubmitTxToPool(9, TestItem.PrivateKeyD, TestItem.AddressD);
             tx10 = SubmitTxToPool(10, TestItem.PrivateKeyE, TestItem.AddressE);

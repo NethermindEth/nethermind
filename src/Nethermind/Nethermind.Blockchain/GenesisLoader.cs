@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
+            // start with empty state to load genesis
             using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
             Preallocate(genesis);
 

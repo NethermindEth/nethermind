@@ -19,4 +19,10 @@ public static class WorldStateScopeExtensions
         using var _ = worldState.BeginScope(stateRoot);
         return func(worldState);
     }
+
+    public static void WithScope(this IWorldState worldState, Action<IWorldState> func)
+    {
+        using var _ = worldState.BeginScope();
+        func(worldState);
+    }
 }

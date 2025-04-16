@@ -81,7 +81,7 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
+    public Block[] Process(Hash256? newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
@@ -238,7 +238,7 @@ public partial class BlockProcessor(
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(Hash256? branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
