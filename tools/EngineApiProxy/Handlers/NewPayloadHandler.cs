@@ -4,6 +4,8 @@ using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.EngineApiProxy.Handlers
 {
@@ -27,10 +29,16 @@ namespace Nethermind.EngineApiProxy.Handlers
             _logger.Debug($"Processing NewPayload request {request.Id}");
             
             // Check if the request should be validated
-            if (_config.ValidationMode == ValidationMode.Fcu || _config.ValidationMode == ValidationMode.Merged)
+            if (_config.ValidationMode == ValidationMode.Fcu)
             {
-                _logger.Debug("Validation for NewPayload disabled in FCU and Merged mode");
+                _logger.Debug("Validation for NewPayload disabled in FCU mode");
                 return await _requestForwarder.ForwardRequestToExecutionClient(request);
+            }
+            
+            if (_config.ValidationMode == ValidationMode.Merged)
+            {
+                _logger.Debug("Processing NewPayload in Merged validation mode");
+                return await ProcessWithMergedValidation(request);
             }
             
             // Check if we should validate this request
@@ -133,6 +141,87 @@ namespace Nethermind.EngineApiProxy.Handlers
             {
                 // Always resume processing, even if there was an error
                 _logger.Info("Resuming message queue processing");
+                _messageQueue.ResumeProcessing();
+            }
+        }
+
+        private async Task<JsonRpcResponse> ProcessWithMergedValidation(JsonRpcRequest request)
+        {
+            _logger.Info("Validation enabled, pausing engine_newPayload original request");
+            _messageQueue.PauseProcessing();
+            
+            try
+            {
+                string blockHash = ExtractBlockHashFromPayload(request);
+                string parentHash = request.Params != null 
+                    ? ExtractParentHash(request.Params) 
+                    : string.Empty;
+                    
+                if (string.IsNullOrEmpty(parentHash))
+                {
+                    _logger.Warn("Could not extract parent hash in merged mode, forwarding request as-is");
+                    return await _requestForwarder.ForwardRequestToExecutionClient(request);
+                }
+                
+                _logger.Info($"Merged validation for block with hash: {blockHash}, parent: {parentHash}");
+                
+                // In merged mode, we should:
+                // 1. Use parentHash to get payloadID from the tracker (stored during FCU)
+                // 2. Call engine_getPayload with this payloadID
+                // 3. Send a synthetic newPayload with the payload from getPayload
+                // 4. Then forward the original newPayload request
+                
+                try
+                {
+                    // Convert parentHash to Hash256 to look up in the payload tracker
+                    var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
+                    
+                    // Try to get payloadId associated with this parent hash
+                    if (_payloadTracker.TryGetPayloadId(parentHashObj, out var payloadId) && !string.IsNullOrEmpty(payloadId))
+                    {
+                        _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
+                        
+                        // Create a synthetic FCU request to trigger validation
+                        var syntheticFcuRequest = GenerateSyntheticFcuRequest(request, parentHash);
+                        
+                        // Copy headers from original request
+                        syntheticFcuRequest.OriginalHeaders = request.OriginalHeaders;
+                        
+                        // Use the existing FCU validation flow
+                        await _requestOrchestrator.HandleFCUWithValidation(syntheticFcuRequest, parentHash);
+                        
+                        _logger.Info($"Validation completed for parent hash {parentHash}, forwarding original request");
+                    }
+                    else
+                    {
+                        _logger.Warn($"No payloadId found for parent hash {parentHash}, skipping validation. Last tracked payloadId: {_payloadTracker.LastTrackedPayloadId}, last block hash: {_payloadTracker.LastTrackedBlockHash}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // If the validation flow fails, log the error but continue with the original request
+                    _logger.Error($"Error in merged validation flow: {ex.Message}", ex);
+                }
+                
+                // Register this newPayload for future reference
+                _payloadTracker.RegisterNewPayload(blockHash, parentHash);
+                
+                // Forward the original request to get the actual response
+                var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                
+                // Log the response status for monitoring
+                if (response.Result is JObject result && result["status"] != null)
+                {
+                    string status = result["status"]?.ToString() ?? "unknown";
+                    _logger.Info($"Merged validation block {blockHash} status: {status}");
+                }
+                
+                return response;
+            }
+            finally
+            {
+                // Always resume processing, even if there was an error
+                _logger.Info("Resuming message queue processing for merged validation");
                 _messageQueue.ResumeProcessing();
             }
         }

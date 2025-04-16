@@ -43,9 +43,11 @@ namespace Nethermind.EngineApiProxy.Handlers
                     bool shouldValidate = ShouldValidateBlock(request);
                     _logger.Info($"ShouldValidateBlock for FCU: {shouldValidate} for Merged mode");
                     
-                    // For Merged mode, we always store the request details for later validation
-                    // but don't actually validate at FCU time
-                    return await ProcessWithoutValidation(request);
+                    // For Merged mode:
+                    // 1. Send FCU with payload attributes to EL
+                    // 2. Store the payloadID from the response
+                    // 3. Return FCU response without payloadID to CL
+                    return await ProcessMergedFCU(request);
                 }
                 catch (Exception ex)
                 {
@@ -185,6 +187,62 @@ namespace Nethermind.EngineApiProxy.Handlers
             }
             
             return response;
+        }
+
+        private async Task<JsonRpcResponse> ProcessMergedFCU(JsonRpcRequest request)
+        {
+            _logger.Info("Processing merged FCU flow");
+            
+            try
+            {
+                string headBlockHashStr = ExtractHeadBlockHash(request);
+                if (string.IsNullOrEmpty(headBlockHashStr))
+                {
+                    _logger.Warn("Could not extract head block hash in merged mode, forwarding request as-is");
+                    return await _requestForwarder.ForwardRequestToExecutionClient(request);
+                }
+                
+                _logger.Info($"Starting merged validation flow for head block: {headBlockHashStr}");
+                
+                
+                // Generate payload attributes and add them to the request
+                string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
+                
+                if (string.IsNullOrEmpty(payloadId))
+                {
+                    _logger.Warn("Merged validation flow failed to get payloadId, returning response without it");
+                }
+                else
+                {
+                    _logger.Info($"Merged validation flow successfully got payloadId {payloadId}");
+                    // Track this payload ID with the hash so it can be found later
+                    var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                    _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                }
+                
+                // Create a response without payloadId to return to CL
+                var response = new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = new JObject
+                    {
+                        ["payloadStatus"] = new JObject
+                        {
+                            ["status"] = "VALID",
+                            ["latestValidHash"] = headBlockHashStr,
+                            ["validationError"] = null
+                        },
+                        ["payloadId"] = null
+                    }
+                };
+                
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error handling merged FCU: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling merged FCU: {ex.Message}");
+            }
         }
 
         private static string ExtractHeadBlockHash(JsonRpcRequest request)

@@ -36,7 +36,19 @@ namespace Nethermind.EngineApiProxy.Handlers
                     if (!string.IsNullOrEmpty(payloadId))
                     {
                         _logger.Debug($"Retrieved payload for payloadId {payloadId}");
-                        // TODO: Save payloadID for Merged mode?
+                        
+                        // For merged validation mode, track additional information about the payload
+                        if (_config.ValidationMode == ValidationMode.Merged)
+                        {
+                            _logger.Debug($"Merged validation mode: Processing payload for payloadId {payloadId}");
+                            
+                            // Extract block hash from the payload if available
+                            if (payloadObj["blockHash"] != null)
+                            {
+                                string blockHash = payloadObj["blockHash"]?.ToString() ?? string.Empty;
+                                _logger.Debug($"Merged validation: Retrieved blockHash {blockHash} for payloadId {payloadId}");
+                            }
+                        }
                     }
                 }
                 

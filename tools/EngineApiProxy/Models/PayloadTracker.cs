@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.EngineApiProxy.Models
@@ -7,17 +8,22 @@ namespace Nethermind.EngineApiProxy.Models
     /// <summary>
     /// Tracks PayloadIDs and their associated block hashes to manage engine_getPayloadV3 requests
     /// </summary>
-    public class PayloadTracker
+    public class PayloadTracker(ILogManager logManager)
     {
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly ConcurrentDictionary<Hash256, string> _headBlockToPayloadId = new();
         private readonly ConcurrentDictionary<string, Hash256> _payloadIdToHeadBlock = new();
-        
-        public PayloadTracker(ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
+
+        /// <summary>
+        /// Gets the most recently tracked payload ID
+        /// </summary>
+        public string LastTrackedPayloadId { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// Gets the most recently tracked block hash as a hex string
+        /// </summary>
+        public string LastTrackedBlockHash { get; private set; } = string.Empty;
+
         /// <summary>
         /// Stores a mapping between a head block hash and a Payload ID
         /// </summary>
@@ -33,6 +39,8 @@ namespace Nethermind.EngineApiProxy.Models
             
             _headBlockToPayloadId[headBlockHash] = payloadId;
             _payloadIdToHeadBlock[payloadId] = headBlockHash;
+            LastTrackedPayloadId = payloadId;
+            LastTrackedBlockHash = headBlockHash.ToString();
             
             _logger.Debug($"Tracking payload {payloadId} for head block {headBlockHash}");
         }
@@ -131,6 +139,25 @@ namespace Nethermind.EngineApiProxy.Models
                 return false;
             }
             return _headBlockToPayloadId.ContainsKey(blockHash);
+        }
+        
+        /// <summary>
+        /// Registers a new payload block from engine_newPayload request
+        /// </summary>
+        /// <param name="blockHash">The hash of the new block</param>
+        /// <param name="parentHash">The parent hash of the new block</param>
+        public void RegisterNewPayload(string blockHash, string parentHash)
+        {
+            if (string.IsNullOrEmpty(blockHash) || string.IsNullOrEmpty(parentHash))
+            {
+                _logger.Error($"Cannot register payload with null/empty hashes. Block: {blockHash}, Parent: {parentHash}");
+                return;
+            }
+            
+            // For now, we just log the registration - in future we could store a mapping
+            // between blocks and their parents for optimized validation in merged mode
+            LastTrackedBlockHash = blockHash;
+            _logger.Debug($"Registered new payload block {blockHash} with parent {parentHash}");
         }
     }
 } 
