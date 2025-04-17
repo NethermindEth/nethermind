@@ -282,9 +282,6 @@ def main(tmp_dir, output_dir):
             logging.info(f"Ignoring `{l1}-{chainName}`")
             continue
 
-        if chainName != "worldchain":
-            continue
-
         logging.debug(f"Processing `{l1}-{chainName}`")
         superchain_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
         config_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
