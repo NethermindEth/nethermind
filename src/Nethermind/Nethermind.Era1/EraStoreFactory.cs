@@ -24,7 +24,8 @@ public class EraStoreFactory(
             eraConfig.NetworkName!,
             eraConfig.MaxEra1Size,
             trustedAccumulators,
-            src);
+            src,
+            eraConfig.Concurrency);
     }
 }
 

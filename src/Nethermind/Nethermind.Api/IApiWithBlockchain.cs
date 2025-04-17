@@ -86,7 +86,8 @@ namespace Nethermind.Api
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
-        IEthSyncingInfo? EthSyncingInfo { get; set; }
+        [SkipServiceCollection]
+        IEthSyncingInfo? EthSyncingInfo { get; }
 
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }

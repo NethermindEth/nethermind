@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -19,7 +20,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
@@ -58,6 +58,9 @@ namespace Nethermind.Init.Steps
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
+            ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
+                blocksConfig.ExtraData :
+                "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
@@ -93,7 +96,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(
+                ? new(new ReadOnlyTxProcessingEnvFactory(
                         _api.WorldStateManager!,
                         _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider!,
@@ -185,7 +188,6 @@ namespace Nethermind.Init.Steps
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
-                codeInfoRepository,
                 _api.LogManager);
 
             return virtualMachine;
