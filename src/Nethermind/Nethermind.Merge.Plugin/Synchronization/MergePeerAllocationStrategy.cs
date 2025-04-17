@@ -38,7 +38,6 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
         UInt256? terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty;
         bool isPostMerge = IsPostMerge;
         IEnumerable<PeerInfo> peerInfos = peers as PeerInfo[] ?? peers.ToArray();
-        // TODO: handle peers with TotalDifficulty being null
         IEnumerable<PeerInfo> postTTDPeers = peerInfos.Where(p => p.TotalDifficulty >= terminalTotalDifficulty);
         bool anyPostMergePeers = postTTDPeers.Any();
         if (_logger.IsTrace) _logger.Trace($"{nameof(MergePeerAllocationStrategy)}: IsPostMerge: {isPostMerge} AnyPostMergePeers: {anyPostMergePeers}, CurrentPeer: {currentPeer} Peers: {string.Join(",", peerInfos)}");
