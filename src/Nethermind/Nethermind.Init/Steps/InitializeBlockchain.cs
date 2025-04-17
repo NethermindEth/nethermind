@@ -82,33 +82,9 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            IVMConfig vmConfig = new VMConfig
-            {
-                IlEvmAnalysisQueueMaxSize = 2,
-                IlEvmAnalysisThreshold = 2,
-                IlEvmContractsPerDllCount = 16,
-                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-                IlEvmPersistPrecompiledContractsOnDisk = true,
-                IlEvmPrecompiledContractsPath = "E:\\ILVM\\database\\contractsIL",
-                IsIlEvmAggressiveModeEnabled = true,
-                IsILEvmEnabled = true,
-                IlEvmAnalysisCoreUsage = 0.5f
-            };
+            InitializeIlEvmProcesses(getApi.VMConfig);
 
-            Console.WriteLine($"IlEvmAnalysisQueueMaxSize: {vmConfig.IlEvmAnalysisQueueMaxSize}");
-            Console.WriteLine($"IlEvmAnalysisThreshold: {vmConfig.IlEvmAnalysisThreshold}");
-            Console.WriteLine($"IlEvmContractsPerDllCount: {vmConfig.IlEvmContractsPerDllCount}");
-            Console.WriteLine($"IlEvmEnabledMode: {vmConfig.IlEvmEnabledMode}");
-            Console.WriteLine($"IlEvmPersistPrecompiledContractsOnDisk: {vmConfig.IlEvmPersistPrecompiledContractsOnDisk}");
-            Console.WriteLine($"IlEvmPrecompiledContractsPath: {vmConfig.IlEvmPrecompiledContractsPath}");
-            Console.WriteLine($"IsIlEvmAggressiveModeEnabled: {vmConfig.IsIlEvmAggressiveModeEnabled}");
-            Console.WriteLine($"IsILEvmEnabled: {vmConfig.IsVmOptimizationEnabled}");
-
-            ThisNodeInfo.AddInfo("EvmOptimization     :", $"{vmConfig.IlEvmEnabledMode}");
-
-            InitializeIlEvmProcesses(vmConfig);
-
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, getApi.VMConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
