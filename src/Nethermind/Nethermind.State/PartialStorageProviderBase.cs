@@ -19,43 +19,6 @@ using Nethermind.State.Tracing;
 namespace Nethermind.State
 {
     /// <summary>
-    /// A not so managed reference to <see cref="StorageValue"/>.
-    /// Allows quick equality checks and ref returning semantics.
-    /// </summary>
-    internal readonly unsafe struct Ptr : IEquatable<Ptr>
-    {
-        private readonly StorageValue* _pointer;
-
-        public Ptr(StorageValue* pointer)
-        {
-            _pointer = pointer;
-        }
-
-        public bool IsZero => _pointer == null;
-
-        public static readonly Ptr Null = default;
-
-        public ref readonly StorageValue Ref =>
-            ref _pointer == null ? ref StorageValue.Zero : ref Unsafe.AsRef<StorageValue>(_pointer);
-
-        public override bool Equals([NotNullWhen(true)] object? obj)
-        {
-            return obj is Ptr other && Equals(other);
-        }
-
-        public bool Equals(Ptr other) => _pointer == other._pointer;
-
-        public override int GetHashCode() => unchecked((int)(long)_pointer);
-
-        public override string ToString() => $"{Ref} @ {new UIntPtr(_pointer)}";
-
-        public void SetValue(in StorageValue value)
-        {
-            *_pointer = value;
-        }
-    }
-
-    /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
     internal abstract class PartialStorageProviderBase
@@ -64,83 +27,15 @@ namespace Nethermind.State
         protected readonly ILogger _logger;
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
-
-        private const int StorageValuesCount = 1024 * 1024;
-        private const int StorageValuesCountMask = StorageValuesCount - 1;
-        private const UIntPtr StorageValuesSize = StorageValue.MemorySize * StorageValuesCount;
-        private unsafe volatile StorageValue* _values;
-
-        protected unsafe void ClearStorageValuesMap()
-        {
-            var values = _values;
-            _values = null;
-
-            Task.Run(
-                () =>
-                {
-                    NativeMemory.Clear(values, StorageValuesSize);
-                    _values = values;
-                });
-        }
-
-        [SkipLocalsInit]
-        protected unsafe Ptr Map(in StorageValue value)
-        {
-            if (value.IsZero)
-                return Ptr.Null;
-
-            var hash = value.GetHashCode();
-            var values = _values;
-
-            if (values == null)
-            {
-                values = SpinGet();
-            }
-
-            for (var i = 0; i < StorageValuesCount; i++)
-            {
-                var at = (hash + i) & StorageValuesCountMask;
-
-                var ptr = new Ptr(values + at);
-
-                if (ptr.Ref.Equals(value))
-                {
-                    return ptr;
-                }
-
-                if (ptr.Ref.IsZero)
-                {
-                    ptr.SetValue(value);
-                    return ptr;
-                }
-            }
-
-            // Return null
-            return default;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private unsafe StorageValue* SpinGet()
-        {
-            StorageValue* values = _values;
-            while (values == null)
-            {
-                default(SpinWait).SpinOnce();
-                values = _values;
-            }
-
-            return values;
-        }
+        protected readonly StorageValueMap _map;
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected unsafe PartialStorageProviderBase(ILogManager? logManager)
+        protected PartialStorageProviderBase(StorageValueMap map, ILogManager? logManager)
         {
-            _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
-            NativeMemory.Clear(_values, StorageValuesSize);
-
+            _map = map;
             _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ??
                       throw new ArgumentNullException(nameof(logManager));
         }
@@ -162,7 +57,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
-            PushUpdate(in storageCell, Map(newValue));
+            PushUpdate(in storageCell, _map.Map(newValue));
         }
 
         /// <summary>
@@ -267,23 +162,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(Ptr.Null, Ptr.Null);
+            public static readonly ChangeTrace _zeroBytes = new(StorageValueMap.Ptr.Null, StorageValueMap.Ptr.Null);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(Ptr before, Ptr after)
+            public ChangeTrace(StorageValueMap.Ptr before, StorageValueMap.Ptr after)
             {
                 After = after;
                 Before = before;
             }
 
-            public ChangeTrace(Ptr after)
+            public ChangeTrace(StorageValueMap.Ptr after)
             {
                 After = after;
-                Before = Ptr.Null;
+                Before = StorageValueMap.Ptr.Null;
             }
 
-            public Ptr Before;
-            public Ptr After;
+            public StorageValueMap.Ptr Before;
+            public StorageValueMap.Ptr After;
         }
 
         /// <summary>
@@ -334,7 +229,6 @@ namespace Nethermind.State
             _changes.Clear();
             _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
-            ClearStorageValuesMap();
         }
 
         /// <summary>
@@ -365,7 +259,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, in Ptr value)
+        private void PushUpdate(in StorageCell cell, in StorageValueMap.Ptr value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -410,7 +304,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, Ptr value)
+            public Change(ChangeType changeType, StorageCell storageCell, StorageValueMap.Ptr value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -419,7 +313,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly Ptr Value;
+            public readonly StorageValueMap.Ptr Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

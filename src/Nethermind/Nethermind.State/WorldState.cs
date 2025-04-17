@@ -29,6 +29,7 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        private readonly StorageValueMap _storageValueMap;
         private readonly ITrieStore _trieStore;
         private PreBlockCaches? PreBlockCaches { get; }
 
@@ -59,8 +60,9 @@ namespace Nethermind.State
             PreBlockCaches = preBlockCaches;
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
-            _transientStorageProvider = new TransientStorageProvider(logManager);
+            _storageValueMap = new StorageValueMap();
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, _storageValueMap, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
+            _transientStorageProvider = new TransientStorageProvider(_storageValueMap, logManager);
         }
 
         public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
@@ -109,6 +111,11 @@ namespace Nethermind.State
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
+
+            if (resetBlockChanges)
+            {
+                _storageValueMap.Clear();
+            }
         }
 
         public void WarmUp(AccessList? accessList)

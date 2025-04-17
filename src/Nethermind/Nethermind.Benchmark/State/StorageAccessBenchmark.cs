@@ -12,8 +12,8 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Benchmarks.State;
 
+// Right now to memory tight to be useful.
 [MemoryDiagnoser]
-[DisassemblyDiagnoser(2)]
 public class StorageAccessBenchmark
 {
     private WorldState _preCached;
@@ -38,7 +38,7 @@ public class StorageAccessBenchmark
 
         _notCached.CreateAccount(Account, 100, 100);
 
-        for (uint  i = 0; i < MaxPrecalculatedIndex; i++)
+        for (uint i = 0; i < MaxPrecalculatedIndex; i++)
         {
             var cell = new StorageCell(Account, i);
             var value = new StorageValue(i);
@@ -54,7 +54,7 @@ public class StorageAccessBenchmark
         _notCached.CommitTree(123);
     }
 
-    [Benchmark]
+    //[Benchmark]
     public bool PreCached_small_indexes()
     {
         _preCached.Reset(true);
@@ -64,7 +64,7 @@ public class StorageAccessBenchmark
             .IsZero;
     }
 
-    [Benchmark]
+    //[Benchmark]
     public bool NotCached_small_indexes()
     {
         _notCached.Reset(true);

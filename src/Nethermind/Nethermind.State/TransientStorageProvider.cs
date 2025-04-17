@@ -14,8 +14,8 @@ namespace Nethermind.State
     /// </summary>
     internal sealed class TransientStorageProvider : PartialStorageProviderBase
     {
-        public TransientStorageProvider(ILogManager? logManager)
-            : base(logManager) { }
+        public TransientStorageProvider(StorageValueMap map, ILogManager? logManager)
+            : base(map, logManager) { }
 
         /// <summary>
         /// Get the storage value at the specified storage cell
