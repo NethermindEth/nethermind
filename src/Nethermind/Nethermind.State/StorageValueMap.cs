@@ -23,13 +23,8 @@ internal sealed class StorageValueMap : IDisposable
     private const UIntPtr StorageValuesSize = StorageValue.MemorySize * StorageValuesCount;
     private unsafe StorageValue* _values;
     private static readonly ConcurrentQueue<UIntPtr> Pool = new();
-    private static readonly Channel<UIntPtr> Cleaner = Channel.CreateUnbounded<UIntPtr>();
-    private static bool started;
-
-    public unsafe StorageValueMap()
-    {
-        _values = Alloc();
-    }
+    private static readonly Channel<UIntPtr> CleaningQueue = Channel.CreateUnbounded<UIntPtr>();
+    private static object Cleaner;
 
     private static unsafe StorageValue* Alloc()
     {
@@ -58,6 +53,11 @@ internal sealed class StorageValueMap : IDisposable
             return Ptr.Null;
 
         var hash = value.GetHashCode();
+        if (_values == null)
+        {
+            _values = Alloc();
+        }
+
         var values = _values;
 
         for (var i = 0; i < StorageValuesCount; i++)
@@ -82,45 +82,60 @@ internal sealed class StorageValueMap : IDisposable
         return default;
     }
 
-    public unsafe void Clear()
+    public void Clear()
     {
         ReturnValues();
-        _values = Alloc();
     }
 
     private unsafe void ReturnValues()
     {
-        if (Volatile.Read(ref started) == false)
+        if (_values == null)
+            return;
+
+        if (Volatile.Read(ref Cleaner) == null)
         {
             TryStartCleaner();
         }
 
-        while (Cleaner.Writer.TryWrite(new UIntPtr(_values)) == false)
+        while (CleaningQueue.Writer.TryWrite(new UIntPtr(_values)) == false)
         {
             // should always happen
             default(SpinWait).SpinOnce();
         }
-    }
 
-    public static bool IsCleaningQueueEmpty => Cleaner.Reader.TryPeek(out _) == false;
+        _values = null;
+    }
 
     private static void TryStartCleaner()
     {
-        var startedBefore = Interlocked.Exchange(ref started, true);
-        if (startedBefore == false)
+        // Use CleaningQueue as an exchange token
+        var obj = CleaningQueue;
+
+        var startedBefore = Interlocked.Exchange(ref Cleaner, obj);
+        if (startedBefore == null)
         {
-            Task.Factory.StartNew(async () =>
+            var task = Task.Factory.StartNew(async () =>
             {
-                var reader = Cleaner.Reader;
-                while (await reader.WaitToReadAsync())
+                try
                 {
-                    while (reader.TryRead(out var toClean))
+                    var reader = CleaningQueue.Reader;
+                    while (await reader.WaitToReadAsync())
                     {
-                        Clean(toClean);
-                        Pool.Enqueue(toClean);
+                        while (reader.TryRead(out var toClean))
+                        {
+                            Clean(toClean);
+                            Pool.Enqueue(toClean);
+                        }
                     }
                 }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
+                }
             });
+
+            Volatile.Write(ref Cleaner, task);
         }
     }
 

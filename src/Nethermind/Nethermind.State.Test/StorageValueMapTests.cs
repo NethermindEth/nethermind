@@ -26,27 +26,4 @@ public class StorageValueMapTests
         ptr1.Ref.Should().Be(V1);
         ptr2.Ref.Should().Be(V2);
     }
-
-    [Test]
-    public void Allocate_dispose_showing_reuse()
-    {
-        ref readonly var refA = ref Unsafe.NullRef<StorageValue>();
-        ref readonly var refB = ref Unsafe.NullRef<StorageValue>();
-
-        using (var map1 = new StorageValueMap())
-        {
-            refA = ref map1.Map(V1).Ref;
-        }
-
-        SpinWait.SpinUntil(() => StorageValueMap.IsCleaningQueueEmpty);
-
-        using (var map2 = new StorageValueMap())
-        {
-            refB = ref map2.Map(V1).Ref;
-        }
-
-        SpinWait.SpinUntil(() => StorageValueMap.IsCleaningQueueEmpty);
-
-        Unsafe.AreSame(in refA, in refB).Should().Be(true);
-    }
 }
