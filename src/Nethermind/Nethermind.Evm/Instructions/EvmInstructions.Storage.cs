@@ -492,7 +492,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : value.ToArray());
+            vm.WorldState.Set(in storageCell, value);
         }
 
         // Report storage changes for tracing if enabled.

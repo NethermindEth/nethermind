@@ -137,6 +137,8 @@ public readonly struct StorageValue : IEquatable<StorageValue>
         }
     }
 
+    public byte[] ToArray() => BytesWithNoLeadingZeroes.ToArray();
+
     public static bool operator ==(StorageValue left, StorageValue right) => left.Equals(right);
 
     public static bool operator !=(StorageValue left, StorageValue right) => !left.Equals(right);
@@ -147,8 +149,6 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     public string ToHexString(bool withZeroX) => BytesWithNoLeadingZeroes.ToHexString(withZeroX);
 
     public override string ToString() => ToHexString(false);
-
-    public byte[] ToArray() => BytesWithNoLeadingZeroes.ToArray();
 
     public static StorageValue FromHexString(ReadOnlySpan<byte> hex)
     {
