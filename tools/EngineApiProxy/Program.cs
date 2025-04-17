@@ -12,11 +12,27 @@ namespace Nethermind.EngineApiProxy
     {
         public static async Task<int> Main(string[] args)
         {
+            // Parse command line arguments
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-h":
+                    case "--help":
+                        return DisplayHelp();
+                }
+            }
+
             // Create command line options
             var executionClientOption = new Option<string?>(
                 name: "--ec-endpoint",
                 description: "The URL of the execution client API endpoint");
             executionClientOption.AddAlias("-e");
+            
+            var consensusClientOption = new Option<string?>(
+                name: "--cl-endpoint",
+                description: "The URL of the consensus client API endpoint (optional)");
+            consensusClientOption.AddAlias("-c");
             
             var portOption = new Option<int>(
                 name: "--port",
@@ -48,11 +64,12 @@ namespace Nethermind.EngineApiProxy
             var validationModeOption = new Option<ValidationMode>(
                 name: "--validation-mode",
                 description: "Mode for block validation (Fcu, NewPayload, or Merged)",
-                getDefaultValue: () => ValidationMode.NewPayload);
+                getDefaultValue: () => ValidationMode.Merged);
             
             // Create root command with options
             var rootCommand = new RootCommand("Nethermind Engine API Proxy");
             rootCommand.AddOption(executionClientOption);
+            rootCommand.AddOption(consensusClientOption);
             rootCommand.AddOption(portOption);
             rootCommand.AddOption(logLevelOption);
             rootCommand.AddOption(logFileOption);
@@ -60,7 +77,7 @@ namespace Nethermind.EngineApiProxy
             rootCommand.AddOption(feeRecipientOption);
             rootCommand.AddOption(validationModeOption);
             
-            rootCommand.SetHandler(async (string? ecEndpoint, int port, string logLevel, string? logFile, bool validateAllBlocks, string feeRecipient, ValidationMode validationMode) =>
+            rootCommand.SetHandler(async (ecEndpoint, clEndpoint, port, logLevel, logFile, validateAllBlocks, feeRecipient, validationMode) =>
             {
                 try
                 {
@@ -106,6 +123,7 @@ namespace Nethermind.EngineApiProxy
                     var config = new ProxyConfig
                     {
                         ExecutionClientEndpoint = ecEndpoint,
+                        ConsensusClientEndpoint = clEndpoint,
                         ListenPort = port,
                         LogLevel = logLevel,
                         LogFile = logFile,
@@ -145,7 +163,7 @@ namespace Nethermind.EngineApiProxy
                     Console.Error.WriteLine($"Error: {ex.Message}");
                     Environment.Exit(1);
                 }
-            }, executionClientOption, portOption, logLevelOption, logFileOption, validateAllBlocksOption, feeRecipientOption, validationModeOption);
+            }, executionClientOption, consensusClientOption, portOption, logLevelOption, logFileOption, validateAllBlocksOption, feeRecipientOption, validationModeOption);
             
             return await rootCommand.InvokeAsync(args);
         }
@@ -200,6 +218,21 @@ namespace Nethermind.EngineApiProxy
             
             // Apply configuration
             LogManager.Configuration = config;
+        }
+
+        private static int DisplayHelp()
+        {
+            Console.WriteLine("Engine API Proxy - Nethermind");
+            Console.WriteLine("Usage: EngineApiProxy [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  -e, --ec-endpoint <url>     Execution client endpoint URL (required)");
+            Console.WriteLine("  -c, --cl-endpoint <url>     Consensus client endpoint URL (optional)");
+            Console.WriteLine("  -p, --listen-port <port>    Port to listen on (default: 8551)");
+            Console.WriteLine("  -l, --log-level <level>     Logging level (default: Info)");
+            Console.WriteLine("  -f, --log-file <path>       Log file path (default: console only)");
+            Console.WriteLine("  -h, --help                  Display this help message");
+            return 0;
         }
     }
 }

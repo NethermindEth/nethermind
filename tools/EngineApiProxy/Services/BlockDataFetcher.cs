@@ -9,10 +9,22 @@ namespace Nethermind.EngineApiProxy.Services
     /// <summary>
     /// Fetches block data from the execution client using JSON-RPC
     /// </summary>
-    public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager)
+    /// <remarks>
+    /// Initializes a new instance of BlockDataFetcher
+    /// </remarks>
+    /// <param name="httpClient">The HttpClient for execution client communication</param>
+    /// <param name="consensusClient">Optional HttpClient for consensus client communication</param>
+    /// <param name="logManager">Log manager for creating loggers</param>
+    public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, HttpClient? consensusClient = null)
     {
         private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        private readonly HttpClient? _consensusClient = consensusClient;
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+        /// <summary>
+        /// Gets or sets the consensus client endpoint URL
+        /// </summary>
+        public string? ConsensusClientEndpoint { get; set; }
 
         /// <summary>
         /// Fetches block data from the execution client by hash
@@ -157,6 +169,90 @@ namespace Nethermind.EngineApiProxy.Services
             catch (Exception ex)
             {
                 _logger.Error($"Error fetching latest block data: {ex.Message}", ex);
+                return null;
+            }
+        }
+
+                
+        /// <summary>
+        /// Gets the head beacon block header from the consensus client
+        /// </summary>
+        /// <returns>Head beacon block header data or null if request fails</returns>
+        public virtual async Task<JObject?> GetBeaconBlockHeader()
+        {
+            if (_consensusClient == null)
+            {
+                _logger.Error("Cannot get beacon block header: no CL client configured");
+                return null;
+            }
+
+            _logger.Debug("Fetching head beacon block header");
+            
+            try
+            {
+                var requestMessage = new HttpRequestMessage(HttpMethod.Get, "/eth/v1/beacon/headers/head");
+                
+                _logger.Info("PR -> CL|B|/eth/v1/beacon/headers/head");
+                var response = await _consensusClient.SendAsync(requestMessage);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.Error($"Failed to get beacon block header. Status: {response.StatusCode}");
+                    return null;
+                }
+                
+                var responseJson = await response.Content.ReadAsStringAsync();
+                _logger.Info($"CL -> PR|B|/eth/v1/beacon/headers/head|{responseJson}");
+                
+                var responseObj = JObject.Parse(responseJson);
+                _logger.Debug("Successfully received head beacon block header");
+                
+                return responseObj;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error fetching beacon block header: {ex.Message}", ex);
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Gets a specific beacon block from the consensus client
+        /// </summary>
+        /// <param name="blockId">Block identifier (root hash or slot number)</param>
+        /// <returns>Beacon block data or null if request fails</returns>
+        public virtual async Task<JObject?> GetBeaconBlock(string blockId)
+        {
+            if (_consensusClient == null)
+            {
+                _logger.Error("Cannot get beacon block: no CL client configured");
+                return null;
+            }
+
+            _logger.Debug($"Fetching beacon block with ID: {blockId}");
+            
+            try
+            {
+                var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"/eth/v1/beacon/blocks/{blockId}");
+                
+                _logger.Info($"PR -> CL|B|/eth/v1/beacon/blocks/{blockId}");
+                var response = await _consensusClient.SendAsync(requestMessage);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.Error($"Failed to get beacon block. Status: {response.StatusCode}");
+                    return null;
+                }
+                
+                var responseJson = await response.Content.ReadAsStringAsync();
+                _logger.Info($"CL -> PR|B|/eth/v1/beacon/blocks/{blockId}|{responseJson.Substring(0, Math.Min(200, responseJson.Length))}...");
+                
+                var responseObj = JObject.Parse(responseJson);
+                _logger.Debug($"Successfully received beacon block with ID: {blockId}");
+                
+                return responseObj;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error fetching beacon block: {ex.Message}", ex);
                 return null;
             }
         }

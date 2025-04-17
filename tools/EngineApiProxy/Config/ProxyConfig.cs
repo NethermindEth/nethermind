@@ -15,6 +15,11 @@ namespace Nethermind.EngineApiProxy.Config
         public string? ExecutionClientEndpoint { get; set; }
 
         /// <summary>
+        /// The endpoint URL of the consensus client to forward requests to (optional)
+        /// </summary>
+        public string? ConsensusClientEndpoint { get; set; }
+
+        /// <summary>
         /// Port to listen for incoming requests from the consensus client
         /// </summary>
         public int ListenPort { get; set; } = 8551;
@@ -55,7 +60,7 @@ namespace Nethermind.EngineApiProxy.Config
 
         public override string ToString()
         {
-            return $"EC Endpoint: {ExecutionClientEndpoint}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}";
+            return $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}";
         }
     }
 } 

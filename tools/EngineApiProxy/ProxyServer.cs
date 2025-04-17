@@ -22,6 +22,7 @@ namespace Nethermind.EngineApiProxy
         private readonly ILogger _logger;
         private readonly IWebHost _webHost;
         private readonly HttpClient _httpClient;
+        private readonly HttpClient? _consensusClient;
         
         // Components for state management and message queueing
         private readonly MessageQueue _messageQueue;
@@ -61,6 +62,21 @@ namespace Nethermind.EngineApiProxy
                 BaseAddress = new Uri(_config.ExecutionClientEndpoint)
             };
 
+            // Initialize consensus client HttpClient if endpoint is configured
+            if (!string.IsNullOrWhiteSpace(_config.ConsensusClientEndpoint))
+            {
+                _logger.Info($"Configuring consensus client with endpoint: {_config.ConsensusClientEndpoint}");
+                _consensusClient = new HttpClient
+                {
+                    BaseAddress = new Uri(_config.ConsensusClientEndpoint)
+                };
+            }
+            else
+            {
+                _logger.Info("No consensus client endpoint configured. CL features will be disabled.");
+                _consensusClient = null;
+            }
+
             // Initialize core components
             _messageQueue = new MessageQueue(logManager);
             _payloadTracker = new PayloadTracker(logManager);
@@ -69,7 +85,13 @@ namespace Nethermind.EngineApiProxy
             _requestForwarder = new RequestForwarder(_httpClient, config, logManager);
             
             // Initialize specialized components
-            var blockDataFetcher = new BlockDataFetcher(_httpClient, logManager);
+            var blockDataFetcher = new BlockDataFetcher(_httpClient, logManager, _consensusClient);
+            // Set CL endpoint on block data fetcher for reference
+            if (_consensusClient != null)
+            {
+                blockDataFetcher.ConsensusClientEndpoint = _config.ConsensusClientEndpoint;
+            }
+            
             var payloadAttributesGenerator = new PayloadAttributesGenerator(config, logManager);
             var requestOrchestrator = new RequestOrchestrator(
                 _httpClient, 
