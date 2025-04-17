@@ -6,12 +6,10 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -63,6 +61,7 @@ public class MergePluginTests
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
+            .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
             .OnBuild((ctx) =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();

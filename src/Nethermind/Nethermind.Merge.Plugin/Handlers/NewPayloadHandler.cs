@@ -99,10 +99,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
+        BlockDecodingResult decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        Block? block = decodingResult.Block;
+        if (block is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
-            return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+            if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
+            return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
 
         string requestStr = $"New Block:  {request}";

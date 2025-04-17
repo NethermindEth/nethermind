@@ -246,7 +246,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         {
             ArgumentNullException.ThrowIfNull(_api.BlockTree);
             ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
-            ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
             ArgumentNullException.ThrowIfNull(_api.Sealer);
             ArgumentNullException.ThrowIfNull(_api.BlockValidator);
             ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -262,16 +261,19 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             }
             Thread.Sleep(5000);
 
+            // Single block shouldn't take a full slot to run
+            // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+            double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
             IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
                 if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
                 {
-                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
                 }
 
                 DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                 IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
-                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, _api.StateReader);
             }
 
             IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
