@@ -27,6 +27,7 @@ public class KademliaModule<TNode> : Module where TNode : notnull
 
                 return provider.Resolve<OriginalLookupKNearestNeighbour<TNode>>();
             })
+            .AddSingleton<ILookupAlgo2<TNode>, NewaTrackingLookupKNearestNeighbour<TNode>>()
             .AddSingleton<KBucketTree<TNode>>()
             .AddSingleton<BucketListRoutingTable<TNode>>()
             .AddSingleton<NodeHealthTracker<TNode>>()

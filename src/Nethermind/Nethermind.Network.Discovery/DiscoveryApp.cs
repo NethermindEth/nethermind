@@ -28,13 +28,13 @@ public class DiscoveryApp : IDiscoveryApp
 {
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
-    private readonly INodesLocator _nodesLocator;
+    // private readonly INodesLocator _nodesLocator;
     // private readonly IDiscoveryManager _discoveryManager;
     // private readonly INodeTable _nodeTable;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IMessageSerializationService _messageSerializationService;
-    private readonly ICryptoRandom _cryptoRandom;
+    // private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;
     private readonly INetworkConfig _networkConfig;
     private IContainer? _kademliaServices;
@@ -43,11 +43,10 @@ public class DiscoveryApp : IDiscoveryApp
     private PublicKey _masterNode = null!;
     private readonly NodeRecord _selfNodeRecorrd;
 
-#pragma warning disable CS0414 // Field is assigned but its value is never used
     private KademliaDiscv4MessageReceiver _discv4MessageReceiver = null!;
     private KademliaDiscv4MessageSender _discv4MessageSender = null!;
     private IKademlia<Node> _kademlia = null!;
-#pragma warning restore CS0414 // Field is assigned but its value is never used
+    private ILookupAlgo2<Node> _lookup2 = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
@@ -70,12 +69,12 @@ public class DiscoveryApp : IDiscoveryApp
         _logger = _logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
+        // _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
         // _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         // _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _messageSerializationService =
             msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+        // _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _bootNodes = new List<Node>();
@@ -140,6 +139,7 @@ public class DiscoveryApp : IDiscoveryApp
             .Build();
 
         _kademlia = _kademliaServices.Resolve<IKademlia<Node>>();
+        _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<Node>>();
         _discv4MessageReceiver = _kademliaServices.Resolve<KademliaDiscv4MessageReceiver>();
         _discv4MessageSender = _kademliaServices.Resolve<KademliaDiscv4MessageSender>();
 
@@ -387,10 +387,12 @@ public class DiscoveryApp : IDiscoveryApp
 
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
     {
+        /*
         foreach (var bootNode in _bootNodes)
         {
             _kademlia.AddOrRefresh(bootNode);
         }
+        */
 
         //Wait for pong message to come back from Boot nodes
         /*
@@ -570,10 +572,12 @@ public class DiscoveryApp : IDiscoveryApp
         {
             if (_logger.IsDebug) _logger.Debug($"Looking up {hash}");
             bool anyFound = false;
-            IList<Node> newNodesFound = (await _kademlia.LookupNodesClosest(hash, token)).ToList();
-            foreach (var node in newNodesFound)
+            int count = 0;
+
+            await foreach (var node in _lookup2.Lookup(hash, token))
             {
                 anyFound = true;
+                count++;
                 await ch.Writer.WriteAsync(node, token);
             }
 
@@ -583,17 +587,13 @@ public class DiscoveryApp : IDiscoveryApp
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Found {newNodesFound.Count} nodes");
-                foreach (var node in newNodesFound)
-                {
-                    if (_logger.IsDebug) _logger.Debug($" {node}");
-                }
+                if (_logger.IsDebug) _logger.Debug($"Found {count} nodes");
             }
         }
 
         Random random = new();
 
-        const int RandomNodesToLookupCount = 3;
+        const int RandomNodesToLookupCount = 1;
 
         Task discoverTask = Task.Run(async () =>
         {
@@ -603,13 +603,24 @@ public class DiscoveryApp : IDiscoveryApp
                 Stopwatch iterationTime = Stopwatch.StartNew();
                 foreach (var bootNode in _bootNodes)
                 {
-                    _kademlia.AddOrRefresh(bootNode);
+                    _ = Task.Factory.StartNew(async (obj) =>
+                    {
+                        try
+                        {
+                            Node node = (Node)obj!;
+                            await _discv4MessageSender.Ping(node, token);
+                            _kademlia.AddOrRefresh(node);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
+                    }, bootNode);
                 }
 
                 try
                 {
                     List<Task> discoverTasks = new List<Task>();
-                    discoverTasks.Add(DiscoverAsync(_masterNode.Hash));
+                    // discoverTasks.Add(DiscoverAsync(_masterNode.Hash));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
