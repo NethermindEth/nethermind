@@ -82,10 +82,33 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
+            IVMConfig vmConfig = new VMConfig
+            {
+                IlEvmAnalysisQueueMaxSize = 2,
+                IlEvmAnalysisThreshold = 2,
+                IlEvmContractsPerDllCount = 16,
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmPersistPrecompiledContractsOnDisk = true,
+                IlEvmPrecompiledContractsPath = "E:\\ILVM\\database\\contractsIL",
+                IsIlEvmAggressiveModeEnabled = true,
+                IsILEvmEnabled = true,
+                IlEvmAnalysisCoreUsage = 0.5f
+            };
 
-            InitializeIlEvmProcesses();
+            Console.WriteLine($"IlEvmAnalysisQueueMaxSize: {vmConfig.IlEvmAnalysisQueueMaxSize}");
+            Console.WriteLine($"IlEvmAnalysisThreshold: {vmConfig.IlEvmAnalysisThreshold}");
+            Console.WriteLine($"IlEvmContractsPerDllCount: {vmConfig.IlEvmContractsPerDllCount}");
+            Console.WriteLine($"IlEvmEnabledMode: {vmConfig.IlEvmEnabledMode}");
+            Console.WriteLine($"IlEvmPersistPrecompiledContractsOnDisk: {vmConfig.IlEvmPersistPrecompiledContractsOnDisk}");
+            Console.WriteLine($"IlEvmPrecompiledContractsPath: {vmConfig.IlEvmPrecompiledContractsPath}");
+            Console.WriteLine($"IsIlEvmAggressiveModeEnabled: {vmConfig.IsIlEvmAggressiveModeEnabled}");
+            Console.WriteLine($"IsILEvmEnabled: {vmConfig.IsVmOptimizationEnabled}");
 
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
+            ThisNodeInfo.AddInfo("EvmOptimization     :", $"{vmConfig.IlEvmEnabledMode}");
+
+            InitializeIlEvmProcesses(vmConfig);
+
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
@@ -184,7 +207,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState)
+        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState, IVMConfig? vMConfig)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -199,7 +222,7 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 codeInfoRepository,
                 _api.LogManager,
-                _api.VMConfig!);
+                vMConfig!);
 
             return virtualMachine;
         }
@@ -251,15 +274,15 @@ namespace Nethermind.Init.Steps
             );
         }
 
-        protected void InitializeIlEvmProcesses()
+        protected void InitializeIlEvmProcesses(IVMConfig? vMConfig)
         {
-            if(!_api.VMConfig?.IsVmOptimizationEnabled ?? false) return;
+            if(!vMConfig?.IsVmOptimizationEnabled ?? false) return;
 
-            IlAnalyzer.StartPrecompilerBackgroundThread(_api.VMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
+            IlAnalyzer.StartPrecompilerBackgroundThread(vMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
 
-            if (_api.VMConfig?.IlEvmPrecompiledContractsPath is null) return;
+            if (vMConfig?.IlEvmPrecompiledContractsPath is null) return;
 
-            string path = _api.VMConfig!.IlEvmPrecompiledContractsPath;
+            string path = vMConfig!.IlEvmPrecompiledContractsPath;
             if (string.IsNullOrEmpty(path)) return;
 
             if(Directory.Exists(path))
@@ -269,9 +292,13 @@ namespace Nethermind.Init.Steps
                     using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
                     {
                         Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
-                        ValueHash256 codeHash = new ValueHash256(assembly.GetName().Name!);
-                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly!.GetType("ContractType")!.FullName!) as IPrecompiledContract;
-                        AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
+                        foreach (var type in assembly!.GetTypes())
+                        {
+                            ValueHash256 codeHash = new ValueHash256(type.Name);
+                            var method = type.GetMethod("MoveNext", BindingFlags.Public | BindingFlags.Static);
+                            ILExecutionStep? precompiledContract = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+                            AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
+                        }
                     }
                 }
             }
@@ -280,10 +307,10 @@ namespace Nethermind.Init.Steps
                 Directory.CreateDirectory(path);
             }
 
-            if (_api.VMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
+            if (vMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
 
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(_api.VMConfig!);
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(vMConfig!);
 
         }
 

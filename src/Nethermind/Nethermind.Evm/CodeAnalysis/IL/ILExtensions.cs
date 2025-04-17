@@ -96,6 +96,7 @@ public static class StackEmit
     public static void StackLoadPrevious<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
     {
         il.LoadLocal(stackHeadRef);
+        il.Convert<nint>();
 
         int offsetFromHead = offset - count;
 
@@ -103,7 +104,7 @@ public static class StackEmit
 
         il.LoadConstant(offsetFromHead * Word.Size);
         il.Convert<nint>();
-        il.Call(UnsafeEmit.GetAddBytesOffsetRef<Word>());
+        il.Add();
     }
 
     public static void StackSetHead<T>(this Emit<T> il, Local stackHeadRef, int offset)

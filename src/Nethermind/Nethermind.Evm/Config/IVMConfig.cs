@@ -2,18 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Numerics;
 
 namespace Nethermind.Evm.Config;
 public interface IVMConfig : IConfig
 {
-    static string DllName(string dllName) => $"{dllName}.Nethermind.g.c.dll";
+    static  string DllName(AssemblyBuilder builder)
+    {
+        return $"{builder.GetName()}.Nethermind.g.c.dll";
+    }
 
     [ConfigItem(
         Description = "Set IL-EVM Activated Mode : 0- Il-evm is turned off 1- Pattern mode, 2- Precompilation mode",
@@ -49,6 +60,11 @@ public interface IVMConfig : IConfig
         Description = "Sets number of contracts to bundle in DLLs",
         DefaultValue = "32")]
     public int IlEvmContractsPerDllCount { get; set; }
+
+    [ConfigItem(
+        Description = "Sets percent of threads ILVM can use at max",
+        DefaultValue = "0")]
+    public float IlEvmAnalysisCoreUsage { get; set; }
 
 
     public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;

@@ -35,10 +35,11 @@ internal class IlInfo
     public static IlInfo Empty() => new();
 
     public bool IsNotProcessed => AnalysisPhase is AnalysisPhase.NotStarted;
+    public bool IsProcessed => AnalysisPhase is AnalysisPhase.Completed;
 
 
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
 
     // assumes small number of ILed
-    public IPrecompiledContract? PrecompiledContract { get; set; }
+    public ILExecutionStep? PrecompiledContract { get; set; }
 }

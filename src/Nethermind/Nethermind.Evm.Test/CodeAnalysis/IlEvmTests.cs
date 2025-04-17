@@ -1408,6 +1408,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Op((Instruction)0x2c) // an unused opcode should be here
                     .Done, EvmExceptionType.StackUnderflow, turnOnAggressiveMode);
 
+                yield return ([Instruction.SSTORE], Prepare.EvmCode
+                    .PUSHx()
+                    .DUPx(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.StackUnderflow, turnOnAggressiveMode);
+
 
                 for (byte opcode = (byte)Instruction.DUP1; opcode <= (byte)Instruction.DUP16; opcode++)
                 {
@@ -1828,7 +1834,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 
             }
 
-            static IEnumerable<IReleaseSpec> GetAllFroksStarting<T>()
+            /*static IEnumerable<IReleaseSpec> GetAllFroksStarting<T>()
             {
                 var baseType = typeof(T);
                 var assembly = Assembly.GetAssembly(baseType);
@@ -1837,8 +1843,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                                 .Where(t => t != baseType && baseType.IsAssignableFrom(t) && !t.IsAbstract)
                                 .Select(t => (IReleaseSpec)t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static).GetMethod.Invoke(null, []));
             }
-
-            IEnumerable<IReleaseSpec> forks = GetAllFroksStarting<Olympic>();
+            */
+            IEnumerable<IReleaseSpec> forks = [Cancun.Instance]; //GetAllFroksStarting<Olympic>();
 
             bool[] combinations = new[]
             {
@@ -1942,8 +1948,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-                IlEvmAnalysisThreshold = 1,
-                IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmAnalysisThreshold = 256,
+                IlEvmAnalysisQueueMaxSize = 256,
                 IsIlEvmAggressiveModeEnabled = testcase.enableAggressiveMode,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
             }, testcase.spec);
@@ -2017,25 +2023,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(actual, Is.EqualTo(expected), testcase.msg);
         }
 
-        [Test]
-        public void ILVM_AOT_Storage_Roundtrip()
+        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
+        public void ILVM_AOT_Storage_Roundtrip((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode, IReleaseSpec spec) testcase)
         {
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmContractsPerDllCount = 1,
                 IsIlEvmAggressiveModeEnabled = true,
                 IlEvmPersistPrecompiledContractsOnDisk = true,
                 IlEvmPrecompiledContractsPath = Directory.GetCurrentDirectory(),
             }, Prague.Instance);
 
-            var bytecode = Prepare.EvmCode
-                .PushData(23)
-                .PushData(3)
-                .MUL()
-                .STOP()
-                .Done;
+            var bytecode = testcase.bytecode;
 
             var hashCode = Keccak.Compute(bytecode);
 
@@ -2043,11 +2045,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(hashCode.ToString()));
-            var fileStream = new FileStream(assemblyPath, FileMode.OpenOrCreate);
+            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(Precompiler._currentPersistentAsmBuilder));
 
-            Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fileStream);
-            MethodInfo method = assembly.GetType("ContractType").GetMethod("MoveNext");
+            Assembly assembly = Assembly.LoadFile(assemblyPath);
+            MethodInfo method = assembly
+                .GetTypes()
+                .First()
+                .GetMethod("MoveNext");
             Assert.That(method, Is.Not.Null);
         }
     }

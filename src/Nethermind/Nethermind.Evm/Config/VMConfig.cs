@@ -19,4 +19,6 @@ public class VMConfig : IVMConfig
     public bool IlEvmPersistPrecompiledContractsOnDisk { get; set; } = false;
     public string IlEvmPrecompiledContractsPath { get; set; } = "PrecompiledContracts";
     public int IlEvmContractsPerDllCount { get; set; } = 8;
+
+    public float IlEvmAnalysisCoreUsage { get; set; } = 0.0f;
 }

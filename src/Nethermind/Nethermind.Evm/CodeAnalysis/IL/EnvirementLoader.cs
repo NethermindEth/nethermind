@@ -21,8 +21,7 @@ using CallData = System.ReadOnlyMemory<byte>;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal static class EnvirementLoader
 {
-    public const int REF_THIS_INDEX = 0;
-    public const int REF_MACHINECODE_INDEX = REF_THIS_INDEX + 1;
+    public const int REF_MACHINECODE_INDEX = 0;
     public const int OBJ_SPECPROVIDER_INDEX = REF_MACHINECODE_INDEX + 1;
     public const int OBJ_BLOCKHASHPROVIDER_INDEX = OBJ_SPECPROVIDER_INDEX + 1;
     public const int OBJ_CODEINFOPROVIDER_INDEX = OBJ_BLOCKHASHPROVIDER_INDEX + 1;
@@ -32,8 +31,7 @@ internal static class EnvirementLoader
     public const int REF_PROGRAMCOUNTER_INDEX = REF_GASAVAILABLE_INDEX + 1;
     public const int REF_STACKHEAD_INDEX = REF_PROGRAMCOUNTER_INDEX + 1;
     public const int REF_STACKHEADREF_INDEX = REF_STACKHEAD_INDEX + 1;
-    public const int REF_RETURNDATABUFFER_INDEX = REF_STACKHEADREF_INDEX + 1;
-    public const int OBJ_TXTRACER_INDEX = REF_RETURNDATABUFFER_INDEX + 1;
+    public const int OBJ_TXTRACER_INDEX = REF_STACKHEADREF_INDEX + 1;
     public const int OBJ_LOGGER_INDEX = OBJ_TXTRACER_INDEX + 1;
     public const int REF_CURRENT_STATE = OBJ_LOGGER_INDEX + 1;
 
@@ -175,8 +173,7 @@ internal static class EnvirementLoader
             il.LoadArgument(REF_MACHINECODE_INDEX);
         } else
         {
-            il.LoadArgument(REF_MACHINECODE_INDEX);
-            il.LoadObject(typeof(ReadOnlySpan<byte>));
+            throw new NotImplementedException("LoadMachineCode without address is not implemented");
         }
     }
 
@@ -299,10 +296,13 @@ internal static class EnvirementLoader
 
     public static void LoadReturnDataBuffer<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_RETURNDATABUFFER_INDEX);
-        if (!loadAddress)
+        il.LoadArgument(REF_CURRENT_STATE);
+        il.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ReturnDataBuffer)));
+        if(loadAddress)
         {
-            il.LoadObject(typeof(CallData));
+            using Local bufferTemp = il.DeclareLocal<ReadOnlyMemory<byte>>(locals.GetLocalName());
+            il.StoreLocal(bufferTemp);
+            il.LoadLocalAddress(bufferTemp);
         }
     }
 

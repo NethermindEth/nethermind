@@ -30,7 +30,7 @@ namespace Nethermind.Evm.CodeAnalysis
             if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
 
-            if(Interlocked.Increment(ref _callCount) < vmConfig.IlEvmAnalysisThreshold)
+            if(Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
                 return;
 
             IlAnalyzer.Enqueue(this, vmConfig, logger);
@@ -44,7 +44,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if(codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out IPrecompiledContract ilCode))
+            if(codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILExecutionStep ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out IPrecompiledContract ilCode))
+            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILExecutionStep ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;

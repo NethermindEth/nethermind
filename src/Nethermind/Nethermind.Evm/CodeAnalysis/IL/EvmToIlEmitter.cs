@@ -20,6 +20,7 @@ using static Nethermind.Evm.CodeAnalysis.IL.UnsafeEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Newtonsoft.Json.Linq;
 using Nethermind.Evm.Config;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -41,54 +42,17 @@ internal static class OpcodeEmitter
                 return;
 
             case Instruction.JUMP:
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.StoreLocal(locals.wordRef256A);
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-                }
-                else
-                {
-                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-                }
-                method.FakeBranch(escapeLabels.jumpTable);
+                EmitJumpInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.JUMPI:
-                Label noJump = method.DefineLabel(locals.GetLabelName());
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.EmitCheck(nameof(Word.IsZero));
-                // if the jump condition is false, we do not jump
-                method.BranchIfTrue(noJump);
-
-                // we jump into the jump table
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.StoreLocal(locals.wordRef256A);
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-                }
-                else
-                {
-                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-                }
-                method.Branch(escapeLabels.jumpTable);
-
-                method.MarkLabel(noJump);
+                EmitJumpiInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
 
             case Instruction.POP:
                 return;
 
             case Instruction.STOP:
-                method.LoadResult(locals, true);
-                method.LoadConstant((int)ContractState.Finished);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-                method.FakeBranch(escapeLabels.returnLabel);
+                EmitStopInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CHAINID:
                 method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
@@ -96,23 +60,9 @@ internal static class OpcodeEmitter
                 method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                 return;
             case Instruction.NOT:
-                MethodInfo refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
-                MethodInfo readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
-                MethodInfo writeVector256Method = GetWriteUnalignedMethodInfo<Vector256<byte>>();
-                MethodInfo notVector256Method = typeof(Vector256)
-                    .GetMethod(nameof(Vector256.OnesComplement), BindingFlags.Public | BindingFlags.Static)!
-                    .MakeGenericMethod(typeof(byte));
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(refWordToRefByteMethod);
-                method.Duplicate();
-                method.Call(readVector256Method);
-                method.Call(notVector256Method);
-                method.Call(writeVector256Method);
+                EmitNotInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.PUSH0:
-                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                return;
             case Instruction.PUSH1:
             case Instruction.PUSH2:
             case Instruction.PUSH3:
@@ -121,15 +71,7 @@ internal static class OpcodeEmitter
             case Instruction.PUSH6:
             case Instruction.PUSH7:
             case Instruction.PUSH8:
-                int length = Math.Min(codeInfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
-                var immediateBytes = codeInfo.MachineCode.Slice(pc + 1, length).Span;
-                if (immediateBytes.IsZero())
-                    method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                else
-                {
-                    method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                    method.SpecialPushOpcode(op, immediateBytes);
-                }
+                EmiPush_sInstructions(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.PUSH9:
             case Instruction.PUSH10:
@@ -155,186 +97,32 @@ internal static class OpcodeEmitter
             case Instruction.PUSH30:
             case Instruction.PUSH31:
             case Instruction.PUSH32:
-                length = Math.Min(codeInfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
-                immediateBytes = codeInfo.MachineCode.Slice(pc + 1, length).Span;
-                if (immediateBytes.IsZero())
-                    method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                else
-                {
-                    if (length != 32)
-                    {
-                        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                        method.Call(GetAsMethodInfo<Word, byte>());
-                        method.LoadConstant(32 - length);
-                        method.Convert<nint>();
-                        method.Call(GetAddBytesOffsetRef<byte>());
-                    }
-                    else
-                    {
-                        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                        method.Call(GetAsMethodInfo<Word, byte>());
-                    }
-                    method.LoadMachineCode(locals, true);
-                    method.LoadItemFromSpan<TDelegateType, byte>(pc + 1, true);
-                    method.LoadConstant(length);
-                    method.CopyBlock();
-                }
+                EmitPush_bInstructions(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.ADD:
                 EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.SUB:
-                Label pushNegItemB = method.DefineLabel(locals.GetLabelName());
-                Label pushItemA = method.DefineLabel(locals.GetLabelName());
-                // b - a a::b
-                Label fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
-                Label endofOpcode = method.DefineLabel(locals.GetLabelName());
-                // we the two uint256 from the locals.stackHeadRef
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.StoreLocal(locals.wordRef256A);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.StoreLocal(locals.wordRef256B);
-
-                method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
-                method.BranchIfTrue(pushItemA);
-
-                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(pushItemA);
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.LoadLocal(locals.wordRef256A);
-                method.LoadObject(typeof(Word));
-                method.StoreObject(typeof(Word));
-
-                method.MarkLabel(endofOpcode);
+                EmitSubInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MUL:
-                Label push0Zero = method.DefineLabel(locals.GetLabelName());
-                pushItemA = method.DefineLabel(locals.GetLabelName());
-                Label pushItemB = method.DefineLabel(locals.GetLabelName());
-                endofOpcode = method.DefineLabel(locals.GetLabelName());
-                // we the two uint256 from the locals.stackHeadRef
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.StoreLocal(locals.wordRef256A);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.StoreLocal(locals.wordRef256B);
-
-                method.LoadLocal(locals.wordRef256A);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256A);
-                method.LoadLocal(locals.wordRef256B);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256B);
-
-                method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
-                method.BranchIfTrue(push0Zero);
-
-                method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
-                method.BranchIfTrue(endofOpcode);
-
-                method.EmitCheck(nameof(Word.IsOne), locals.wordRef256A);
-                method.BranchIfTrue(endofOpcode);
-
-                method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
-                method.BranchIfTrue(pushItemA);
-
-                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(push0Zero);
-                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(pushItemA);
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.LoadLocal(locals.wordRef256A);
-                method.LoadObject(typeof(Word));
-                method.StoreObject(typeof(Word));
-
-                method.MarkLabel(endofOpcode);
+                EmitMulInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
 
             case Instruction.MOD:
-                Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
-                Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
-                endofOpcode = method.DefineLabel(locals.GetLabelName());
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.StoreLocal(locals.wordRef256A);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.StoreLocal(locals.wordRef256B);
-
-                method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
-                method.BranchIfTrue(pushZeroLabel);
-
-                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(pushZeroLabel);
-                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.MarkLabel(endofOpcode);
+                EmitModInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SMOD:
-                Label bIsOneOrZero = method.DefineLabel(locals.GetLabelName());
-                endofOpcode = method.DefineLabel(locals.GetLabelName());
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.StoreLocal(locals.wordRef256B);
-
-                // if b is 1 or 0 result is always 0
-                method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
-                method.BranchIfTrue(bIsOneOrZero);
-
-                EmitBinaryInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(bIsOneOrZero);
-                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.MarkLabel(endofOpcode);
+                EmitSModInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.DIV:
-                fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
-                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
-                Label pushALabel = method.DefineLabel(locals.GetLabelName());
-                endofOpcode = method.DefineLabel(locals.GetLabelName());
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.StoreLocal(locals.wordRef256A);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.StoreLocal(locals.wordRef256B);
-
-                // if a or b are 0 result is directly 0
-                method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
-                method.BranchIfTrue(pushZeroLabel);
-                method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
-                method.BranchIfTrue(pushZeroLabel);
-
-                // if b is 1 result is by default a
-                method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
-                method.BranchIfTrue(pushALabel);
-
-                EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(pushZeroLabel);
-                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(pushALabel);
-                method.LoadLocal(locals.wordRef256B);
-                method.LoadLocal(locals.wordRef256A);
-                method.LoadObject(typeof(Word));
-                method.StoreObject(typeof(Word));
-                method.Branch(endofOpcode);
-
-                method.MarkLabel(endofOpcode);
+                EmitDivInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SDIV:
-                fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
-                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
-                pushALabel = method.DefineLabel(locals.GetLabelName());
-                endofOpcode = method.DefineLabel(locals.GetLabelName());
+                Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
+                Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+                Label pushALabel = method.DefineLabel(locals.GetLabelName());
+                Label endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
                 method.StoreLocal(locals.wordRef256A);
@@ -379,8 +167,8 @@ internal static class OpcodeEmitter
                 return;
 
             case Instruction.ADDMOD:
-                push0Zero = method.DefineLabel(locals.GetLabelName());
-                fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
+                Label push0Zero = method.DefineLabel(locals.GetLabelName());
+                Label fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
                 endofOpcode = method.DefineLabel(locals.GetLabelName());
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
@@ -533,9 +321,9 @@ internal static class OpcodeEmitter
                 EmitComparaisonInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                 return;
             case Instruction.EQ:
-                refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
-                readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
-                writeVector256Method = GetWriteUnalignedMethodInfo<Vector256<byte>>();
+                var refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
+                var readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
+                var writeVector256Method = GetWriteUnalignedMethodInfo<Vector256<byte>>();
                 MethodInfo operationUnegenerified = typeof(Vector256).GetMethod(nameof(Vector256.EqualsAll), BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(typeof(byte));
 
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
@@ -1012,13 +800,14 @@ internal static class OpcodeEmitter
                 method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                 method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                method.LoadMachineCode(locals, false);
+                method.LoadMachineCode(locals, true);
+                method.LoadConstant(codeInfo.MachineCode.Length);
                 method.LoadLocalAddress(locals.uint256B);
                 method.LoadLocalAddress(locals.uint256C);
                 method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                 method.Convert<int>();
                 method.LoadConstant((int)PadDirection.Right);
-                method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlySpan<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
+                method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(byte).MakeByRefType(), typeof(int), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                 method.StoreLocal(locals.localZeroPaddedSpan);
 
                 method.LoadMemory(locals, true);
@@ -1122,12 +911,12 @@ internal static class OpcodeEmitter
                 method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
                 method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                method.LoadReturnDataBuffer(locals, true);
+                method.LoadResult(locals, true);
                 method.LoadMemory(locals, true);
                 method.LoadLocalAddress(locals.uint256A);
                 method.LoadLocalAddress(locals.uint256B);
                 method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
-                method.StoreObject<ReadOnlyMemory<byte>>();
+                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnDataBuffer)));
 
                 method.LoadResult(locals, true);
                 switch (op)
@@ -1421,716 +1210,1074 @@ internal static class OpcodeEmitter
                 accessTrackerLocal.Dispose();
                 return;
             case Instruction.TSTORE:
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256A);
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.Call(Word.GetArray);
-                method.StoreLocal(locals.localArray);
-
-                method.LoadEnv(locals, false);
-
-                method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                method.LoadLocalAddress(locals.uint256A);
-                method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
-                method.StoreLocal(locals.storageCell);
-
-                method.LoadWorldState(locals, false);
-                method.LoadLocalAddress(locals.storageCell);
-                method.LoadLocal(locals.localArray);
-                method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
+                EmitTStoreInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.TLOAD:
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256A);
-
-                method.LoadEnv(locals, false);
-
-                method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                method.LoadLocalAddress(locals.uint256A);
-                method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
-                method.StoreLocal(locals.storageCell);
-
-                method.LoadWorldState(locals, false);
-                method.LoadLocalAddress(locals.storageCell);
-                method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
-                method.StoreLocal(locals.localReadonOnlySpan);
-
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.LoadLocal(locals.localReadonOnlySpan);
-                method.Call(Word.SetReadOnlySpan);
+                EmitTLoadInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SSTORE:
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256A);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.Call(Word.GetReadOnlySpan);
-                method.StoreLocal(locals.localReadonOnlySpan);
-
-                method.LoadVmState(locals, false);
-
-                method.LoadWorldState(locals, false);
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadLocalAddress(locals.uint256A);
-                method.LoadLocalAddress(locals.localReadonOnlySpan);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-
-                MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
-                            .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
-
-                MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
-                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    method.Call(nonTracingSStoreMethod);
-                }
-                else
-                {
-                    Label callNonTracingMode = method.DefineLabel(locals.GetLabelName());
-                    Label skipBeyondCalls = method.DefineLabel(locals.GetLabelName());
-                    method.LoadTxTracer(locals, false);
-                    method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-                    method.BranchIfFalse(callNonTracingMode);
-                    method.Call(tracingSStoreMethod);
-                    method.Branch(skipBeyondCalls);
-                    method.MarkLabel(callNonTracingMode);
-                    method.Call(nonTracingSStoreMethod);
-                    method.MarkLabel(skipBeyondCalls);
-                }
-
-                endOfOpcode = method.DefineLabel(locals.GetLabelName());
-                method.Duplicate();
-                method.StoreLocal(locals.uint32A);
-                method.LoadConstant((int)EvmExceptionType.None);
-                method.BranchIfEqual(endOfOpcode);
-
-                method.LoadResult(locals, true);
-                method.Duplicate();
-                method.LoadLocal(locals.uint32A);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
-                method.LoadConstant((int)ContractState.Failed);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-
-                method.LoadGasAvailable(locals, true);
-                method.LoadLocal(locals.gasAvailable);
-                method.StoreIndirect<long>();
-                method.FakeBranch(escapeLabels.exitLabel); ;
-
-                method.MarkLabel(endOfOpcode);
+                EmitSStoreInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SLOAD:
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetSLoadCost)));
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256A);
-
-                method.LoadEnv(locals, false);
-
-                method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                method.LoadLocalAddress(locals.uint256A);
-                method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
-                method.StoreLocal(locals.storageCell);
-
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadVmState(locals, false);
-
-                method.LoadLocalAddress(locals.storageCell);
-                method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.StorageAccessType.SLOAD);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.LoadWorldState(locals, false);
-                method.LoadLocalAddress(locals.storageCell);
-                method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
-                method.StoreLocal(locals.localReadonOnlySpan);
-
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.LoadLocal(locals.localReadonOnlySpan);
-                method.Call(Word.SetReadOnlySpan);
+                EmitSLoadInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.EXTCODESIZE:
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetAddress);
-                method.StoreLocal(locals.address);
-
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadVmState(locals, false);
-                method.LoadLocal(locals.address);
-                method.LoadConstant(false);
-                method.LoadWorldState(locals, false);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.LoadConstant(true);
-                method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-
-                method.LoadCodeInfoRepository(locals, false);
-                method.LoadWorldState(locals, false);
-                method.LoadLocal(locals.address);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
-                method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
-                method.StoreLocal(locals.localReadOnlyMemory);
-                method.LoadLocalAddress(locals.localReadOnlyMemory);
-                method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
-
-                method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
+                EmitExtcodeSizeInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.EXTCODECOPY:
-                endOfOpcode = method.DefineLabel(locals.GetLabelName());
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 4);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256C);
-
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
-                method.LoadLocalAddress(locals.uint256C);
-                method.LoadLocalAddress(locals.lbool);
-                method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
-                method.LoadConstant(GasCostOf.Memory);
-                method.Multiply();
-                method.Add();
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetAddress);
-                method.StoreLocal(locals.address);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256A);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
-                method.Call(Word.GetUInt256);
-                method.StoreLocal(locals.uint256B);
-
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadVmState(locals, false);
-                method.LoadLocal(locals.address);
-                method.LoadConstant(false);
-                method.LoadWorldState(locals, false);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.LoadConstant(true);
-                method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.LoadLocalAddress(locals.uint256C);
-                method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
-                method.BranchIfTrue(endOfOpcode);
-
-                method.LoadVmState(locals, false);
-
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadLocalAddress(locals.uint256A);
-                method.LoadLocalAddress(locals.uint256C);
-                method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.LoadCodeInfoRepository(locals, false);
-                method.LoadWorldState(locals, false);
-                method.LoadLocal(locals.address);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
-                method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
-
-                method.LoadLocalAddress(locals.uint256B);
-                method.LoadLocal(locals.uint256C);
-                method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
-                method.Convert<int>();
-                method.LoadConstant((int)PadDirection.Right);
-                method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
-                method.StoreLocal(locals.localZeroPaddedSpan);
-
-                method.LoadMemory(locals, true);
-                method.LoadLocalAddress(locals.uint256A);
-                method.LoadLocalAddress(locals.localZeroPaddedSpan);
-                method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
-
-                method.MarkLabel(endOfOpcode);
+                EmitExtcodeCopyInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.EXTCODEHASH:
-                endOfOpcode = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetAddress);
-                method.StoreLocal(locals.address);
-
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadVmState(locals, false);
-                method.LoadLocal(locals.address);
-                method.LoadConstant(false);
-                method.LoadWorldState(locals, false);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.LoadConstant(true);
-                method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                pushZeroLabel = method.DefineLabel(locals.GetLabelName());
-                Label pushhashcodeLabel = method.DefineLabel(locals.GetLabelName());
-
-                // account exists
-                method.LoadWorldState(locals, false);
-                method.LoadLocal(locals.address);
-                method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
-                method.BranchIfFalse(pushZeroLabel);
-
-                method.LoadWorldState(locals, false);
-                method.LoadLocal(locals.address);
-                method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
-                method.BranchIfTrue(pushZeroLabel);
-
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.LoadCodeInfoRepository(locals, false);
-                method.LoadWorldState(locals, false);
-                method.LoadLocal(locals.address);
-                method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
-                method.Call(Word.SetKeccak);
-                method.Branch(endOfOpcode);
-
-                // Push 0
-                method.MarkLabel(pushZeroLabel);
-                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-
-                method.MarkLabel(endOfOpcode);
+                EmitExtcodeHashInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SELFBALANCE:
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-                method.LoadWorldState(locals, false);
-                method.LoadEnv(locals, false);
-
-                method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
-                method.Call(Word.SetUInt256);
+                EmitSelfBalanceInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BALANCE:
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetAddress);
-                method.StoreLocal(locals.address);
-
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadVmState(locals, false);
-
-                method.LoadLocal(locals.address);
-                method.LoadConstant(false);
-                method.LoadWorldState(locals, false);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.LoadConstant(true);
-                method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.LoadWorldState(locals, false);
-                method.LoadLocal(locals.address);
-                method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
-                method.Call(Word.SetUInt256);
+                EmitBalanceInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SELFDESTRUCT:
-                MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
-
-                MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
-
-                Label skipGasDeduction = method.DefineLabel(locals.GetLabelName());
-                Label happyPath = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadSpec(locals, false);
-                method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());
-                method.BranchIfFalse(skipGasDeduction);
-
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadConstant(GasCostOf.SelfDestructEip150);
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-
-                method.MarkLabel(skipGasDeduction);
-
-                method.LoadVmState(locals, false);
-                method.LoadWorldState(locals, false);
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-                method.Call(Word.GetAddress);
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    method.Call(selfDestructNotTracing);
-                }
-                else
-                {
-                    Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
-                    Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
-                    method.LoadTxTracer(locals, false);
-                    method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-                    method.BranchIfFalse(skipTracingCall);
-                    method.Call(selfDestructTracing);
-                    method.Branch(skipNonTracingCall);
-                    method.MarkLabel(skipTracingCall);
-                    method.Call(selfDestructNotTracing);
-                    method.MarkLabel(skipNonTracingCall);
-                }
-                method.StoreLocal(locals.uint32A);
-                method.LoadLocal(locals.uint32A);
-                method.LoadConstant((int)EvmExceptionType.None);
-                method.BranchIfEqual(happyPath);
-
-                method.LoadResult(locals, true);
-                method.Duplicate();
-                method.LoadLocal(locals.uint32A);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
-                method.LoadConstant((int)ContractState.Failed);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-
-                method.FakeBranch(escapeLabels.exitLabel);
-
-                method.MarkLabel(happyPath);
-                method.LoadResult(locals, true);
-                method.LoadConstant((int)ContractState.Finished);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-                method.FakeBranch(escapeLabels.returnLabel);
+                EmitSelfDestructInstruction(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALL:
             case Instruction.CALLCODE:
             case Instruction.DELEGATECALL:
             case Instruction.STATICCALL:
-                MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
-                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
-
-                MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
-                    .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
-
-                Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
-                Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
-                happyPath = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadVmState(locals, false);
-                method.LoadWorldState(locals, false);
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.LoadLogger(locals, false);
-
-                method.LoadConstant((int)op);
-
-                var index = 1;
-                // load gasLimit
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load codeSource
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetAddress);
-
-                if (op is Instruction.DELEGATECALL)
-                {
-                    method.LoadEnv(locals, false);
-                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
-                }
-                else if (op is Instruction.STATICCALL)
-                {
-                    method.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                }
-                else
-                {
-                    method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                    method.Call(Word.GetUInt256);
-                }
-                // load dataoffset
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load datalength
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load outputOffset
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load outputLength
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
-                method.Call(Word.GetUInt256);
-
-                method.LoadLocalAddress(toPushToStack);
-
-                method.LoadReturnDataBuffer(locals, true);
-
-                method.LoadLocalAddress(newStateToExe);
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    method.Call(callMethodNotTracing);
-                }
-                else
-                {
-                    Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
-                    Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
-                    method.LoadTxTracer(locals, false);
-                    method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-                    method.BranchIfFalse(skipTracingCall);
-                    method.Call(callMethodTracign);
-                    method.Branch(skipNonTracingCall);
-                    method.MarkLabel(skipTracingCall);
-                    method.Call(callMethodNotTracing);
-                    method.MarkLabel(skipNonTracingCall);
-                }
-                method.StoreLocal(locals.uint32A);
-                method.LoadLocal(locals.uint32A);
-                method.LoadConstant((int)EvmExceptionType.None);
-                method.BranchIfEqual(happyPath);
-
-                method.LoadResult(locals, true);
-                method.Duplicate();
-                method.LoadLocal(locals.uint32A);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
-                method.LoadConstant((int)ContractState.Failed);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-
-                method.FakeBranch(escapeLabels.exitLabel); ;
-
-                method.MarkLabel(happyPath);
-
-                Label skipStateMachineScheduling = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadLocal(newStateToExe);
-                method.LoadNull();
-                method.BranchIfEqual(skipStateMachineScheduling);
-
-                method.LoadLocal(newStateToExe);
-                method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
-                method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
-                method.BranchIfTrue(skipStateMachineScheduling);
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-                }
-                else
-                {
-                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-                }
-
-                // cast object to CallResult and store it in 
-                method.LoadResult(locals, true);
-                method.Duplicate();
-                method.LoadLocal(newStateToExe);
-                method.CastClass(typeof(EvmState));
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
-                method.LoadConstant((int)ContractState.Halted);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-                method.FakeBranch(escapeLabels.returnLabel);
-
-                method.MarkLabel(skipStateMachineScheduling);
-                Label hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadLocalAddress(toPushToStack);
-                method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
-                method.BranchIfFalse(hasNoItemsToPush);
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
-                method.LoadLocalAddress(toPushToStack);
-                method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
-                method.Call(Word.SetUInt256);
-
-                method.MarkLabel(hasNoItemsToPush);
-
-                toPushToStack.Dispose();
-                newStateToExe.Dispose();
+                EmitCallInstructions(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CREATE:
             case Instruction.CREATE2:
-                callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
-                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing));
-
-                callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
-                    .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
-
-                toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
-                newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
-                happyPath = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadVmState(locals, false);
-
-                method.LoadWorldState(locals, false);
-                method.LoadLocalAddress(locals.gasAvailable);
-                method.LoadSpec(locals, false);
-                method.LoadTxTracer(locals, false);
-                method.LoadLogger(locals, false);
-
-                method.LoadConstant((int)op);
-
-                index = 1;
-
-                // load value
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load memory offset
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load initcode len
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-                method.Call(Word.GetUInt256);
-
-                // load callvalue
-                if (op is Instruction.CREATE2)
-                {
-                    method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
-                    method.Call(Word.GetMutableSpan);
-                }
-                else
-                {
-                    // load empty span
-                    index--;
-                    method.Call(typeof(Span<byte>).GetProperty(nameof(Span<byte>.Empty), BindingFlags.Static | BindingFlags.Public).GetGetMethod());
-                }
-
-                method.LoadLocalAddress(toPushToStack);
-
-                method.LoadReturnDataBuffer(locals, true);
-
-                method.LoadLocalAddress(newStateToExe);
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    method.Call(callMethodNotTracing);
-                }
-                else
-                {
-                    Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
-                    Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
-                    method.LoadTxTracer(locals, false);
-                    method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-                    method.BranchIfFalse(skipTracingCall);
-                    method.Call(callMethodTracign);
-                    method.Branch(skipNonTracingCall);
-                    method.MarkLabel(skipTracingCall);
-                    method.Call(callMethodNotTracing);
-                    method.MarkLabel(skipNonTracingCall);
-                }
-                method.StoreLocal(locals.uint32A);
-
-                method.LoadLocal(locals.uint32A);
-                method.LoadConstant((int)EvmExceptionType.None);
-                method.BranchIfEqual(happyPath);
-
-                method.LoadResult(locals, true);
-                method.Duplicate();
-                method.LoadLocal(locals.uint32A);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
-                method.LoadConstant((int)ContractState.Failed);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-                method.FakeBranch(escapeLabels.exitLabel);
-
-                method.MarkLabel(happyPath);
-                hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadLocalAddress(toPushToStack);
-                method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
-                method.BranchIfFalse(hasNoItemsToPush);
-
-                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
-                method.LoadLocalAddress(toPushToStack);
-                method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
-                method.Call(Word.SetUInt256);
-
-                method.MarkLabel(hasNoItemsToPush);
-
-                skipStateMachineScheduling = method.DefineLabel(locals.GetLabelName());
-
-                method.LoadLocal(newStateToExe);
-                method.LoadNull();
-                method.BranchIfEqual(skipStateMachineScheduling);
-
-                if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-                {
-                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-                }
-                else
-                {
-                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-                }
-
-                method.LoadResult(locals, true);
-                method.Duplicate();
-                method.LoadLocal(newStateToExe);
-                method.CastClass(typeof(EvmState));
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
-                method.LoadConstant((int)ContractState.Halted);
-                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-                method.Branch(escapeLabels.returnLabel);
-
-                method.MarkLabel(skipStateMachineScheduling);
-
-                toPushToStack.Dispose();
-                newStateToExe.Dispose();
+                EmitCreateInstructions(method, codeInfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             default:
                 method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                 return;
         }
+    }
+
+    private static void EmitTStoreInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256A);
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.Call(Word.GetArray);
+        method.StoreLocal(locals.localArray);
+
+        method.LoadEnv(locals, false);
+
+        method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+        method.LoadLocalAddress(locals.uint256A);
+        method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+        method.StoreLocal(locals.storageCell);
+
+        method.LoadWorldState(locals, false);
+        method.LoadLocalAddress(locals.storageCell);
+        method.LoadLocal(locals.localArray);
+        method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
+    }
+
+    private static void EmitTLoadInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256A);
+
+        method.LoadEnv(locals, false);
+
+        method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+        method.LoadLocalAddress(locals.uint256A);
+        method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+        method.StoreLocal(locals.storageCell);
+
+        method.LoadWorldState(locals, false);
+        method.LoadLocalAddress(locals.storageCell);
+        method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
+        method.StoreLocal(locals.localReadonOnlySpan);
+
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.LoadLocal(locals.localReadonOnlySpan);
+        method.Call(Word.SetReadOnlySpan);
+    }
+
+    private static void EmitSLoadInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.LoadLocal(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetSLoadCost)));
+        method.Subtract();
+        method.Duplicate();
+        method.StoreLocal(locals.gasAvailable);
+        method.LoadConstant((long)0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256A);
+
+        method.LoadEnv(locals, false);
+
+        method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+        method.LoadLocalAddress(locals.uint256A);
+        method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+        method.StoreLocal(locals.storageCell);
+
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadVmState(locals, false);
+
+        method.LoadLocalAddress(locals.storageCell);
+        method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.StorageAccessType.SLOAD);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.LoadWorldState(locals, false);
+        method.LoadLocalAddress(locals.storageCell);
+        method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
+        method.StoreLocal(locals.localReadonOnlySpan);
+
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.LoadLocal(locals.localReadonOnlySpan);
+        method.Call(Word.SetReadOnlySpan);
+    }
+
+    private static void EmitExtcodeSizeInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.LoadLocal(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
+        method.Subtract();
+        method.Duplicate();
+        method.StoreLocal(locals.gasAvailable);
+        method.LoadConstant((long)0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetAddress);
+        method.StoreLocal(locals.address);
+
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadVmState(locals, false);
+        method.LoadLocal(locals.address);
+        method.LoadConstant(false);
+        method.LoadWorldState(locals, false);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.LoadConstant(true);
+        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+
+        method.LoadCodeInfoRepository(locals, false);
+        method.LoadWorldState(locals, false);
+        method.LoadLocal(locals.address);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+        method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
+        method.StoreLocal(locals.localReadOnlyMemory);
+        method.LoadLocalAddress(locals.localReadOnlyMemory);
+        method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
+
+        method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
+    }
+
+    private static Label EmitExtcodeCopyInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 4);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256C);
+
+        method.LoadLocal(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
+        method.LoadLocalAddress(locals.uint256C);
+        method.LoadLocalAddress(locals.lbool);
+        method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.LoadConstant(GasCostOf.Memory);
+        method.Multiply();
+        method.Add();
+        method.Subtract();
+        method.Duplicate();
+        method.StoreLocal(locals.gasAvailable);
+        method.LoadConstant((long)0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetAddress);
+        method.StoreLocal(locals.address);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256A);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256B);
+
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadVmState(locals, false);
+        method.LoadLocal(locals.address);
+        method.LoadConstant(false);
+        method.LoadWorldState(locals, false);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.LoadConstant(true);
+        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+        method.BranchIfTrue(endOfOpcode);
+
+        method.LoadVmState(locals, false);
+
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadLocalAddress(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.LoadCodeInfoRepository(locals, false);
+        method.LoadWorldState(locals, false);
+        method.LoadLocal(locals.address);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+        method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
+
+        method.LoadLocalAddress(locals.uint256B);
+        method.LoadLocal(locals.uint256C);
+        method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+        method.Convert<int>();
+        method.LoadConstant((int)PadDirection.Right);
+        method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
+        method.StoreLocal(locals.localZeroPaddedSpan);
+
+        method.LoadMemory(locals, true);
+        method.LoadLocalAddress(locals.uint256A);
+        method.LoadLocalAddress(locals.localZeroPaddedSpan);
+        method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
+
+        method.MarkLabel(endOfOpcode);
+        return endOfOpcode;
+    }
+
+    private static void EmitExtcodeHashInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
+
+        method.LoadLocal(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
+        method.Subtract();
+        method.Duplicate();
+        method.StoreLocal(locals.gasAvailable);
+        method.LoadConstant((long)0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetAddress);
+        method.StoreLocal(locals.address);
+
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadVmState(locals, false);
+        method.LoadLocal(locals.address);
+        method.LoadConstant(false);
+        method.LoadWorldState(locals, false);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.LoadConstant(true);
+        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+        Label pushhashcodeLabel = method.DefineLabel(locals.GetLabelName());
+
+        // account exists
+        method.LoadWorldState(locals, false);
+        method.LoadLocal(locals.address);
+        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
+        method.BranchIfFalse(pushZeroLabel);
+
+        method.LoadWorldState(locals, false);
+        method.LoadLocal(locals.address);
+        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
+        method.BranchIfTrue(pushZeroLabel);
+
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.LoadCodeInfoRepository(locals, false);
+        method.LoadWorldState(locals, false);
+        method.LoadLocal(locals.address);
+        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
+        method.Call(Word.SetKeccak);
+        method.Branch(endOfOpcode);
+
+        // Push 0
+        method.MarkLabel(pushZeroLabel);
+        method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+
+        method.MarkLabel(endOfOpcode);
+    }
+
+    private static void EmitSelfBalanceInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+        method.LoadWorldState(locals, false);
+        method.LoadEnv(locals, false);
+
+        method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+        method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
+        method.Call(Word.SetUInt256);
+    }
+
+    private static void EmitBalanceInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+
+    {
+        method.LoadLocal(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
+        method.Subtract();
+        method.Duplicate();
+        method.StoreLocal(locals.gasAvailable);
+        method.LoadConstant((long)0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetAddress);
+        method.StoreLocal(locals.address);
+
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadVmState(locals, false);
+
+        method.LoadLocal(locals.address);
+        method.LoadConstant(false);
+        method.LoadWorldState(locals, false);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.LoadConstant(true);
+        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.LoadWorldState(locals, false);
+        method.LoadLocal(locals.address);
+        method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
+        method.Call(Word.SetUInt256);
+    }
+
+    private static void EmitDivInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
+        Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+        Label pushALabel = method.DefineLabel(locals.GetLabelName());
+        Label endofOpcode = method.DefineLabel(locals.GetLabelName());
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.StoreLocal(locals.wordRef256A);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.StoreLocal(locals.wordRef256B);
+
+        // if a or b are 0 result is directly 0
+        method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
+        method.BranchIfTrue(pushZeroLabel);
+        method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
+        method.BranchIfTrue(pushZeroLabel);
+
+        // if b is 1 result is by default a
+        method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
+        method.BranchIfTrue(pushALabel);
+
+        EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(pushZeroLabel);
+        method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(pushALabel);
+        method.LoadLocal(locals.wordRef256B);
+        method.LoadLocal(locals.wordRef256A);
+        method.LoadObject(typeof(Word));
+        method.StoreObject(typeof(Word));
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(endofOpcode);
+    }
+
+    private static void EmitSModInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label bIsOneOrZero = method.DefineLabel(locals.GetLabelName());
+        Label endofOpcode = method.DefineLabel(locals.GetLabelName());
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.StoreLocal(locals.wordRef256B);
+
+        // if b is 1 or 0 result is always 0
+        method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
+        method.BranchIfTrue(bIsOneOrZero);
+
+        EmitBinaryInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(bIsOneOrZero);
+        method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.MarkLabel(endofOpcode);
+    }
+
+    private static void EmitModInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
+        Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
+        Label endofOpcode = method.DefineLabel(locals.GetLabelName());
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.StoreLocal(locals.wordRef256A);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.StoreLocal(locals.wordRef256B);
+
+        method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
+        method.BranchIfTrue(pushZeroLabel);
+
+        EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(pushZeroLabel);
+        method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.MarkLabel(endofOpcode);
+    }
+
+    private static void EmitMulInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label push0Zero = method.DefineLabel(locals.GetLabelName());
+        Label pushItemA = method.DefineLabel(locals.GetLabelName());
+        Label pushItemB = method.DefineLabel(locals.GetLabelName());
+        Label endofOpcode = method.DefineLabel(locals.GetLabelName());
+        // we the two uint256 from the locals.stackHeadRef
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.StoreLocal(locals.wordRef256A);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.StoreLocal(locals.wordRef256B);
+
+        method.LoadLocal(locals.wordRef256A);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256A);
+        method.LoadLocal(locals.wordRef256B);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256B);
+
+        method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
+        method.BranchIfTrue(push0Zero);
+
+        method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
+        method.BranchIfTrue(endofOpcode);
+
+        method.EmitCheck(nameof(Word.IsOne), locals.wordRef256A);
+        method.BranchIfTrue(endofOpcode);
+
+        method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
+        method.BranchIfTrue(pushItemA);
+
+        EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(push0Zero);
+        method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(pushItemA);
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.LoadLocal(locals.wordRef256A);
+        method.LoadObject(typeof(Word));
+        method.StoreObject(typeof(Word));
+
+        method.MarkLabel(endofOpcode);
+    }
+
+    private static void EmitSubInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label pushNegItemB = method.DefineLabel(locals.GetLabelName());
+        Label pushItemA = method.DefineLabel(locals.GetLabelName());
+        // b - a a::b
+        Label fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
+        Label endofOpcode = method.DefineLabel(locals.GetLabelName());
+        // we the two uint256 from the locals.stackHeadRef
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.StoreLocal(locals.wordRef256A);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.StoreLocal(locals.wordRef256B);
+
+        method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
+        method.BranchIfTrue(pushItemA);
+
+        EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+        method.Branch(endofOpcode);
+
+        method.MarkLabel(pushItemA);
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.LoadLocal(locals.wordRef256A);
+        method.LoadObject(typeof(Word));
+        method.StoreObject(typeof(Word));
+
+        method.MarkLabel(endofOpcode);
+    }
+
+    private static void EmitPush_bInstructions<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        int length = Math.Min(codeinfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
+        var immediateBytes = codeinfo.MachineCode.Slice(pc + 1, length).Span;
+        if (immediateBytes.IsZero())
+            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+        else
+        {
+            if (length != 32)
+            {
+                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                method.Convert<nint>();
+                method.LoadConstant(32 - length);
+                method.Convert<nint>();
+                method.Add();
+            }
+            else
+            {
+                method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                method.Convert<nint>();
+            }
+            method.LoadMachineCode(locals, true);
+            method.Convert<nint>();
+            method.LoadConstant(pc + 1);
+            method.Convert<nint>();
+            method.Add();
+            method.LoadConstant(length);
+            method.CopyBlock();
+        }
+    }
+
+    private static void EmiPush_sInstructions<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        if (op is Instruction.PUSH0)
+        {
+            method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+        }
+        else
+        {
+            int length = Math.Min(codeinfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
+            var immediateBytes = codeinfo.MachineCode.Slice(pc + 1, length).Span;
+            if (immediateBytes.IsZero())
+                method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+            else
+            {
+                method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+                method.SpecialPushOpcode(op, immediateBytes);
+            }
+        }
+    }
+
+    private static void EmitNotInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        var refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
+        var readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
+        var writeVector256Method = GetWriteUnalignedMethodInfo<Vector256<byte>>();
+        MethodInfo notVector256Method = typeof(Vector256)
+            .GetMethod(nameof(Vector256.OnesComplement), BindingFlags.Public | BindingFlags.Static)!
+            .MakeGenericMethod(typeof(byte));
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(refWordToRefByteMethod);
+        method.Duplicate();
+        method.Call(readVector256Method);
+        method.Call(notVector256Method);
+        method.Call(writeVector256Method);
+    }
+
+    private static void EmitSStoreInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label endOfOpcode;
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetUInt256);
+        method.StoreLocal(locals.uint256A);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.Call(Word.GetReadOnlySpan);
+        method.StoreLocal(locals.localReadonOnlySpan);
+
+        method.LoadVmState(locals, false);
+
+        method.LoadWorldState(locals, false);
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadLocalAddress(locals.uint256A);
+        method.LoadLocalAddress(locals.localReadonOnlySpan);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+
+
+        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
+                    .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+
+        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
+                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            method.Call(nonTracingSStoreMethod);
+        }
+        else
+        {
+            Label callNonTracingMode = method.DefineLabel(locals.GetLabelName());
+            Label skipBeyondCalls = method.DefineLabel(locals.GetLabelName());
+            method.LoadTxTracer(locals, false);
+            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+            method.BranchIfFalse(callNonTracingMode);
+            method.Call(tracingSStoreMethod);
+            method.Branch(skipBeyondCalls);
+            method.MarkLabel(callNonTracingMode);
+            method.Call(nonTracingSStoreMethod);
+            method.MarkLabel(skipBeyondCalls);
+        }
+
+        endOfOpcode = method.DefineLabel(locals.GetLabelName());
+        method.Duplicate();
+        method.StoreLocal(locals.uint32A);
+        method.LoadConstant((int)EvmExceptionType.None);
+        method.BranchIfEqual(endOfOpcode);
+
+        method.LoadResult(locals, true);
+        method.Duplicate();
+        method.LoadLocal(locals.uint32A);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+        method.LoadConstant((int)ContractState.Failed);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+        method.LoadGasAvailable(locals, true);
+        method.LoadLocal(locals.gasAvailable);
+        method.StoreIndirect<long>();
+        method.FakeBranch(escapeLabels.exitLabel); ;
+
+        method.MarkLabel(endOfOpcode);
+    }
+
+    private static void EmitSelfDestructInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+
+        MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+
+        Label skipGasDeduction = method.DefineLabel(locals.GetLabelName());
+        Label happyPath = method.DefineLabel(locals.GetLabelName());
+
+        method.LoadSpec(locals, false);
+        method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());
+        method.BranchIfFalse(skipGasDeduction);
+
+        method.LoadLocal(locals.gasAvailable);
+        method.LoadConstant(GasCostOf.SelfDestructEip150);
+        method.Subtract();
+        method.Duplicate();
+        method.StoreLocal(locals.gasAvailable);
+        method.LoadConstant((long)0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+        method.MarkLabel(skipGasDeduction);
+
+        method.LoadVmState(locals, false);
+        method.LoadWorldState(locals, false);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Call(Word.GetAddress);
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            method.Call(selfDestructNotTracing);
+        }
+        else
+        {
+            Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
+            Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
+            method.LoadTxTracer(locals, false);
+            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+            method.BranchIfFalse(skipTracingCall);
+            method.Call(selfDestructTracing);
+            method.Branch(skipNonTracingCall);
+            method.MarkLabel(skipTracingCall);
+            method.Call(selfDestructNotTracing);
+            method.MarkLabel(skipNonTracingCall);
+        }
+        method.StoreLocal(locals.uint32A);
+        method.LoadLocal(locals.uint32A);
+        method.LoadConstant((int)EvmExceptionType.None);
+        method.BranchIfEqual(happyPath);
+
+        method.LoadResult(locals, true);
+        method.Duplicate();
+        method.LoadLocal(locals.uint32A);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+        method.LoadConstant((int)ContractState.Failed);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+        method.FakeBranch(escapeLabels.exitLabel);
+
+        method.MarkLabel(happyPath);
+        method.LoadResult(locals, true);
+        method.LoadConstant((int)ContractState.Finished);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+        method.FakeBranch(escapeLabels.returnLabel);
+    }
+
+    private static void EmitCallInstructions<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label happyPath;
+        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
+
+        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
+            .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+        using Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
+        using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
+        Label hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
+        Label skipStateMachineScheduling = method.DefineLabel(locals.GetLabelName());
+
+        happyPath = method.DefineLabel(locals.GetLabelName());
+
+        method.LoadVmState(locals, false);
+        method.LoadWorldState(locals, false);
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.LoadLogger(locals, false);
+
+        method.LoadConstant((int)op);
+
+        var index = 1;
+        // load gasLimit
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+        // load codeSource
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetAddress);
+
+        if (op is Instruction.DELEGATECALL)
+        {
+            method.LoadEnv(locals, false);
+            method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
+        }
+        else if (op is Instruction.STATICCALL)
+        {
+            method.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
+        }
+        else
+        {
+            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+            method.Call(Word.GetUInt256);
+        }
+        // load dataoffset
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+        // load datalength
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+        // load outputOffset
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+
+        // load outputLength
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
+        method.Call(Word.GetUInt256);
+
+
+        method.LoadLocalAddress(toPushToStack);
+
+        method.LoadReturnDataBuffer(locals, true);
+
+        method.LoadLocalAddress(newStateToExe);
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            method.Call(callMethodNotTracing);
+        }
+        else
+        {
+            Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
+            Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
+            method.LoadTxTracer(locals, false);
+            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+            method.BranchIfFalse(skipTracingCall);
+            method.Call(callMethodTracign);
+            method.Branch(skipNonTracingCall);
+            method.MarkLabel(skipTracingCall);
+            method.Call(callMethodNotTracing);
+            method.MarkLabel(skipNonTracingCall);
+        }
+        method.StoreLocal(locals.uint32A);
+        method.LoadLocal(locals.uint32A);
+        method.LoadConstant((int)EvmExceptionType.None);
+        method.BranchIfEqual(happyPath);
+
+        method.LoadResult(locals, true);
+        method.Duplicate();
+        method.LoadLocal(locals.uint32A);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+        method.LoadConstant((int)ContractState.Failed);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+        method.FakeBranch(escapeLabels.exitLabel); ;
+
+        method.MarkLabel(happyPath);
+
+        method.LoadLocal(newStateToExe);
+        method.LoadNull();
+        method.BranchIfEqual(skipStateMachineScheduling);
+
+        method.LoadLocal(newStateToExe);
+        method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
+        method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
+        method.BranchIfTrue(skipStateMachineScheduling);
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
+        }
+        else
+        {
+            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
+        }
+
+        // cast object to CallResult and store it in 
+        method.LoadResult(locals, true);
+        method.Duplicate();
+        method.LoadLocal(newStateToExe);
+        method.CastClass(typeof(EvmState));
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+        method.LoadConstant((int)ContractState.Halted);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+        method.FakeBranch(escapeLabels.returnLabel);
+
+        method.MarkLabel(skipStateMachineScheduling);
+
+        method.LoadLocalAddress(toPushToStack);
+        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
+        method.BranchIfFalse(hasNoItemsToPush);
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
+        method.LoadLocalAddress(toPushToStack);
+        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
+        method.Call(Word.SetUInt256);
+
+        method.MarkLabel(hasNoItemsToPush);
+    }
+
+    private static void EmitCreateInstructions<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing));
+
+        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
+            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+            .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
+
+        using Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
+        using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
+        Label happyPath = method.DefineLabel(locals.GetLabelName());
+
+        method.LoadVmState(locals, false);
+
+        method.LoadWorldState(locals, false);
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadSpec(locals, false);
+        method.LoadTxTracer(locals, false);
+        method.LoadLogger(locals, false);
+
+        method.LoadConstant((int)op);
+
+        int index = 1;
+
+        // load value
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+        // load memory offset
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+        // load initcode len
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
+        method.Call(Word.GetUInt256);
+
+        // load callvalue
+        if (op is Instruction.CREATE2)
+        {
+            method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
+            method.Call(Word.GetMutableSpan);
+        }
+        else
+        {
+            // load empty span
+            index--;
+            method.Call(typeof(Span<byte>).GetProperty(nameof(Span<byte>.Empty), BindingFlags.Static | BindingFlags.Public).GetGetMethod());
+        }
+
+        method.LoadLocalAddress(toPushToStack);
+
+        method.LoadReturnDataBuffer(locals, true);
+
+        method.LoadLocalAddress(newStateToExe);
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            method.Call(callMethodNotTracing);
+        }
+        else
+        {
+            Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
+            Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
+            method.LoadTxTracer(locals, false);
+            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+            method.BranchIfFalse(skipTracingCall);
+            method.Call(callMethodTracign);
+            method.Branch(skipNonTracingCall);
+            method.MarkLabel(skipTracingCall);
+            method.Call(callMethodNotTracing);
+            method.MarkLabel(skipNonTracingCall);
+        }
+        method.StoreLocal(locals.uint32A);
+
+        method.LoadLocal(locals.uint32A);
+        method.LoadConstant((int)EvmExceptionType.None);
+        method.BranchIfEqual(happyPath);
+
+        method.LoadResult(locals, true);
+        method.Duplicate();
+        method.LoadLocal(locals.uint32A);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+        method.LoadConstant((int)ContractState.Failed);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+        method.FakeBranch(escapeLabels.exitLabel);
+
+        method.MarkLabel(happyPath);
+        Label hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
+
+        method.LoadLocalAddress(toPushToStack);
+        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
+        method.BranchIfFalse(hasNoItemsToPush);
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
+        method.LoadLocalAddress(toPushToStack);
+        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
+        method.Call(Word.SetUInt256);
+
+        method.MarkLabel(hasNoItemsToPush);
+
+        Label skipStateMachineScheduling = method.DefineLabel(locals.GetLabelName());
+
+        method.LoadLocal(newStateToExe);
+        method.LoadNull();
+        method.BranchIfEqual(skipStateMachineScheduling);
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
+        }
+        else
+        {
+            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
+        }
+
+        method.LoadResult(locals, true);
+        method.Duplicate();
+        method.LoadLocal(newStateToExe);
+        method.CastClass(typeof(EvmState));
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+        method.LoadConstant((int)ContractState.Halted);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+        method.Branch(escapeLabels.returnLabel);
+
+        method.MarkLabel(skipStateMachineScheduling);
+    }
+
+    private static void EmitStopInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.LoadResult(locals, true);
+        method.LoadConstant((int)ContractState.Finished);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+        method.FakeBranch(escapeLabels.returnLabel);
+    }
+
+    private static void EmitJumpiInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        Label noJump = method.DefineLabel(locals.GetLabelName());
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
+        method.EmitCheck(nameof(Word.IsZero));
+        // if the jump condition is false, we do not jump
+        method.BranchIfTrue(noJump);
+
+        // we jump into the jump table
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.StoreLocal(locals.wordRef256A);
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
+        }
+        else
+        {
+            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
+        }
+        method.Branch(escapeLabels.jumpTable);
+
+        method.MarkLabel(noJump);
+    }
+
+    private static void EmitJumpInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    {
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.StoreLocal(locals.wordRef256A);
+
+        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
+        {
+            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
+        }
+        else
+        {
+            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
+        }
+        method.FakeBranch(escapeLabels.jumpTable);
     }
 }
