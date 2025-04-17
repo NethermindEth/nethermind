@@ -11,8 +11,9 @@ public class IsValidTxSender(IWorldState worldState, ICodeInfoRepository codeInf
 {
     public bool IsValid(Address sender)
     {
-        return specProvider.GetCurrentHeadSpec().IsEip3607Enabled
+        IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
+        return spec.IsEip3607Enabled
             && worldState.HasCode(sender)
-            && (!specProvider.GetCurrentHeadSpec().IsEip7702Enabled || !codeInfoRepository.TryGetDelegation(worldState, sender, out _));
+            && (!spec.IsEip7702Enabled || !codeInfoRepository.TryGetDelegation(worldState, sender, spec, out _));
     }
 }

@@ -75,6 +75,8 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<IBlockValidator>())
                     .AddSingleton(Substitute.For<IHeaderValidator>())
                     .AddSingleton(Substitute.For<IUnclesValidator>())
+                    .AddSingleton(Substitute.For<IRpcModuleProvider>())
+                    .AddSingleton(Substitute.For<IEthSyncingInfo>())
                     .Build()
             );
 
@@ -113,7 +115,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();
-            api.MonitoringService = Substitute.For<IMonitoringService>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
             api.RlpxPeer = Substitute.For<IRlpxHost>();
@@ -126,14 +127,11 @@ namespace Nethermind.Runner.Test.Ethereum
             api.TxSender = Substitute.For<ITxSender>();
             api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
-            api.NodeStatsManager = Substitute.For<INodeStatsManager>();
-            api.RpcModuleProvider = Substitute.For<IRpcModuleProvider>();
             api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
             api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
-            api.EthSyncingInfo = Substitute.For<IEthSyncingInfo>();
             api.HealthHintService = Substitute.For<IHealthHintService>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
