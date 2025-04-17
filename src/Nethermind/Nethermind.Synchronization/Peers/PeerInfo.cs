@@ -36,6 +36,8 @@ namespace Nethermind.Synchronization.Peers
 
         public bool IsInitialized => SyncPeer.IsInitialized;
 
+        public bool SupportsTotalDifficulty => SyncPeer.SupportsTotalDifficulty;
+
         public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;

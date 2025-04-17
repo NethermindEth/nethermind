@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-7642
 /// </summary>
-public class Eth69ProtocolHandler : Eth68ProtocolHandler
+public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
 {
     public Eth69ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
@@ -44,6 +44,8 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     public override string Name => "eth69";
 
     public override byte ProtocolVersion => EthVersions.Eth69;
+
+    bool ISyncPeer.SupportsTotalDifficulty => false;
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 

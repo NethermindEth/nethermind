@@ -17,6 +17,14 @@ public static class BetterPeerStrategyExtensions
         UInt256 peerDifficulty = peerInfo?.TotalDifficulty ?? UInt256.Zero;
         long peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0;
 
+        // TODO: try find better approach
+        // Trick to enforce block number comparison if peer doesn't support TD
+        if (peerInfo is { SupportsTotalDifficulty: false })
+        {
+            headerDifficulty = (UInt256)headerNumber;
+            peerDifficulty = (UInt256)peerInfo.HeadNumber;
+        }
+
         return peerStrategy.Compare((headerDifficulty, headerNumber), (peerDifficulty, peerInfoHeadNumber));
     }
 
@@ -24,6 +32,14 @@ public static class BetterPeerStrategyExtensions
     {
         UInt256 peerDifficulty = peerInfo?.TotalDifficulty ?? UInt256.Zero;
         long peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0;
+
+        // Trick to enforce block number comparison if peer doesn't support TD
+        if (peerInfo is { SupportsTotalDifficulty: false })
+        {
+            value = ((UInt256)value.Number, value.Number);
+            peerDifficulty = (UInt256)peerInfo.HeadNumber;
+        }
+
         return peerStrategy.Compare(value, (peerDifficulty, peerInfoHeadNumber));
     }
 }
