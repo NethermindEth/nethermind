@@ -52,8 +52,8 @@ public interface IBlobProofsManager
     static IBlobProofsManager For
         (ProofVersion version) => version switch
         {
+            ProofVersion.V0 => BlobProofsManagerV0.Instance,
             ProofVersion.V1 => BlobProofsManagerV1.Instance,
-            ProofVersion.V2 => BlobProofsManagerV2.Instance,
             _ => throw new NotSupportedException(),
         };
 }

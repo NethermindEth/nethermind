@@ -5,5 +5,5 @@ namespace Nethermind.Core.Specs;
 
 public static class BlobProofExtensions
 {
-    public static ProofVersion GetBlobProofVersion(this IReleaseSpec spec) => spec.IsEip7594Enabled ? ProofVersion.V2 : ProofVersion.V1;
+    public static ProofVersion GetBlobProofVersion(this IReleaseSpec spec) => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 }

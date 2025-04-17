@@ -862,7 +862,7 @@ namespace Nethermind.TxPool.Test
             {
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                 wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
-                wrapper.Version.Should().Be(hasTxCellProofs ? ProofVersion.V2 : ProofVersion.V1);
+                wrapper.Version.Should().Be(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0);
 
                 blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
                 if (isPersistentStorage)
@@ -913,7 +913,7 @@ namespace Nethermind.TxPool.Test
             {
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                 wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
-                wrapper.Version.Should().Be(isOsakaActivated ? ProofVersion.V2 : ProofVersion.V1);
+                wrapper.Version.Should().Be(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0);
 
                 blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
                 if (isPersistentStorage)

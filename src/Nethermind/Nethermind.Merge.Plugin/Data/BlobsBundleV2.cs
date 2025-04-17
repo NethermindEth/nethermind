@@ -36,7 +36,7 @@ public class BlobsBundleV2
                     continue;
                 }
 
-                if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V2 } wrapper })
+                if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper })
                 {
                     throw new ArgumentException("Shard blob transaction should contain network wrapper data");
                 }

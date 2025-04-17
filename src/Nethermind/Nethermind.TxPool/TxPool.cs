@@ -524,8 +524,8 @@ namespace Nethermind.TxPool
         private void TryConvertProofVersion(Transaction tx)
         {
             if (_txPoolConfig.ProofsTranslationEnabled
-                && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper }
-                && _headInfo.CurrentProofVersion == ProofVersion.V2)
+                && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
+                && _headInfo.CurrentProofVersion == ProofVersion.V1)
             {
                 List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
@@ -538,7 +538,7 @@ namespace Nethermind.TxPool
                 }
 
                 wrapper.Proofs = cellProofs.ToArray();
-                wrapper.Version = ProofVersion.V2;
+                wrapper.Version = ProofVersion.V1;
             }
         }
 
