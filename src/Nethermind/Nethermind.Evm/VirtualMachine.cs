@@ -21,7 +21,6 @@ using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 
-
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
 #endif
@@ -709,34 +708,40 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if(typeof(IsPrecompiling) == typeof(TOptimizing))
         {
-            if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
+            unsafe
             {
-                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
-
-                ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
-                IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
-                int programCounter = vmState.ProgramCounter;
-                ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                if (precompiledContract.MoveNext(ref code,
-                    _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
-                    ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger,
-                    ref chunkExecutionState))
+                if (env.CodeInfo.IlInfo.IsProcessed)
                 {
-                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
-                    Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
-                    return new CallResult(chunkExecutionState.CallResult);
-                }
+                    Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
-                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                    int programCounter = vmState.ProgramCounter;
 
-                switch(chunkExecutionState.ContractState)
-                {
-                    case ContractState.Return or ContractState.Revert:
-                       return new CallResult(_returnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
-                    case ContractState.Failed:
-                        return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
-                    default:
-                        return CallResult.Empty;
+                    var codeAsSpan = env.CodeInfo.MachineCode.Span; 
+
+                    ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
+                    chunkExecutionState.ReturnDataBuffer = _returnDataBuffer;
+
+                    if (env.CodeInfo.IlInfo.PrecompiledContract(in codeAsSpan[0],
+                        _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
+                        ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), _txTracer, _logger,
+                        ref chunkExecutionState))
+                    {
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
+                        Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
+                        return new CallResult(chunkExecutionState.CallResult);
+                    }
+
+                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+
+                    switch(chunkExecutionState.ContractState)
+                    {
+                        case ContractState.Return or ContractState.Revert:
+                           return new CallResult(chunkExecutionState.ReturnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                        case ContractState.Failed:
+                            return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
+                        default:
+                            return CallResult.Empty;
+                    }
                 }
             }
         } 

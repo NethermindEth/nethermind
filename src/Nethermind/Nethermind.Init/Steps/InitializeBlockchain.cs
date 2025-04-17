@@ -81,14 +81,15 @@ namespace Nethermind.Init.Steps
 
             IVMConfig vmConfig = new VMConfig
             {
-                IlEvmAnalysisQueueMaxSize = 8,
+                IlEvmAnalysisQueueMaxSize = 2,
                 IlEvmAnalysisThreshold = 2,
-                IlEvmContractsPerDllCount = 32,
+                IlEvmContractsPerDllCount = 16,
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmPersistPrecompiledContractsOnDisk = true,
-                IlEvmPrecompiledContractsPath = "AotCache",
+                IlEvmPrecompiledContractsPath = "E:\\ILVM\\database\\contractsIL",
                 IsIlEvmAggressiveModeEnabled = true,
                 IsILEvmEnabled = true,
+                IlEvmAnalysisCoreUsage = 0.5f
             };
 
             Console.WriteLine($"IlEvmAnalysisQueueMaxSize: {vmConfig.IlEvmAnalysisQueueMaxSize}");
@@ -288,9 +289,13 @@ namespace Nethermind.Init.Steps
                     using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
                     {
                         Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
-                        ValueHash256 codeHash = new ValueHash256(assembly.GetName().Name!);
-                        IPrecompiledContract? precompiledContract = assembly.CreateInstance(assembly!.GetType("ContractType")!.FullName!) as IPrecompiledContract;
-                        AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
+                        foreach (var type in assembly!.GetTypes())
+                        {
+                            ValueHash256 codeHash = new ValueHash256(type.Name);
+                            var method = type.GetMethod("MoveNext", BindingFlags.Public | BindingFlags.Static);
+                            ILExecutionStep? precompiledContract = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+                            AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
+                        }
                     }
                 }
             }

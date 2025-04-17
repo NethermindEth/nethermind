@@ -10,9 +10,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 {
     public class AotContractsRepository
     {
-        private static ConcurrentDictionary<ValueHash256?, IPrecompiledContract> _processed = new();
+        private static ConcurrentDictionary<ValueHash256?, ILExecutionStep> _processed = new();
 
-        public static void AddIledCode(ValueHash256? codeHash, IPrecompiledContract ilCode)
+        public static void AddIledCode(ValueHash256? codeHash, ILExecutionStep ilCode)
         {
             if (codeHash is null || ilCode is null)
             {
@@ -22,7 +22,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             _processed[codeHash] = ilCode;
         }
 
-        public static bool TryGetIledCode(ValueHash256 codeHash, out IPrecompiledContract ilCode)
+        public static bool TryGetIledCode(ValueHash256 codeHash, out ILExecutionStep ilCode)
         {
             if (_processed.TryGetValue(codeHash, out ilCode))
             {

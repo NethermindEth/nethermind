@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -15,6 +16,7 @@ using System.Linq;
 using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using IlevmMode = int;
 
@@ -27,9 +29,10 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
-    private static readonly ManualResetEventSlim _workOrStopSignal = new(false);
-    private static Thread _workerThread;
-    private static bool _running = false;
+    private static Channel<CodeInfo> _channel;
+
+    private static Task? _workerTask;
+    private static CancellationTokenSource _cts = new();
 
     private static readonly ConcurrentQueue<CodeInfo> _queue = new();
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
@@ -41,56 +44,78 @@ public static class IlAnalyzer
         }
 
         Metrics.IncrementIlvmAotQueueSize();
-        _queue.Enqueue(codeInfo);
-
-        _workOrStopSignal.Set();
+        _channel.Writer.TryWrite(codeInfo);
+        logger.Debug($"IlAnalyzer: {codeInfo.Codehash} queued for analysis");
     }
-
-    public static void StopPrecompilerBackgroundThread()
-    {
-        _running = false;
-        _workOrStopSignal.Set(); // unblock if waiting
-        _workerThread.Join();
-    }
-
     public static void StartPrecompilerBackgroundThread(IVMConfig config, ILogger logger)
     {
-        _workerThread ??= new Thread(() =>
+        _channel ??= Channel.CreateUnbounded<CodeInfo>(new UnboundedChannelOptions
         {
-            GCSettings.LatencyMode = GCLatencyMode.Batch; // slow but GC-friendly
-
-            while (_running)
-            {
-                _workOrStopSignal.Wait(); // wait for signal
-                _workOrStopSignal.Reset(); // reset it manually
-
-                ProcessQueue(config, logger); // heavy stuff
-            }
-
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = true,
         });
-        _workerThread.IsBackground = true;
 
-        if(!_running)
+        if (_workerTask is not null && !_workerTask.IsCompleted)
         {
-            _running = true;
-            _workerThread.Start();
+            return;
         }
+
+        _workerTask = Task.Factory.StartNew(async () =>
+        {
+            int taskCount = Math.Max(1, (int)(config.IlEvmAnalysisCoreUsage * Environment.ProcessorCount));
+
+            try
+            {
+                await WorkerLoop(taskCount, config, logger);
+            }
+            catch (Exception e)
+            {
+                logger.Error($"IlAnalyzer: {e.Message}");
+            }
+        }, _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
     }
-    
-    private static void ProcessQueue(IVMConfig config, ILogger logger)
+
+    public static async Task StopPrecompilerBackgroundThread()
     {
-        if (_queue.Count < config.IlEvmAnalysisQueueMaxSize) return;
+        _channel.Writer.Complete(); // signal end of data
+        _cts.Cancel();              // in case of forced shutdown
 
-        int count = config.IlEvmAnalysisQueueMaxSize;
+        if (_workerTask is not null)
+            await _workerTask.ConfigureAwait(false);
+    }
 
-        while (count > 0 && _queue.TryDequeue(out CodeInfo worklet))
+    private static async Task WorkerLoop(int taskLimit, IVMConfig config, ILogger logger)
+    {
+        try
         {
-            Metrics.DecrementIlvmAotQueueSize();
-            ProcessCodeInfo(config, logger, worklet);
+            Task[] taskPool = new Task[taskLimit];
+            Array.Fill(taskPool, Task.CompletedTask);
+
+            await foreach (var codeInfo in _channel.Reader.ReadAllAsync(_cts.Token))
+            {
+                int index = Task.WaitAny(taskPool);
+
+                Metrics.DecrementIlvmAotQueueSize();
+                taskPool[index] = Task.Run(() => ProcessCodeInfoAsync(config, logger, codeInfo));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.Debug("ILVM background processing cancelled.");
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Unhandled exception in ILVM background worker: " + ex);
+        }
+        finally
+        {
+            logger.Debug("ILVM precompiler background worker stopped.");
         }
     }
 
-    private static void ProcessCodeInfo(IVMConfig config, ILogger logger, CodeInfo worklet)
+    private static Task ProcessCodeInfoAsync(IVMConfig config, ILogger logger, CodeInfo worklet)
     {
         worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
         try
@@ -98,14 +123,18 @@ public static class IlAnalyzer
             Analyse(worklet, config.IlEvmEnabledMode, config, logger);
             Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
         }
-        catch
+        catch(Exception e)
         {
+            logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze");
+            logger.Info($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
             Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
         }
         finally
         {
             Metrics.IncrementIlvmAotContractsProcessed();
         }
+
+        return Task.CompletedTask;
     }
 
     public static IEnumerable<(int, Instruction,  OpcodeMetadata)> EnumerateOpcodes(byte[] machineCode, Range? slice = null)
@@ -128,7 +157,7 @@ public static class IlAnalyzer
         switch (mode)
         {
             case ILMode.FULL_AOT_MODE:
-                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out IPrecompiledContract? contractDelegate))
+                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILExecutionStep? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();

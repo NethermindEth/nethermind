@@ -16,8 +16,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-public delegate bool MoveNext(
-        ref ReadOnlySpan<byte> machineCode,
+public unsafe delegate bool ILExecutionStep(
+        in byte machineCodeRef,
         ISpecProvider specProvider,
         IBlockhashProvider blockhashProvider,
         ICodeInfoRepository codeInfoProvider,
@@ -27,25 +27,6 @@ public delegate bool MoveNext(
         ref int programCounter,
         ref int stackHead,
         ref Word stackHeadRef,
-        ref ReadOnlyMemory<byte> returnDataBuffer,
         ITxTracer tracer,
         ILogger logger,
         ref ILChunkExecutionState result);
-public interface IPrecompiledContract
-{
-    bool MoveNext(
-        ref ReadOnlySpan<byte> machineCode,
-        ISpecProvider specProvider,
-        IBlockhashProvider blockhashProvider,
-        ICodeInfoRepository codeInfoProvider,
-        EvmState env,
-        IWorldState state,
-        ref long gasAvailable,
-        ref int programCounter,
-        ref int stackHead,
-        ref Word stackHeadRef,
-        ref ReadOnlyMemory<byte> returnDataBuffer,
-        ITxTracer tracer,
-        ILogger logger,
-        ref ILChunkExecutionState result);
-}
