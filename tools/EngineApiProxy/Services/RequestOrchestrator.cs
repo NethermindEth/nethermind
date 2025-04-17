@@ -36,8 +36,30 @@ namespace Nethermind.EngineApiProxy.Services
         public async Task<string> HandleFCUWithValidation(JsonRpcRequest originalRequest, string headBlockHash)
         {
             _logger.Debug($"Starting validation flow for head block: {headBlockHash}");
+            
+            // First get the payload ID
+            string payloadId = await GetPayloadID(originalRequest, headBlockHash);
+            
+            if (!string.IsNullOrEmpty(payloadId))
+            {
+                // Then perform validation if we got a valid payload ID
+                await DoValidationForFCU(payloadId);
+            }
+            
+            return payloadId;
+        }
+        
+        /// <summary>
+        /// Gets a payload ID by sending a FCU request with payload attributes
+        /// </summary>
+        /// <param name="originalRequest">The original FCU request</param>
+        /// <param name="headBlockHash">The head block hash from the FCU request</param>
+        /// <returns>The payloadId from the FCU response</returns>
+        public async Task<string> GetPayloadID(JsonRpcRequest originalRequest, string headBlockHash)
+        {
+            _logger.Debug($"Getting payload ID for head block: {headBlockHash}");
             string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
-            _logger.Debug($"Validation will use execution client at: {targetHost}");
+            _logger.Debug($"Will use execution client at: {targetHost}");
             
             try
             {
@@ -73,9 +95,6 @@ namespace Nethermind.EngineApiProxy.Services
                 
                 // 2. Generate payload attributes
                 var payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
-                
-                // Extract the parent beacon block root from the payload attributes
-                string? parentBeaconBlockRoot = payloadAttributes["parentBeaconBlockRoot"]?.ToString();
                 
                 // 3. Clone the request and add payload attributes
                 var modifiedRequest = CloneRequest(originalRequest);
@@ -131,34 +150,6 @@ namespace Nethermind.EngineApiProxy.Services
                     }
                     
                     _logger.Info($"Received payloadId: {payloadId} for head block: {headBlockHash}");
-                    
-                    // 6. Wait a short time for EL to prepare the payload
-                    // TODO: Make this configurable
-                    await Task.Delay(500);
-                    
-                    try
-                    {
-                        // 7. Get the payload using engine_getPayload
-                        // Pass the parent beacon block root from the payload attributes
-                        await GetAndProcessPayload(payloadId, parentBeaconBlockRoot);
-                    }
-                    catch (Exception ex)
-                    {
-                        // If engine_getPayloadV4 fails, log it but don't throw an exception
-                        // This allows us to gracefully handle the case where the execution client
-                        // doesn't support engine_getPayloadV4
-                        // TODO: Make pectra and pre-pectra configurable
-                        if (ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
-                            (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV4' is not supported")))
-                        {
-                            _logger.Warn($"Execution client does not support engine_getPayloadV4. Skipping payload validation for payloadId: {payloadId}");
-                        }
-                        else
-                        {
-                            _logger.Error($"Error in payload validation but continuing with FCU flow: {ex.Message}", ex);
-                        }
-                    }
-                    
                     return payloadId;
                 }
                 else
@@ -168,8 +159,46 @@ namespace Nethermind.EngineApiProxy.Services
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error in FCU validation flow: {ex.Message}", ex);
+                _logger.Error($"Error in getting payload ID: {ex.Message}", ex);
                 throw;
+            }
+        }
+        
+        /// <summary>
+        /// Performs validation for a payload ID
+        /// </summary>
+        /// <param name="payloadId">The payload ID to validate</param>
+        /// <param name="parentBeaconBlockRoot">Optional parent beacon block root</param>
+        /// <returns>True if validation succeeded</returns>
+        public async Task<bool> DoValidationForFCU(string payloadId, string? parentBeaconBlockRoot = null)
+        {
+            _logger.Debug($"Starting validation for payloadId: {payloadId}");
+            
+            try
+            {
+                // Wait a short time for EL to prepare the payload
+                // TODO: Make this configurable
+                await Task.Delay(500);
+                
+                // Get the payload and process it
+                await GetAndProcessPayload(payloadId, parentBeaconBlockRoot);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // If engine_getPayloadV4 fails, log it but don't throw an exception
+                // This allows us to gracefully handle the case where the execution client
+                // doesn't support engine_getPayloadV4
+                // TODO: Make pectra and pre-pectra configurable
+                if (ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
+                    (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV4' is not supported")))
+                {
+                    _logger.Warn($"Execution client does not support engine_getPayloadV4. Skipping payload validation for payloadId: {payloadId}");
+                    return false;
+                }
+                
+                _logger.Error($"Error in payload validation: {ex.Message}", ex);
+                return false;
             }
         }
         
@@ -257,7 +286,7 @@ namespace Nethermind.EngineApiProxy.Services
                         }
                         else
                         {
-                            _logger.Info($"Completed synthetic block validation flow for payloadId: {payloadId}");
+                            _logger.Debug($"Completed synthetic block validation flow for payloadId: {payloadId}");
                         }
                     }
                     catch (Exception ex)

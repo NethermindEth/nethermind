@@ -191,11 +191,14 @@ namespace Nethermind.EngineApiProxy.Handlers
 
         private async Task<JsonRpcResponse> ProcessMergedFCU(JsonRpcRequest request)
         {
-            _logger.Info("Processing merged FCU flow");
+            _logger.Debug("Processing merged FCU flow");
+            
+            string headBlockHashStr = string.Empty;
+            string payloadId = string.Empty;
             
             try
             {
-                string headBlockHashStr = ExtractHeadBlockHash(request);
+                headBlockHashStr = ExtractHeadBlockHash(request);
                 if (string.IsNullOrEmpty(headBlockHashStr))
                 {
                     _logger.Warn("Could not extract head block hash in merged mode, forwarding request as-is");
@@ -204,9 +207,8 @@ namespace Nethermind.EngineApiProxy.Handlers
                 
                 _logger.Info($"Starting merged validation flow for head block: {headBlockHashStr}");
                 
-                
-                // Generate payload attributes and add them to the request
-                string payloadId = await _requestOrchestrator.HandleFCUWithValidation(request, headBlockHashStr);
+                // 1. Get payload ID but don't validate yet
+                payloadId = await _requestOrchestrator.GetPayloadID(request, headBlockHashStr);
                 
                 if (string.IsNullOrEmpty(payloadId))
                 {
@@ -220,7 +222,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                     _payloadTracker.TrackPayload(headBlockHash, payloadId);
                 }
                 
-                // Create a response without payloadId to return to CL
+                // 2. Create a response without payloadId to return to CL
                 var response = new JsonRpcResponse
                 {
                     Id = request.Id,
@@ -235,6 +237,30 @@ namespace Nethermind.EngineApiProxy.Handlers
                         ["payloadId"] = null
                     }
                 };
+                
+                // // Store info for validation that will happen after response
+                // string storedPayloadId = payloadId;
+                
+                // // 3. Trigger validation AFTER returning response to CL
+                // _ = Task.Run(async () => 
+                // {
+                //     try 
+                //     {
+                //         if (!string.IsNullOrEmpty(storedPayloadId))
+                //         {
+                //             // Wait a moment to ensure response is sent
+                //             await Task.Delay(200);
+                            
+                //             _logger.Info($"Starting post-response validation for payloadId {storedPayloadId}");
+                //             bool success = await _requestOrchestrator.DoValidationForFCU(storedPayloadId);
+                //             _logger.Info($"Post-response validation for payloadId {storedPayloadId} completed: {success}");
+                //         }
+                //     }
+                //     catch (Exception ex) 
+                //     {
+                //         _logger.Error($"Error in post-response validation: {ex.Message}", ex);
+                //     }
+                // });
                 
                 return response;
             }

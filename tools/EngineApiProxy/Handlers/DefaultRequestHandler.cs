@@ -20,7 +20,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             try
             {
                 // Forward the request directly to execution client
-                return await _requestForwarder.ForwardRequestToExecutionClient(request);
+                return await _requestForwarder.ForwardRequestToExecutionClient(request, false);
             }
             catch (Exception ex)
             {

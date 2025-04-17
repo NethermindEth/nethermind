@@ -15,14 +15,21 @@ namespace Nethermind.EngineApiProxy.Utilities
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
 
-        public virtual async Task<JsonRpcResponse> ForwardRequestToExecutionClient(JsonRpcRequest request)
+        public virtual async Task<JsonRpcResponse> ForwardRequestToExecutionClient(JsonRpcRequest request, bool logResponse = true)
         {
             try
             {
                 string requestJson = JsonConvert.SerializeObject(request);
                 string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
                 _logger.Debug($"Forwarding request to EL at: {targetHost}");
-                _logger.Info($"PR -> EL|{request.Method}|{requestJson}");
+                if (logResponse)
+                {
+                    _logger.Info($"PR -> EL|{request.Method}|{requestJson}");
+                }
+                else
+                {
+                    _logger.Debug($"PR -> EL|{request.Method}|{requestJson}");
+                }
                 var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 
                 // Create a request message instead of using PostAsync directly
@@ -88,8 +95,15 @@ namespace Nethermind.EngineApiProxy.Utilities
                 var response = await _httpClient.SendAsync(requestMessage);
                 string responseBody = await response.Content.ReadAsStringAsync();
                 _logger.Debug($"Received response from EL at: {targetHost}");
-                _logger.Info($"EL -> PR|{request.Method}|{responseBody}");
-                
+                if (logResponse)
+                {
+                    _logger.Info($"EL -> PR|{request.Method}|{responseBody}");
+                }
+                else
+                {
+                    _logger.Debug($"EL -> PR|{request.Method}|{responseBody}");
+                }
+                 
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.Error($"EL returned error: {response.StatusCode}, {responseBody}");
