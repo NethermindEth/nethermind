@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 
@@ -22,6 +23,9 @@ namespace Nethermind.Abi
         public static new readonly AbiUInt UInt64 = new(64);
         public static new readonly AbiUInt UInt96 = new(96);
         public static new readonly AbiUInt UInt256 = new(256);
+
+        private static readonly byte[][] PrealocatedBytes =
+            Enumerable.Range(0, 256).Select(x => new[] { (byte)x }).ToArray();
 
         public AbiUInt(int length)
         {
@@ -102,6 +106,10 @@ namespace Nethermind.Abi
             {
                 bytes = new byte[2];
                 BinaryPrimitives.WriteUInt16BigEndian(bytes, ushortInput);
+            }
+            else if (arg is byte byteInput)
+            {
+                bytes = PrealocatedBytes[byteInput];
             }
             else if (arg is JsonElement element && element.ValueKind == JsonValueKind.Number)
             {

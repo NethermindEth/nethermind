@@ -173,7 +173,7 @@ public partial class BaseEngineModuleTests
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
-        parentBlock.TryGetBlock(out Block? block);
+        Block? block = parentBlock.TryGetBlock().Block;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -197,7 +197,7 @@ public partial class BaseEngineModuleTests
 
             blocks.Add((getPayloadResult));
             parentBlock = getPayloadResult;
-            parentBlock.TryGetBlock(out block!);
+            block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }

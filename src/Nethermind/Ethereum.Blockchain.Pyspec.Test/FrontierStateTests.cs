@@ -16,6 +16,6 @@ public class FrontierStateTests : GeneralStateTestBase
     private static IEnumerable<GeneralStateTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/state_tests/frontier");
-        return loader.LoadTests().Cast<GeneralStateTest>();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

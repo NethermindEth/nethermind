@@ -196,7 +196,6 @@ namespace Nethermind.Consensus.Processing
             if (lastTx?.To is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
             {
                 // Mev reward with in last tx
-                beneficiary = lastTx.To;
                 isMev = true;
             }
 
@@ -206,9 +205,20 @@ namespace Nethermind.Consensus.Processing
             UInt256 rewards = default;
             try
             {
-                UInt256 beforeBalance = _stateReader.GetBalance(data.BranchRoot, beneficiary);
-                UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
-                rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+                if (!isMev)
+                {
+                    rewards = CalculateBalanceChange(data.BranchRoot, block.StateRoot, beneficiary);
+                }
+                else
+                {
+                    // Sometimes the beneficiary has done their own balance changing tx
+                    // So prefer the mev reward tx value
+                    rewards = lastTx.Value;
+                    if (rewards.IsZero)
+                    {
+                        rewards = CalculateBalanceChange(data.BranchRoot, block.StateRoot, lastTx.To);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -348,7 +358,7 @@ namespace Nethermind.Consensus.Processing
                 var recoveryQueue = Metrics.RecoveryQueueSize;
                 var processingQueue = Metrics.ProcessingQueueSize;
 
-                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
+                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mb" : "   ")} {rewards.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
                 {
                     true => $" blobs {blobs,10:N0}       ",
@@ -363,6 +373,13 @@ namespace Nethermind.Consensus.Processing
                 {
                     _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
                 }
+            }
+
+            UInt256 CalculateBalanceChange(Hash256 beforeRoot, Hash256 afterRoot, Address beneficiary)
+            {
+                UInt256 beforeBalance = _stateReader.GetBalance(beforeRoot, beneficiary);
+                UInt256 afterBalance = _stateReader.GetBalance(afterRoot, beneficiary);
+                return beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
             }
         }
 
