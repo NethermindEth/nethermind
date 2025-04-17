@@ -781,7 +781,7 @@ public partial class EthRpcModule(
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
 
-    public ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
+    public virtual ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
@@ -799,7 +799,7 @@ public partial class EthRpcModule(
         return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart));
     }
 
-    public ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public virtual ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
