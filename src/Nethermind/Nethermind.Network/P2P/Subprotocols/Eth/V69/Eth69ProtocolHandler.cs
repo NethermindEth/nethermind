@@ -4,10 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -46,6 +46,13 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     public override byte ProtocolVersion => EthVersions.Eth69;
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
+
+    // TODO: allow updates?
+    public override UInt256? TotalDifficulty
+    {
+        get => null;
+        set { }
+    }
 
     public override void HandleMessage(ZeroPacket message)
     {
