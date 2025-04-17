@@ -7,6 +7,10 @@
     "Generate SSZ for Nethermind.Network.Discovery": {
       "commandName": "DebugRoslynComponent",
       "targetProject": "..\\Nethermind.Network.Discovery\\Nethermind.Network.Discovery.csproj"
+    },
+    "Generate SSZ for Nethermind.Merge.Plugin": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\Nethermind.Merge.Plugin\\Nethermind.Merge.Plugin.csproj"
     }
   }
 }

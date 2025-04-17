@@ -13,7 +13,7 @@ class SszProperty
 
         SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
 
-        SszProperty result = new SszProperty { Name = prop.Name, Type = type };
+        SszProperty result = new() { Name = prop.Name, Type = type };
 
         if (itemType is not null || prop.Type.Name == "BitArray")
         {
@@ -22,6 +22,7 @@ class SszProperty
             {
                 result.Length = vectorAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
             }
+
             var listAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszListAttribute");
             if (listAttr is not null)
             {
@@ -85,7 +86,7 @@ class SszProperty
             {
                 return Kind switch
                 {
-                    Kind.Vector => Length!.Value * Type.StaticLength,
+                    Kind.Vector => (Length ?? 1) * Type.StaticLength,
                     Kind.BitVector => (Length!.Value + 7) / 8,
                     _ => Type.StaticLength,
                 };

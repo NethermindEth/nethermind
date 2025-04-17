@@ -31,6 +31,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Ssz;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
@@ -716,7 +717,12 @@ public partial class EthRpcModule(
         try
         {
             ulong chainId = _blockchainBridge.GetChainId();
-            return ResultWrapper<ulong>.Success(chainId);
+            return ResultWrapper<ulong>.Success(chainId, (c) =>
+            {
+                byte[] bytes = new byte[8];
+                Ssz.Encode(bytes.AsSpan(), (ulong)c);
+                return bytes;
+            });
         }
         catch (Exception ex)
         {

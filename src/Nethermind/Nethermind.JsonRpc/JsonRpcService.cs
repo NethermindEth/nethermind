@@ -228,7 +228,7 @@ public class JsonRpcService : IJsonRpcService
 
         return result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
-            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
+            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction, resultWrapper.GetBytes);
     }
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
@@ -391,13 +391,14 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
+    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction, Func<object, byte[]> getBytes = null)
     {
         JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
         {
             Result = result,
             Id = id,
-            MethodName = methodName
+            MethodName = methodName,
+            GetBytes = getBytes,
         };
 
         return response;

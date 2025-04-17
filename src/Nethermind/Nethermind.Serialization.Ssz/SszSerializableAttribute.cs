@@ -15,7 +15,8 @@ public class SszListAttribute(int limit) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class SszVectorAttribute(int length) : Attribute
+public class SszVectorAttribute(int length, params int[] additonalLengths) : Attribute
 {
     public int Length { get; } = length;
+    public int[] AdditonalLengths { get; } = additonalLengths;
 }

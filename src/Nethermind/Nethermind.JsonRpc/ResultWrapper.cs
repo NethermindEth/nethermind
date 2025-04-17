@@ -16,6 +16,7 @@ namespace Nethermind.JsonRpc
         public Result Result { get; init; } = Result.Success;
         public int ErrorCode { get; init; }
         public bool IsTemporary { get; init; }
+        public Func<object, byte[]>? GetBytes { get; private set; }
 
         private ResultWrapper()
         {
@@ -39,8 +40,8 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error, T data) =>
             new() { Data = data, Result = Result.Fail(error) };
 
-        public static ResultWrapper<T> Success(T data) =>
-            new() { Data = data, Result = Result.Success };
+        public static ResultWrapper<T> Success(T data, Func<object, byte[]>? ssz = null) =>
+            new() { Data = data, GetBytes = ssz, Result = Result.Success };
 
         public static ResultWrapper<T> From(RpcResult<T>? rpcResult) =>
             rpcResult is null

@@ -7,37 +7,37 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>>
+public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<List<BlobVersionedHash>, List<BlobAndProofV2>>
 {
     private const int MaxRequest = 128;
 
-
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2>>> HandleAsync(byte[][] request)
+    public Task<ResultWrapper<List<BlobAndProofV2>>> HandleAsync(List<BlobVersionedHash> request)
     {
-        if (request.Length > MaxRequest)
+        if (request.Count > MaxRequest)
         {
             var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV2>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<List<BlobAndProofV2>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        Metrics.NumberOfRequestedBlobs += request.Length;
+        Metrics.NumberOfRequestedBlobs += request.Count;
 
         // quick fail if we don't have some blob
-        if (!txPool.AreBlobsAvailable(request))
+        if (!txPool.AreBlobsAvailable(request.Select(x => (byte[])x).ToArray()))
         {
             return ReturnEmptyArray();
         }
 
-        using ArrayPoolList<BlobAndProofV2> response = new(request.Length);
+        using ArrayPoolList<BlobAndProofV2> response = new(request.Count);
         foreach (byte[] requestedBlobVersionedHash in request)
         {
             if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
             {
-                response.Add(new BlobAndProofV2(blob, cellProofs));
+                response.Add(new BlobAndProofV2(blob, cellProofs.Select(p => (Proof)p).ToArray()));
             }
             else
             {
@@ -46,14 +46,15 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             }
         }
 
-        Metrics.NumberOfSentBlobs += request.Length;
+        Metrics.NumberOfSentBlobs += request.Count;
         Metrics.NumberOfGetBlobsSuccesses++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response.ToList());
+        // (List<BlobVersionedHash>)r)
+        return ResultWrapper<List<BlobAndProofV2>>.Success(response.ToList(), (r) => SszEncoding.Encode((List<BlobAndProofV2>)r));
     }
 
-    private ResultWrapper<IEnumerable<BlobAndProofV2>> ReturnEmptyArray()
+    private ResultWrapper<List<BlobAndProofV2>> ReturnEmptyArray()
     {
         Metrics.NumberOfGetBlobsFailures++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success([]);
+        return ResultWrapper<List<BlobAndProofV2>>.Success([]);
     }
 }
