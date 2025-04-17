@@ -66,7 +66,6 @@ namespace Nethermind.Network
         [KeyIsLabel("message_type")]
         public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesReceived { get; } = new();
 
-
         [GaugeMetric]
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current number of peers connected.")]
