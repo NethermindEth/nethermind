@@ -77,13 +77,15 @@ public static class IlAnalyzer
 
     }
 
-    public static async Task StopPrecompilerBackgroundThread()
+    public static async Task StopPrecompilerBackgroundThread(IVMConfig vMConfig)
     {
         _channel.Writer.Complete(); // signal end of data
         _cts.Cancel();              // in case of forced shutdown
 
         if (_workerTask is not null)
             await _workerTask.ConfigureAwait(false);
+
+        Precompiler.FlushToDisk(vMConfig!);
     }
 
     private static async Task WorkerLoop(int taskLimit, IVMConfig config, ILogger logger)
@@ -101,17 +103,13 @@ public static class IlAnalyzer
                 taskPool[index] = Task.Run(() => ProcessCodeInfoAsync(config, logger, codeInfo));
             }
         }
-        catch (OperationCanceledException)
-        {
-            logger.Debug("ILVM background processing cancelled.");
-        }
         catch (Exception ex)
         {
             logger.Error("Unhandled exception in ILVM background worker: " + ex);
         }
         finally
         {
-            logger.Debug("ILVM precompiler background worker stopped.");
+            logger.Info("ILVM precompiler background worker stopped.");
         }
     }
 
@@ -125,8 +123,7 @@ public static class IlAnalyzer
         }
         catch(Exception e)
         {
-            logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze");
-            logger.Info($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
+            logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
             Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
         }
         finally
@@ -178,7 +175,7 @@ public static class IlAnalyzer
     internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig);
+        var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"));
         Metrics.DecrementIlvmCurrentlyCompiling();
 
         AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);

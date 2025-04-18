@@ -32,6 +32,8 @@ using System.Xml.Linq;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using static Org.BouncyCastle.Math.EC.ECCurve;
 using Label = Sigil.Label;
+using Microsoft.Extensions.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -80,7 +82,8 @@ public static class Precompiler
         string contractName,
         CodeInfo codeInfo,
         ContractCompilerMetadata metadata,
-        IVMConfig config)
+        IVMConfig config,
+        ILogger logger)
     {
         string assemblyName = Guid.NewGuid().ToByteArray().ToHexString();
 
@@ -106,7 +109,19 @@ public static class Precompiler
 
             if (Interlocked.CompareExchange(ref _currentBundleSize, 0, config.IlEvmContractsPerDllCount) == config.IlEvmContractsPerDllCount)
             {
-                FlushToDisk(config);
+
+                try
+                {
+                    FlushToDisk(config);
+                }
+                catch (Exception e)
+                {
+                    logger.Error("Failed to save assembly " + e);
+                }
+                finally
+                {
+                    Metrics.IncrementIlvmAotDllSaved();
+                }
             }
         }
         return result!;

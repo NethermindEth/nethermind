@@ -86,7 +86,7 @@ namespace Nethermind.Init.Steps
                 IlEvmContractsPerDllCount = 16,
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmPersistPrecompiledContractsOnDisk = true,
-                IlEvmPrecompiledContractsPath = "E:\\ILVM\\database\\contractsIL",
+                IlEvmPrecompiledContractsPath = Path.Combine(Directory.GetCurrentDirectory(), "AotCache"),
                 IsIlEvmAggressiveModeEnabled = true,
                 IsILEvmEnabled = true,
                 IlEvmAnalysisCoreUsage = 0.5f
@@ -307,7 +307,7 @@ namespace Nethermind.Init.Steps
             if (vMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
 
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(vMConfig!);
+            AppDomain.CurrentDomain.ProcessExit += async (_, _) => await IlAnalyzer.StopPrecompilerBackgroundThread(vMConfig!);
 
         }
 
