@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +40,7 @@ namespace Nethermind.State
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
-        private IWriteBatch? _codeBatch;
+        private Dictionary<ValueHash256, byte[]> _codeBatch;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
@@ -148,20 +149,16 @@ namespace Nethermind.State
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
-                _codeBatch ??= _codeDb.StartWriteBatch();
-                if (!_codeDb.PreferWriteByArray)
-                {
-                    _codeBatch.PutSpan(codeHash.Bytes, code.Span);
-                }
-                else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                _codeBatch ??= new();
+                if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0
                         && codeArray.Count == code.Length)
                 {
-                    _codeBatch[codeHash.Bytes] = codeArray.Array;
+                    _codeBatch[codeHash] = codeArray.Array;
                 }
                 else
                 {
-                    _codeBatch[codeHash.Bytes] = code.ToArray();
+                    _codeBatch[codeHash] = code.ToArray();
                 }
 
                 _codeInsertFilter.Set(codeHash);
@@ -293,14 +290,20 @@ namespace Nethermind.State
         }
 
         public byte[] GetCode(Hash256 codeHash)
-        {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];
-            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-        }
+            => GetCodeCore(in codeHash.ValueHash256);
 
         public byte[] GetCode(ValueHash256 codeHash)
+            => GetCodeCore(in codeHash);
+
+        private byte[] GetCodeCore(in ValueHash256 codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : _codeDb[codeHash.Bytes];
+            if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return [];
+
+            if (!(_codeBatch?.TryGetValue(codeHash, out byte[]? code) ?? false))
+            {
+                code = _codeDb[codeHash.Bytes];
+            }
+
             return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
@@ -438,8 +441,20 @@ namespace Nethermind.State
                 ? Task.CompletedTask
                 : Task.Run(() =>
                 {
-                    IWriteBatch batch = Interlocked.Exchange(ref _codeBatch, null);
-                    batch?.Dispose();
+                    if (_codeBatch is null || _codeBatch.Count == 0) return;
+                    Dictionary<ValueHash256, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
+
+                    using (var batch = _codeDb.StartWriteBatch())
+                    {
+                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        {
+                            batch.PutSpan(kvp.Key.Bytes, kvp.Value);
+                        }
+                    }
+
+                    // Reuse Dictionary if not already re-initialized
+                    dict.Clear();
+                    Interlocked.CompareExchange(ref _codeBatch, dict, null);
                 });
 
             var currentPosition = _changes.Count - 1;
@@ -646,17 +661,16 @@ namespace Nethermind.State
 
                 if (beforeCodeHash != afterCodeHash)
                 {
-                    // TODO: This might break with write batch, do we need to make it also in-memory?
                     byte[]? beforeCode = beforeCodeHash is null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : _codeDb[beforeCodeHash.Bytes];
+                            : GetCodeCore(in beforeCodeHash.ValueHash256);
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : _codeDb[afterCodeHash.Bytes];
+                            : GetCodeCore(in afterCodeHash.ValueHash256);
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {
