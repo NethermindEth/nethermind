@@ -464,5 +464,7 @@ namespace Nethermind.Core.Specs
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }
+
+        public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
     }
 }

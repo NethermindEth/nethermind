@@ -138,7 +138,7 @@ internal class BlobSender
                     }
                 }
 
-                IBlobProofsManager proofs = IBlobProofsManager.For(spec.GetBlobProofVersion());
+                IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);
 
                 ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
                 proofs.ComputeProofsAndCommitments(blobsContainer);
@@ -241,7 +241,7 @@ internal class BlobSender
             Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
         }
 
-        IBlobProofsManager proofs = IBlobProofsManager.For(spec.GetBlobProofVersion());
+        IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);
 
         ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
         proofs.ComputeProofsAndCommitments(blobsContainer);

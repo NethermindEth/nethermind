@@ -156,9 +156,9 @@ namespace Nethermind.Consensus.Producers
                 }
 
                 ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
-                if (spec.GetBlobProofVersion() != proofVersion)
+                if (spec.BlobProofVersion != proofVersion)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.GetBlobProofVersion()} is wanted, but tx's proof version is {proofVersion}.");
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
                     continue;
                 }
 

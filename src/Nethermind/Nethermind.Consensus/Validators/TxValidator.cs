@@ -240,7 +240,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 
         static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec releaseSpec)
         {
-            if (wrapper.Version != releaseSpec.GetBlobProofVersion())
+            if (wrapper.Version != releaseSpec.BlobProofVersion)
             {
                 return TxErrorMessages.InvalidProofVersion;
             }

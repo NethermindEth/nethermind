@@ -177,7 +177,7 @@ namespace Nethermind.Core.Test.Builders
 
             if (isMempoolTx)
             {
-                IBlobProofsManager proofsManager = IBlobProofsManager.For(spec?.GetBlobProofVersion() ?? ProofVersion.V0);
+                IBlobProofsManager proofsManager = IBlobProofsManager.For(spec?.BlobProofVersion ?? ProofVersion.V0);
 
                 ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([.. Enumerable.Range(1, blobCount).Select(i =>
                 {

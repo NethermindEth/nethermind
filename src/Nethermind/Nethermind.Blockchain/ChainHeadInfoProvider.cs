@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain
                 BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
-            CurrentProofVersion = spec.GetBlobProofVersion();
+            CurrentProofVersion = spec.BlobProofVersion;
             HeadChanged?.Invoke(sender, e);
         }
     }

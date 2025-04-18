@@ -87,15 +87,5 @@ namespace Nethermind.Core
         {
             return tx.BlobVersionedHashes?.Length ?? 0;
         }
-
-        public static int GetProofsCount(this Transaction tx)
-        {
-            return (tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Proofs.Length ?? 0;
-        }
-
-        public static ProofVersion GetProofVersion(this Transaction tx)
-        {
-            return (tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? 0;
-        }
     }
 }
