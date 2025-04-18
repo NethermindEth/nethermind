@@ -589,8 +589,6 @@ namespace Nethermind.State
 
             if (isTracing)
             {
-                // Make sure code changes are complete
-                codeFlushTask.GetAwaiter().GetResult();
                 ReportChanges(stateTracer, trace);
             }
 
