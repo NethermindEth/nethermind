@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using System.Linq;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -247,9 +246,10 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 
             IBlobProofsManager proofsManager = IBlobProofsManager.For(wrapper.Version);
 
-            return proofsManager.ValidateLengths(wrapper) && proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) && proofsManager.ValidateProofs(wrapper)
-                ? ValidationResult.Success
-                : TxErrorMessages.InvalidBlobData;
+            return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+                   !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                   !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
+                   ValidationResult.Success;
         }
     }
 }

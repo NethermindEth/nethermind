@@ -321,7 +321,7 @@ internal class BlobSender
             Type = TxType.Blob,
             ChainId = chainId,
             Nonce = nonce,
-            GasLimit = GasCostOf.Transaction * 10,
+            GasLimit = GasCostOf.Transaction,
             GasPrice = maxPriorityFeePerGas,
             DecodedMaxFeePerGas = gasPrice,
             MaxFeePerBlobGas = maxFeePerBlobGas,
@@ -337,7 +337,6 @@ internal class BlobSender
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
         string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-
 
         Console.WriteLine("Sending tx result:" + result);
         Console.WriteLine("Blob hashes:" + string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"0x{Hex.ToHexString(bvh)}")));

@@ -37,6 +37,7 @@ public static class TxErrorMessages
     public const string NotAllowedCreateTransaction =
         "NotAllowedCreateTransaction: To must be set.";
 
+
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
 
@@ -58,14 +59,19 @@ public static class TxErrorMessages
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
 
-    public static readonly string ExceededBlobSize =
-        $"ExceededBlobSize: Cannot be more than {Ckzg.Ckzg.BytesPerBlob}.";
+    public static readonly string InvalidBlobDataSize =
+        $"InvalidBlobDataSize: Blob data fields are of incorrect size.";
 
-    public static readonly string ExceededBlobCommitmentSize =
-        $"ExceededBlobCommitmentSize: Cannot be more than {Ckzg.Ckzg.BytesPerCommitment}.";
+    public const string InvalidBlobHashes =
+        "InvalidBlobProof: Hashes do not match the blobs.";
 
-    public static readonly string InvalidBlobProofSize =
-        $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
+    public const string InvalidBlobProofs =
+        "InvalidBlobProof: Proofs do not match the blobs.";
+
+    public const string InvalidProofVersion
+        = "InvalidTxProofVersion: Version of network wrapper is not supported.";
+
+
 
     public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
 
@@ -75,15 +81,6 @@ public static class TxErrorMessages
 
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
-
-    public const string InvalidBlobProof =
-        "InvalidBlobProof: Proof does not match.";
-
-    public const string InvalidBlobData
-        = "InvalidTxBlobData: Number of blobs, hashes, commitments and proofs must match.";
-
-    public const string InvalidProofVersion
-        = "InvalidTxProofVersion: Version of network wrapper is not supported.";
 
     public const string InvalidCreateTxData
         = "InvalidCreateTxData: Legacy createTx cannot create Eof code";

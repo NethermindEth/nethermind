@@ -1189,11 +1189,6 @@ namespace Nethermind.Serialization.Rlp
                 return Data[Position] == 192;
             }
 
-            public readonly bool IsNextItem()
-            {
-                return Data[Position] == 192;
-            }
-
             public int DecodeInt()
             {
                 int prefix = ReadByte();
