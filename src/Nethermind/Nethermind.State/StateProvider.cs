@@ -437,25 +437,9 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
-            Task codeFlushTask = !commitRoots
+            Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
                 ? Task.CompletedTask
-                : Task.Run(() =>
-                {
-                    if (_codeBatch is null || _codeBatch.Count == 0) return;
-                    Dictionary<ValueHash256, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
-
-                    using (var batch = _codeDb.StartWriteBatch())
-                    {
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
-                        {
-                            batch.PutSpan(kvp.Key.Bytes, kvp.Value);
-                        }
-                    }
-
-                    // Reuse Dictionary if not already re-initialized
-                    dict.Clear();
-                    Interlocked.CompareExchange(ref _codeBatch, dict, null);
-                });
+                : CommitCodeAsync();
 
             var currentPosition = _changes.Count - 1;
             if (currentPosition < 0)
@@ -614,6 +598,28 @@ namespace Nethermind.State
             }
 
             codeFlushTask.GetAwaiter().GetResult();
+
+            Task CommitCodeAsync()
+            {
+                Dictionary<ValueHash256, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
+                if (dict is null) return Task.CompletedTask;
+
+                return Task.Run(() =>
+                {
+                    using (var batch = _codeDb.StartWriteBatch())
+                    {
+                        // Insert ordered for improved performance
+                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        {
+                            batch.PutSpan(kvp.Key.Bytes, kvp.Value);
+                        }
+                    }
+
+                    // Reuse Dictionary if not already re-initialized
+                    dict.Clear();
+                    Interlocked.CompareExchange(ref _codeBatch, dict, null);
+                });
+            }
         }
 
         private void FlushToTree()
