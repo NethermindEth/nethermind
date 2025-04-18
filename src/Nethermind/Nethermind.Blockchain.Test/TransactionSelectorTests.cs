@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Test
                     tx.Type = TxType.Blob;
                     tx.BlobVersionedHashes = new byte[1][];
                     tx.MaxFeePerBlobGas = 1;
-                    tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V1);
+                    tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
                     new byte[maxTransactionsSelected.ReleaseSpec.MaxBlobCount - 1][];
@@ -180,12 +180,12 @@ namespace Nethermind.Blockchain.Test
                     new byte[enoughTransactionsSelected.ReleaseSpec.MaxBlobCount][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[0].NetworkWrapper =
-                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V1);
+                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
                 expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].NetworkWrapper =
-                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V1);
+                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     expectedSelectedTransactions.Where(static (_, index) => index != 1));
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(

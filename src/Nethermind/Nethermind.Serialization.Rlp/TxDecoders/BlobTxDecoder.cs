@@ -148,7 +148,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         if (startingRlp.Length is 1)
         {
             version = (ProofVersion)rlpStream.ReadByte();
-            if (version != ProofVersion.V1)
+            if (version > ProofVersion.V1)
             {
                 throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected {0x01} and is {version}");
             }
