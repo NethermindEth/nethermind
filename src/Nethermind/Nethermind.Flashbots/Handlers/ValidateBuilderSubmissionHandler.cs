@@ -221,7 +221,7 @@ public class ValidateSubmissionHandler
         using var scope = _processingScope;
         IWorldState worldState = _processingScope.WorldState;
         Hash256 stateRoot = parentHeader.StateRoot!;
-        worldState.StateRoot = stateRoot;
+        using var __ = worldState.BeginScope(stateRoot);
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
         RecoverSenderAddress(block, spec);

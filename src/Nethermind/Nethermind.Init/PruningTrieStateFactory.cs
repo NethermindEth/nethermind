@@ -170,10 +170,10 @@ public class PruningTrieStateFactory(
                 populatePreBlockCache: false);
 
         // Init state if we need system calls before actual processing starts
-        worldState.StateRoot = blockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-        if (blockTree!.Head?.StateRoot is not null)
+        // TODO: do we actually need to set state here, can we just remove this head state dependency everywhere?
+        using (worldState.BeginScope())
         {
-            worldState.StateRoot = blockTree.Head.StateRoot;
+            worldState.StateRoot = blockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
         }
 
         IWorldStateManager stateManager = new WorldStateManager(

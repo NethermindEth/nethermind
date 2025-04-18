@@ -35,17 +35,20 @@ public class StateProviderTests
         var codeDb = new MemDb();
         var trieStore = new TrieStore(new MemDb(), Logger);
         WorldState frontierProvider = new(trieStore, codeDb, Logger);
-        using var _ = frontierProvider.BeginScope();
-        frontierProvider.CreateAccount(_address1, 0);
-        frontierProvider.Commit(Frontier.Instance);
-        frontierProvider.CommitTree(0);
+        using(frontierProvider.BeginScope())
+        {
+            frontierProvider.CreateAccount(_address1, 0);
+            frontierProvider.Commit(Frontier.Instance);
+            frontierProvider.CommitTree(0);
+        }
 
         WorldState provider = new(trieStore, codeDb, Logger);
-        using var __ = provider.BeginScope(frontierProvider.StateRoot);
-
-        provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
-        provider.Commit(SpuriousDragon.Instance);
-        Assert.That(provider.AccountExists(_address1), Is.False);
+        using (provider.BeginScope(frontierProvider.StateRoot))
+        {
+            provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
+            provider.Commit(SpuriousDragon.Instance);
+            Assert.That(provider.AccountExists(_address1), Is.False);
+        }
     }
 
     [Test]

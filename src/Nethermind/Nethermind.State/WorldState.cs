@@ -35,12 +35,10 @@ namespace Nethermind.State
 
         public Hash256 StateRoot
         {
-            get
-            {
-                return _stateProvider.StateRoot;
-            }
+            get => _stateProvider.StateRoot;
             set
             {
+                EnsureInScope();
                 _stateProvider.StateRoot = value;
                 _persistentStorageProvider.StateRoot = value;
             }
@@ -365,12 +363,13 @@ namespace Nethermind.State
         {
             if (_inScope)
                 return new NullScopeGuard();
+
             // if (_inScope)
             //     throw new InvalidOperationException("WorldState is already in scope");
 
-            StateRoot = stateRoot;
             _inScope = true;
             Reset();
+            StateRoot = stateRoot;
             return new ScopeGuard(this);
         }
 
@@ -378,6 +377,9 @@ namespace Nethermind.State
         {
             if (_inScope)
                 return new NullScopeGuard();
+
+            // if (_inScope)
+            //     throw new InvalidOperationException("WorldState is already in scope");
 
             _inScope = true;
             Reset();

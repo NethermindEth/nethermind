@@ -192,7 +192,11 @@ namespace Nethermind.Consensus.Producers
         {
             if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
             {
-                StateProvider.StateRoot = parentStateRoot;
+                // TODO: do we need this here?
+                using (StateProvider.BeginScope())
+                {
+                    StateProvider.StateRoot = parentStateRoot;
+                }
                 return true;
             }
 
