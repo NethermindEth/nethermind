@@ -69,6 +69,6 @@ public class OptimismReadOnlyChainProcessingEnv(
             logManager,
             opSpecHelper,
             contractRewriter,
-            withdrawalProcessor);
+            withdrawalProcessor: withdrawalProcessor);
     }
 }

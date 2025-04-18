@@ -72,6 +72,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
         return new OptimismBlockProcessor(
             api.SpecProvider,
+            api.SpecHelper,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),

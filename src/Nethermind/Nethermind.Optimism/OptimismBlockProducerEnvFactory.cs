@@ -93,6 +93,6 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
-            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
+            withdrawalProcessor: new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
 }

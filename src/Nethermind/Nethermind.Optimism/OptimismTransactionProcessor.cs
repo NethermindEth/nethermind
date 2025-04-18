@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using CommunityToolkit.HighPerformance;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -149,6 +151,18 @@ public class OptimismTransactionProcessor(
                 WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
             }
 
+            if (opSpecHelper.IsIsthmus(header))
+            {
+                Op
+                //L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
+
+                // Operator Fee refunds are only applied if Isthmus is active and the transaction is *not* a deposit.
+                //     st.refundIsthmusOperatorCost()
+                //
+                //     operatorFeeCost := st.evm.Context.OperatorCostFunc(st.gasUsed(), st.evm.Context.Time)
+                //     st.state.AddBalance(params.OptimismOperatorFeeRecipient, operatorFeeCost, tracing.BalanceIncreaseRewardTransactionFee)
+            }
+
             // if rules.IsOptimismIsthmus {
             //     // Operator Fee refunds are only applied if Isthmus is active and the transaction is *not* a deposit.
             //     st.refundIsthmusOperatorCost()
@@ -186,4 +200,8 @@ public class OptimismTransactionProcessor(
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
     }
+
+    private static readonly ConditionalWeakTable<BlockHeader, Box<L1BlockGasInfo>> L1BlockGasInfo = new();
+
+    public static void Register(BlockHeader header, L1BlockGasInfo gasInfo) => L1BlockGasInfo.AddOrUpdate(header, gasInfo);
 }
