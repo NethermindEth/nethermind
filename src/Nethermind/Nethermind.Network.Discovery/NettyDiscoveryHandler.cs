@@ -9,6 +9,7 @@ using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
@@ -107,6 +108,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
+        Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
 
     private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
@@ -259,6 +261,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", msg.MsgType.ToString(), size);
         }
+        Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
     }
 
     public event EventHandler? OnChannelActivated;
