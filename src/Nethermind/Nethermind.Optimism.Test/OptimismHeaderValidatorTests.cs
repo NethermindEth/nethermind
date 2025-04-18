@@ -136,7 +136,6 @@ public class OptimismHeaderValidatorTests
         yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, null, true).SetName("Pre Canyon");
         yield return new TestCaseData(Spec.CanyonTimestamp, Keccak.OfAnEmptySequenceRlp, null, true).SetName(
             "Post Canyon");
-        yield return new TestCaseData(Spec.CanyonTimestamp, null, null, false).SetName("Post Canyon - invalid");
         yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash,
             OptimismPostMergeBlockProducer.PostIsthmusRequestHash, true).SetName("Post Isthmus");
         yield return new TestCaseData(Spec.IsthmusTimeStamp, null, OptimismPostMergeBlockProducer.PostIsthmusRequestHash,

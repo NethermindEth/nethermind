@@ -69,14 +69,6 @@ public class OptimismHeaderValidator(
         {
             if (header.RequestsHash != OptimismPostMergeBlockProducer.PostIsthmusRequestHash)
             {
-                error = ErrorMessages.RequestHashShouldBeNull;
-                return false;
-            }
-        }
-        else
-        {
-            if (header.RequestsHash is not null)
-            {
                 error = ErrorMessages.RequestHashShouldBeOfShaOfEmpty;
                 return false;
             }

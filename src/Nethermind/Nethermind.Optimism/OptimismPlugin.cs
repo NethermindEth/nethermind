@@ -319,12 +319,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
+            // Validators
+            .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
             ;
-
-        if (chainSpec.ChainId == 11155420 || chainSpec.ChainId == 10)
-        {
-            builder.AddSingleton<IHeaderValidator, OptimismHeaderValidator>();
-        }
     }
 }

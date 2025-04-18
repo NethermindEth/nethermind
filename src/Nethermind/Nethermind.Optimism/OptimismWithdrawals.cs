@@ -15,8 +15,6 @@ namespace Nethermind.Optimism;
 /// </summary>
 public static class OptimismWithdrawals
 {
-    private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
-
     private static class ErrorMessages
     {
         public const string MissingWithdrawalsRoot = $"{nameof(BlockHeader.WithdrawalsRoot)} is missing";
@@ -24,7 +22,6 @@ public static class OptimismWithdrawals
         public const string WithdrawalsRootShouldBeOfEmptyString =
             $"{nameof(BlockHeader.WithdrawalsRoot)} should be keccak256(rlp(empty_string_code))";
 
-        public const string WithdrawalsRootShouldBeNull = $"{nameof(BlockHeader.WithdrawalsRoot)} should be null";
     }
 
     public static bool Validate(IOptimismSpecHelper specHelper, BlockHeader header, out string? error)
@@ -39,33 +36,6 @@ public static class OptimismWithdrawals
             }
 
             // The withdrawals root should be checked only after the state transition. This can't be done before.
-            error = null;
-            return true;
-        }
-
-        if (specHelper.IsCanyon(header))
-        {
-            if (header.WithdrawalsRoot == null)
-            {
-                error = ErrorMessages.MissingWithdrawalsRoot;
-                return false;
-            }
-
-            if (header.WithdrawalsRoot != PostCanyonWithdrawalsRoot)
-            {
-                error = ErrorMessages.WithdrawalsRootShouldBeOfEmptyString;
-                return false;
-            }
-
-            error = null;
-            return true;
-        }
-
-        // prior Canyon
-        if (header.WithdrawalsRoot != null)
-        {
-            error = ErrorMessages.WithdrawalsRootShouldBeNull;
-            return false;
         }
 
         error = null;
@@ -93,9 +63,6 @@ public static class OptimismWithdrawals
         {
             var header = block.Header;
 
-            if (header.WithdrawalsRoot != null)
-                return;
-
             if (_specHelper.IsIsthmus(header))
             {
                 if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
@@ -109,10 +76,6 @@ public static class OptimismWithdrawals
                 {
                     header.WithdrawalsRoot = Keccak.EmptyTreeHash;
                 }
-            }
-            else if (_specHelper.IsCanyon(header))
-            {
-                header.WithdrawalsRoot = PostCanyonWithdrawalsRoot;
             }
         }
     }
