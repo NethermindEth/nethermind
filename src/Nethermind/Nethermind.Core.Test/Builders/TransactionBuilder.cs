@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -178,7 +177,7 @@ namespace Nethermind.Core.Test.Builders
 
             if (isMempoolTx)
             {
-                IBlobProofsManager proofsManager = IBlobProofsManager.For(spec?.GetBlobProofVersion() ?? ProofVersion.V1);
+                IBlobProofsManager proofsManager = IBlobProofsManager.For(spec?.GetBlobProofVersion() ?? ProofVersion.V0);
 
                 ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([.. Enumerable.Range(1, blobCount).Select(i =>
                 {
