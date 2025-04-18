@@ -888,7 +888,7 @@ namespace Nethermind.State
             if (resetBlockChanges)
             {
                 _blockChanges.Clear();
-                _codeBatch = null;
+                _codeBatch.Clear();
             }
             _intraTxCache.Clear();
             _committedThisRound.Clear();
