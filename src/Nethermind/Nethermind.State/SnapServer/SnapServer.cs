@@ -251,6 +251,7 @@ public class SnapServer : ISnapServer
 
             if (pathWithStorageCollector.Slots.Count == 0)
             {
+                responseNodes.Add(ArrayPoolList<PathWithStorageSlot>.Empty());
                 break;
             }
 
