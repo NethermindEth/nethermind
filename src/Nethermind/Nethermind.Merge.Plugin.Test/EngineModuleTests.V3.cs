@@ -139,8 +139,10 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
-        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
+        ShardBlobNetworkWrapper wrapper = new(
+            getPayloadResultBlobsBundle.Blobs.SelectMany(x => x).ToArray(),
+            getPayloadResultBlobsBundle.Commitments.SelectMany(x => x).ToArray(),
+            getPayloadResultBlobsBundle.Proofs.SelectMany(x => x).ToArray(), ProofVersion.V1);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
 
@@ -640,7 +642,7 @@ public partial class EngineModuleTests
             bool addActualHash = i % 10 == 0;
 
             blobsAndProofs.Add(addActualHash && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.Proofs[actualIndex])
+                ? new BlobAndProofV1(wrapper.BlobAt(actualIndex).ToArray(), wrapper.ProofsAt(actualIndex).ToArray())
                 : null);
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }

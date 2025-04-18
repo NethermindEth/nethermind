@@ -348,12 +348,24 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions
     /// </summary>
-    public class ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
+    public class ShardBlobNetworkWrapper(byte[] flatBlobs, byte[] flatCommitments, byte[] flatProofs, ProofVersion version)
     {
         public ProofVersion Version { get; set; } = version;
-        public byte[][] Commitments { get; set; } = commitments;
-        public byte[][] Blobs { get; set; } = blobs;
-        public byte[][] Proofs { get; set; } = proofs;
+
+        public int Count => Blobs.Length / Ckzg.Ckzg.BytesPerBlob;
+
+        public byte[] Blobs { get; set; } = flatBlobs;
+        public byte[] Commitments { get; set; } = flatCommitments;
+        public byte[] Proofs { get; set; } = flatProofs;
+
+        public Memory<byte> BlobAt(int i) => Blobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
+        public Memory<byte> CommitmentAt(int i) => Commitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
+        public Memory<byte> ProofsAt(int i) => Version switch
+        {
+            ProofVersion.V0 => Proofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof),
+            ProofVersion.V1 => Proofs.Slice(i * Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob),
+            _ => throw new Exception($"Unknown version of {nameof(ShardBlobNetworkWrapper)}.")
+        };
     }
 
     public enum ProofVersion : byte

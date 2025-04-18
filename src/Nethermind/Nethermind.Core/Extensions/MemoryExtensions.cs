@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Extensions;
@@ -44,5 +45,18 @@ public static class MemoryExtensions
     public static void Clear<T>(this ref Memory<T> memory)
     {
         memory.Span.Clear();
+    }
+
+    public static IEnumerable<Memory<TSource>> Chunk<TSource>(this Memory<TSource> source, int size)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
+
+        int index = 0;
+        while (index < source.Length)
+        {
+            Memory<TSource> chunk = source.Slice(index, size);
+            index += chunk.Length;
+            yield return chunk;
+        }
     }
 }
