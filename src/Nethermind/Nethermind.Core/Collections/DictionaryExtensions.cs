@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections;
 
 public static class DictionaryExtensions
 {
-    public static void Increment<TKey>(this IDictionary<TKey, int> dictionary, TKey key)
+    public static void Increment<TKey>(this Dictionary<TKey, int> dictionary, TKey key) where TKey : notnull
     {
-        if (!dictionary.TryAdd(key, 1)) dictionary[key]++;
+        ref int res = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, key, out bool _);
+        res++;
     }
 }
