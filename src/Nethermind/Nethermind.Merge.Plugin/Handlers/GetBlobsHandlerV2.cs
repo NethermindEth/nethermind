@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
@@ -35,9 +37,9 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
         using ArrayPoolList<BlobAndProofV2> response = new(request.Length);
         foreach (byte[] requestedBlobVersionedHash in request)
         {
-            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
+            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out Memory<byte> blob, out Memory<byte> cellProofs))
             {
-                response.Add(new BlobAndProofV2(blob, cellProofs));
+                response.Add(new BlobAndProofV2(blob, [.. cellProofs.Chunk(Ckzg.Ckzg.CellsPerExtBlob)]));
             }
             else
             {

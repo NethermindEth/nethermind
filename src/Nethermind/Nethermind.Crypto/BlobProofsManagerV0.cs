@@ -13,12 +13,11 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
     {
-        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobs.Length][], new byte[blobs.Length][], ProofVersion.V0);
+        ShardBlobNetworkWrapper result = new(new byte[blobs.Length * Ckzg.Ckzg.BytesPerBlob], new byte[blobs.Length * Ckzg.Ckzg.BytesPerCommitment], new byte[blobs.Length * Ckzg.Ckzg.BytesPerProof], ProofVersion.V0);
 
-        for (int i = 0; i < blobs.Length; i++)
+        for (var i = 0; i < blobs.Length; i++)
         {
-            result.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-            result.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+            blobs[i].CopyTo(result.BlobAt(i));
         }
 
         return result;
@@ -28,24 +27,16 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
     {
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            Ckzg.Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
-            Ckzg.Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.Ckzg.BlobToKzgCommitment(wrapper.CommitmentAt(i).Span, wrapper.BlobAt(i).Span, KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.Ckzg.ComputeBlobKzgProof(wrapper.ProofsAt(i).Span, wrapper.BlobAt(i).Span, wrapper.CommitmentAt(i).Span, KzgPolynomialCommitments.CkzgSetup);
         }
     }
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
     {
-        if (wrapper.Blobs.Length != wrapper.Commitments.Length || wrapper.Blobs.Length != wrapper.Proofs.Length)
+        if (wrapper.Blobs.Length != wrapper.Count * Ckzg.Ckzg.BytesPerBlob || wrapper.Proofs.Length != wrapper.Count * Ckzg.Ckzg.BytesPerProof || wrapper.Commitments.Length != wrapper.Count * Ckzg.Ckzg.BytesPerCommitment)
         {
             return false;
-        }
-
-        for (int i = 0; i < wrapper.Blobs.Length; i++)
-        {
-            if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment || wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
-            {
-                return false;
-            }
         }
 
         return true;
@@ -53,50 +44,13 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
-        if (wrapper.Blobs.Length is 1 && wrapper.Commitments.Length is 1 && wrapper.Proofs.Length is 1)
-        {
-            try
-            {
-                return Ckzg.Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs[0], KzgPolynomialCommitments.CkzgSetup);
-            }
-            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-            {
-                return false;
-            }
-        }
-
-        int length = wrapper.Blobs.Length * Ckzg.Ckzg.BytesPerBlob;
-        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
-
-        length = wrapper.Blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
-        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
-
-        length = wrapper.Blobs.Length * Ckzg.Ckzg.BytesPerProof;
-        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatProofs = new(flatProofsArray, 0, length);
-
-        for (int i = 0; i < wrapper.Blobs.Length; i++)
-        {
-            wrapper.Blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
-            wrapper.Commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-            wrapper.Proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
-        }
-
         try
         {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, wrapper.Blobs.Length, KzgPolynomialCommitments.CkzgSetup);
+            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs, wrapper.Count, KzgPolynomialCommitments.CkzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
             return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(flatBlobsArray);
-            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
-            ArrayPool<byte>.Shared.Return(flatProofsArray);
         }
     }
 }

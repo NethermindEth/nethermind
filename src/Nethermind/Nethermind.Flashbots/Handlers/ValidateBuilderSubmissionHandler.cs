@@ -190,10 +190,13 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, ProofVersion.V1)))
+        for (int i = 0; i < blobsBundle.Blobs.Count(); i++)
         {
-            error = "Invalid KZG proofs";
-            return false;
+            if (!IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs[i], blobsBundle.Commitments[i], blobsBundle.Proofs[i], ProofVersion.V0)))
+            {
+                error = "Invalid KZG proofs";
+                return false;
+            }
         }
 
         error = null;

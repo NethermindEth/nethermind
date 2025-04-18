@@ -113,9 +113,20 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                 rlpStream.Encode((byte)networkWrapper.Version);
             }
 
-            rlpStream.Encode(networkWrapper.Blobs);
-            rlpStream.Encode(networkWrapper.Commitments);
-            rlpStream.Encode(networkWrapper.Proofs);
+            for (int i = 0; i < networkWrapper.Count; i++)
+            {
+                rlpStream.Encode(networkWrapper.BlobAt(i));
+            }
+
+            for (int i = 0; i < networkWrapper.Count; i++)
+            {
+                rlpStream.Encode(networkWrapper.CommitmentAt(i));
+            }
+
+            for (int i = 0; i < networkWrapper.Count; i++)
+            {
+                rlpStream.Encode(networkWrapper.ProofsAt(i));
+            }
         }
     }
 
@@ -154,9 +165,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
         }
 
-        byte[][] blobs = rlpStream.DecodeByteArrays();
-        byte[][] commitments = rlpStream.DecodeByteArrays();
-        byte[][] proofs = rlpStream.DecodeByteArrays();
+        byte[] blobs = rlpStream.DecodeFlattenFixedByteArrays(Ckzg.Ckzg.BytesPerBlob);
+        byte[] commitments = rlpStream.DecodeFlattenFixedByteArrays(Ckzg.Ckzg.BytesPerCommitment);
+        byte[] proofs = rlpStream.DecodeFlattenFixedByteArrays(Ckzg.Ckzg.BytesPerProof);
 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
@@ -174,9 +185,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
         }
 
-        byte[][] blobs = decoderContext.DecodeByteArrays();
-        byte[][] commitments = decoderContext.DecodeByteArrays();
-        byte[][] proofs = decoderContext.DecodeByteArrays();
+        byte[] blobs = decoderContext.DecodeFlattenFixedByteArrays(Ckzg.Ckzg.BytesPerBlob);
+        byte[] commitments = decoderContext.DecodeFlattenFixedByteArrays(Ckzg.Ckzg.BytesPerCommitment);
+        byte[] proofs = decoderContext.DecodeFlattenFixedByteArrays(Ckzg.Ckzg.BytesPerProof);
 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }

@@ -9,7 +9,7 @@ namespace Nethermind.Crypto;
 
 public interface IBlobProofsManager
 {
-    abstract ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
+    ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
 
     byte[][] ComputeHashes(ShardBlobNetworkWrapper wrapper)
     {
@@ -17,14 +17,16 @@ public interface IBlobProofsManager
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
             hashes[i] = new byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
-            KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i], hashes[i]);
+            KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.CommitmentAt(i).Span, hashes[i]);
         }
         return hashes;
     }
 
-    abstract void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
-    abstract bool ValidateLengths(ShardBlobNetworkWrapper blobs);
-    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
+    void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
+
+    bool ValidateLengths(ShardBlobNetworkWrapper blobs);
+
+    bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
     {
         Span<byte> hash = stackalloc byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
 
@@ -38,7 +40,7 @@ public interface IBlobProofsManager
 
         for (int i = 0; i < blobs.Blobs.Length; i++)
         {
-            if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobs.Commitments[i], hash) || !hash.SequenceEqual(blobVersionedHashes[i].AsSpan()))
+            if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobs.CommitmentAt(i).Span, hash) || !hash.SequenceEqual(blobVersionedHashes[i].AsSpan()))
             {
                 return false;
             }
@@ -47,7 +49,7 @@ public interface IBlobProofsManager
         return true;
     }
 
-    abstract bool ValidateProofs(ShardBlobNetworkWrapper blobs);
+    bool ValidateProofs(ShardBlobNetworkWrapper blobs);
 
     static IBlobProofsManager For
         (ProofVersion version) => version switch
