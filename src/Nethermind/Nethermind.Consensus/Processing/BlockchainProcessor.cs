@@ -107,6 +107,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(stateReader, _logger);
+        _loopCancellationSource = new CancellationTokenSource();
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -160,7 +161,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Start()
     {
-        _loopCancellationSource = new CancellationTokenSource();
+        _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
     }
