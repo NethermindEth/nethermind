@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -38,7 +39,7 @@ namespace Nethermind.State
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
-        private IWriteBatch _codeBatch;
+        private IWriteBatch? _codeBatch;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
@@ -58,7 +59,6 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _tree = stateTree ?? new StateTree(trieStore, logManager);
-            _codeBatch = _codeDb.StartWriteBatch();
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
@@ -148,6 +148,7 @@ namespace Nethermind.State
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
+                _codeBatch ??= _codeDb.StartWriteBatch();
                 if (!_codeDb.PreferWriteByArray)
                 {
                     _codeBatch.PutSpan(codeHash.Bytes, code.Span);
@@ -437,8 +438,8 @@ namespace Nethermind.State
                 ? Task.CompletedTask
                 : Task.Run(() =>
                 {
-                    using var batch = _codeBatch;
-                    _codeBatch = _codeDb.StartWriteBatch();
+                    IWriteBatch batch = Interlocked.Exchange(ref _codeBatch, null);
+                    batch?.Dispose();
                 });
 
             var currentPosition = _changes.Count - 1;
@@ -873,13 +874,13 @@ namespace Nethermind.State
             if (resetBlockChanges)
             {
                 _blockChanges.Clear();
+                _codeBatch = null;
             }
             _intraTxCache.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _changes.Clear();
             _needsStateRootUpdate = false;
-            _codeBatch = _codeDb.StartWriteBatch();
         }
 
         public void CommitTree()
