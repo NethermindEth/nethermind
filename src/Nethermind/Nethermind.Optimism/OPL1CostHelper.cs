@@ -14,8 +14,6 @@ namespace Nethermind.Optimism;
 
 public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : IL1CostHelper
 {
-    private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper;
-
     private readonly StorageCell _l1BaseFeeSlot = new(l1BlockAddr, new UInt256(1));
     private readonly StorageCell _overheadSlot = new(l1BlockAddr, new UInt256(5));
     private readonly StorageCell _scalarSlot = new(l1BlockAddr, new UInt256(6));
@@ -45,7 +43,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
 
         UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
 
-        if (_opSpecHelper.IsFjord(header))
+        if (opSpecHelper.IsFjord(header))
         {
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
 
@@ -64,12 +62,12 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
             return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
         }
 
-        UInt256 dataGas = ComputeDataGas(tx, _opSpecHelper.IsRegolith(header));
+        UInt256 dataGas = ComputeDataGas(tx, opSpecHelper.IsRegolith(header));
 
         if (dataGas.IsZero)
             return UInt256.Zero;
 
-        if (_opSpecHelper.IsEcotone(header))
+        if (opSpecHelper.IsEcotone(header))
         {
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
 

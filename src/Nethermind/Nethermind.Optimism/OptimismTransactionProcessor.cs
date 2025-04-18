@@ -148,6 +148,26 @@ public class OptimismTransactionProcessor(
                 UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
                 WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
             }
+
+            // if rules.IsOptimismIsthmus {
+            //     // Operator Fee refunds are only applied if Isthmus is active and the transaction is *not* a deposit.
+            //     st.refundIsthmusOperatorCost()
+            //
+            //     operatorFeeCost := st.evm.Context.OperatorCostFunc(st.gasUsed(), st.evm.Context.Time)
+            //     st.state.AddBalance(params.OptimismOperatorFeeRecipient, operatorFeeCost, tracing.BalanceIncreaseRewardTransactionFee)
+            // }
+
+            // func (st *stateTransition) refundIsthmusOperatorCost() {
+            //     // Return ETH to transaction sender for operator cost overcharge.
+            //     operatorCostGasLimit := st.evm.Context.OperatorCostFunc(st.msg.GasLimit, st.evm.Context.Time)
+            //     operatorCostGasUsed := st.evm.Context.OperatorCostFunc(st.gasUsed(), st.evm.Context.Time)
+            //
+            //     if operatorCostGasUsed.Cmp(operatorCostGasLimit) > 0 { // Sanity check.
+            //         panic(fmt.Sprintf("operator cost gas used (%d) > operator cost gas limit (%d)", operatorCostGasUsed, operatorCostGasLimit))
+            //     }
+            //
+            //     st.state.AddBalance(st.msg.From, new(uint256.Int).Sub(operatorCostGasLimit, operatorCostGasUsed), tracing.BalanceIncreaseGasReturn)
+            // }
         }
     }
 
