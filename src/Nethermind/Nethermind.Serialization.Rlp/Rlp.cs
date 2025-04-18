@@ -1552,6 +1552,33 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            public byte[] DecodeFlattenFixedByteArrays(int itemLength)
+            {
+                int length = ReadSequenceLength();
+                if (length is 0)
+                {
+                    return [];
+                }
+
+                int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+                int flattenLength = 0;
+
+                byte[] result = new byte[flattenLength];
+
+                for (int i = 0, ptr = 0; i < itemsCount; i++)
+                {
+                    var span = DecodeByteArraySpan();
+                    if (span.Length != itemLength)
+                    {
+                        throw new RlpException("Content length is different from expected");
+                    }
+                    span.CopyTo(result.Slice(ptr));
+                    ptr += (int)span.Length;
+                }
+
+                return result;
+            }
+
             public byte DecodeByte()
             {
                 byte byteValue = PeekByte();

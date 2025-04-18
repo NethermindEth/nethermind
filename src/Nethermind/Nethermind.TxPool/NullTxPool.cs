@@ -73,8 +73,8 @@ namespace Nethermind.TxPool
         }
 
         public bool TryGetBlobAndProofV2(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
+            out Memory<byte> blob,
+            out Memory<byte> cellProofs)
         {
             blob = null;
             cellProofs = null;

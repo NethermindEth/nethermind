@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -44,8 +44,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                             {
                                 break;
                             }
-                            blob = wrapper.Blobs[indexOfBlob];
-                            proof = wrapper.Proofs[indexOfBlob];
+                            blob = wrapper.BlobAt(indexOfBlob).ToArray();
+                            proof = wrapper.ProofsAt(indexOfBlob).ToArray();
                             return true;
                         }
                     }
@@ -59,8 +59,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     }
 
     public bool TryGetBlobAndProofV2(byte[] requestedBlobVersionedHash,
-        [NotNullWhen(true)] out byte[]? blob,
-        [NotNullWhen(true)] out byte[][]? cellProofs)
+        out Memory<byte> blob,
+        out Memory<byte> cellProofs)
     {
         using var lockRelease = Lock.Acquire();
 
@@ -80,8 +80,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                                 break;
                             }
 
-                            blob = wrapper.Blobs[indexOfBlob];
-                            cellProofs = wrapper.Proofs.Slice(Ckzg.Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.Ckzg.CellsPerExtBlob);
+                            blob = wrapper.BlobAt(indexOfBlob);
+                            cellProofs = wrapper.ProofsAt(indexOfBlob);
                             return true;
                         }
                     }

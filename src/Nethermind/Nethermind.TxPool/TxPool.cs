@@ -208,8 +208,8 @@ namespace Nethermind.TxPool
 
 
         public bool TryGetBlobAndProofV2(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
+            out Memory<byte> blob,
+            out Memory<byte> cellProofs)
             => _blobTransactions.TryGetBlobAndProofV2(blobVersionedHash, out blob, out cellProofs);
 
         public bool AreBlobsAvailable(byte[][] blobVersionedHashes)
@@ -527,17 +527,14 @@ namespace Nethermind.TxPool
                 && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
                 && _headInfo.CurrentProofVersion == ProofVersion.V1)
             {
-                List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+                byte[] cellProofs = new byte[wrapper.Count * Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
 
-                foreach (byte[] blob in wrapper.Blobs)
+                for (int index = 0; index < wrapper.Count; index++)
                 {
-                    byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
-                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
-                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
-                    cellProofs.AddRange(cellProofsSeparated);
+                    KzgPolynomialCommitments.ComputeCellProofs(wrapper.Blobs.AsSpan(index * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob), cellProofs.AsSpan(index * Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof));
                 }
 
-                wrapper.Proofs = cellProofs.ToArray();
+                wrapper.Proofs = cellProofs;
                 wrapper.Version = ProofVersion.V1;
             }
         }
