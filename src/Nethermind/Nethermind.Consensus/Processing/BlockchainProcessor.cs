@@ -214,7 +214,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(GetCancellationToken()))
+        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
             try
             {
@@ -255,7 +255,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private CancellationToken GetCancellationToken()
+    private CancellationToken CancellationToken
         => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
 
     private async Task RunProcessing()
@@ -284,7 +284,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(GetCancellationToken()))
+        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(CancellationToken))
         {
             using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
@@ -302,7 +302,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), GetCancellationToken(), out string? error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
                 if (processedBlock is null)
                 {
@@ -548,7 +548,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             foreach (Block block in processingBranch.Blocks)
             {
-                GetCancellationToken().ThrowIfCancellationRequested();
+                CancellationToken.ThrowIfCancellationRequested();
 
                 if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
                 {
