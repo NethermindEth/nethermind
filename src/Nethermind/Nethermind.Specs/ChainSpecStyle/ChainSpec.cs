@@ -6,7 +6,6 @@ using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -80,5 +79,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? CancunTimestamp { get; set; }
 
         public ulong? PragueTimestamp { get; set; }
+
+        public ulong? OsakaTimestamp { get; set; }
     }
 }
