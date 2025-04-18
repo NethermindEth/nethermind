@@ -176,7 +176,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         else
         {
-            _loopCancellationSource?.Cancel();
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
             _recoveryQueue.Writer.TryComplete();
             _blockQueue.Writer.TryComplete();
         }
@@ -213,7 +213,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(GetCancellationToken()))
         {
             try
             {
@@ -254,6 +254,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private CancellationToken GetCancellationToken()
+        => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
+
     private async Task RunProcessing()
     {
         _isMainProcessingThread.Value = IsMainProcessor;
@@ -280,7 +283,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(GetCancellationToken()))
         {
             using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
@@ -298,7 +301,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), _loopCancellationSource.Token, out string? error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), GetCancellationToken(), out string? error);
 
                 if (processedBlock is null)
                 {
@@ -544,7 +547,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             foreach (Block block in processingBranch.Blocks)
             {
-                _loopCancellationSource?.Token.ThrowIfCancellationRequested();
+                GetCancellationToken().ThrowIfCancellationRequested();
 
                 if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
                 {
@@ -795,7 +798,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryComplete = true;
         _recoveryQueue.Writer.TryComplete();
         _blockQueue.Writer.TryComplete();
-        _loopCancellationSource?.Dispose();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
     }
