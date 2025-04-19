@@ -599,6 +599,11 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     _inBatched[key.ToArray()] = value;
                 }
+
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+                {
+                    throw new NotSupportedException("Merging is not supported by this implementation.");
+                }
             }
         }
 

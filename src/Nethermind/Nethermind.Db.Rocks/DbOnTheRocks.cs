@@ -554,6 +554,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
+        // TODO: add config value proper way
+        if (optionsAsDict.TryGetValue("merge_operator", out var mergeOperator))
+        {
+            options.SetMergeOperator(CustomMergeOperators.All[mergeOperator]);
+            DoNotGcOptions.Add(options);
+        }
+
         #endregion
 
         #region read-write options
@@ -590,6 +597,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         }
         #endregion
     }
+
+    // TODO: get rid of
+    private static readonly HashSet<OptionsHandle> DoNotGcOptions = new();
 
     private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
     {
@@ -870,6 +880,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         SetWithColumnFamily(key, null, value, writeFlags);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, null, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    internal void MergeWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, cf, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
@@ -903,10 +947,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return GetAllCore(iterator);
     }
 
-    protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
+    protected internal Iterator CreateIterator(bool isTailing, ColumnFamilyHandle? ch = null)
+    {
+        return CreateIterator(new IteratorOptions { IsTailing = isTailing }, ch);
+    }
+
+    protected internal Iterator CreateIterator(IteratorOptions options, ColumnFamilyHandle? ch = null)
     {
         ReadOptions readOptions = new();
-        readOptions.SetTailing(!ordered);
+        readOptions.SetTailing(!options.IsTailing);
+
+        if (options.LowerBound is { } lowerBound)
+            readOptions.SetIterateLowerBound(lowerBound);
+
+        if (options.UpperBound is { } upperBound)
+            readOptions.SetIterateUpperBound(upperBound);
 
         try
         {
@@ -1197,6 +1252,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             Set(key, value, null, flags);
         }
 
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            Merge(key, value, null, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+            _rocksBatch.Merge(key, value, cf);
+            _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+        }
+
         private void FlushOnTooManyWrites()
         {
             if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
@@ -1223,6 +1293,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         InnerFlush(onlyWal);
     }
 
+    public void FlushWithColumnFamily(ColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        InnerFlush(familyHandle);
+    }
+
     public virtual void Compact()
     {
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
@@ -1238,6 +1315,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             {
                 _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
             }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+        }
+    }
+
+    private void InnerFlush(ColumnFamilyHandle columnFamilyHandle)
+    {
+        try
+        {
+            _rocksDbNative.rocksdb_flush_cf(_db.Handle, FlushOptions.DefaultFlushOptions.Handle, columnFamilyHandle.Handle);
         }
         catch (RocksDbSharpException e)
         {
@@ -1576,6 +1665,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
+    public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+    {
+        var iterator = CreateIterator(isTailing);
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
+    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+    {
+        return GetIterator(ref options, null);
+    }
+
+    public IIterator<byte[], byte[]> GetIterator(bool isTailing, ColumnFamilyHandle familyHandle)
+    {
+        var options = new IteratorOptions { IsTailing = isTailing };
+        return GetIterator(ref options, familyHandle);
+    }
+
+    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
+    {
+        var iterator = CreateIterator(options, familyHandle);
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
     /// <summary>
     /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
     /// temporary higher disk usage or memory usage.
@@ -1725,6 +1837,107 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             {
                 Interlocked.Exchange(ref Iterator, null)?.Dispose();
             }
+        }
+    }
+
+    // TODO: move to LogIndexStorage!
+    public static class CustomMergeOperators
+    {
+        private static SetReceiptsStats _stats = new();
+
+        public static SetReceiptsStats GetAndResetStats()
+        {
+            return Interlocked.Exchange(ref _stats, new());
+        }
+
+        public static readonly IReadOnlyDictionary<string, MergeOperator> All = new Dictionary<string, MergeOperator>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "LogIndexStorage.Merge", MergeOperators.Create("LogIndexStorage.Merge", ConcatenatePartialMerge, ConcatenateFullMerge) }
+        };
+
+        // TODO: inherit MergeOperator instead, to improve performance and minimize allocations
+        private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            var lastBlockNum = -1;
+            var timestamp = Stopwatch.GetTimestamp();
+
+            try
+            {
+                success = true;
+
+                // TODO: avoid array copying
+                if (existingValue.IsEmpty && operands.Count == 1)
+                    return operands.Get(0).ToArray();
+
+                // TODO: does Get involve IO request? if yes - use single Get per operand
+                var resultLength = existingValue.Length;
+                for (int i = 0; i < operands.Count; i++)
+                {
+                    resultLength += operands.Get(i).Length;
+                }
+
+                // TODO: can ArrayPool be used?
+                var result = new byte[resultLength];
+
+                if (existingValue.Length > 0)
+                {
+                    existingValue.CopyTo(result);
+                    lastBlockNum = LogIndexStorage.ReadValLastBlockNum(existingValue);
+                }
+
+                var shift = existingValue.Length;
+                for (int i = 0; i < operands.Count; i++)
+                {
+                    var operand = operands.Get(i);
+
+                    // Validate we are merging non-intersecting segments - to prevent data corruption
+                    if (lastBlockNum != -1 && LogIndexStorage.ReadValBlockNum(operand) <= lastBlockNum)
+                    {
+                        success = false;
+
+                        // setting success=false during background merge may simply hide the error
+                        // TODO: check if this can be handled better, for example via paranoid_checks=true
+                        throw new InvalidOperationException($"Merge error: {lastBlockNum} -> {LogIndexStorage.ReadValBlockNum(operand)}");
+
+                        //return result;
+                    }
+                    else
+                    {
+                        lastBlockNum = LogIndexStorage.ReadValLastBlockNum(operand);
+                    }
+
+                    operand.CopyTo(result.AsSpan(shift..));
+                    shift += operand.Length;
+                }
+
+                if (result.Length > LogIndexStorage.MaxUncompressedLength)
+                {
+                    LogIndexStorage.EnqueueCompress(key.ToArray());
+                }
+
+                return result;
+            }
+            finally
+            {
+                _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
+            }
+        }
+
+        private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            //Console.WriteLine($"Merging (full) {operands.Count + (hasExistingValue ? 1 : 0)} operands for {Convert.ToHexString(key)}");
+
+            if (!hasExistingValue)
+                existingValue = ReadOnlySpan<byte>.Empty;
+
+            return ConcatenateMerge(key, existingValue, operands, out success);
+        }
+
+        private static byte[] ConcatenatePartialMerge(ReadOnlySpan<byte> key, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            //Console.WriteLine($"Merging (partial) {operands.Count} operands for {Convert.ToHexString(key)}");
+
+            return ConcatenateMerge(key, ReadOnlySpan<byte>.Empty, operands, out success);
         }
     }
 }
