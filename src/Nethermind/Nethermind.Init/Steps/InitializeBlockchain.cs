@@ -126,7 +126,7 @@ namespace Nethermind.Init.Steps
                 IsMainProcessor = true
             };
 
-            getApi.DisposeStack.Push((IAsyncDisposable)blockchainProcessor);
+            getApi.DisposeStack.Push(blockchainProcessor);
 
             setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,

@@ -27,7 +27,7 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue, IAsyncDisposable
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
