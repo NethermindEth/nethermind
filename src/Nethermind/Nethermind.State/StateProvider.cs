@@ -40,7 +40,8 @@ namespace Nethermind.State
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
-        private Dictionary<ValueHash256, byte[]> _codeBatch;
+        private Dictionary<Hash256AsKey, byte[]> _codeBatch;
+        private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
@@ -149,16 +150,20 @@ namespace Nethermind.State
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
-                _codeBatch ??= new();
+                if (_codeBatch is null)
+                {
+                    _codeBatch = new(ValueHashToHash256Comparer.Instance);
+                    _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
+                }
                 if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0
                         && codeArray.Count == code.Length)
                 {
-                    _codeBatch[codeHash] = codeArray.Array;
+                    _codeBatchAlternate[codeHash] = codeArray.Array;
                 }
                 else
                 {
-                    _codeBatch[codeHash] = code.ToArray();
+                    _codeBatchAlternate[codeHash] = code.ToArray();
                 }
 
                 _codeInsertFilter.Set(codeHash);
@@ -299,7 +304,7 @@ namespace Nethermind.State
         {
             if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return [];
 
-            if (!(_codeBatch?.TryGetValue(codeHash, out byte[]? code) ?? false))
+            if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
             {
                 code = _codeDb[codeHash.Bytes];
             }
@@ -601,8 +606,9 @@ namespace Nethermind.State
 
             Task CommitCodeAsync()
             {
-                Dictionary<ValueHash256, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
+                Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
                 if (dict is null) return Task.CompletedTask;
+                _codeBatchAlternate = default;
 
                 return Task.Run(() =>
                 {
@@ -611,13 +617,16 @@ namespace Nethermind.State
                         // Insert ordered for improved performance
                         foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
                         {
-                            batch.PutSpan(kvp.Key.Bytes, kvp.Value);
+                            batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
                         }
                     }
 
                     // Reuse Dictionary if not already re-initialized
                     dict.Clear();
-                    Interlocked.CompareExchange(ref _codeBatch, dict, null);
+                    if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
+                    {
+                        _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
+                    }
                 });
             }
         }
