@@ -152,7 +152,7 @@ namespace Nethermind.State
             {
                 if (_codeBatch is null)
                 {
-                    _codeBatch = new(ValueHashToHash256Comparer.Instance);
+                    _codeBatch = new(Hash256AsKeyComparer.Instance);
                     _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                 }
                 if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)

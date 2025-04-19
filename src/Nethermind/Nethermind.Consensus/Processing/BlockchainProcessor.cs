@@ -794,20 +794,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        await StopAsync(processRemainingBlocks: false);
         _recoveryComplete = true;
         _recoveryQueue.Writer.TryComplete();
         _blockQueue.Writer.TryComplete();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await StopAsync(processRemainingBlocks: false);
-        Dispose();
     }
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
