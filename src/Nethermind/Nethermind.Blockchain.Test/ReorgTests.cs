@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -28,7 +29,9 @@ namespace Nethermind.Blockchain.Test;
 
 public class ReorgTests
 {
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockchainProcessor _blockchainProcessor = null!;
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
 
     [OneTimeSetUp]
@@ -93,7 +96,7 @@ public class ReorgTests
     }
 
     [OneTimeTearDown]
-    public void TearDown() => _blockchainProcessor?.Dispose();
+    public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Retry(3)]
