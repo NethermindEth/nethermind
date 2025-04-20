@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -44,6 +45,9 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     public override string Name => "eth69";
 
     public override byte ProtocolVersion => EthVersions.Eth69;
+
+    // For BlockRangeUpdate message
+    public override bool AlwaysNotifyOfNewBlock => true;
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
@@ -133,5 +137,25 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         };
 
         Send(statusMessage);
+    }
+
+    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
+    {
+        if (block.Hash is not null)
+            SendBlockRangeUpdate(0, block.Number, block.Hash);
+    }
+
+    private void SendBlockRangeUpdate(long earliestBlock, long latestBlock, Hash256 latestBlockHash)
+    {
+        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
+
+        BlockRangeUpdateMessage msg = new()
+        {
+            EarliestBlock = earliestBlock,
+            LatestBlock = latestBlock,
+            LatestBlockHash = latestBlockHash
+        };
+
+        Send(msg);
     }
 }

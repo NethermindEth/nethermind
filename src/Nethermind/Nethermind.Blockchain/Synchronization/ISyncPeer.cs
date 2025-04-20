@@ -26,6 +26,7 @@ namespace Nethermind.Blockchain.Synchronization
         bool IsPriority { get; set; }
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
+        bool AlwaysNotifyOfNewBlock { get; }
         void Disconnect(DisconnectReason reason, string details);
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
