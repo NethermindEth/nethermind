@@ -317,7 +317,7 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        return estimator.Estimate(tx, block.Header, tracer, 0);
+        return estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
     }
 
     public static IEnumerable<TestCaseData> EstimateWithHighTxValueTestCases
@@ -371,7 +371,7 @@ public class TransactionProcessorTests
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         tracer.GasSpent.Should().Be(21000);
-        estimator.Estimate(tx, block.Header, tracer, 0).Should().Be(21000);
+        estimator.Estimate(tx, block.Header, tracer, out string? _, 0).Should().Be(21000);
     }
 
     [TestCase]
@@ -410,7 +410,7 @@ public class TransactionProcessorTests
         IReleaseSpec releaseSpec = Berlin.Instance;
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
         tracer.GasSpent.Should().Be(54764L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
         estimate.Should().Be(75465L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -451,7 +451,7 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
         estimate.Should().Be(59307);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -518,7 +518,7 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
         tracer.GasSpent.Should().Be(85669L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
         estimate.Should().Be(87969L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -561,7 +561,7 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
         tracer.GasSpent.Should().Be(87429L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
         estimate.Should().Be(108130L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -600,7 +600,7 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
         tracer.GasSpent.Should().Be(54224L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
         estimate.Should().Be(54224L);
 
         ConfirmEnoughEstimate(tx, block, estimate);
