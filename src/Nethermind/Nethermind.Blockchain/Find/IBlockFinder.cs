@@ -142,6 +142,8 @@ namespace Nethermind.Blockchain.Find
             };
         }
 
+        public long GetLowestBlock();
+
         /// <summary>
         /// Highest state persisted
         /// </summary>

@@ -177,8 +177,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
-                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.BlocksConfig.SecondsPerSlot);
