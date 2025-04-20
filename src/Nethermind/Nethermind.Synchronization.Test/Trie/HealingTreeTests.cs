@@ -219,7 +219,10 @@ public class HealingTreeTests
             mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
             for (int i = 1; i < 100; i++)
             {
-                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray().Should().BeEquivalentTo(i.ToBigEndianByteArray());
+                mainWorldState
+                    .Get(new StorageCell(storageAddress, (UInt256)i))
+                    .Should()
+                    .Be(new StorageValue((UInt256)i));
             }
         }
     }

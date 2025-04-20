@@ -103,7 +103,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -127,7 +127,8 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+        Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -139,7 +140,8 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+        Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -319,7 +321,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -331,7 +333,8 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue,
+        in StorageValue currentValue)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -343,7 +346,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -367,7 +370,8 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, bool isPrecompileCall = false)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
@@ -21,14 +27,17 @@ namespace Nethermind.State
         protected readonly ILogger _logger;
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
+        protected readonly StorageValueMap _map;
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected PartialStorageProviderBase(ILogManager? logManager)
+        protected PartialStorageProviderBase(StorageValueMap map, ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            _map = map;
+            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ??
+                      throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>
@@ -36,9 +45,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public ref readonly StorageValue Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(in storageCell);
+            return ref GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -46,9 +55,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
-            PushUpdate(in storageCell, newValue);
+            PushUpdate(in storageCell, _map.Map(newValue));
         }
 
         /// <summary>
@@ -80,7 +89,8 @@ namespace Nethermind.State
             int currentPosition = _changes.Count - 1;
             if (snapshot > currentPosition)
             {
-                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+                throw new InvalidOperationException(
+                    $"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
             }
 
             if (snapshot == currentPosition)
@@ -99,7 +109,8 @@ namespace Nethermind.State
                         int actualPosition = stack.Pop();
                         if (actualPosition != currentPosition - i)
                         {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+                            throw new InvalidOperationException(
+                                $"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
                         }
 
                         _keptInCache.Add(change);
@@ -111,7 +122,8 @@ namespace Nethermind.State
                 int forAssertion = stack.Pop();
                 if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    throw new InvalidOperationException(
+                        $"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
                 _changes[currentPosition - i] = default;
@@ -133,11 +145,11 @@ namespace Nethermind.State
 
             _keptInCache.Clear();
 
-            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) &&
+                   lastOriginalSnapshot > snapshot)
             {
                 _transactionChangesSnapshots.Pop();
             }
-
         }
 
         /// <summary>
@@ -150,23 +162,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+            public static readonly ChangeTrace _zeroBytes = new(StorageValueMap.Ptr.Null, StorageValueMap.Ptr.Null);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(byte[]? before, byte[]? after)
+            public ChangeTrace(StorageValueMap.Ptr before, StorageValueMap.Ptr after)
             {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = before ?? StorageTree.ZeroBytes;
+                After = after;
+                Before = before;
             }
 
-            public ChangeTrace(byte[]? after)
+            public ChangeTrace(StorageValueMap.Ptr after)
             {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = StorageTree.ZeroBytes;
+                After = after;
+                Before = StorageValueMap.Ptr.Null;
             }
 
-            public byte[] Before;
-            public byte[] After;
+            public StorageValueMap.Ptr Before;
+            public StorageValueMap.Ptr After;
         }
 
         /// <summary>
@@ -223,21 +235,16 @@ namespace Nethermind.State
         /// Attempt to get the current value at the storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected ref readonly StorageValue TryGetCachedValue(in StorageCell storageCell)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
-                {
-                    bytes = _changes[lastChangeIndex].Value;
-                    return true;
-                }
+                return ref _changes[lastChangeIndex].Value.Ref;
             }
 
-            bytes = null;
-            return false;
+            return ref Unsafe.NullRef<StorageValue>();
         }
 
         /// <summary>
@@ -245,14 +252,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
+        protected abstract ref readonly StorageValue GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, in StorageValueMap.Ptr value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -265,7 +272,8 @@ namespace Nethermind.State
         /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref StackList<int>? value =
+                ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             if (!exists)
             {
                 value = new StackList<int>();
@@ -286,7 +294,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    Set(cellByAddress.Key, StorageValue.Zero);
                 }
             }
         }
@@ -296,7 +304,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
+            public Change(ChangeType changeType, StorageCell storageCell, StorageValueMap.Ptr value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -305,7 +313,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly byte[] Value;
+            public readonly StorageValueMap.Ptr Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

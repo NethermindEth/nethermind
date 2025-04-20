@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -13,15 +14,20 @@ namespace Nethermind.State
     /// </summary>
     internal sealed class TransientStorageProvider : PartialStorageProviderBase
     {
-        public TransientStorageProvider(ILogManager? logManager)
-            : base(logManager) { }
+        public TransientStorageProvider(StorageValueMap map, ILogManager? logManager)
+            : base(map, logManager) { }
 
         /// <summary>
         /// Get the storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : StorageTree.ZeroBytes;
+        protected override ref readonly StorageValue GetCurrentValue(in StorageCell storageCell)
+        {
+            ref readonly var cached = ref TryGetCachedValue(storageCell);
+            if (Unsafe.IsNullRef(in cached))
+                return ref StorageValue.Zero;
+            return ref cached;
+        }
     }
 }

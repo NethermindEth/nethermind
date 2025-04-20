@@ -29,6 +29,7 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        private readonly StorageValueMap _storageValueMap;
         private readonly ITrieStore _trieStore;
         private PreBlockCaches? PreBlockCaches { get; }
 
@@ -59,8 +60,9 @@ namespace Nethermind.State
             PreBlockCaches = preBlockCaches;
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
-            _transientStorageProvider = new TransientStorageProvider(logManager);
+            _storageValueMap = new StorageValueMap();
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, _storageValueMap, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
+            _transientStorageProvider = new TransientStorageProvider(_storageValueMap, logManager);
         }
 
         public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
@@ -84,23 +86,23 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public ref readonly StorageValue GetOriginal(in StorageCell storageCell)
         {
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            return ref _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public ref readonly StorageValue Get(in StorageCell storageCell)
         {
-            return _persistentStorageProvider.Get(storageCell);
+            return ref _persistentStorageProvider.Get(storageCell);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+        public ref readonly StorageValue GetTransientState(in StorageCell storageCell)
         {
-            return _transientStorageProvider.Get(storageCell);
+            return ref _transientStorageProvider.Get(storageCell);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, in StorageValue newValue)
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
@@ -109,7 +111,13 @@ namespace Nethermind.State
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
+
+            if (resetBlockChanges)
+            {
+                _storageValueMap.Clear();
+            }
         }
+
         public void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)

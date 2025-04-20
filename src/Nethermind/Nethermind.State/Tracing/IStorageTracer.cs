@@ -24,7 +24,7 @@ namespace Nethermind.State.Tracing
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-        void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
+        void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value);
 
         /// <summary>
         /// Reports change of storage slot for key
@@ -33,7 +33,7 @@ namespace Nethermind.State.Tracing
         /// <param name="before"></param>
         /// <param name="after"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-        void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after);
+        void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after);
 
         /// <summary>
         /// Reports storage access

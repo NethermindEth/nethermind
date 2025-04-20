@@ -11,6 +11,7 @@ using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -50,6 +51,18 @@ public ref struct EvmStack
         }
 
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+    }
+
+    /// <summary>
+    /// An optimized version of the push, accepting directly <see cref="StorageValue"/>
+    /// and using it's size alignment with the stack.
+    /// </summary>
+    public void PushBytes(in StorageValue value)
+    {
+        _tracer?.ReportStackPush(value.BytesWithNoLeadingZeroes);
+
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = value.UnsafeRef;
     }
 
     public void PushBytes(scoped ReadOnlySpan<byte> value)

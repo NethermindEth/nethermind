@@ -79,7 +79,7 @@ namespace Nethermind.Store.Test
 
             void UpdateStorageValue(byte[] newValue)
             {
-                provider.Set(storageCell, newValue);
+                provider.Set(storageCell, new StorageValue(newValue));
             }
 
             void AddOneToBalance()

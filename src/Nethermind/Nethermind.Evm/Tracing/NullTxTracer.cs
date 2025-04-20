@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -42,7 +43,7 @@ public class NullTxTracer : TxTracer
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => ThrowInvalidOperationException();
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in StorageValue value)
         => ThrowInvalidOperationException();
 
     public override void SetOperationStack(TraceStack stack)
@@ -54,10 +55,10 @@ public class NullTxTracer : TxTracer
     public override void SetOperationMemory(TraceMemory memoryTrace)
         => ThrowInvalidOperationException();
 
-    public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public override void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue, in StorageValue currentValue)
         => ThrowInvalidOperationException();
 
-    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, in StorageValue value)
         => ThrowInvalidOperationException();
 
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
@@ -75,7 +76,7 @@ public class NullTxTracer : TxTracer
     public override void ReportAccountRead(Address address)
         => ThrowInvalidOperationException();
 
-    public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public override void ReportStorageChange(in StorageCell storageCell, in StorageValue before, in StorageValue after)
         => ThrowInvalidOperationException();
 
     public override void ReportStorageRead(in StorageCell storageCell)
