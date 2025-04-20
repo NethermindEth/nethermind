@@ -7,23 +7,26 @@ import * as d3 from 'd3';
 //  Then update it whenever SSE data arrives
 // ----------------------------------------------------------
 
-// Basic chart config
-const width = 200;
-const height = 100;
-const margin = 0;
-const radius = Math.min(width, height) / 2 - margin;
+// 1) Chart dimensions
+const pieDiameter = 100;         // width & height for the *pie itself*
+const labelArea = 120;           // extra space on the right for labels
+const svgWidth = pieDiameter + labelArea;
+const svgHeight = pieDiameter;
+const radius = pieDiameter / 2;
 
-// Create an SVG and group for the pie chart
+// 2) Create SVG & group
 const svg = d3
   .select("#pie-chart")
   .append("svg")
-  .attr("width", width)
-  .attr("height", height);
+  .attr("width", svgWidth)
+  .attr("height", svgHeight)
+  // allow labels to overflow if you tweak beyond labelArea
+  .attr("overflow", "visible");
 
-// We'll place everything in a group centered in the SVG
 const chartGroup = svg
   .append("g")
-  .attr("transform", `translate(${width / 4}, ${height / 2})`);
+  // center the pie in the *first* pieDiameter pixels
+  .attr("transform", `translate(${pieDiameter / 2}, ${pieDiameter / 2})`);
 
 // Color scale (you can change to your own palette)
 const color = d3
@@ -41,138 +44,105 @@ const arc = d3
   .innerRadius(0)
   .outerRadius(radius);
 
-// We create a group for each arc (slice + label + arrow)
-function keyFn(d: d3.PieArcDatum<{ type: string; count: number }>) {
-  // Use the node type as the key
-  return d.data.type;
-}
+// sliceLayer holds only the 'path's
+const sliceLayer = chartGroup.append("g").attr("class", "slice-layer");
+// labelLayer holds all the callout lines + texts
+const labelLayer = chartGroup.append("g").attr("class", "label-layer");
 
-// --- UPDATE FUNCTION (WITH TRANSITIONS) ---
 export function updatePieChart(data: { type: string; count: number }[]) {
-  // 1) Build the pie data (slices)
+  // 1) Build the pie arcs
   const pieData = pie(data);
 
-  // 2) Sort slices ALPHABETICALLY (by their `type`) **just** for labeling
-  //    We won't reorder the slices themselves on the chart (that's governed by pieData),
-  //    but we *will* decide the label stacking order by alphabetical type.
-  const sortedForLabels = pieData
+  // 2) Augment each arc with its centroid Y
+  interface Aug extends d3.PieArcDatum<{ type: string; count: number }> {
+    centroidY: number;
+  }
+  const withCentroid: Aug[] = pieData.map(d => {
+    const [cx, cy] = arc.centroid(d);
+    return { ...d, centroidY: cy };
+  });
+
+  // 3) Sort by centroidY so top‑most slices label first
+  const stack = withCentroid
     .slice()
-    .sort((a, b) => a.data.type.localeCompare(b.data.type));
+    .sort((a, b) => a.centroidY - b.centroidY);
 
-  // 3) Assign each slice a "stacked" y-position for its label
-  //    so that labels don't overlap
-  const lineHeight = 18; // vertical spacing between stacked labels
-  const offsetY = -((sortedForLabels.length - 1) * lineHeight) / 2;
-
-  // We'll store the assigned (x, y) in a dictionary keyed by slice's "type"
-  const labelX = radius * 1.25; // All labels on the right side
-  const labelPositions: Record<string, { x: number; y: number }> = {};
-
-  sortedForLabels.forEach((slice, i) => {
-    labelPositions[slice.data.type] = {
+  // 4) Compute stacked label positions
+  const lineHeight = 18;
+  const offsetY = -((stack.length - 1) * lineHeight) / 2;
+  const labelX = radius + 20;    // still all on the right
+  const labelPos: Record<string, { x: number; y: number }> = {};
+  stack.forEach((d, i) => {
+    labelPos[d.data.type] = {
       x: labelX,
       y: offsetY + i * lineHeight
     };
   });
 
-  // -- Data Join for the arcs themselves --
-  const arcGroups = chartGroup
-    .selectAll<SVGGElement, typeof pieData[0]>("g.slice")
-    .data(pieData, keyFn);
+  // ---- SLICES LAYER ----
+  const paths = sliceLayer
+    .selectAll<SVGPathElement, typeof pieData[0]>("path")
+    .data(pieData, d => d.data.type);
 
-  // EXIT
-  arcGroups.exit().remove();
+  paths.exit().remove();
 
-  // ENTER
-  const arcGroupsEnter = arcGroups
-    .enter()
-    .append("g")
-    .attr("class", "slice")
-    .each(function (d) {
-      // store the initial angles so we can animate from them
-      (this as any)._current = d;
-    });
-
-  // Each group contains: <path>, <polyline>, <text>
-  arcGroupsEnter
+  const pathsEnter = paths.enter()
     .append("path")
-    .attr("fill", (d) => color(d.data.type))
     .attr("stroke", "#222")
-    .style("stroke-width", "1px");
+    .style("stroke-width", "1px")
+    .attr("fill", d => color(d.data.type))
+    .each(function (d) { (this as any)._current = d; });
 
-  // We'll use a polyline for the kinked callout line
-  arcGroupsEnter
-    .append("polyline")
-    .attr("fill", "none")
-    .attr("stroke", "#fff"); // white lines for black background
-
-  // Label text
-  arcGroupsEnter
-    .append("text")
-    .style("fill", "#fff")
-    .style("text-anchor", "start")
-    .style("alignment-baseline", "middle");
-
-  // MERGE
-  const arcGroupsUpdate = arcGroupsEnter.merge(arcGroups);
-
-  // 4) Animate the arc <path>
-  arcGroupsUpdate
-    .select("path")
-    .transition()
-    .duration(750)
+  pathsEnter.merge(paths)
+    .transition().duration(750)
     .attrTween("d", function (d) {
-      const i = d3.interpolate((this as any)._current, d);
-      (this as any)._current = i(0);
-      return (t) => arc(i(t))!;
+      const interp = d3.interpolate((this as any)._current, d);
+      (this as any)._current = interp(0);
+      return t => arc(interp(t))!;
     });
 
-  // 5) For each slice, we figure out its final label position from
-  //    labelPositions[d.data.type]. Then we draw a polyline
-  //    from the slice’s arc centroid to that label, with one “kink.”
+  // ---- LABELS LAYER ----
+  // One <g> per slice for polyline+text
+  const callouts = labelLayer
+    .selectAll<SVGGElement, Aug>("g.label")
+    .data(withCentroid, d => d.data.type);
 
-  arcGroupsUpdate
-    .select("polyline")
-    .transition()
-    .duration(750)
-    .attr("points", (function (d) {
-      // Arc centroid
+  callouts.exit().remove();
+
+  const enter = callouts.enter()
+    .append("g")
+    .attr("class", "label")
+    .style("pointer-events", "none");
+
+  enter.append("polyline")
+    .attr("fill", "none")
+    .attr("stroke", "#fff");
+
+  enter.append("text")
+    .style("alignment-baseline", "middle")
+    .style("text-anchor", "start")
+    .style("fill", "#fff");
+
+  const all = enter.merge(callouts);
+
+  // 5) Animate the lines
+  all.select("polyline")
+    .transition().duration(750)
+    .attr("points", d => {
       const [cx, cy] = arc.centroid(d);
-      // Stacked label position
-      const { x: lx, y: ly } = labelPositions[d.data.type];
+      const { x: px, y: py } = labelPos[d.data.type];
+      const mx = px * 0.6;
+      return `${cx},${cy} ${mx},${py} ${px},${py}`;
+    });
 
-      // We'll define:
-      //   1) from (cx, cy) horizontally to (radius+10, cy)  [kink corner #1]
-      //   2) then vertically to (radius+10, ly)            [kink corner #2]
-      //   3) then horizontally to (lx, ly)
-
-      // If you prefer exactly one kink, you can do:
-      //   1) from (cx, cy) to (radius+10, ly) [one corner]
-      //   2) then (lx, ly)
-      // That’s two line segments total, forming one corner.
-
-      const kinkX = radius + 10;
-
-      // Example: single-corner approach
-      return [
-        [cx, cy],
-        [kinkX, ly],
-        [lx, ly]
-      ];
-    }) as any);
-
-  // 6) Animate the text to the stacked position, and set the label text
-  arcGroupsUpdate
-    .select("text")
-    .transition()
-    .duration(750)
-    .attr("transform", function (d) {
-      const { x: lx, y: ly } = labelPositions[d.data.type];
-      return `translate(${lx}, ${ly})`;
+  // 6) Animate the texts
+  all.select("text")
+    .transition().duration(750)
+    .attr("transform", d => {
+      const p = labelPos[d.data.type];
+      return `translate(${p.x},${p.y})`;
     })
-    .tween("text", function (d) {
-      return () => {
-        (this as any).textContent = `${d.data.type} (${d.data.count})`;
-      };
+    .tween("label", function (d) {
+      return () => { (this as any).textContent = `${d.data.type} (${d.data.count})`; };
     });
 }
