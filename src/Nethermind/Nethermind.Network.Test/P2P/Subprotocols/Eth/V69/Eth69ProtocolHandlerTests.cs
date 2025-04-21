@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -173,7 +175,7 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
-    public void Can_handle_GetReceipts()
+    public void Should_handle_GetReceipts()
     {
         using var msg66 = new GetReceiptsMessage(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
@@ -192,8 +194,53 @@ public class Eth69ProtocolHandlerTests
         action.Should().Throw<SubprotocolException>();
     }
 
+    [TestCase(0, 100, 1)]
+    [TestCase(1, 100, 3)]
+    public void Should_send_BlockRangeUpdate_every_32_blocks(int from, int to, int step)
+    {
+        var sequence = new List<int>((to - from) / step + 1);
+        for (var i = from; i <= to; i += step)
+            sequence.Add(i);
+
+        var expected = sequence.Aggregate(new List<int>(), (list, elem) =>
+        {
+            if (list.Count == 0 || elem >= list[^1] + 32)
+                list.Add(elem);
+            return list;
+        });
+
+        _session.ClearReceivedCalls();
+
+        foreach (var blockNum in sequence)
+            _handler.NotifyOfNewBlock(Build.A.Block.WithNumber(blockNum).TestObject, SendBlockMode.HashOnly);
+
+        var received = _session.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
+            .Where(c => c.GetArguments()[0] is BlockRangeUpdateMessage)
+            .Select(c => (c.GetArguments()[0] as BlockRangeUpdateMessage)?.LatestBlock);
+
+        Assert.That(received, Is.EquivalentTo(expected));
+    }
+
     [Test]
-    public void Can_handle_BlockRangeUpdate()
+    public void Should_not_send_BlockRangeUpdate_on_same_block()
+    {
+        const int blockNum = 42;
+        var block = Build.A.Block.WithNumber(blockNum).TestObject;
+
+        _session.ClearReceivedCalls();
+
+        _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
+        _session.Received(1).DeliverMessage(Arg.Any<BlockRangeUpdateMessage>());
+
+        _session.ClearReceivedCalls();
+
+        _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<BlockRangeUpdateMessage>());
+    }
+
+    [Test]
+    public void Should_handle_BlockRangeUpdate()
     {
         using var msg = new BlockRangeUpdateMessage
         {
