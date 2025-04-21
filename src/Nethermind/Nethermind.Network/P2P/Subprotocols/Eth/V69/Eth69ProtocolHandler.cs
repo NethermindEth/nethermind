@@ -27,6 +27,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 /// </summary>
 public class Eth69ProtocolHandler : Eth68ProtocolHandler
 {
+    private const int LatestBlockFrequency = 32;
+    private long _earliestBlockUpdate = long.MaxValue;
+    private long _latestBlockUpdate = -1;
+
     public Eth69ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
@@ -147,7 +151,14 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
     private void SendBlockRangeUpdate(long earliestBlock, long latestBlock, Hash256 latestBlockHash)
     {
-        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
+        if (_earliestBlockUpdate <= earliestBlock && _latestBlockUpdate + LatestBlockFrequency > latestBlock)
+            return;
+
+        _earliestBlockUpdate = Math.Min(_earliestBlockUpdate, earliestBlock);
+        _latestBlockUpdate = Math.Max(_latestBlockUpdate, latestBlock);
+
+        if (Logger.IsTrace)
+            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
 
         BlockRangeUpdateMessage msg = new()
         {
