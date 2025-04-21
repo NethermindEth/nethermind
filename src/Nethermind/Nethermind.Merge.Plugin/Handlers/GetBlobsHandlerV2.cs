@@ -39,7 +39,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
         {
             if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out Memory<byte> blob, out Memory<byte> cellProofs))
             {
-                response.Add(new BlobAndProofV2(blob, [.. cellProofs.Chunk(Ckzg.Ckzg.CellsPerExtBlob)]));
+                response.Add(new BlobAndProofV2(blob, [.. cellProofs.Chunk(Ckzg.Ckzg.BytesPerProof)]));
             }
             else
             {

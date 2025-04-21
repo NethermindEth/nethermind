@@ -358,12 +358,12 @@ namespace Nethermind.Core
         public byte[] Commitments { get; set; } = flatCommitments;
         public byte[] Proofs { get; set; } = flatProofs;
 
-        public Memory<byte> BlobAt(int i) => Blobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
-        public Memory<byte> CommitmentAt(int i) => Commitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
+        public Memory<byte> BlobAt(int i) => new(Blobs, i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
+        public Memory<byte> CommitmentAt(int i) => new(Commitments, i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
         public Memory<byte> ProofsAt(int i) => Version switch
         {
-            ProofVersion.V0 => Proofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof),
-            ProofVersion.V1 => Proofs.Slice(i * Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob),
+            ProofVersion.V0 => new(Proofs, i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof),
+            ProofVersion.V1 => new(Proofs, i * Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.BytesPerProof * Ckzg.Ckzg.CellsPerExtBlob),
             _ => throw new Exception($"Unknown version of {nameof(ShardBlobNetworkWrapper)}.")
         };
     }

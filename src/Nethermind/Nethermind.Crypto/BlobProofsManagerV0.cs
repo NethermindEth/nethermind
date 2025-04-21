@@ -25,7 +25,7 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public void ComputeProofsAndCommitments(ShardBlobNetworkWrapper wrapper)
     {
-        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        for (int i = 0; i < wrapper.Count; i++)
         {
             Ckzg.Ckzg.BlobToKzgCommitment(wrapper.CommitmentAt(i).Span, wrapper.BlobAt(i).Span, KzgPolynomialCommitments.CkzgSetup);
             Ckzg.Ckzg.ComputeBlobKzgProof(wrapper.ProofsAt(i).Span, wrapper.BlobAt(i).Span, wrapper.CommitmentAt(i).Span, KzgPolynomialCommitments.CkzgSetup);

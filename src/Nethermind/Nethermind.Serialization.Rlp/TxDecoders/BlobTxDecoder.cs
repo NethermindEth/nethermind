@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,6 +16,10 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             int networkWrapperLength = rlpStream.ReadSequenceLength();
+            if (networkWrapperLength == 1)
+            {
+                networkWrapperLength = rlpStream.ReadSequenceLength() + 1;
+            }
             positionAfterNetworkWrapper = rlpStream.Position + networkWrapperLength;
             int rlpLength = rlpStream.PeekNextRlpLength();
             transactionSequence = rlpStream.Peek(rlpLength);
@@ -113,16 +117,19 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                 rlpStream.Encode((byte)networkWrapper.Version);
             }
 
+            rlpStream.StartSequence(networkWrapper.Count * Rlp.LengthOfSequence(Ckzg.Ckzg.BytesPerBlob));
             for (int i = 0; i < networkWrapper.Count; i++)
             {
                 rlpStream.Encode(networkWrapper.BlobAt(i));
             }
 
+            rlpStream.StartSequence(networkWrapper.Count * Rlp.LengthOfSequence(Ckzg.Ckzg.BytesPerCommitment));
             for (int i = 0; i < networkWrapper.Count; i++)
             {
                 rlpStream.Encode(networkWrapper.CommitmentAt(i));
             }
 
+            rlpStream.StartSequence(networkWrapper.Count * Rlp.LengthOfSequence(Ckzg.Ckzg.BytesPerProof) * networkWrapper.Version switch { ProofVersion.V0 => 1, ProofVersion.V1 => Ckzg.Ckzg.CellsPerExtBlob, _ => throw new RlpException("") });
             for (int i = 0; i < networkWrapper.Count; i++)
             {
                 rlpStream.Encode(networkWrapper.ProofsAt(i));
@@ -214,9 +221,10 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
             return Rlp.LengthOfSequence(txContentLength)
                    + networkWrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {networkWrapper.Version}") }
-                   + Rlp.LengthOf(networkWrapper.Blobs)
-                   + Rlp.LengthOf(networkWrapper.Commitments)
-                   + Rlp.LengthOf(networkWrapper.Proofs);
+                   + Rlp.LengthOfSequence(networkWrapper.Count * Rlp.LengthOfSequence(Ckzg.Ckzg.BytesPerBlob))
+                   + Rlp.LengthOfSequence(networkWrapper.Count * Rlp.LengthOfSequence(Ckzg.Ckzg.BytesPerCommitment))
+                   + Rlp.LengthOfSequence(networkWrapper.Count * Rlp.LengthOfSequence(Ckzg.Ckzg.BytesPerProof) * networkWrapper.Version switch { ProofVersion.V0 => 1, ProofVersion.V1 => Ckzg.Ckzg.CellsPerExtBlob, _ => throw new RlpException("") });
+            ;
         }
     }
 

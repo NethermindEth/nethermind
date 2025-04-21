@@ -40,7 +40,7 @@ public class BlobsBundleV1
             }
 
             for (int txIndex = 0;
-                 txIndex < wrapper.Blobs.Length;
+                 txIndex < wrapper.Count;
                  blockIndex++, txIndex++)
             {
                 Commitments[blockIndex] = wrapper.CommitmentAt(txIndex).ToArray();

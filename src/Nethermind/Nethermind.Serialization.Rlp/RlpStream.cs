@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -1454,9 +1454,8 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int itemsCount = PeekNumberOfItemsRemaining(Position + length);
-            int flattenLength = 0;
 
-            byte[] result = new byte[flattenLength];
+            byte[] result = new byte[itemsCount * itemLength];
 
             for (int i = 0, ptr = 0; i < itemsCount; i++)
             {
@@ -1465,7 +1464,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     throw new RlpException("Content length is different from expected");
                 }
-                span.CopyTo(result.Slice(ptr));
+                span.CopyTo(result.AsSpan(ptr));
                 ptr += (int)span.Length;
             }
 

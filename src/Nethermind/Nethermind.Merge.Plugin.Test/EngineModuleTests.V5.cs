@@ -32,9 +32,9 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.Ckzg.CellsPerExtBlob));
         ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(
-            getPayloadResultBlobsBundle.Blobs.SelectMany(x => x).ToArray(),
-            getPayloadResultBlobsBundle.Commitments.SelectMany(x => x).ToArray(),
-            getPayloadResultBlobsBundle.Proofs.SelectMany(x => x).ToArray(), ProofVersion.V1);
+            getPayloadResultBlobsBundle.Blobs.Flatten().ToArray(),
+            getPayloadResultBlobsBundle.Commitments.Flatten().ToArray(),
+            getPayloadResultBlobsBundle.Proofs.Flatten().ToArray(), ProofVersion.V1);
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
     }
 
@@ -94,9 +94,9 @@ public partial class EngineModuleTests
         ResultWrapper<IEnumerable<BlobAndProofV2>> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data.Select(static b => b.Blob.ToArray()).Flatten().Should().BeEquivalentTo(wrapper.Blobs);
         result.Data.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
-        result.Data.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+        result.Data.SelectMany(static b => b.Proofs).Flatten().Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]
@@ -155,9 +155,37 @@ public partial class EngineModuleTests
         else
         {
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-            result.Data.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+            result.Data.Select(static b => b.Blob.ToArray()).Flatten().Should().BeEquivalentTo(wrapper.Blobs);
             result.Data.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
-            result.Data.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+            result.Data.SelectMany(static b => b.Proofs).Flatten().Should().BeEquivalentTo(wrapper.Proofs);
+        }
+    }
+}
+
+
+public static class Exts
+{
+    public static IEnumerable<T> Flatten<T>(
+        this IEnumerable<IEnumerable<T>> source)
+    {
+        foreach (IEnumerable<T> item in source)
+        {
+            foreach (T subItem in item)
+            {
+                yield return subItem;
+            }
+        }
+    }
+
+    public static IEnumerable<T> Flatten<T>(
+        this IEnumerable<Memory<T>> source)
+    {
+        foreach (Memory<T> item in source)
+        {
+            foreach (T subItem in item.Span.ToArray())
+            {
+                yield return subItem;
+            }
         }
     }
 }

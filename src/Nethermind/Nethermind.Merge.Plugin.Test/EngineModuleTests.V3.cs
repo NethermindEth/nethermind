@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -591,8 +591,8 @@ public partial class EngineModuleTests
         ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data.Select(static b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        result.Data.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs.Chunk(Ckzg.Ckzg.BytesPerBlob));
+        result.Data.Select(static b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs.Chunk(Ckzg.Ckzg.BytesPerProof));
     }
 
     [Test]
@@ -656,8 +656,8 @@ public partial class EngineModuleTests
         {
             if (i % 10 == 0)
             {
-                resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
-                resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
+                resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).BlobAt(i / 10).ToArray());
+                resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).ProofsAt(i / 10).ToArray());
             }
             else
             {
