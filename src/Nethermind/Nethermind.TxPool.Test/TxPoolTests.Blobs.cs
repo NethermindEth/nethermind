@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -912,7 +912,7 @@ namespace Nethermind.TxPool.Test
             if (isTxValid)
             {
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+                wrapper.Proofs.Length.Should().Be((isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1) * Ckzg.Ckzg.BytesPerProof);
                 wrapper.Version.Should().Be(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0);
 
                 blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db

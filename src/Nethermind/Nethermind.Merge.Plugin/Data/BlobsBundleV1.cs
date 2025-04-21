@@ -40,12 +40,12 @@ public class BlobsBundleV1
             }
 
             for (int txIndex = 0;
-                 txIndex < wrapper.Blobs.Length;
+                 txIndex < wrapper.Count;
                  blockIndex++, txIndex++)
             {
-                Commitments[blockIndex] = wrapper.Commitments[txIndex];
-                Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                Proofs[blockIndex] = wrapper.Proofs[txIndex];
+                Commitments[blockIndex] = wrapper.CommitmentAt(txIndex).ToArray();
+                Blobs[blockIndex] = wrapper.BlobAt(txIndex).ToArray();
+                Proofs[blockIndex] = wrapper.ProofsAt(txIndex).ToArray();
             }
         }
     }
