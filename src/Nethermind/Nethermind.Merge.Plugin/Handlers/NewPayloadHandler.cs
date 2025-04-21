@@ -107,6 +107,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
 
+        Callstack.LogCallStack();
+
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {

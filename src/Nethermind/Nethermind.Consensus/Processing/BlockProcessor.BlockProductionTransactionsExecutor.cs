@@ -77,6 +77,8 @@ namespace Nethermind.Consensus.Processing
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
+                Callstack.LogCallStack();
+
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
 

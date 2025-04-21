@@ -87,6 +87,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
 
+        Callstack.LogCallStack();
+
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
             _api.BlockTree,

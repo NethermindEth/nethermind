@@ -139,6 +139,8 @@ namespace Nethermind.Synchronization.Peers
 
         public void Start()
         {
+            Callstack.LogCallStack();
+
             _refreshLoopTask = Task.Factory.StartNew(
                     RunRefreshPeerLoop,
                     _refreshLoopCancellation.Token,

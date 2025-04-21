@@ -24,6 +24,8 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
 
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {
+        Callstack.LogCallStack();
+
         string payloadStr = payloadId.ToHexString(true);
         IBlockProductionContext? blockContext = await payloadPreparationService.GetPayload(payloadStr);
         Block? block = blockContext?.CurrentBestBlock;

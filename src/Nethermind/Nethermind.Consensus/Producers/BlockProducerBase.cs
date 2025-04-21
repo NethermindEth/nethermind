@@ -249,6 +249,8 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
+            Callstack.LogCallStack();
+
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);

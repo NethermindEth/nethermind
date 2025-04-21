@@ -280,6 +280,8 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
+        Callstack.LogCallStack();
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, token);
@@ -316,6 +318,8 @@ public partial class BlockProcessor(
         ProcessingOptions options,
         CancellationToken token)
     {
+        Callstack.LogCallStack();
+
         BlockHeader header = block.Header;
         IReleaseSpec spec = _specProvider.GetSpec(header);
 

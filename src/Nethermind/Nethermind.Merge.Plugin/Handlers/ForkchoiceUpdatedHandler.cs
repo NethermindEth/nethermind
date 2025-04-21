@@ -159,6 +159,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 
+        Callstack.LogCallStack();
+
         if (blockInfo is null)
         {
             if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't found."); }
