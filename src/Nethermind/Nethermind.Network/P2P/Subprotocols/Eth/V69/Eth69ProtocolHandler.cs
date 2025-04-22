@@ -51,6 +51,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     public override byte ProtocolVersion => EthVersions.Eth69;
 
     // For BlockRangeUpdate message
+    // TODO: check if CanGossip can be used instead
     public override bool AlwaysNotifyOfNewBlock => true;
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
