@@ -1,35 +1,62 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 public class ParallelRunner<TLogger>(
     ParallelScheduler<TLogger> scheduler,
     MultiVersionMemory<TLogger> memory,
+    ParallelTrace<IsTracing> parallelTrace,
     IVm vm,
-    ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing
+    int? concurrencyLevel = null) where TLogger : struct, IIsTracing
 {
+    private int _threadIndex = 0;
+
     public async Task Run()
     {
-        TxTask task = scheduler.NextTask();
-        do
+        int concurrency = concurrencyLevel ?? Environment.ProcessorCount;
+        using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(concurrency);
+        for (int i = 0; i < concurrency; i++)
         {
-            TxTask current = task;
-            _ = Task.Run(() => RunTask(current));
-            task = scheduler.NextTask();
-            if (task.IsEmpty) await Task.Delay(10);
-        } while (!scheduler.Done);
+            tasks.Add(Task.Run(Loop));
+        }
+
+        await Task.WhenAll(tasks.AsSpan());
     }
 
-    private void RunTask(TxTask task)
+    private void Loop()
     {
-        while (!task.IsEmpty)
+        int threadIndex = Interlocked.Increment(ref _threadIndex);
+        using var handle = Thread.CurrentThread.BoostPriorityHighest();
+        try
         {
-            task = task.Validating ? NeedsReexecution(task.Version) : TryExecute(task.Version);
-            if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask (immediate): {task}");
+            TxTask task = scheduler.NextTask();
+            do
+            {
+                if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
+                task = task switch
+                {
+                    { IsEmpty: true } => scheduler.NextTask(),
+                    { Validating: false } => TryExecute(task.Version),
+                    { Validating: true } => NeedsReexecution(task.Version)
+                };
+            } while (!scheduler.Done);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Thread {threadIndex} finished");
         }
     }
 
@@ -43,8 +70,8 @@ public class ParallelRunner<TLogger>(
 
     private TxTask NeedsReexecution(Version version)
     {
-        bool aborted = !memory.ValidateReadSet(version.TxIndex);
-        if (aborted && scheduler.TryValidationAbort(version))
+        bool aborted = !memory.ValidateReadSet(version.TxIndex) && scheduler.TryValidationAbort(version);
+        if (aborted)
         {
             memory.ConvertWritesToEstimates(version.TxIndex);
         }

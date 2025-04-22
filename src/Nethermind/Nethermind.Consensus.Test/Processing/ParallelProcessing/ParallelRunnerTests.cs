@@ -102,7 +102,7 @@ public class ParallelRunnerTests
     {
         ParallelTrace<IsTracing> parallelTrace = new ParallelTrace<IsTracing>();
         MultiVersionMemory<IsTracing> multiVersionMemory = new MultiVersionMemory<IsTracing>(blockSize, parallelTrace);
-        ParallelRunner<IsTracing> runner = new ParallelRunner<IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace), multiVersionMemory, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx), parallelTrace);
+        ParallelRunner<IsTracing> runner = new ParallelRunner<IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace), multiVersionMemory, parallelTrace, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx));
         await runner.Run();
         foreach ((long, DateTime, string) trace in parallelTrace.GetTraces() ?? [])
         {

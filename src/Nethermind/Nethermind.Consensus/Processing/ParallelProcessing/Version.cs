@@ -8,4 +8,10 @@ public readonly record struct Version(ushort TxIndex, ushort Incarnation)
     public bool IsEmpty => TxIndex == ushort.MaxValue && Incarnation == ushort.MaxValue;
     public static Version Empty { get; } = new(ushort.MaxValue, ushort.MaxValue);
     public override string ToString() => $"Tx {TxIndex}, Incarnation {Incarnation}";
+
+    public void Deconstruct(out ushort txIndex, out ushort incarnation)
+    {
+        txIndex = TxIndex;
+        incarnation = Incarnation;
+    }
 }

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Threading;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
@@ -33,8 +32,10 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     private void CheckDone()
     {
         int observedCount = _decreaseCount;
-        Done |= Math.Min(_executionIndex, _validationIndex) >= blockSize
-                && Volatile.Read(ref _activeTasks) == 0 && observedCount == _decreaseCount;
+        bool done = Math.Min(_executionIndex, _validationIndex) >= blockSize
+                   && Volatile.Read(ref _activeTasks) == 0 && observedCount == _decreaseCount;
+        Done |= done;
+        if (typeof(TLogger) == typeof(IsTracing) && done) parallelTrace.Add("Done");
     }
 
     private Version FetchNext(ref int index, ushort requiredStatus, ushort newStatus)
@@ -68,15 +69,11 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
     public TxTask NextTask()
     {
-        long id = parallelTrace.ReserveId();
-        var validating = _validationIndex < _executionIndex;
-        Version version = validating
-            ? FetchNext(ref _validationIndex, TxStatus.Executed, TxStatus.Executed)
-            : FetchNext(ref _executionIndex, TxStatus.Ready, TxStatus.Executing);
-
-        var task = new TxTask(version, validating);
-        if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add(id, $"NextTask: {task}");
-        return task;
+        bool validating = _validationIndex < _executionIndex;
+        return new TxTask(validating
+                ? FetchNext(ref _validationIndex, TxStatus.Executed, TxStatus.Executed)
+                : FetchNext(ref _executionIndex, TxStatus.Ready, TxStatus.Executing),
+            validating);
     }
 
     public bool AddDependency(ushort txIndex, ushort blockingTxIndex)
@@ -142,7 +139,6 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         }
     }
 
-
     private void SetReady(ushort txIndex)
     {
         ref TxState state = ref _txStates[txIndex];
@@ -163,14 +159,12 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
         if (Volatile.Read(ref _validationIndex) > txIndex)
         {
-            if (wroteNewLocation)
-            {
-                DecreaseIndex(ref _validationIndex, txIndex, "validation");
-            }
-            else
+            if (!wroteNewLocation)
             {
                 return new TxTask(version, true);
             }
+
+            DecreaseIndex(ref _validationIndex, txIndex, "validation");
         }
 
         Interlocked.Decrement(ref _activeTasks);
