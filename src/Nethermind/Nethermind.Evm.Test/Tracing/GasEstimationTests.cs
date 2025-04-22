@@ -272,7 +272,8 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            Assert.That(() => sut.Estimate(tx, block.Header, tracer, out string? _, errorMargin), Throws.TypeOf<ArgumentOutOfRangeException>());
+            sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
+			Assert.That(err, Is.Not.Null);
         }
 
 
