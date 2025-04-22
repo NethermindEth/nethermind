@@ -249,8 +249,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
 
-    [TestCase("^mainnet", 0)]
+    [TestCase("^mainnet ^sepolia", 0)]
     [TestCase("mainnet fast", 0)]
+    [TestCase("sepolia", 1450408)]
     public void Barriers_defaults_are_correct(string configWildcard, long barrier)
     {
         Test<ISyncConfig, long>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
