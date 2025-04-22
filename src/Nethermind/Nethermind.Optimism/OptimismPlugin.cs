@@ -52,6 +52,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
+    private OptimismPayloadPreparationService? _payloadPreparationService;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -179,9 +180,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             await Task.Delay(100);
         await Task.Delay(5000);
 
+        // Single block shouldn't take a full slot to run
+        // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+        double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
@@ -190,6 +194,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.TimerFactory,
             _api.LogManager,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        _payloadPreparationService = payloadPreparationService;
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -199,15 +204,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
-        IEngineRpcModule engineRpcModule = new EngineRpcModule(
-            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-            new NewPayloadHandler(
+
+        NewPayloadHandler newPayloadHandler = new(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 posSwitcher,
                 beaconSync,
                 beaconPivot,
@@ -217,7 +217,19 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts),
+                _api.Config<IReceiptConfig>().StoreReceipts);
+        bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+        if (simulateBlockProduction)
+        {
+            newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+        }
+
+        IEngineRpcModule engineRpcModule = new EngineRpcModule(
+            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            newPayloadHandler,
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,
@@ -232,8 +244,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
-                _api.Config<IMergeConfig>().SimulateBlockProduction),
+                simulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
@@ -255,15 +266,26 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+        StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
 
         ICLConfig clConfig = _api.Config<ICLConfig>();
         if (clConfig.Enabled)
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
-            _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
-            await _cl.Start();
+            _cl = new OptimismCL(
+                _api.SpecProvider,
+                chainSpecEngineParameters,
+                clConfig,
+                _api.EthereumJsonSerializer,
+                _api.EthereumEcdsa,
+                _api.Timestamper,
+                _api.ChainSpec.Genesis.Timestamp,
+                _api!.LogManager,
+                _api.OptimismEthRpcModule,
+                opEngine);
+            _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
+            _api.DisposeStack.Push(_cl);
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
@@ -277,7 +299,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             blockProducer);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize => true;
 

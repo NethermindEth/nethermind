@@ -36,6 +36,7 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -118,11 +119,19 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             _additionalTxSource = additionalTxSource;
         }
 
-        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
-        {
-            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
-            return base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
-        }
+        protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null) =>
+            base.Build(builder =>
+            {
+                builder.AddDecorator<ISpecProvider>((ctx, specProvider) =>
+                {
+                    // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
+                    ISpecProvider unwrappedSpecProvider = specProvider;
+                    while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider) unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
+                    if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
+                    return specProvider;
+                });
+                configurer?.Invoke(builder);
+            });
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {
@@ -161,7 +170,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager
             );
 
-            BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -181,9 +189,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         }
 
 
-        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
-            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
