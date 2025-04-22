@@ -787,7 +787,7 @@ public partial class EthRpcModule(
         if (receipt is null || gasInfo is null)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash == null)
+            if (blockHash is null)
             {
                 var error = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
                 return GetFailureResult<ReceiptForRpc, Block>(error, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());

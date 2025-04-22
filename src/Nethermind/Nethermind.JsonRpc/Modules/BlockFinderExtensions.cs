@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
             var requestedBlock = blockParameter.BlockNumber;
-            if (requestedBlock == null)
+            if (requestedBlock is null)
             {
                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
                 if (!headerResult.IsError)
@@ -23,11 +23,7 @@ namespace Nethermind.JsonRpc.Modules
                     requestedBlock = headerResult.Object.Number;
                 }
             }
-            if (requestedBlock < blockFinder.GetLowestBlock())
-            {
-                return true;
-            }
-            return false;
+            return requestedBlock < blockFinder.GetLowestBlock();
         }
 
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
