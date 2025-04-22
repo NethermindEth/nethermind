@@ -18,6 +18,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
@@ -58,8 +59,9 @@ public class PsudoNetworkModule(IInitConfig initConfig) : Module
                 serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
                 serializationService.Register(System.Reflection.Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
                 ReceiptsMessageSerializer receiptsMessageSerializer = new(specProvider);
-                serializationService.Register(receiptsMessageSerializer);
+                serializationService.Register(receiptsMessageSerializer); // TODO: use default serializers registration?
                 serializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
+                serializationService.Register<ReceiptsMessage69>(new ReceiptsMessageSerializer69(specProvider));
 
                 return serializationService;
             })
