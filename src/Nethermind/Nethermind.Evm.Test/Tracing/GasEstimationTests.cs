@@ -273,7 +273,7 @@ namespace Nethermind.Evm.Test.Tracing
                 new BlocksConfig());
 
             sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
-			Assert.That(err, Is.Not.Null);
+            Assert.That(err, Is.Not.Null);
         }
 
 
