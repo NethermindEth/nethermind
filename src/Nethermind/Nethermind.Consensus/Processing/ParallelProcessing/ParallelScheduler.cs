@@ -31,9 +31,9 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
     private void CheckDone()
     {
-        int observedCount = _decreaseCount;
+        int observedCount = Volatile.Read(ref _decreaseCount);
         bool done = Math.Min(_executionIndex, _validationIndex) >= blockSize
-                   && Volatile.Read(ref _activeTasks) == 0 && observedCount == _decreaseCount;
+                   && Volatile.Read(ref _activeTasks) == 0 && observedCount == Volatile.Read(ref _decreaseCount);
         Done |= done;
         if (typeof(TLogger) == typeof(IsTracing) && done) parallelTrace.Add("Done");
     }
@@ -190,10 +190,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             if (Volatile.Read(ref _executionIndex) > txIndex)
             {
                 Version newVersion = TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing);
-                if (!newVersion.IsEmpty)
-                {
-                    return new TxTask(newVersion, false);
-                }
+                return new TxTask(newVersion, false);
             }
         }
 

@@ -191,4 +191,4 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
 }
 
 public readonly record struct Read(int Location, Version Version);
-public enum Status { Ok, NotFound, ReadError };
+public enum Status { Ok, NotFound, ReadError }
