@@ -41,7 +41,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             .AddModule(new PsudoNetworkModule(initConfig))
             .AddModule(new DiscoveryModule(initConfig, networkConfig))
-            .AddModule(new WorldStateModule())
             .AddModule(new BlockTreeModule())
             .AddModule(new BlockProcessingModule())
 
