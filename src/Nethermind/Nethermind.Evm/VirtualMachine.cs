@@ -33,6 +33,7 @@ using Int256;
 using Nethermind.Evm.Config;
 using Sigil;
 using System.Diagnostics;
+using System.IO;
 using ZstdSharp.Unsafe;
 
 public class VirtualMachine : IVirtualMachine
@@ -76,7 +77,18 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = vmConfig ?? new VMConfig();
+        _vmConfig = new VMConfig
+        {
+            IlEvmAnalysisQueueMaxSize = 2,
+            IlEvmAnalysisThreshold = 2,
+            IlEvmContractsPerDllCount = 16,
+            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmPrecompiledContractsPath = Path.Combine(Directory.GetCurrentDirectory(), "AotCache"),
+            IsIlEvmAggressiveModeEnabled = true,
+            IsILEvmEnabled = true,
+            IlEvmAnalysisCoreUsage = 0.5f
+        };
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
@@ -672,10 +684,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
-
         }
+
         if (env.CodeInfo.MachineCode.Length == 0)
         {
             if (!vmState.IsTopLevel)
@@ -807,7 +820,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             Instruction instruction = (Instruction)code[programCounter];
 
-            // Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
+            Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
 
             if (isCancelable && _txTracer.IsCancelled)
             {

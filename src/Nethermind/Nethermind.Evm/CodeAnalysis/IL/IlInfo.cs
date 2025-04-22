@@ -20,7 +20,7 @@ public static class ILMode
 
 public enum AnalysisPhase
 {
-    NotStarted, Queued, Processing, Completed, Failed
+    NotStarted, Queued, Processing, Completed, Failed, Skipped
 }
 
 /// <summary>

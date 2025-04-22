@@ -119,7 +119,6 @@ public static class IlAnalyzer
         try
         {
             Analyse(worklet, config.IlEvmEnabledMode, config, logger);
-            Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
         }
         catch(Exception e)
         {
@@ -163,13 +162,15 @@ public static class IlAnalyzer
                 {
                     if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
                     {
-                        return;
+                        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Skipped);
+                        break;
                     }
                     CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
                     Metrics.IncrementIlvmContractsAnalyzed();
                 }
                 break;
         }
+        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
     }
 
     internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)

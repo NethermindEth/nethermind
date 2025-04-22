@@ -109,7 +109,6 @@ public static class Precompiler
 
             if (Interlocked.CompareExchange(ref _currentBundleSize, 0, config.IlEvmContractsPerDllCount) == config.IlEvmContractsPerDllCount)
             {
-
                 try
                 {
                     FlushToDisk(config);
@@ -322,10 +321,9 @@ public static class Precompiler
                 method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
             }
 
-            /*
             using Local depth = method.DeclareLocal<int>();
 
-            FullAotEnvLoader.LoadEnv(method, locals, true);
+            method.LoadEnv(locals, true);
             method.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.CallDepth)));
             method.StoreLocal(depth);
 
@@ -341,8 +339,7 @@ public static class Precompiler
             method.LoadConstant(opcodeInfo.Instruction.ToString());
             method.StoreLocal(instructionName);
 
-            // method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
-            */
+            method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
 
             method.GetOpcodeILEmitter(opcodeInfo.Instruction, codeInfo, config, contractMetadata, currentSubsegment, i, opcodeInfo.Metadata, locals, evmExceptionLabels, (ret, jumpTable, exit));
 
