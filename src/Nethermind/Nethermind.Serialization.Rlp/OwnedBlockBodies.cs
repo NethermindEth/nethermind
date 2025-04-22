@@ -80,7 +80,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     IEnumerator IEnumerable.GetEnumerator()
     {
-        return GetEnumerator();
+        return _rawBodies.GetEnumerator();
     }
 
     public int Count => _rawBodies.Length;
