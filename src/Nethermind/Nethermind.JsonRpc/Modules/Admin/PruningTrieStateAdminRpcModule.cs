@@ -9,12 +9,12 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
-public class PruningTrieStateAdminRpc(
+public class PruningTrieStateAdminRpcModule(
     ManualPruningTrigger manualPruningTrigger,
     IBlockTree blockTree,
     IStateReader stateReader,
     IVerifyTrieStarter verifyTrieStarter
-) : IPruningTrieStateAdminRpc
+) : IPruningTrieStateAdminRpcModule
 {
     public ResultWrapper<PruningStatus> admin_prune()
     {

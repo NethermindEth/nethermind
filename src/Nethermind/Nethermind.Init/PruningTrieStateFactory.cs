@@ -46,7 +46,7 @@ public class PruningTrieStateFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
-    public (IWorldStateManager, INodeStorage, IPruningTrieStateAdminRpc) Build()
+    public (IWorldStateManager, INodeStorage, IPruningTrieStateAdminRpcModule) Build()
     {
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
@@ -203,14 +203,14 @@ public class PruningTrieStateFactory(
         var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
-        PruningTrieStateAdminRpc adminRpc = new PruningTrieStateAdminRpc(
+        PruningTrieStateAdminRpcModule adminRpcModule = new PruningTrieStateAdminRpcModule(
             pruningTrigger,
             blockTree,
             stateManager.GlobalStateReader,
             verifyTrieStarter!
         );
 
-        return (stateManager, mainNodeStorage, adminRpc);
+        return (stateManager, mainNodeStorage, adminRpcModule);
     }
 
     private void InitializeFullPruning(

@@ -7,7 +7,7 @@ using Nethermind.Blockchain.FullPruning;
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 [RpcModule(ModuleType.Admin)]
-public interface IPruningTrieStateAdminRpc : IRpcModule
+public interface IPruningTrieStateAdminRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Runs full pruning if enabled.",
         EdgeCaseHint = "",

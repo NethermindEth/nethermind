@@ -26,8 +26,8 @@ public class WorldStateModule : Module
             .Map<INodeStorage, PruningTrieStateFactoryOutput>((m) => m.NodeStorage)
 
             // Some admin rpc to trigger verify trie and pruning
-            .Map<IPruningTrieStateAdminRpc, PruningTrieStateFactoryOutput>((m) => m.AdminRpc)
-            .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpc>()
+            .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
+            .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
 
             .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
 
@@ -41,14 +41,14 @@ public class WorldStateModule : Module
     {
         public IWorldStateManager WorldStateManager { get; }
         public INodeStorage NodeStorage { get; }
-        public IPruningTrieStateAdminRpc AdminRpc { get; }
+        public IPruningTrieStateAdminRpcModule AdminRpcModule { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
-            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, IPruningTrieStateAdminRpc adminRpc) = factory.Build();
+            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, IPruningTrieStateAdminRpcModule adminRpc) = factory.Build();
             WorldStateManager = worldStateManager;
             NodeStorage = mainNodeStorage;
-            AdminRpc = adminRpc;
+            AdminRpcModule = adminRpc;
         }
     }
 }

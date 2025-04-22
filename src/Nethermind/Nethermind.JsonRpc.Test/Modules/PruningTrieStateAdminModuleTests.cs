@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public class PruningTrieStateAdminModuleTests
 {
-    private IPruningTrieStateAdminRpc _adminRpcModule = null!;
+    private IPruningTrieStateAdminRpcModule _adminRpcModuleModule = null!;
     private IBlockTree _blockTree = null!;
     private IVerifyTrieStarter _verifyTrieStarter = null!;
     private IStateReader _stateReader = null!;
@@ -29,7 +29,7 @@ public class PruningTrieStateAdminModuleTests
         _verifyTrieStarter = Substitute.For<IVerifyTrieStarter>();
         _stateReader = Substitute.For<IStateReader>();
 
-        _adminRpcModule = new PruningTrieStateAdminRpc(
+        _adminRpcModuleModule = new PruningTrieStateAdminRpcModule(
             new ManualPruningTrigger(),
             _blockTree,
             _stateReader,
@@ -39,9 +39,9 @@ public class PruningTrieStateAdminModuleTests
     [Test]
     public async Task Test_admin_verifyTrie()
     {
-        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Unable to start verify trie");
+        (await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")).Should().Contain("Unable to start verify trie");
         _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
         _verifyTrieStarter.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
-        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
+        (await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
     }
 }
