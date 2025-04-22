@@ -19,6 +19,8 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -80,6 +82,12 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
                     ctx.Resolve<ITimerFactory>(),
                     ctx.Resolve<ILogManager>(),
                     TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot));
+            })
+
+            // Protocols
+            .OnActivate<IProtocolsManager>((p, _) =>
+            {
+                p.AddSupportedCapability(new(Protocol.Eth, 69));
             })
             ;
 
