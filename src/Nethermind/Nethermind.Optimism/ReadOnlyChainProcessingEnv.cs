@@ -58,6 +58,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     {
         return new OptimismBlockProcessor(
             specProvider,
+            opSpecHelper,
             blockValidator,
             rewardCalculator,
             transactionsExecutor,

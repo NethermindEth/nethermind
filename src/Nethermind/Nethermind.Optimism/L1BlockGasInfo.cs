@@ -33,7 +33,7 @@ public readonly struct L1TxGasInfo(
     public UInt64? OperatorFeeConstant { get; } = operatorFeeConstant;
 }
 
-public readonly struct L1BlockGasInfo
+public sealed class L1BlockGasInfo
 {
     private readonly UInt256? _l1GasPrice;
     private readonly UInt256? _l1BlobBaseFee;
@@ -121,7 +121,7 @@ public readonly struct L1BlockGasInfo
         }
     }
 
-    public readonly L1TxGasInfo GetTxGasInfo(Transaction tx)
+    public L1TxGasInfo GetTxGasInfo(Transaction tx)
     {
         UInt256? l1Fee = null;
         UInt256? l1GasUsed = null;

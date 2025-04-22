@@ -138,12 +138,13 @@ public class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, in byte statusCode)
+        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee,
+        in TxExecutionContext env, in byte statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, env, statusCode);
 
             if (opSpecHelper.IsBedrock(header))
             {
@@ -153,7 +154,7 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsIsthmus(header))
             {
-                Op
+                // Op
                 //L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
                 // Operator Fee refunds are only applied if Isthmus is active and the transaction is *not* a deposit.
@@ -200,8 +201,4 @@ public class OptimismTransactionProcessor(
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
     }
-
-    private static readonly ConditionalWeakTable<BlockHeader, Box<L1BlockGasInfo>> L1BlockGasInfo = new();
-
-    public static void Register(BlockHeader header, L1BlockGasInfo gasInfo) => L1BlockGasInfo.AddOrUpdate(header, gasInfo);
 }

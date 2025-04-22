@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -63,9 +64,12 @@ public class OptimismBlockProcessor : BlockProcessor
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        var info = new L1BlockGasInfo(block, _specHelper);
-        OptimismTransactionProcessor.Register(block.Header, info);
-
         return base.ProcessBlock(block, blockTracer, options, token);
+    }
+
+    protected override BlockExecutionContext BuildBlockContext(Block block, IReleaseSpec spec)
+    {
+        var info = new L1BlockGasInfo(block, _specHelper);
+        return new(block.Header, spec);
     }
 }

@@ -170,7 +170,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
-            PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, env.TxExecutionContext, statusCode);
             tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
@@ -694,7 +694,9 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
+            in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee,
+            in TxExecutionContext env, in byte statusCode)
         {
             UInt256 fees = (UInt256)spentGas * premiumPerGas;
 
