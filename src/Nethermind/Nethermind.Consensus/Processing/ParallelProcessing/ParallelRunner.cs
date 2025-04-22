@@ -10,12 +10,12 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
-public class ParallelRunner<TLogger>(
+public class ParallelRunner<TLocation, TLogger>(
     ParallelScheduler<TLogger> scheduler,
-    MultiVersionMemory<TLogger> memory,
+    MultiVersionMemory<TLocation, TLogger> memory,
     ParallelTrace<IsTracing> parallelTrace,
-    IVm vm,
-    int? concurrencyLevel = null) where TLogger : struct, IIsTracing
+    IVm<TLocation> vm,
+    int? concurrencyLevel = null) where TLogger : struct, IIsTracing where TLocation : notnull
 {
     private int _threadIndex = 0;
 
@@ -80,7 +80,7 @@ public class ParallelRunner<TLogger>(
     }
 }
 
-public interface IVm
+public interface IVm<TLocation> where TLocation : notnull
 {
-    public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read> readSet, out Dictionary<int, byte[]> writeSet);
+    public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, byte[]> writeSet);
 }

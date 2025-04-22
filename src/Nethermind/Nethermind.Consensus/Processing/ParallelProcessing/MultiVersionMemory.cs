@@ -9,37 +9,37 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
-public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing
+public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing where TLocation : notnull
 {
     private readonly record struct Value(ushort Incarnation, byte[] Bytes);
     private static readonly Value Estimate = new(ushort.MaxValue, []);
 
-    private readonly ConcurrentDictionary<int, Value>[] _data =
+    private readonly ConcurrentDictionary<TLocation, Value>[] _data =
         Enumerable.Range(0, txCount)
-        .Select(_ => new ConcurrentDictionary<int, Value>())
+        .Select(_ => new ConcurrentDictionary<TLocation, Value>())
         .ToArray();
 
-    private readonly HashSet<int>?[] _lastWrittenLocations = new HashSet<int>?[txCount];
-    private readonly HashSet<Read>?[] _lastReads = new HashSet<Read>[txCount];
+    private readonly HashSet<TLocation>?[] _lastWrittenLocations = new HashSet<TLocation>?[txCount];
+    private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
 
-    private void ApplyWriteSet(Version version, Dictionary<int, byte[]> writeSet)
+    private void ApplyWriteSet(Version version, Dictionary<TLocation, byte[]> writeSet)
     {
-        ConcurrentDictionary<int, Value> txData = _data[version.TxIndex];
-        foreach (KeyValuePair<int, byte[]> write in writeSet)
+        ConcurrentDictionary<TLocation, Value> txData = _data[version.TxIndex];
+        foreach (KeyValuePair<TLocation, byte[]> write in writeSet)
         {
             txData[write.Key] = new(version.Incarnation, write.Value);
         }
     }
 
-    private bool UpdateWrittenLocations(int txIndex, Dictionary<int, byte[]> writeSet)
+    private bool UpdateWrittenLocations(int txIndex, Dictionary<TLocation, byte[]> writeSet)
     {
-        ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        ref HashSet<int>? lastWritten = ref _lastWrittenLocations[txIndex];
-        lastWritten ??= new HashSet<int>();
+        ConcurrentDictionary<TLocation, Value> txData = _data[txIndex];
+        ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[txIndex];
+        lastWritten ??= new HashSet<TLocation>();
 
         if (lastWritten.Count != 0)
         {
-            using ArrayPoolList<int> toRemove = new(lastWritten.Count);
+            using ArrayPoolList<TLocation> toRemove = new(lastWritten.Count);
             foreach (var id in lastWritten)
             {
                 if (!writeSet.ContainsKey(id))
@@ -60,7 +60,7 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
         return lastWritten.Count > oldCount;
     }
 
-    public bool Record(Version version, HashSet<Read> readSet, Dictionary<int, byte[]> writeSet)
+    public bool Record(Version version, HashSet<Read<TLocation>> readSet, Dictionary<TLocation, byte[]> writeSet)
     {
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"{version} Record read-set: {{{string.Join(",", readSet.Select(r => $"{r.Location}:{r.Version}"))}}}, write-set: {{{string.Join(",", writeSet.Select(r => $"{r.Key}:{r.Value.ToHexString()}"))}}}.");
         ApplyWriteSet(version, writeSet);
@@ -72,25 +72,25 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
     public void ConvertWritesToEstimates(ushort txIndex)
     {
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ConvertWritesToEstimates.");
-        ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        HashSet<int>? previousLocations = _lastWrittenLocations[txIndex];
+        ConcurrentDictionary<TLocation, Value> txData = _data[txIndex];
+        HashSet<TLocation>? previousLocations = _lastWrittenLocations[txIndex];
         if (previousLocations is not null)
         {
-            foreach (int location in previousLocations)
+            foreach (var location in previousLocations)
             {
                 txData[location] = Estimate;
             }
         }
     }
 
-    public Status TryRead(int location, ushort txIndex, out Version version, out byte[]? value)
+    public Status TryRead(TLocation location, ushort txIndex, out Version version, out byte[]? value)
     {
         long id = parallelTrace.ReserveId();
         ushort prevTx = txIndex;
         prevTx--;
         while (prevTx != ushort.MaxValue)
         {
-            ConcurrentDictionary<int, Value> prevTransactionData = _data[prevTx];
+            ConcurrentDictionary<TLocation, Value> prevTransactionData = _data[prevTx];
             if (prevTransactionData.TryGetValue(location, out Value v))
             {
                 version = new Version(prevTx, v.Incarnation);
@@ -117,13 +117,13 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
         return Status.NotFound;
     }
 
-    public Dictionary<int, byte[]> Snapshot()
+    public Dictionary<TLocation, byte[]> Snapshot()
     {
-        Dictionary<int, byte[]> result = new Dictionary<int, byte[]>();
+        Dictionary<TLocation, byte[]> result = new Dictionary<TLocation, byte[]>();
         for (var index = _data.Length - 1; index >= 0; index--)
         {
-            ConcurrentDictionary<int, Value> data = _data[index];
-            foreach (KeyValuePair<int, Value> location in data)
+            ConcurrentDictionary<TLocation, Value> data = _data[index];
+            foreach (KeyValuePair<TLocation, Value> location in data)
             {
                 result.TryAdd(location.Key, location.Value.Bytes);
             }
@@ -134,10 +134,10 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
 
     public bool ValidateReadSet(ushort txIndex)
     {
-        HashSet<Read> priorReads = _lastReads[txIndex];
+        HashSet<Read<TLocation>> priorReads = _lastReads[txIndex];
         if (priorReads is not null)
         {
-            foreach (Read read in priorReads)
+            foreach (Read<TLocation> read in priorReads)
             {
                 Status status = TryRead(read.Location, txIndex, out Version version, out _);
                 switch (status)
@@ -190,5 +190,5 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
     // }
 }
 
-public readonly record struct Read(int Location, Version Version);
+public readonly record struct Read<TLocation>(TLocation Location, Version Version);
 public enum Status { Ok, NotFound, ReadError }

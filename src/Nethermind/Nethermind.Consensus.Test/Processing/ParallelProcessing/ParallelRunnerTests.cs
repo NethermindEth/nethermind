@@ -101,8 +101,8 @@ public class ParallelRunnerTests
     public async Task Run(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected)
     {
         ParallelTrace<IsTracing> parallelTrace = new ParallelTrace<IsTracing>();
-        MultiVersionMemory<IsTracing> multiVersionMemory = new MultiVersionMemory<IsTracing>(blockSize, parallelTrace);
-        ParallelRunner<IsTracing> runner = new ParallelRunner<IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace), multiVersionMemory, parallelTrace, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx));
+        MultiVersionMemory<int, IsTracing> multiVersionMemory = new MultiVersionMemory<int, IsTracing>(blockSize, parallelTrace);
+        ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace), multiVersionMemory, parallelTrace, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx));
         await runner.Run();
         foreach ((long, DateTime, string) trace in parallelTrace.GetTraces() ?? [])
         {
@@ -120,11 +120,11 @@ public class ParallelRunnerTests
         result.Should().BeEquivalentTo(expected);
     }
 
-    public class VmMock<TLogger>(MultiVersionMemory<TLogger> memory, IEnumerable<Operation>[] operationsPerTx) : IVm where TLogger : struct, IIsTracing
+    public class VmMock<TLogger>(MultiVersionMemory<int, TLogger> memory, IEnumerable<Operation>[] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing
     {
-        public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read> readSet, out Dictionary<int, byte[]> writeSet)
+        public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
         {
-            readSet = new HashSet<Read>();
+            readSet = new HashSet<Read<int>>();
             writeSet = new Dictionary<int, byte[]>();
             IEnumerable<Operation> operations = operationsPerTx[txIndex];
             byte[] lastRead = null;
@@ -142,11 +142,11 @@ public class ParallelRunnerTests
                             {
                                 case Status.NotFound:
                                     lastRead = operation.Value; // read from storage
-                                    readSet.Add(new Read(operation.Location, Version.Empty));
+                                    readSet.Add(new Read<int>(operation.Location, Version.Empty));
                                     break;
                                 case Status.Ok:
                                     lastRead = value; // use value from previous transaction
-                                    readSet.Add(new Read(operation.Location, version));
+                                    readSet.Add(new Read<int>(operation.Location, version));
                                     break;
                                 case Status.ReadError:
                                     blockingTx = version;
