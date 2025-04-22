@@ -70,6 +70,6 @@ public class OptimismBlockProcessor : BlockProcessor
     protected override BlockExecutionContext BuildBlockContext(Block block, IReleaseSpec spec)
     {
         var info = new L1BlockGasInfo(block, _specHelper);
-        return new(block.Header, spec);
+        return new(block.Header, spec, info);
     }
 }
