@@ -12,7 +12,8 @@ namespace Nethermind.Evm
 
     public enum EvmExceptionType
     {
-        None,
+        Stop = -1,
+        None = 0,
         BadInstruction,
         StackOverflow,
         StackUnderflow,
@@ -22,12 +23,13 @@ namespace Nethermind.Evm
         InvalidSubroutineReturn,
         InvalidJumpDestination,
         AccessViolation,
+        AddressOutOfRange,
         StaticCallViolation,
         PrecompileFailure,
         TransactionCollision,
         NotEnoughBalance,
         Other,
         Revert,
-        InvalidCode
+        InvalidCode,
     }
 }

@@ -12,6 +12,10 @@
       "commandName": "Project",
       "commandLineArgs": "-b -i blockchainTest1.json"
     },
+    "EOF Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-e -i eoftest1.json"
+    },
     "Gnosis Blockchain Test": {
       "commandName": "Project",
       "commandLineArgs": "-g -b -i gnosisBlockchainTest1.json"

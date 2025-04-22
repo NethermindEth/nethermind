@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Test.Runner
         {
             List<EthereumTestResult> testResults = new List<EthereumTestResult>();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
-            IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
+            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
             foreach (BlockchainTest test in tests)
             {
                 Setup();
