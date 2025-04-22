@@ -20,6 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -97,7 +98,7 @@ public partial class EngineModuleTests
             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
             StateRoot = chain.BlockTree.Head!.StateRoot!,
             Timestamp = timestamp.ToUInt64(null),
-            Transactions = Array.Empty<byte[]>()
+            Transactions = []
         });
         // get the payload
         result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
@@ -171,7 +172,7 @@ public partial class EngineModuleTests
         expected.BlockNumber = 1;
         expected.PrevRandao = random;
         expected.ParentHash = startingHead;
-        expected.SetTransactions(Array.Empty<Transaction>());
+        expected.SetTransactions([]);
         expected.Timestamp = timestamp;
         expected.PrevRandao = random;
         expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");
@@ -1569,7 +1570,11 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV3),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
-            nameof(IEngineRpcModule.engine_newPayloadV3)
+            nameof(IEngineRpcModule.engine_newPayloadV3),
+            nameof(IEngineRpcModule.engine_getBlobsV1),
+
+            nameof(IEngineRpcModule.engine_getPayloadV4),
+            nameof(IEngineRpcModule.engine_newPayloadV4),
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
