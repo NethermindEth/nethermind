@@ -43,10 +43,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected ISyncServer SyncServer { get; }
         protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
 
-        /// <summary>
-        /// If <c>false</c> node will stop receiving notifications about new blocks
-        /// after FIRST_FINALIZED_BLOCK (see https://eips.ethereum.org/EIPS/eip-3675#devp2p).
-        /// </summary>
         public abstract bool AlwaysNotifyOfNewBlock { get; }
 
         public long HeadNumber { get; set; }

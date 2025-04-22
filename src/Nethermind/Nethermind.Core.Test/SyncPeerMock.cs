@@ -62,7 +62,6 @@ namespace Nethermind.Core.Test
         public Node Node { get; }
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
-        public bool AlwaysNotifyOfNewBlock { get; } = default;
         public string ClientId => Node.ClientId;
         public Hash256 HeadHash { get; set; }
         public long HeadNumber { get; set; }

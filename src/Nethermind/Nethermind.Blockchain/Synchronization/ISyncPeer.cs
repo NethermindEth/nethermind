@@ -26,7 +26,13 @@ namespace Nethermind.Blockchain.Synchronization
         bool IsPriority { get; set; }
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
-        bool AlwaysNotifyOfNewBlock { get; }
+
+        /// <summary>
+        /// If <c>false</c> node will stop receiving notifications about new blocks
+        /// after FIRST_FINALIZED_BLOCK (see https://eips.ethereum.org/EIPS/eip-3675#devp2p).
+        /// </summary>
+        bool AlwaysNotifyOfNewBlock => false;
+
         void Disconnect(DisconnectReason reason, string details);
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
