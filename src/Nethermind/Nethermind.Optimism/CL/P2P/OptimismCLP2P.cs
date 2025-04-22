@@ -58,7 +58,7 @@ public class OptimismCLP2P : IDisposable
         _logger = logManager.GetClassLogger();
         _config = config;
         _executionEngineManager = executionEngineManager;
-        _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
+        _staticPeerList = staticPeerList.Where(s => !string.IsNullOrEmpty(s)).Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
