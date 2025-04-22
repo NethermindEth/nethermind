@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -19,7 +19,7 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
         .Select(_ => new ConcurrentDictionary<int, Value>())
         .ToArray();
 
-    private readonly Dictionary<int, byte[]>.KeyCollection?[] _lastWrittenLocations = new Dictionary<int, byte[]>.KeyCollection[txCount];
+    private readonly HashSet<int>?[] _lastWrittenLocations = new HashSet<int>?[txCount];
     private readonly HashSet<Read>?[] _lastReads = new HashSet<Read>[txCount];
 
     private void ApplyWriteSet(Version version, Dictionary<int, byte[]> writeSet)
@@ -34,18 +34,30 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
     private bool UpdateWrittenLocations(int txIndex, Dictionary<int, byte[]> writeSet)
     {
         ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        ref Dictionary<int, byte[]>.KeyCollection? previousWrittenLocations = ref _lastWrittenLocations[txIndex];
-        if (previousWrittenLocations is not null)
+        ref HashSet<int>? lastWritten = ref _lastWrittenLocations[txIndex];
+        lastWritten ??= new HashSet<int>();
+
+        if (lastWritten.Count != 0)
         {
-            foreach (int unwrittenLocation in previousWrittenLocations.Except(writeSet.Keys))
+            using ArrayPoolList<int> toRemove = new(lastWritten.Count);
+            foreach (var id in lastWritten)
             {
-                txData.Remove(unwrittenLocation, out _);
+                if (!writeSet.ContainsKey(id))
+                {
+                    toRemove.Add(id);
+                }
+            }
+
+            foreach (var id in toRemove)
+            {
+                lastWritten.Remove(id);
+                txData.TryRemove(id, out _);
             }
         }
 
-        bool newLocationWritten = writeSet.Keys.Except((IEnumerable<int>)previousWrittenLocations ?? []).Any();
-        previousWrittenLocations = writeSet.Keys; // TODO: clear values?
-        return newLocationWritten;
+        int oldCount = lastWritten.Count;
+        lastWritten.UnionWith(writeSet.Keys);
+        return lastWritten.Count > oldCount;
     }
 
     public bool Record(Version version, HashSet<Read> readSet, Dictionary<int, byte[]> writeSet)
@@ -61,7 +73,7 @@ public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> 
     {
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ConvertWritesToEstimates.");
         ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        IEnumerable<int>? previousLocations = _lastWrittenLocations[txIndex];
+        HashSet<int>? previousLocations = _lastWrittenLocations[txIndex];
         if (previousLocations is not null)
         {
             foreach (int location in previousLocations)
