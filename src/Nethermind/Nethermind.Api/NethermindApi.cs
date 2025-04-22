@@ -194,12 +194,8 @@ namespace Nethermind.Api
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
         public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
-        public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        public IWorldStateManager? WorldStateManager { get; set; }
-        public INodeStorage? MainNodeStorage { get; set; }
-        public CompositePruningTrigger? PruningTrigger { get; set; }
-        public IVerifyTrieStarter? VerifyTrieStarter { get; set; }
-        public IStateReader? StateReader { get; set; }
+        public IWorldStateManager? WorldStateManager => Context.Resolve<IWorldStateManager>();
+        public IStateReader? StateReader => Context.Resolve<IStateReader>();
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITrustedNodesManager? TrustedNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;

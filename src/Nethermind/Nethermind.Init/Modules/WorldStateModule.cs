@@ -3,11 +3,12 @@
 
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Init;
+using Nethermind.Core;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
 
-namespace Nethermind.Core.Test.Modules;
+namespace Nethermind.Init.Modules;
 
 public class WorldStateModule : Module
 {
@@ -20,6 +21,9 @@ public class WorldStateModule : Module
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
             .Map<INodeStorage, PruningTrieStateFactoryOutput>((m) => m.NodeStorage)
+            .Map<IPruningTrieStateAdminRpc, PruningTrieStateFactoryOutput>((m) => m.AdminRpc)
+            .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpc>()
+
             .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
 
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
@@ -31,12 +35,14 @@ public class WorldStateModule : Module
     {
         public IWorldStateManager WorldStateManager { get; }
         public INodeStorage NodeStorage { get; }
+        public IPruningTrieStateAdminRpc AdminRpc { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
-            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, CompositePruningTrigger _) = factory.Build();
+            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, IPruningTrieStateAdminRpc adminRpc) = factory.Build();
             WorldStateManager = worldStateManager;
             NodeStorage = mainNodeStorage;
+            AdminRpc = adminRpc;
         }
     }
 }

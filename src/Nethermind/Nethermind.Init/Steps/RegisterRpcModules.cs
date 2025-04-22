@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -18,15 +17,11 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc.Modules.Net;
-using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.JsonRpc.Modules.TxPool;
-using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -97,8 +92,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
 
-        ManualPruningTrigger pruningTrigger = new();
-        _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
 
         _api.SubscriptionFactory = new SubscriptionFactory();
@@ -111,11 +104,9 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            _api.VerifyTrieStarter!,
             _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
             initConfig.BaseDbPath,
-            pruningTrigger,
             getFromApi.ChainSpec.Parameters,
             _api.TrustedNodesManager,
             subscriptionManager);
