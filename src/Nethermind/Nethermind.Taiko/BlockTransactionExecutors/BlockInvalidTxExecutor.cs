@@ -20,8 +20,12 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
     private readonly ITransactionProcessorAdapter _txProcessor = txProcessor;
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider(IWorldState worldState)
+    {
+        return new BlockInvalidTxExecutor(_txProcessor, worldState);
+    }
 
-    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
+    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer executionTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (block.Transactions.Length == 0)
         {
@@ -47,11 +51,11 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 continue;
             }
 
-            using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
+            using ITxTracer _ = executionTracer.StartNewTxTrace(tx);
 
             try
             {
-                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
+                if (!_txProcessor.Execute(tx, in blkCtx, executionTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue
                     _worldState.Restore(snap);
@@ -67,12 +71,12 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             }
             // only end the trace if the transaction was successful
             // so that we don't increment the receipt index for failed transactions
-            receiptsTracer.EndTxTrace();
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, receiptsTracer.LastReceipt));
+            executionTracer.EndTxTrace();
+            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, executionTracer.LastReceipt));
             correctTransactions.Add(tx);
         }
 
         block.TrySetTransactions([.. correctTransactions]);
-        return [.. receiptsTracer.TxReceipts];
+        return [.. executionTracer.TxReceipts];
     }
 }

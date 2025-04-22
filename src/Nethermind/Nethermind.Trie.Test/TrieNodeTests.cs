@@ -356,7 +356,7 @@ public class TrieNodeTests
     {
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
-        Account account = new(100);
+        Account account = new(0, 100);
         AccountDecoder decoder = new();
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
@@ -371,7 +371,7 @@ public class TrieNodeTests
     {
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
-        Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        Account account = new(0, 1, 100, 0, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
         AccountDecoder decoder = new();
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
@@ -386,7 +386,7 @@ public class TrieNodeTests
     {
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
-        Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
+        Account account = new(0, 1, 100, 0, Keccak.EmptyTreeHash, Keccak.Zero);
         AccountDecoder decoder = new();
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
@@ -401,7 +401,7 @@ public class TrieNodeTests
     {
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
-        Account account = new(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
+        Account account = new(0, 1, 100, 0, Keccak.Zero, Keccak.OfAnEmptyString);
         AccountDecoder decoder = new();
         TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
@@ -1006,7 +1006,7 @@ public class TrieNodeTests
             HeavyLeaf.Key = new byte[20];
             HeavyLeaf.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
 
-            Account account = new(100);
+            Account account = new(0, 100);
             AccountDecoder decoder = new();
             AccountLeaf = TrieNodeFactory.CreateLeaf(
                 Bytes.FromHexString("bbb"),

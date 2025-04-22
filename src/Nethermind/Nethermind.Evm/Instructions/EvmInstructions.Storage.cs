@@ -352,17 +352,21 @@ internal static partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
 
-        // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
-            goto OutOfGas;
-
-        // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
-        if (spec.UseNetGasMeteringWithAStipendFix)
+        // fail fast before the first storage read if gas is not enough even for reset
+        if (!spec.IsEip4762Enabled)
         {
-            if (vm.TxTracer.IsTracingRefunds)
-                vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-            if (gasAvailable <= GasCostOf.CallStipend)
+            // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
+            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
                 goto OutOfGas;
+
+            // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
+            if (spec.UseNetGasMeteringWithAStipendFix)
+            {
+                if (vm.TxTracer.IsTracingRefunds)
+                    vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                if (gasAvailable <= GasCostOf.CallStipend)
+                    goto OutOfGas;
+            }
         }
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -390,99 +394,103 @@ internal static partial class EvmInstructions
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
-        // Handle gas adjustments and refunds based on the metering mode.
-        if (!spec.UseNetGasMetering)
+        if (!spec.IsEip4762Enabled)
         {
-            // Legacy metering: if storing zero and the value changes, grant a clearing refund.
-            if (newIsZero)
+            // Handle gas adjustments and refunds based on the metering mode.
+            if (!spec.UseNetGasMetering)
             {
-                if (!newSameAsCurrent)
+                // Legacy metering: if storing zero and the value changes, grant a clearing refund.
+                if (newIsZero)
                 {
-                    vmState.Refund += sClearRefunds;
-                    if (vm.TxTracer.IsTracingRefunds)
-                        vm.TxTracer.ReportRefund(sClearRefunds);
+                    if (!newSameAsCurrent)
+                    {
+                        vmState.Refund += sClearRefunds;
+                        if (vm.TxTracer.IsTracingRefunds)
+                            vm.TxTracer.ReportRefund(sClearRefunds);
+                    }
+                }
+                // When setting a non-zero value over an existing zero, apply the difference in gas costs.
+                else if (currentIsZero)
+                {
+                    if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+                        goto OutOfGas;
                 }
             }
-            // When setting a non-zero value over an existing zero, apply the difference in gas costs.
-            else if (currentIsZero)
+            else // Net metered calculations.
             {
-                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
-                    goto OutOfGas;
-            }
-        }
-        else // Net metered calculations.
-        {
-            if (newSameAsCurrent)
-            {
-                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable))
-                    goto OutOfGas;
-            }
-            else
-            {
-                // Retrieve the original storage value to determine if this is a reversal.
-                Span<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
-                bool originalIsZero = originalValue.IsZero();
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-
-                if (currentSameAsOriginal)
+                if (newSameAsCurrent)
                 {
-                    if (currentIsZero)
-                    {
-                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable))
-                            goto OutOfGas;
-                    }
-                    else
-                    {
-                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
-                            goto OutOfGas;
-
-                        if (newIsZero)
-                        {
-                            vmState.Refund += sClearRefunds;
-                            if (vm.TxTracer.IsTracingRefunds)
-                                vm.TxTracer.ReportRefund(sClearRefunds);
-                        }
-                    }
+                    if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable))
+                        goto OutOfGas;
                 }
                 else
                 {
-                    long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable))
-                        goto OutOfGas;
+                    // Retrieve the original storage value to determine if this is a reversal.
+                    Span<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
+                    bool originalIsZero = originalValue.IsZero();
+                    bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
 
-                    if (!originalIsZero)
+                    if (currentSameAsOriginal)
                     {
-                        // Adjust refunds based on a change from or to a zero value.
                         if (currentIsZero)
                         {
-                            vmState.Refund -= sClearRefunds;
-                            if (vm.TxTracer.IsTracingRefunds)
-                                vm.TxTracer.ReportRefund(-sClearRefunds);
+                            if (!UpdateGas(GasCostOf.SSet, ref gasAvailable))
+                                goto OutOfGas;
                         }
-
-                        if (newIsZero)
+                        else
                         {
-                            vmState.Refund += sClearRefunds;
-                            if (vm.TxTracer.IsTracingRefunds)
-                                vm.TxTracer.ReportRefund(sClearRefunds);
+                            if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                                goto OutOfGas;
+
+                            if (newIsZero)
+                            {
+                                vmState.Refund += sClearRefunds;
+                                if (vm.TxTracer.IsTracingRefunds)
+                                    vm.TxTracer.ReportRefund(sClearRefunds);
+                            }
                         }
                     }
-
-                    // If the new value reverts to the original, grant a reversal refund.
-                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
-                    if (newSameAsOriginal)
+                    else
                     {
-                        long refundFromReversal = originalIsZero
-                            ? spec.GetSetReversalRefund()
-                            : spec.GetClearReversalRefund();
+                        long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                        if (!UpdateGas(netMeteredStoreCost, ref gasAvailable))
+                            goto OutOfGas;
 
-                        vmState.Refund += refundFromReversal;
-                        if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(refundFromReversal);
+                        if (!originalIsZero)
+                        {
+                            // Adjust refunds based on a change from or to a zero value.
+                            if (currentIsZero)
+                            {
+                                vmState.Refund -= sClearRefunds;
+                                if (vm.TxTracer.IsTracingRefunds)
+                                    vm.TxTracer.ReportRefund(-sClearRefunds);
+                            }
+
+                            if (newIsZero)
+                            {
+                                vmState.Refund += sClearRefunds;
+                                if (vm.TxTracer.IsTracingRefunds)
+                                    vm.TxTracer.ReportRefund(sClearRefunds);
+                            }
+                        }
+
+                        // If the new value reverts to the original, grant a reversal refund.
+                        bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                        if (newSameAsOriginal)
+                        {
+                            long refundFromReversal = originalIsZero
+                                ? spec.GetSetReversalRefund()
+                                : spec.GetClearReversalRefund();
+
+                            vmState.Refund += refundFromReversal;
+                            if (vm.TxTracer.IsTracingRefunds)
+                                vm.TxTracer.ReportRefund(refundFromReversal);
+                        }
                     }
                 }
             }
         }
+
 
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)

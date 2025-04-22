@@ -21,7 +21,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_commit_change_balance_get()
         {
-            Account account = new(1);
+            Account account = new(0, 1);
             StateTree stateTree = new();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit();
@@ -37,7 +37,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_create_commit_change_balance_get()
         {
-            Account account = new(1);
+            Account account = new(0, 1);
             StateTree stateTree = new();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Set(TestItem.AddressB, account);
@@ -55,7 +55,7 @@ namespace Nethermind.Store.Test
         public void Create_commit_reset_change_balance_get()
         {
             MemDb db = new();
-            Account account = new(1);
+            Account account = new(0, 1);
             StateTree stateTree = new(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit();
@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new();
             TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
-            Account account = new(1);
+            Account account = new(0, 1);
 
             StateTree stateTree = new(trieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);

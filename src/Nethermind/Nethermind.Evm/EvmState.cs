@@ -161,6 +161,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
     internal bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
+    public bool IsContractDeployment =>
+        ExecutionType is ExecutionType.CREATE or ExecutionType.CREATE2;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ref readonly ExecutionEnvironment Env => ref _env;

@@ -57,13 +57,20 @@ namespace Nethermind.Db
             }
             else
             {
-                RegisterCustomColumnDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
+                RegisterCustomColumnDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(false), false));
             }
             RegisterDb(BuildDbSettings(DbNames.Metadata));
             if (useBlobsDb)
             {
                 RegisterColumnsDb<BlobTxsColumns>(BuildDbSettings(DbNames.BlobTransactions));
             }
+            RegisterColumnsDb<VerkleDbColumns>(BuildDbSettings(DbNames.VerkleState));
+
+            RegisterDb(BuildDbSettings(DbNames.ForwardDiff));
+            RegisterDb(BuildDbSettings(DbNames.ReverseDiff));
+            RegisterDb(BuildDbSettings(DbNames.StateRootToBlock));
+            RegisterDb(BuildDbSettings(DbNames.Preimages));
+            RegisterDb(BuildDbSettings(DbNames.HistoryOfAccounts));
         }
 
         private static DbSettings BuildDbSettings(string dbName, bool deleteOnStart = false)

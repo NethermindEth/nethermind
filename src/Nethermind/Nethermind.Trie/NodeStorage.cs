@@ -12,6 +12,43 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
+
+public class NullNodeStorage(): INodeStorage
+{
+    public INodeStorage.KeyScheme Scheme { get; set; }
+    public bool RequirePath { get; }
+    public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data,
+        WriteFlags writeFlags = WriteFlags.None)
+    {
+        throw new NotImplementedException();
+    }
+
+    public INodeStorage.IWriteBatch StartWriteBatch()
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void Flush(bool onlyWal)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void Compact()
+    {
+        throw new NotImplementedException();
+    }
+}
+
 public class NodeStorage(
     IKeyValueStore keyValueStore,
     INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath,

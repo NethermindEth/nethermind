@@ -27,6 +27,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
+    private readonly bool _isTracingVerkleWitness;
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -115,6 +116,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     {
         get => _isTracingOpLevelLogs || innerTracer.IsTracingLogs;
         init => _isTracingOpLevelLogs = value;
+    }
+
+    public bool IsTracingAccessWitness
+    {
+        get => _isTracingVerkleWitness || innerTracer.IsTracingAccessWitness;
+        init => _isTracingVerkleWitness = value;
     }
 
 
@@ -450,6 +457,17 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
             innerTracer.ReportFees(fees, burntFees);
         }
     }
+
+
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingAccessWitness)
+        {
+            innerTracer.ReportAccessWitness(verkleWitnessKeys);
+        }
+    }
+
 
     public void Dispose()
     {

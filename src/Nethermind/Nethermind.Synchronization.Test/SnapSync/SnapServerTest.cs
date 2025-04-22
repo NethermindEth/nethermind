@@ -284,7 +284,7 @@ public class SnapServerTest
             var storageRangeRequest = new StorageRange()
             {
                 StartingHash = Keccak.Zero,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(0, UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
             };
             AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -327,7 +327,7 @@ public class SnapServerTest
                 var storageRangeRequest = new StorageRange()
                 {
                     StartingHash = startRange,
-                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(0, UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
                 };
                 AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 

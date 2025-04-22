@@ -14,11 +14,11 @@ namespace Nethermind.Blockchain
     /// </summary>
     public class TrieStoreBoundaryWatcher : IDisposable
     {
-        private readonly IWorldStateManager _trieStore;
+        private readonly IStoreWithReorgBoundary _trieStore;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public TrieStoreBoundaryWatcher(IWorldStateManager trieStore, IBlockTree blockTree, ILogManager logManager)
+        public TrieStoreBoundaryWatcher(IStoreWithReorgBoundary trieStore, IBlockTree blockTree, ILogManager logManager)
         {
             _trieStore = trieStore;
             _blockTree = blockTree;

@@ -30,7 +30,7 @@ public class AccountTests
     {
         Account account = Account.TotallyEmpty;
         Assert.That(account.HasCode, Is.False);
-        account = account.WithChangedCodeHash(TestItem.KeccakA);
+        account = account.WithChangedCodeHash(1, TestItem.KeccakA);
         Assert.That(account.HasCode, Is.True);
     }
 

@@ -90,7 +90,7 @@ public class TransactionProcessorTests
             : MainnetSpecProvider.ByzantiumBlockNumber - 1;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
+        BlockExecutionTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
         _ = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
@@ -629,7 +629,7 @@ public class TransactionProcessorTests
 
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, false, false);
+        BlockExecutionTracer tracer = BuildTracer(block, tx, false, false);
         Execute(tx, block, tracer);
         _stateProvider.AccountExists(tx.SenderAddress).Should().BeTrue();
     }
@@ -714,7 +714,7 @@ public class TransactionProcessorTests
         _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance);
     }
 
-    private BlockReceiptsTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)
+    private BlockExecutionTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)
     {
         ParityTraceTypes types = ParityTraceTypes.None;
         if (stateDiff)
@@ -728,12 +728,12 @@ public class TransactionProcessorTests
         }
 
         IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer)NullBlockTracer.Instance;
-        BlockReceiptsTracer tracer = new();
+        BlockExecutionTracer tracer = new(true, true);
         tracer.SetOtherTracer(otherTracer);
         return tracer;
     }
 
-    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
+    private TransactionResult Execute(Transaction tx, Block block, BlockExecutionTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
         tracer?.StartNewTxTrace(tx);
@@ -747,7 +747,7 @@ public class TransactionProcessorTests
         return result;
     }
 
-    private TransactionResult CallAndRestore(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
+    private TransactionResult CallAndRestore(Transaction tx, Block block, BlockExecutionTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
         tracer?.StartNewTxTrace(tx);

@@ -349,7 +349,7 @@ internal static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address, opCode: Instruction.BALANCE)) goto OutOfGas;
 
         UInt256 result = vm.WorldState.GetBalance(address);
         stack.PushUInt256(in result);
@@ -406,7 +406,7 @@ internal static partial class EvmInstructions
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address, opCode: Instruction.EXTCODEHASH)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
@@ -610,8 +610,39 @@ internal static partial class EvmInstructions
         // Convert the block number to a long. Clamp the value to long.MaxValue if it exceeds it.
         long number = a > long.MaxValue ? long.MaxValue : (long)a.u0;
 
-        // Retrieve the block hash for the given block number.
-        Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header, number);
+        var spec = vm.Spec;
+        var currentHeader = vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header;
+        Hash256? blockHash;
+        if (spec.IsBlockHashInStateAvailable)
+        {
+            if (number >= currentHeader.Number ||
+                number + Eip2935Constants.BlockHashServeWindow < currentHeader.Number)
+            {
+                blockHash = null;
+            }
+            else
+            {
+                var blockIndex = new UInt256((ulong)(number % Eip2935Constants.RingBufferSize));
+                Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+                StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
+                var gasBefore = gasAvailable;
+                if (!vm.EvmState.Env.Witness.AccessForBlockHashOpCode(blockHashStoreCell.Address,
+                        blockHashStoreCell.Index,
+                        ref gasAvailable))
+                {
+                    return EvmExceptionType.OutOfGas;
+                }
+                vm.EvmState.AccessTracker.WarmUp(in blockHashStoreCell);
+                if (gasBefore == gasAvailable) gasAvailable -= GasCostOf.WarmStateRead;
+                if(gasAvailable < 0) return EvmExceptionType.OutOfGas;
+                ReadOnlySpan<byte> data = vm.WorldState.Get(blockHashStoreCell);
+                blockHash = data.SequenceEqual(new byte[] { 0 }) ? null : Hash256.FromBytesWithPadding(data);
+            }
+        }
+        else
+        {
+            blockHash = vm.BlockHashProvider.GetBlockhash(currentHeader, number);
+        }
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);

@@ -10,6 +10,10 @@
   <Folder Name="/Plugins/Analytics/">
     <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Flashbots/">
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Hive/">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
@@ -17,10 +21,6 @@
   <Folder Name="/Plugins/Merge/">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-  </Folder>
-  <Folder Name="/Plugins/Flashbots/">
-    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
-    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
@@ -76,6 +76,8 @@
     <Project Path="Nethermind.Taiko.Test/Nethermind.Taiko.Test.csproj" />
     <Project Path="Nethermind.Trie.Test/Nethermind.Trie.Test.csproj" />
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
+    <Project Path="Nethermind.Verkle.Tests\Nethermind.Verkle.Tests.csproj" Type="Classic C#" />
+    <Project Path="Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj" Type="Classic C#" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
   </Folder>
   <Folder Name="/Tools/">
@@ -128,5 +130,7 @@
   <Project Path="Nethermind.Taiko/Nethermind.Taiko.csproj" />
   <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
+  <Project Path="Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj" Type="Classic C#" />
+  <Project Path="Nethermind.Verkle\Nethermind.Verkle.csproj" Type="Classic C#" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
 </Solution>

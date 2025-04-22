@@ -44,6 +44,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingFees { get; protected set; }
     public virtual bool IsTracingStorage { get; protected set; }
     public virtual bool IsTracingLogs { get; protected set; }
+    public virtual bool IsTracingAccessWitness { get; protected set; }
     public virtual void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
     public virtual void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
@@ -77,5 +78,6 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
+    public virtual void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys) { }
     public virtual void Dispose() { }
 }

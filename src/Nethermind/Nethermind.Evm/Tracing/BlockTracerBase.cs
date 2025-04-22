@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -31,9 +32,13 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 
     public virtual bool IsTracingRewards => false;
 
+    public bool IsTracingAccessWitness => false;
+
     public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue)
     {
     }
+
+    public void ReportAccessWitness(IExecutionWitness witness) { }
 
     public virtual void StartNewBlockTrace(Block block)
     {

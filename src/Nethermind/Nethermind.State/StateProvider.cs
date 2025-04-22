@@ -175,7 +175,7 @@ namespace Nethermind.State
             {
                 _needsStateRootUpdate = true;
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
-                Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
+                Account changedAccount = account.WithChangedCodeHash((UInt256)code.Length, (Hash256)codeHash);
                 PushUpdate(address, changedAccount);
             }
             else if (spec.IsEip158Enabled && !isGenesis)
@@ -395,11 +395,11 @@ namespace Nethermind.State
             _keptInCache.Clear();
         }
 
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, in byte version = 0)
         {
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
-            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
+            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(version, nonce, balance);
             PushNew(address, account);
         }
 

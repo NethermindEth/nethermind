@@ -228,7 +228,7 @@ public class ValidateSubmissionHandler
         UInt256 feeRecipientBalanceBefore = worldState.HasStateForRoot(stateRoot) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         List<Block> suggestedBlocks = [block];
-        BlockReceiptsTracer blockReceiptsTracer = new();
+        BlockExecutionTracer blockExecutionTracer = new(true, true);
 
         try
         {
@@ -236,7 +236,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = _blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = _blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockExecutionTracer)[0];
         }
         catch (Exception e)
         {
@@ -266,7 +266,7 @@ public class ValidateSubmissionHandler
 
         if (ValidateProposerPayment(expectedProfit, useBalanceDiffProfit, feeRecipientBalanceAfter, amtBeforeOrWithdrawn)) return true;
 
-        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.TxReceipts, out error))
+        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockExecutionTracer.TxReceipts, out error))
         {
             return false;
         }

@@ -56,10 +56,12 @@ namespace Nethermind.Serialization.Rlp
             Hash256 codeHash = DecodeCodeHash(rlpStream);
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
-                return new(nonce, balance);
+                // version=0, for merkle accounts
+                return new(0, nonce, balance);
             }
 
-            return new(nonce, balance, storageRoot, codeHash);
+            // TODO: this is not a good idea - though would not affect things much - for merkle we dont have codeSize
+            return new(0, nonce, balance, 0, storageRoot, codeHash);
         }
 
         public void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -236,10 +238,12 @@ namespace Nethermind.Serialization.Rlp
             Hash256 codeHash = DecodeCodeHash(ref decoderContext);
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
-                return new(nonce, balance);
+                // version=0, for merkle accounts
+                return new(0, nonce, balance);
             }
 
-            return new(nonce, balance, storageRoot, codeHash);
+            // TODO: this is not a good idea - though would not affect things much - for merkle we dont have codeSize
+            return new(0, nonce, balance, 0, storageRoot, codeHash);
         }
 
         private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
@@ -319,7 +323,7 @@ namespace Nethermind.Serialization.Rlp
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);
-            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            account = new AccountStruct(0, nonce, balance, 0, storageRoot, codeHash);
             return true;
         }
     }

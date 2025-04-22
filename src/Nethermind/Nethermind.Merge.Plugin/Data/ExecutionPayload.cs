@@ -14,6 +14,7 @@ using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Verkle;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -76,6 +77,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     public Withdrawal[]? Withdrawals { get; set; }
 
+    /// <summary>
+    ///
+    /// </summary>
+    // TODO: check is this making this null is fine?
+    public ExecutionWitness? ExecutionWitness { get; set; } = null;
+
 
     /// <summary>
     /// Gets or sets a collection of <see cref="ExecutionRequest"/> as defined in
@@ -126,6 +133,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
+            ExecutionWitness = block.ExecutionWitness
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -170,7 +178,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, ExecutionWitness));
     }
 
     protected Transaction[]? _transactions = null;

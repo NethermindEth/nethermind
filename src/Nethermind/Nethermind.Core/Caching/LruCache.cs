@@ -18,15 +18,17 @@ namespace Nethermind.Core.Caching
         private readonly string _name;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruCache(int maxCapacity, int startCapacity, string name, IEqualityComparer<TKey>? comparer = null)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _name = name;
             _maxCapacity = maxCapacity;
-            _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
+            _cacheMap = comparer != null
+                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity, comparer)
+                :typeof(TKey) == typeof(byte[])
+                    ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                    : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
         public LruCache(int maxCapacity, string name)

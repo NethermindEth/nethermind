@@ -98,7 +98,7 @@ public class VisitingTests
             stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
 
             stateTree.Set(stateKey,
-                new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
+                new Account(0, 10, (UInt256)(10_000_000 + i), (UInt256)1, stateRootHash, Keccak.OfAnEmptySequenceRlp));
         }
 
         stateTree.Commit();

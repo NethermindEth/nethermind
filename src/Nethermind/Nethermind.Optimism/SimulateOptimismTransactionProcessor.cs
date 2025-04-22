@@ -30,7 +30,15 @@ public sealed class SimulateOptimismTransactionProcessor(
         opSpecHelper,
         codeInfoRepository)
 {
+    private readonly IL1CostHelper _l1CostHelper = l1CostHelper;
+    private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper;
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
+
+    public override ITransactionProcessor WithNewStateProvider(IWorldState worldState)
+    {
+        return new SimulateOptimismTransactionProcessor(SpecProvider, worldState, VirtualMachine, _l1CostHelper,
+            _opSpecHelper, CodeInfoRepository, LogManager, validate);
+    }
 
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {

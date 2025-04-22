@@ -8,5 +8,6 @@
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+    <ProjectReference Include="..\Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj" />
   </ItemGroup>
 </Project>

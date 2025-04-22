@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -13,9 +14,12 @@ namespace Nethermind.Evm.Tracing
         private readonly List<IBlockTracer> _childTracers = new();
         public bool IsTracingRewards { get; private set; }
 
+        public bool IsTracingAccessWitness { get; private set; }
+
         public CompositeBlockTracer()
         {
             IsTracingRewards = _childTracers.Any(static childTracer => childTracer.IsTracingRewards);
+            IsTracingAccessWitness = _childTracers.Any(childTracer => childTracer.IsTracingAccessWitness);
         }
 
         public void EndTxTrace()
@@ -37,6 +41,19 @@ namespace Nethermind.Evm.Tracing
                 }
             }
         }
+
+        public void ReportAccessWitness(IExecutionWitness witness)
+        {
+            for (int index = 0; index < _childTracers.Count; index++)
+            {
+                IBlockTracer childTracer = _childTracers[index];
+                if (childTracer.IsTracingRewards)
+                {
+                    childTracer.ReportAccessWitness(witness);
+                }
+            }
+        }
+
 
         public void StartNewBlockTrace(Block block)
         {

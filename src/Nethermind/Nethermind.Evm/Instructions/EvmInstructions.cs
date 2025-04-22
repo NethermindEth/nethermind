@@ -314,7 +314,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
-    private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true, Instruction opCode = Instruction.STOP)
     {
         IReleaseSpec spec = vm.Spec;
         if (!spec.UseHotAndColdStorage)
@@ -322,11 +322,11 @@ internal static unsafe partial class EvmInstructions
             // No extra cost if hot/cold storage is not used.
             return true;
         }
-        bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm);
+        bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm, opCode);
         return notOutOfGas
                && (!vm.EvmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(vm.WorldState, address, spec, out Address delegated)
                    // Charge additional gas for the delegated account if it exists.
-                   || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm));
+                   || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm, opCode));
     }
 
     /// <summary>
@@ -337,24 +337,76 @@ internal static unsafe partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
+    /// <param name="opCode"></param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
-    private static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    private static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true, Instruction opCode = Instruction.STOP)
     {
         bool result = true;
+        bool witnessGasCharged = false;
         IReleaseSpec spec = vm.Spec;
+        EvmState vmState = vm.EvmState;
+        if (spec.IsEip4762Enabled)
+        {
+            bool isAddressPreCompile = address.IsPrecompile(spec);
+            bool isSystemContract = address.IsSystemContract(spec);
+            switch (opCode)
+            {
+                case Instruction.BALANCE:
+                    {
+                        var gasBefore = gasAvailable;
+                        result = vmState.Env.Witness.AccessForBalanceOpCode(address, ref gasAvailable);
+                        witnessGasCharged = gasBefore != gasAvailable;
+                        break;
+                    }
+                case Instruction.EXTCODESIZE:
+                case Instruction.EXTCODECOPY:
+                case Instruction.CALL:
+                case Instruction.CALLCODE:
+                case Instruction.DELEGATECALL:
+                case Instruction.STATICCALL:
+                    {
+                        if (!isAddressPreCompile && !isSystemContract)
+                        {
+                            var gasBefore = gasAvailable;
+                            result = vmState.Env.Witness.AccessAccountData(address, ref gasAvailable);
+                            witnessGasCharged = gasBefore != gasAvailable;
+                        }
+
+                        break;
+                    }
+                case Instruction.EXTCODEHASH:
+                    {
+                        if (!isAddressPreCompile && !isSystemContract)
+                        {
+                            var gasBefore = gasAvailable;
+                            result = vmState.Env.Witness.AccessCodeHash(address, ref gasAvailable);
+                            witnessGasCharged = gasBefore != gasAvailable;
+                        }
+                        break;
+                    }
+            }
+
+            // we still use the UseHotAndColdStorage costs - we should be removing the Cold costs as it's being replaced
+            // by the witness access costs. We should still be keeping the Hot costs - to avoid free repeated access and
+            // cause a DDOS attack.
+            if (!result) return false;
+        }
         if (spec.UseHotAndColdStorage)
         {
-            EvmState vmState = vm.EvmState;
             if (vm.TxTracer.IsTracingAccess)
             {
                 // Ensure that tracing simulates access-list behavior.
                 vmState.AccessTracker.WarmUp(address);
             }
 
-            // If the account is cold (and not a precompile), charge the cold access cost.
-            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+            if (witnessGasCharged)
             {
-                result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                vmState.AccessTracker.WarmUp(address);
+            }
+            // If the account is cold (and not a precompile), charge the cold access cost.
+            else  if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec) && !address.IsSystemContract(spec))
+            {
+                result = spec.IsEip4762Enabled || UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 vmState.AccessTracker.WarmUp(address);
             }
             else if (chargeForWarm)
@@ -388,6 +440,15 @@ internal static unsafe partial class EvmInstructions
         IReleaseSpec spec)
     {
         EvmState vmState = vm.EvmState;
+
+        var gasBefore = gasAvailable;
+        if (!vmState.Env.Witness.AccessForStorage(storageCell.Address, storageCell.Index,
+                storageAccessType == StorageAccessType.SSTORE, ref gasAvailable))
+        {
+            return false;
+        }
+        bool witnessGasCharged = gasBefore != gasAvailable;
+
         bool result = true;
 
         // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
@@ -400,14 +461,19 @@ internal static unsafe partial class EvmInstructions
                 accessTracker.WarmUp(in storageCell);
             }
 
-            // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-            if (accessTracker.IsCold(in storageCell))
+            if (witnessGasCharged)
             {
-                result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
+                accessTracker.WarmUp(in storageCell);
+            }
+            // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
+            else if (accessTracker.IsCold(in storageCell))
+            {
+                // after eip4762 is enabled, we don't charge cold cost as it is replaced by stateless access costs
+                result = spec.IsEip4762Enabled || UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
                 accessTracker.WarmUp(in storageCell);
             }
             // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
-            else if (storageAccessType == StorageAccessType.SLOAD)
+            else if (spec.IsEip4762Enabled || storageAccessType == StorageAccessType.SLOAD)
             {
                 result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
             }

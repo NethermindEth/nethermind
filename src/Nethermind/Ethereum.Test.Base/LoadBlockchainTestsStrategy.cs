@@ -21,7 +21,7 @@ namespace Ethereum.Test.Base
             }
             else
             {
-                testDirs = new[] { testsDirectoryName };
+                testDirs = Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
             }
 
             List<EthereumTest> testJsons = new();

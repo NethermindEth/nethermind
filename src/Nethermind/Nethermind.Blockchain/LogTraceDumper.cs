@@ -57,11 +57,11 @@ public static class BlockTraceDumper
         string state = isSuccess ? "success" : "failed";
         try
         {
-            if (blockTracer is BlockReceiptsTracer receiptsTracer)
+            if (blockTracer is BlockExecutionTracer executionTracer)
             {
                 fileName = $"receipts_{blockHash}_{state}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
-                IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
+                IReadOnlyList<TxReceipt> receipts = executionTracer.TxReceipts;
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of {logCondition} block {blockHash} in file {diagnosticFile.Name}");

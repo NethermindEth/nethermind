@@ -63,6 +63,8 @@ namespace Ethereum.Test.Base
                 "Paris" => Paris.Instance,
                 "Prague" => Prague.Instance,
                 "Osaka" => Osaka.Instance,
+                "Amsterdam" => Amsterdam.Instance,
+                "Verkle" => Verkle.Instance,
                 _ => throw new NotSupportedException()
             };
         }

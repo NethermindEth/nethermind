@@ -87,5 +87,20 @@ namespace Nethermind.Db
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator()
+        {
+            return _memDb.GetIterator();
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start)
+        {
+            return _memDb.GetIterator(start);
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start, byte[] end)
+        {
+            return _memDb.GetIterator(start, end);
+        }
     }
 }

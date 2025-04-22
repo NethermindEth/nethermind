@@ -134,7 +134,10 @@ public class ChainParameters
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
-
+    public ulong? Eip4762TransitionTimestamp { get; set; }
+    public ulong? Eip6800TransitionTimestamp { get; set; }
+    public ulong? Eip7612TransitionTimestamp { get; set; }
+    public ulong? Eip7748TransitionTimestamp { get; set; }
     public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
 
     #region EIP-4844 parameters

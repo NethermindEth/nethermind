@@ -342,6 +342,27 @@ namespace Nethermind.Core.Specs
         bool IsEip7623Enabled { get; }
 
         /// <summary>
+        ///  Statelessness gas cost changes
+        /// </summary>
+        bool IsEip4762Enabled { get; }
+
+        /// <summary>
+        ///  Statelessness gas cost changes
+        /// </summary>
+        bool IsEip6800Enabled { get; }
+
+        /// <summary>
+        ///  Statelessness gas cost changes
+        /// </summary>
+        bool IsEip7612Enabled { get; }
+
+
+        /// <summary>
+        ///  Statelessness gas cost changes
+        /// </summary>
+        bool IsEip7748Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -440,11 +461,11 @@ namespace Nethermind.Core.Specs
         /// This property holds an array that, at runtime, is actually an array of function pointers
         /// with the signature:
         /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing, 
+        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
         /// but it cannot be explicitly typed as such due to cross-project layering constraints.
         /// </summary>
         /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/> 
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsNoTrace { get; set; }
@@ -453,12 +474,12 @@ namespace Nethermind.Core.Specs
         /// This property holds an array that, at runtime, is actually an array of function pointers
         /// with the signature:
         /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM, 
+        /// The array is lazily populated with JIT-optimized instructions for an EVM,
         /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
         /// layering constraints.
         /// </summary>
         /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/> 
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }

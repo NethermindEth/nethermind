@@ -75,7 +75,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
     {
-        base.Reset();
+        base.Reset(resetBlockChanges);
         _originalValues.Clear();
         _committedThisRound.Clear();
         if (resetBlockChanges)

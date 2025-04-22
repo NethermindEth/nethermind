@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm
@@ -20,6 +21,7 @@ namespace Nethermind.Evm
             in TxExecutionContext txExecutionContext,
             UInt256 transferValue,
             UInt256 value,
+            IExecutionWitness witness,
             int callDepth = 0)
         {
             CodeInfo = codeInfo;
@@ -31,6 +33,7 @@ namespace Nethermind.Evm
             TransferValue = transferValue;
             Value = value;
             CallDepth = callDepth;
+            Witness = witness;
         }
 
         /// <summary>
@@ -77,5 +80,10 @@ namespace Nethermind.Evm
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth;
+
+        /// <summary>
+        ///
+        /// </summary>
+        public readonly IExecutionWitness Witness;
     }
 }

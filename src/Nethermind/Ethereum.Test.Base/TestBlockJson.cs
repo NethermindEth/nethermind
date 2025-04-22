@@ -3,6 +3,8 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Verkle;
+using Nethermind.Serialization.Json;
 
 namespace Ethereum.Test.Base
 {
@@ -14,5 +16,8 @@ namespace Ethereum.Test.Base
         public LegacyTransactionJson[]? Transactions { get; set; }
         [JsonPropertyName("expectException")]
         public string? ExpectedException { get; set; }
+
+        [JsonConverter(typeof(ExecutionWitnessConverter))]
+        public ExecutionWitness? Witness { get; set; }
     }
 }

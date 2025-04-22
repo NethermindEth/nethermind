@@ -35,7 +35,7 @@ namespace Nethermind.AuRa.Test.Transactions
             stateReader.TryGetAccount(blockHeader.StateRoot, nodeAddress, out Arg.Any<AccountStruct>())
                 .Returns(x =>
                 {
-                    x[2] = new AccountStruct(expectedNonce, UInt256.Zero);
+                    x[2] = new AccountStruct(0, expectedNonce, UInt256.Zero);
                     return true;
                 });
 

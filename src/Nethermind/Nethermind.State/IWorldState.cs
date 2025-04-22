@@ -17,6 +17,13 @@ namespace Nethermind.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+
+    /// <summary>
+    ///
+    /// </summary>
+    StateType StateType { get; }
+
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
@@ -126,4 +133,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
     void ResetTransient();
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="codeOwner"></param>
+    /// <param name="chunkId"></param>
+    /// <returns></returns>
+    public byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId);
 }

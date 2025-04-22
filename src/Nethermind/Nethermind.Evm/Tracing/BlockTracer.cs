@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -9,7 +10,9 @@ namespace Nethermind.Evm.Tracing;
 public abstract class BlockTracer : IBlockTracer
 {
     public virtual bool IsTracingRewards => false;
+    public virtual bool IsTracingAccessWitness => false;
     public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
+    public virtual void ReportAccessWitness(IExecutionWitness witness) { }
     public virtual void StartNewBlockTrace(Block block) { }
     public abstract ITxTracer StartNewTxTrace(Transaction? tx);
     public virtual void EndTxTrace() { }

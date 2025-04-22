@@ -27,6 +27,7 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
+        public static readonly Hash256Comparer HashComparer = new();
         // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
         public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
@@ -67,6 +68,36 @@ namespace Nethermind.Core.Extensions
 
         public class BytesComparer : Comparer<byte[]>
         {
+
+            public static int CompareDiffLength(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+            {
+                if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                    x.Length == y.Length)
+                {
+                    return 0;
+                }
+
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : -1;
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return 1;
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? -1 : 0;
+            }
             public override int Compare(byte[]? x, byte[]? y)
             {
                 if (ReferenceEquals(x, y)) return 0;
@@ -131,6 +162,54 @@ namespace Nethermind.Core.Extensions
                 }
 
                 return y.Length > x.Length ? 1 : 0;
+            }
+
+            public int CompareGreaterThan(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+            {
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                ReadOnlySpan<ulong> ulongX = MemoryMarshal.Cast<byte, ulong>(x);
+                ReadOnlySpan<ulong> ulongY = MemoryMarshal.Cast<byte, ulong>(y);
+
+                for (int i = 0; i < ulongX.Length; i++)
+                {
+                    if (ulongX[i] > ulongY[i])
+                        return 1;
+
+                    if (ulongX[i] < ulongY[i])
+                        return -1;
+                }
+
+                for (int i = ulongX.Length * Unsafe.SizeOf<ulong>(); i < x.Length; i++)
+                {
+                    if (x[i] > y[i])
+                        return 1;
+
+                    if (x[i] < y[i])
+                        return -1;
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
+        }
+
+        public class Hash256Comparer : Comparer<Hash256>
+        {
+            public override int Compare(Hash256? x, Hash256? y)
+            {
+                if (x is null)
+                {
+                    return y is null ? 0 : 1;
+                }
+
+                if (y is null)
+                {
+                    return -1;
+                }
+                return BytesComparer.Compare(x.Bytes, y.Bytes);
             }
         }
 

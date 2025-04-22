@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             return new StorageRange()
             {
                 StartingHash = startingHash,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(accountPath, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(accountPath, new Account(0, UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
             };
         }
     }

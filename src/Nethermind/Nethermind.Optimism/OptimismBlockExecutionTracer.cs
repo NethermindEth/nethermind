@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 

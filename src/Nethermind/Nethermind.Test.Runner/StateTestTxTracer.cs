@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -34,6 +35,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
     public bool IsTracingLogs => false;
+    public bool IsTracingAccessWitness => false;
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
 
@@ -274,6 +276,10 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public void ReportFees(UInt256 fees, UInt256 burntFees)
     {
         throw new NotImplementedException();
+    }
+
+    public void ReportAccessWitness(IReadOnlyList<Hash256> witnessKeys)
+    {
     }
 
     public void Dispose() { }

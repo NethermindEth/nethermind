@@ -127,6 +127,8 @@ namespace Nethermind.Core.Crypto
     {
         public const int Size = 32;
         public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        public static readonly Hash256 MaxValue = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+
 
         public const int MemorySize =
             MemorySizes.ObjectHeaderMethodTable +
@@ -236,6 +238,11 @@ namespace Nethermind.Core.Crypto
             if (k2 is null) return true;
 
             return k1._hash256 <= k2._hash256;
+        }
+
+        public static explicit operator Hash256(byte[] bytes)
+        {
+            return new Hash256(bytes);
         }
 
         public byte[] BytesToArray() => _hash256.ToByteArray();

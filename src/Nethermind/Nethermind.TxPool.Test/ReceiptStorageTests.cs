@@ -46,7 +46,7 @@ namespace Nethermind.TxPool.Test
             _blockStore = Substitute.For<IBlockStore>();
             ReceiptsRecovery receiptsRecovery = new(_ethereumEcdsa, _specProvider);
             _persistentStorage = new PersistentReceiptStorage(
-                new MemColumnsDb<ReceiptsColumns>(),
+                new MemColumnsDb<ReceiptsColumns>(false),
                 _specProvider,
                 receiptsRecovery,
                 _blockTree,

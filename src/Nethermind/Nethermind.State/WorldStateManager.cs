@@ -100,10 +100,10 @@ public class WorldStateManager : IWorldStateManager
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
     }
 
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
+    public IWorldState CreateOverlayWorldState(IReadOnlyDbProvider editableDbProvider)
     {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
-        return new WorldState(overlayTrieStore, overlayCode, _logManager);
+        OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, _readOnlyTrieStore, _logManager);
+        return new WorldState(overlayTrieStore, editableDbProvider.CodeDb, _logManager);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)

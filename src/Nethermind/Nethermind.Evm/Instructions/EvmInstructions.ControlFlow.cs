@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Evm.Precompiles;
 using Nethermind.State;
 
 namespace Nethermind.Evm;
@@ -76,7 +77,16 @@ internal static partial class EvmInstructions
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
-        if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
+        if (!Jump(result, ref programCounter, in vm.EvmState.Env))
+        {
+            int jumpDest = (int)result;
+            if (vm.EvmState.Env.CodeInfo.MachineCode.Length > jumpDest)
+            {
+                if (vm.EvmState.Env.Witness.AccessForCodeProgramCounter(vm.EvmState.To, jumpDest, ref gasAvailable))
+                    goto OutOfGas;
+            }
+            goto InvalidJumpDestination;
+        }
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -84,6 +94,8 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     }
 
     /// <summary>
@@ -112,7 +124,17 @@ internal static partial class EvmInstructions
         if (isOverflow) goto StackUnderflow;
         if (shouldJump)
         {
-            if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, in vm.EvmState.Env))
+            {
+                int jumpDest = (int)result;
+                if (vm.EvmState.Env.CodeInfo.MachineCode.Length > jumpDest)
+                {
+                    if (vm.EvmState.Env.Witness.AccessForCodeProgramCounter(vm.EvmState.To, (int)result, ref gasAvailable))
+                        goto OutOfGas;
+
+                }
+                goto InvalidJumpDestination;
+            }
         }
 
         return EvmExceptionType.None;
@@ -121,6 +143,8 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     }
 
     [SkipLocalsInit]
@@ -217,44 +241,63 @@ internal static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
-        // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
-            goto OutOfGas;
-
         Address executingAccount = vmState.Env.ExecutingAccount;
+
+        UInt256 contractBalance = state.GetBalance(executingAccount);
+        // If account creation rules apply, ensure gas is charged for new accounts.
+        bool inheritorAccountExists = state.AccountExists(inheritor);
+
+        // get the verkle witness cost and charge the account access gas if the verkle cost is zero
+        var gasBefore = gasAvailable;
+        if (!vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, contractBalance.IsZero,
+                inheritorAccountExists,
+                inheritor.IsPrecompile(spec) || inheritor.IsSystemContract(spec),
+                ref gasAvailable))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+        if (gasBefore == gasAvailable)
+        {
+            // Charge gas for account access; if insufficient, signal out-of-gas.
+            if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false,
+                    opCode: Instruction.SELFDESTRUCT)) goto OutOfGas;
+        }
+        else if (spec.UseHotAndColdStorage) vmState.AccessTracker.WarmUp(inheritor);
+
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         // Mark the executing account for destruction if allowed.
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
-        UInt256 result = state.GetBalance(executingAccount);
         if (vm.TxTracer.IsTracingActions)
-            vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
+            vm.TxTracer.ReportSelfDestruct(executingAccount, contractBalance, inheritor);
 
-        // For certain specs, charge gas if transferring to a dead account.
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
+        if (!spec.IsEip4762Enabled)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
-                goto OutOfGas;
+            // For certain specs, charge gas if transferring to a dead account.
+            if (spec.ClearEmptyAccountWhenTouched && !contractBalance.IsZero && state.IsDeadAccount(inheritor))
+            {
+                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+                    goto OutOfGas;
+            }
+
+            if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+            {
+                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+                    goto OutOfGas;
+            }
         }
 
-        // If account creation rules apply, ensure gas is charged for new accounts.
-        bool inheritorAccountExists = state.AccountExists(inheritor);
-        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
-        {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
-                goto OutOfGas;
-        }
 
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            state.CreateAccount(inheritor, contractBalance);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, contractBalance, spec);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -262,7 +305,7 @@ internal static partial class EvmInstructions
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, contractBalance, spec);
 
     // Jump forward to be unpredicted by the branch predictor.
     Stop:

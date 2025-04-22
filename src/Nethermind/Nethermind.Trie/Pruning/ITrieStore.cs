@@ -11,11 +11,9 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Full traditional trie store.
     /// </summary>
-    public interface ITrieStore : IDisposable, ITrieStoreInternal
+    public interface ITrieStore : IDisposable, ITrieStoreInternal, IStoreWithReorgBoundary
     {
         IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }

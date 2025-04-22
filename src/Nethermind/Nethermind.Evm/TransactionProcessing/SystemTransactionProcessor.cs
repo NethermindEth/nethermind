@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -31,6 +32,11 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }
 
+    public override ITransactionProcessor WithNewStateProvider(IWorldState worldState)
+    {
+        return new SystemTransactionProcessor(SpecProvider, worldState, VirtualMachine, CodeInfoRepository, LogManager);
+    }
+
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (_isAura && !blCtx.Header.IsGenesis)
@@ -52,7 +58,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode) { }
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness execWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {

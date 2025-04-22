@@ -137,6 +137,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </remarks>
     bool IsTracingLogs { get; }
 
+    /// <summary>
+    /// Defines whether SetVerkleWitnessKeys will be called
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportAccessWitness"/>
+    /// </remarks>
+    bool IsTracingAccessWitness { get; }
+
     bool IsTracing => IsTracingReceipt
                       || IsTracingActions
                       || IsTracingOpLevelStorage
@@ -148,7 +157,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingBlockHash
                       || IsTracingAccess
                       || IsTracingFees
-                      || IsTracingLogs;
+                      || IsTracingLogs
+                      || IsTracingAccessWitness;
 
     /// <summary>
     /// Transaction completed successfully
@@ -440,4 +450,11 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="burntFees">EIP-1559 burnt fees</param>
     /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
     void ReportFees(UInt256 fees, UInt256 burntFees);
+
+    /// <summary>
+    /// Report witness for keys access during transaction execution
+    /// </summary>
+    /// <param name="witnessKeys"></param>
+    /// <remarks>Depends on <see cref="IsTracingAccessWitness"/></remarks>
+    void ReportAccessWitness(IReadOnlyList<Hash256> witnessKeys);
 }

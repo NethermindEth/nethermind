@@ -84,6 +84,8 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
+        public StateType StateType => StateType.Merkle;
+
         public byte[] GetOriginal(in StorageCell storageCell)
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
@@ -272,6 +274,11 @@ namespace Nethermind.State
         public void ResetTransient()
         {
             _transientStorageProvider.Reset();
+        }
+
+        public byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId)
+        {
+            throw new NotImplementedException();
         }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;

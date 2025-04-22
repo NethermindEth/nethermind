@@ -733,7 +733,8 @@ internal static partial class EvmInstructions
             codeInfo: codeInfo,
             inputData: callData.ToArray(),
             transferValue: value,
-            value: value
+            value: value,
+            witness: env.Witness
         );
         vm.ReturnData = EvmState.RentFrame(
             callGas,
@@ -989,7 +990,8 @@ internal static partial class EvmInstructions
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: targetCodeInfo
+            codeInfo: targetCodeInfo,
+            witness: env.Witness
         );
         vm.ReturnData = EvmState.RentFrame(
             callGas,

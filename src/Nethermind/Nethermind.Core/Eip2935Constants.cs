@@ -17,4 +17,6 @@ public static class Eip2935Constants
     /// The <c>HISTORY_SERVE_WINDOW</c> parameter.
     /// </summary>
     public static readonly long RingBufferSize = 8191;
+
+    public static readonly int BlockHashServeWindow = 256;
 }

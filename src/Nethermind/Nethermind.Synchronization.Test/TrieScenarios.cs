@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.Test
                     remoteStorageTree.Commit();
                     remoteStorageTree.UpdateRootHash();
                     codeDb[codeHash.Bytes] = code;
-                    tree.Set(account, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Set(account, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash((UInt256)code.Length, codeHash));
                     tree.Commit();
                 }),
                 ("storage_hash_and_code_hash_same_with_additional_account_of_same_storage_root", static (tree, stateDb, codeDb) =>
@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization.Test
 
                     codeDb[codeHash.Bytes] = code;
                     tree.Set(account1, AccountJustState0.WithChangedStorageRoot(remoteStorageTree1.RootHash));
-                    tree.Set(account2, AccountJustState0.WithChangedStorageRoot(remoteStorageTree2.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Set(account2, AccountJustState0.WithChangedStorageRoot(remoteStorageTree2.RootHash).WithChangedCodeHash((UInt256)code.Length, codeHash));
                     tree.Commit();
                 }),
                 ("storage_hash_and_code_hash_same_with_additional_account_of_same_code", static (tree, stateDb, codeDb) =>
@@ -127,8 +127,8 @@ namespace Nethermind.Synchronization.Test
                     remoteStorageTree.UpdateRootHash();
 
                     codeDb[codeHash.Bytes] = code;
-                    tree.Set(new Hash256("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedCodeHash(codeHash));
-                    tree.Set(accountWithStorage, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Set(new Hash256("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedCodeHash((UInt256)code.Length, codeHash));
+                    tree.Set(accountWithStorage, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash((UInt256)code.Length, codeHash));
                     tree.Commit();
                 }),
                 ("branch_with_same_accounts_at_different_addresses", static (tree, _, codeDb) =>

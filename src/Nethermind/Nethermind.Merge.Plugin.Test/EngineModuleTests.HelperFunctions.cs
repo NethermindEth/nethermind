@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block? block = blockRequest.TryGetBlock().Block;
 
             Snapshot before = chain.WorldStateManager.GlobalWorldState.TakeSnapshot();
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec, NullBlockTracer.Instance);
 
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
 
@@ -121,7 +121,7 @@ namespace Nethermind.Merge.Plugin.Test
             Snapshot before = globalWorldState.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec, NullBlockTracer.Instance);
 
             globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
             globalWorldState.RecalculateStateRoot();

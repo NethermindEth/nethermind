@@ -905,18 +905,51 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
     {
+        return CreateIterator(null, ordered, ch);
+    }
+
+    protected internal Iterator CreateIterator(byte[]? start, bool ordered = false, ColumnFamilyHandle? ch = null)
+    {
         ReadOptions readOptions = new();
         readOptions.SetTailing(!ordered);
 
         try
         {
-            return _db.NewIterator(ch, readOptions);
+            Iterator? iterator = _db.NewIterator(ch, readOptions);
+            if (start != null)
+            {
+                iterator.Seek(start);
+            }
+            else
+            {
+                iterator.SeekToFirst();
+            }
+            return iterator;
         }
         catch (RocksDbSharpException e)
         {
             CreateMarkerIfCorrupt(e);
             throw;
         }
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator()
+    {
+        Iterator iterator = CreateIterator(null, true, null);
+        return GetAllCore(iterator);
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start)
+    {
+        Iterator iterator = CreateIterator(start, true, null);
+        return WrapInEnumerable(iterator);
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start, byte[] end)
+    {
+        // TODO: Do this properly?
+        return GetIterator(start)
+            .TakeWhile((kv) => kv.Key.AsSpan().SequenceCompareTo(end.AsSpan()) <= 0);
     }
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
@@ -1019,21 +1052,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
+    internal IEnumerable<KeyValuePair<byte[], byte[]?>> WrapInEnumerable(Iterator iterator)
     {
         try
         {
             ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
 
             while (iterator.Valid())
             {
@@ -1062,6 +1085,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 throw;
             }
         }
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
+    {
+        try
+        {
+            iterator.SeekToFirst();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+
+        return WrapInEnumerable(iterator);
     }
 
     public bool KeyExists(ReadOnlySpan<byte> key)

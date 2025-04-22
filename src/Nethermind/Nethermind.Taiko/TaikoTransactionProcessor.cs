@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Linq;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -22,6 +23,11 @@ public class TaikoTransactionProcessor(
     ILogManager? logManager
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
+    public override ITransactionProcessor WithNewStateProvider(IWorldState worldState)
+    {
+        return new TaikoTransactionProcessor(SpecProvider, worldState, VirtualMachine, CodeInfoRepository, LogManager);
+    }
+
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
@@ -34,7 +40,7 @@ public class TaikoTransactionProcessor(
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
         => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness executionWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
     {
         bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)

@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 dbContext.RemoteStateTree
                     .Set(TestItem.Addresses[i], TrieScenarios.AccountJustState0.WithChangedBalance(i)
                         .WithChangedNonce(1)
-                        .WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code3))
+                        .WithChangedCodeHash((UInt256)TrieScenarios.Code3.Length, Keccak.Compute(TrieScenarios.Code3))
                         .WithChangedStorageRoot(SetStorage(dbContext.RemoteTrieStore, i, TestItem.Addresses[i]).RootHash));
 
             dbContext.RemoteStateTree.UpdateRootHash();
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 dbContext.RemoteStateTree
                     .Set(TestItem.Addresses[i], TrieScenarios.AccountJustState0.WithChangedBalance(i)
                         .WithChangedNonce(2)
-                        .WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code3))
+                        .WithChangedCodeHash((UInt256)TrieScenarios.Code3.Length, Keccak.Compute(TrieScenarios.Code3))
                         .WithChangedStorageRoot(SetStorage(dbContext.RemoteTrieStore, (byte)(i % 7), TestItem.Addresses[i]).RootHash));
 
             dbContext.RemoteStateTree.UpdateRootHash();
@@ -306,7 +306,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.RemoteCodeDb.Set(Keccak.Compute(TrieScenarios.Code0), TrieScenarios.Code0);
 
-            Account changedAccount = TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0));
+            Account changedAccount = TrieScenarios.AccountJustState0.WithChangedCodeHash((UInt256)TrieScenarios.Code0.Length, Keccak.Compute(TrieScenarios.Code0));
             dbContext.RemoteStateTree.Set(TestItem.AddressD, changedAccount);
             dbContext.RemoteStateTree.Commit();
 
@@ -335,7 +335,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
             remoteStorageTree.Commit();
 
-            dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
+            dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedCodeHash((UInt256)TrieScenarios.Code0.Length, Keccak.Compute(TrieScenarios.Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
             dbContext.RemoteStateTree.Commit();
 
             dbContext.CompareTrees("BEGIN");

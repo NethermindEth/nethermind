@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -25,6 +26,15 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingRewards { get; }
 
         /// <summary>
+        /// Is verkle witness traced
+        /// </summary>
+        /// <remarks>
+        /// Controls
+        /// - <see cref="ReportAccessWitness"/>
+        /// </remarks>
+        bool IsTracingAccessWitness { get; }
+
+        /// <summary>
         /// Reports rewards for bock.
         /// </summary>
         /// <param name="author">Author/coinbase for reward.</param>
@@ -32,6 +42,14 @@ namespace Nethermind.Evm.Tracing
         /// <param name="rewardValue">Value of reward.</param>
         /// <remarks>Depends on <see cref="IsTracingRewards"/></remarks>
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
+
+        /// <summary>
+        /// Reports rewards for bock.
+        /// </summary>
+        /// <param name="witness">Witness for processing withdrawals.</param>
+        /// <remarks>Depends on <see cref="IsTracingAccessWitness"/></remarks>
+        void ReportAccessWitness(IExecutionWitness witness);
+
 
         /// <summary>
         /// Starts a trace for new block.

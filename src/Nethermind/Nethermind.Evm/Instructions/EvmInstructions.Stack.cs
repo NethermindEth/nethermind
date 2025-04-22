@@ -120,6 +120,18 @@ internal static partial class EvmInstructions
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
 
+        int usedFromCode = Math.Min(code.Length - programCounter, 2);
+        int endNotIncluded = programCounter + usedFromCode;
+        // this is a change done to support a use case I don't believe in - should be removed before fork
+        // the idea for this was to add proof of absence in case where we don't have all the required bytes
+        // for PUSHX, but this can already be inferred using codeSize - no need for proof of absence
+        if (endNotIncluded == code.Length) endNotIncluded++;
+        if (!vm.EvmState.IsContractDeployment)
+        {
+            if (!vm.EvmState.Env.Witness.AccessAndChargeForCodeSlice(vm.EvmState.To, programCounter,
+                    endNotIncluded, false, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        }
+
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
         Instruction nextInstruction;
@@ -500,6 +512,17 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        int usedFromCode = Math.Min(code.Length - programCounter, TOpCount.Count);
+        int endNotIncluded = programCounter + usedFromCode;
+        // this is a change done to support a use case I don't believe in - should be removed before fork
+        // the idea for this was to add proof of absence in case where we don't have all the required bytes
+        // for PUSHX, but this can already be inferred using codeSize - no need for proof of absence
+        if (endNotIncluded == code.Length) endNotIncluded++;
+        if (!vm.EvmState.IsContractDeployment)
+        {
+            if (!vm.EvmState.Env.Witness.AccessAndChargeForCodeSlice(vm.EvmState.To, programCounter,
+                    endNotIncluded, false, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        }
         // Use the push method defined by the specific push operation.
         TOpCount.Push(TOpCount.Count, ref stack, programCounter, code);
         // Advance the program counter by the number of bytes consumed.

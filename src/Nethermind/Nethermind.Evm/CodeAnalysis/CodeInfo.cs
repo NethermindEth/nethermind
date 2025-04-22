@@ -3,11 +3,19 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
 {
+    public CodeInfo(IWorldState worldState, Address codeOwner) : this(
+        (worldState as VerkleWorldState)?.GetCodeFromCodeChunksForStatelessProcessing(codeOwner) ??
+        Array.Empty<byte>())
+    {
+    }
+
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
     public static CodeInfo Empty { get; } = new CodeInfo(ReadOnlyMemory<byte>.Empty);
 

@@ -46,4 +46,10 @@ public static class AddressExtensions
                 _ => false
             };
     }
+
+    public static bool IsSystemContract(this Address address, IReleaseSpec releaseSpec)
+    {
+        return (address == releaseSpec.Eip2935ContractAddress && releaseSpec.IsEip2935Enabled)
+               || address == releaseSpec.Eip4788ContractAddress && releaseSpec.IsEip4788Enabled;
+    }
 }

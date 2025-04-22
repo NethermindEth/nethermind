@@ -17,20 +17,24 @@ namespace Nethermind.Core
         private readonly Hash256? _codeHash;
         private readonly Hash256? _storageRoot;
 
-        public Account(in UInt256 balance)
+        public Account(in byte version, in UInt256 balance)
         {
             _codeHash = null;
             _storageRoot = null;
             Nonce = default;
             Balance = balance;
+            CodeSize = default;
+            Version = version;
         }
 
-        public Account(in UInt256 nonce, in UInt256 balance)
+        public Account(in byte version, in UInt256 nonce, in UInt256 balance)
         {
             _codeHash = null;
             _storageRoot = null;
             Nonce = nonce;
             Balance = balance;
+            CodeSize = default;
+            Version = version;
         }
 
         private Account()
@@ -39,14 +43,18 @@ namespace Nethermind.Core
             _storageRoot = null;
             Nonce = default;
             Balance = default;
+            CodeSize = default;
+            Version = default;
         }
 
-        public Account(in UInt256 nonce, in UInt256 balance, Hash256 storageRoot, Hash256 codeHash)
+        public Account(in byte version, in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, Hash256 storageRoot, Hash256 codeHash)
         {
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
             Nonce = nonce;
             Balance = balance;
+            CodeSize = codeSize;
+            Version = version;
         }
 
         private Account(Account account, Hash256? storageRoot)
@@ -55,14 +63,18 @@ namespace Nethermind.Core
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
             Nonce = account.Nonce;
             Balance = account.Balance;
+            CodeSize = account.CodeSize;
+            Version = account.Version;
         }
 
-        private Account(Hash256? codeHash, Account account)
+        private Account(in UInt256 codeSize, Hash256? codeHash, Account account)
         {
+            CodeSize = codeSize;
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = account._storageRoot;
             Nonce = account.Nonce;
             Balance = account.Balance;
+            Version = account.Version;
         }
 
         private Account(Account account, in UInt256 nonce, in UInt256 balance)
@@ -71,6 +83,8 @@ namespace Nethermind.Core
             _storageRoot = account._storageRoot;
             Nonce = nonce;
             Balance = balance;
+            CodeSize = account.CodeSize;
+            Version = account.Version;
         }
 
         public bool HasCode => _codeHash is not null;
@@ -79,6 +93,8 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
+        public byte Version { get; }
+        public UInt256 CodeSize { get; set; }
         public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
         public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
@@ -91,6 +107,7 @@ namespace Nethermind.Core
 
             return Nonce == other.Nonce &&
                 Balance == other.Balance &&
+                Version == other.Version &&
                 _codeHash == other._codeHash &&
                 _storageRoot == other._storageRoot;
         }
@@ -121,12 +138,12 @@ namespace Nethermind.Core
             return new(this, newStorageRoot);
         }
 
-        public Account WithChangedCodeHash(Hash256 newCodeHash)
+        public Account WithChangedCodeHash(in UInt256 codeSize, Hash256 newCodeHash)
         {
-            return new(newCodeHash, this);
+            return new(codeSize, newCodeHash, this);
         }
 
-        public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
+        public AccountStruct ToStruct() => new(Version, Nonce, Balance, CodeSize, StorageRoot, CodeHash);
     }
 
     public readonly struct AccountStruct
@@ -137,25 +154,31 @@ namespace Nethermind.Core
         private readonly UInt256 _balance;
         private readonly UInt256 _nonce = default;
         public readonly ValueHash256 CodeHash = Keccak.OfAnEmptyString.ValueHash256;
+        private readonly UInt256 _codeSize = default;
+        private readonly byte _version = default;
         private readonly ValueHash256 _storageRoot = Keccak.EmptyTreeHash.ValueHash256;
 
-        public AccountStruct(in UInt256 nonce, in UInt256 balance, in ValueHash256 storageRoot, in ValueHash256 codeHash)
+        public AccountStruct(in byte version, in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, in ValueHash256 storageRoot, in ValueHash256 codeHash)
         {
             _balance = balance;
             _nonce = nonce;
             CodeHash = codeHash;
             _storageRoot = storageRoot;
+            _version = version;
+            _codeSize = codeSize;
         }
 
-        public AccountStruct(in UInt256 nonce, in UInt256 balance)
+        public AccountStruct(in byte version, in UInt256 nonce, in UInt256 balance)
         {
             _balance = balance;
             _nonce = nonce;
+            _version = version;
         }
 
-        public AccountStruct(in UInt256 balance)
+        public AccountStruct(in byte version, in UInt256 balance)
         {
             _balance = balance;
+            _version = version;
         }
 
         public bool HasCode => CodeHash != Keccak.OfAnEmptyString.ValueHash256;

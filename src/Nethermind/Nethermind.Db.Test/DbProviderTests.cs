@@ -44,7 +44,7 @@ public class DbProviderTests
             MemDbFactory memDbFactory = new MemDbFactory();
             IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
             dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
-            Assert.Throws<ArgumentException>(() => dbProvider.RegisterColumnDb("columnsdb", new MemColumnsDb<ReceiptsColumns>()));
+            Assert.Throws<ArgumentException>(() => dbProvider.RegisterColumnDb("columnsdb", new MemColumnsDb<ReceiptsColumns>(false)));
         }
     }
 

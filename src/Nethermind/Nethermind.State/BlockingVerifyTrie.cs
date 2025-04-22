@@ -17,13 +17,13 @@ public class BlockingVerifyTrie
 {
     private readonly ILogger _logger;
 
-    private readonly ITrieStore _trieStore;
+    private readonly ITrieStore? _trieStore;
     private readonly IStateReader _stateReader;
     private readonly IDb _codeDb;
     private readonly ILogManager _logManager;
 
     public BlockingVerifyTrie(
-        ITrieStore trieStore,
+        ITrieStore? trieStore,
         IStateReader stateReader,
         [KeyFilter(DbNames.Code)] IDb codeDb,
         ILogManager logManager)
@@ -43,7 +43,7 @@ public class BlockingVerifyTrie
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
         // This is to block processing as with halfpath old nodes will be removed
-        using IBlockCommitter? _ = _trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
+        using IBlockCommitter? _ = _trieStore?.BeginBlockCommit(stateAtBlock.Number + 1);
 
         Hash256 rootNode = stateAtBlock.StateRoot;
         TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, cancellationToken);

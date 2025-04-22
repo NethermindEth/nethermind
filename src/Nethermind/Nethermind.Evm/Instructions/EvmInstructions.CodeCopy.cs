@@ -24,6 +24,8 @@ internal static partial class EvmInstructions
         /// <param name="vm">The virtual machine instance providing execution context.</param>
         /// <returns>A read-only span of bytes containing the code.</returns>
         abstract static ReadOnlySpan<byte> GetCode(VirtualMachine vm);
+
+        abstract static bool AccessExecutionWitness(VirtualMachine vm, int codeSizeToUse, int codeOffset, ref long gasAvailable);
     }
 
     /// <summary>
@@ -71,6 +73,11 @@ internal static partial class EvmInstructions
             if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
+            if (!TOpCodeCopy.AccessExecutionWitness(vm, (int)result, (int)b, ref gasAvailable))
+            {
+                goto OutOfGas;
+            }
+
             // Obtain the code slice with zero-padding if needed.
             ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
             // Save the slice into memory at the destination offset.
@@ -98,6 +105,11 @@ internal static partial class EvmInstructions
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
             => vm.EvmState.Env.InputData.Span;
+
+        public static bool AccessExecutionWitness(VirtualMachine vm, int codeSizeToUse, int codeOffset, ref long gasAvailable)
+        {
+            return true;
+        }
     }
 
     /// <summary>
@@ -107,6 +119,15 @@ internal static partial class EvmInstructions
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
             => vm.EvmState.Env.CodeInfo.MachineCode.Span;
+
+        public static bool AccessExecutionWitness(VirtualMachine vm, int codeSizeToUse, int codeOffset, ref long gasAvailable)
+        {
+            int actualCodeLength = vm.EvmState.Env.CodeInfo.MachineCode.Span.Length;
+            int startIncluded = Math.Min(codeOffset, actualCodeLength);
+            int endNotIncluded = Math.Min(startIncluded + codeSizeToUse, actualCodeLength);
+
+            return vm.EvmState.IsContractDeployment || vm.EvmState.Env.Witness.AccessAndChargeForCodeSlice(vm.EvmState.To, startIncluded, endNotIncluded, false, ref gasAvailable);
+        }
     }
 
     /// <summary>
@@ -147,7 +168,7 @@ internal static partial class EvmInstructions
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address))
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address, opCode: Instruction.EXTCODECOPY))
             goto OutOfGas;
 
         if (!result.IsZero)
@@ -167,6 +188,15 @@ internal static partial class EvmInstructions
                 externalCode = EofValidator.MAGIC;
             }
 
+            int actualCodeLength = externalCode.Length;
+            int startIncluded = Math.Min((int)b, actualCodeLength);
+            int endNotIncluded = Math.Min(startIncluded + (int)result, actualCodeLength);
+
+            if (!vm.EvmState.Env.Witness.AccessAndChargeForCodeSlice(address, startIncluded, endNotIncluded, false, ref gasAvailable))
+            {
+                goto OutOfGas;
+            }
+
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
             // Save the slice into memory at the destination offset.
@@ -177,6 +207,8 @@ internal static partial class EvmInstructions
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
+
+
         }
 
         return EvmExceptionType.None;
@@ -219,7 +251,7 @@ internal static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address))
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address, opCode: Instruction.EXTCODESIZE))
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.

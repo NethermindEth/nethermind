@@ -22,6 +22,12 @@ public sealed class SimulateTransactionProcessor(
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
+    public override ITransactionProcessor WithNewStateProvider(IWorldState worldState)
+    {
+        return new SimulateTransactionProcessor(SpecProvider, worldState, VirtualMachine, CodeInfoRepository,
+            LogManager, validate);
+    }
+
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)

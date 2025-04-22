@@ -22,6 +22,11 @@ namespace Nethermind.Db
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
+        public IDb ForwardDiff => GetDb<IDb>(DbNames.ForwardDiff);
+        public IDb ReverseDiff => GetDb<IDb>(DbNames.ReverseDiff);
+        public IDb StateRootToBlocks => GetDb<IDb>(DbNames.StateRootToBlock);
+        public IDb HistoryOfAccounts => GetDb<IDb>(DbNames.HistoryOfAccounts);
+
         public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions);
 
         T GetDb<T>(string dbName) where T : class, IDb;

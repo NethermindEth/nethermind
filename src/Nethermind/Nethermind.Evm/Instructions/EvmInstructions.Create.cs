@@ -117,7 +117,8 @@ internal static partial class EvmInstructions
         bool outOfGas = false;
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
-        long gasCost = GasCostOf.Create +
+        long createGasCost = spec.IsEip4762Enabled ? GasCostOf.CreateEip4762 : GasCostOf.Create;
+        long gasCost = createGasCost +
                        (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas)
@@ -179,6 +180,15 @@ internal static partial class EvmInstructions
             ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
+        // Increment the nonce of the executing account to reflect the contract creation.
+        state.IncrementNonce(env.ExecutingAccount);
+
+        // for the collision check, we need on check the existence of the account and no need to write to it
+        if (!env.Witness.AccessForContractCreationCheck(contractAddress, ref callGas))
+        {
+            goto None;
+        }
+
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
         if (spec.UseHotAndColdStorage)
         {
@@ -194,9 +204,6 @@ internal static partial class EvmInstructions
             UpdateGasUp(callGas, ref gasAvailable);
             goto None;
         }
-
-        // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
@@ -214,10 +221,17 @@ internal static partial class EvmInstructions
             goto None;
         }
 
+
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        // TODO: handle this for verkle trees, no deletion there
+        if (!spec.IsEip6800Enabled && state.IsDeadAccount(contractAddress))
         {
             state.ClearStorage(contractAddress);
+        }
+
+        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref callGas))
+        {
+            goto None;
         }
 
         // Deduct the transfer value from the executing account's balance.
@@ -231,11 +245,12 @@ internal static partial class EvmInstructions
             callDepth: env.CallDepth + 1,
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
-            codeSource: null,
+            codeSource: contractAddress,
             codeInfo: codeinfo,
             inputData: default,
             transferValue: value,
-            value: value
+            value: value,
+            witness: env.Witness
         );
 
         // Rent a new frame to run the initialization code in the new execution environment.

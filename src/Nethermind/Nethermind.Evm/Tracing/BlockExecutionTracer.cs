@@ -5,17 +5,21 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockExecutionTracer(bool traceReceipts, bool traceWitness) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
-    public bool IsTracingReceipt => true;
+    public bool IsTracingReceipt => traceReceipts | _currentTxTracer.IsTracingReceipt;
+    public bool IsTracingAccessWitness => traceWitness | _currentTxTracer.IsTracingAccessWitness;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
@@ -216,11 +220,19 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             _txReceipts.RemoveAt(_txReceipts.Count - 1);
         }
 
+        for (int i = 0; i < numToRemove; i++)
+        {
+            _witnessKeys.RemoveAt(_witnessKeys.Count - 1);
+        }
+
+
         Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
         _otherTracer.ReportReward(author, rewardType, rewardValue);
+
+    public void ReportAccessWitness(IExecutionWitness witness) => ReportAccessWitness(witness.GetAccessedKeys());
 
     public void StartNewBlockTrace(Block block)
     {
@@ -232,6 +244,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
+        _witnessKeys.Clear();
 
         _otherTracer.StartNewBlockTrace(block);
     }
@@ -262,11 +275,41 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
+
+        if (_witnessKeys.Count > 0)
+        {
+            _aggregatedWitnessKeys = new SortedSet<Hash256>(Bytes.HashComparer);
+            foreach (IReadOnlyList<Hash256>? keys in _witnessKeys)
+            {
+                _aggregatedWitnessKeys.AddRange(keys);
+            }
+        }
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)
     {
         _otherTracer = blockTracer;
+    }
+
+    private readonly List<IReadOnlyList<Hash256>> _witnessKeys = new();
+    private SortedSet<Hash256> _aggregatedWitnessKeys = new(Bytes.HashComparer);
+    public SortedSet<Hash256> WitnessKeys => _aggregatedWitnessKeys;
+
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
+    {
+        if (traceWitness)
+            _witnessKeys.Add(verkleWitnessKeys);
+
+        // hacky way to support nested witness tracers
+        if (_otherTracer is ITxTracer otherTxTracer)
+        {
+            otherTxTracer.ReportAccessWitness(verkleWitnessKeys);
+        }
+
+        if (_currentTxTracer.IsTracingAccess)
+        {
+            _currentTxTracer.ReportAccessWitness(verkleWitnessKeys);
+        }
     }
 
     public void Dispose()

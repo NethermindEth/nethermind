@@ -507,7 +507,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new BlockReceiptsTracer(),
+                    new BlockExecutionTracer(true, true),
                     DumpOptions.Receipts);
 
                 TraceFailingBranch(

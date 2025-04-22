@@ -61,6 +61,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
+    public bool IsTracingAccessWitness => InnerTracer.IsTracingAccessWitness;
 
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
@@ -286,6 +287,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void ReportStorageRead(in StorageCell storageCell)
         => InnerTracer.ReportStorageRead(storageCell);
+
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys) =>
+        InnerTracer.ReportAccessWitness(verkleWitnessKeys);
 
     public void Dispose()
     {

@@ -438,14 +438,34 @@ public sealed unsafe partial class VirtualMachine(
         // Get the address of the account that initiated the contract creation.
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        // Calculate the gas cost required to deposit the contract code using legacy cost rules.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
-
         // Validate the code against legacy rules; mark it invalid if it fails these checks.
+        // we only need to do the gas calculation if the code is valid
         bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
 
-        // Check if there is sufficient gas and the code is valid.
-        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+
+        long codeDepositGasCost = 0;
+        bool isGasAvailable = false;
+        if (!invalidCode)
+        {
+            if (spec.IsEip4762Enabled)
+            {
+                long gasThatCanBeUsed = gasAvailableForCodeDeposit;
+                // Calculate the gas cost required to deposit the contract code using verkle gas cost rules.
+                isGasAvailable = _currentState.Env.Witness.AccessAndChargeForCodeSlice(callCodeOwner,
+                    0, callResult.Output.Bytes.Length, true, ref gasThatCanBeUsed);
+                codeDepositGasCost = gasAvailableForCodeDeposit - gasThatCanBeUsed;
+            }
+            else
+            {
+                // Calculate the gas cost required to deposit the contract code using legacy cost rules.
+                codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+                isGasAvailable = gasAvailableForCodeDeposit >= codeDepositGasCost;
+            }
+        }
+
+        // Check if there is sufficient gas.
+        // no need to check again is the code is invalid, if isGasAvailable=true, then code is always valid
+        if (isGasAvailable)
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
@@ -461,6 +481,8 @@ public sealed unsafe partial class VirtualMachine(
             }
         }
         // If the code deposit should fail due to out-of-gas or invalid code conditions...
+        // TODO: here do we need to check FailOnOutOfGasCodeDeposit when eip4762 is enabled?
+        //       or should we just fail without caring about this flag?
         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
         {
             // Consume all remaining gas allocated for the code deposit.
@@ -470,7 +492,7 @@ public sealed unsafe partial class VirtualMachine(
             _worldState.Restore(previousState.Snapshot);
 
             // If the contract creation did not target a pre-existing account, delete the account.
-            if (!previousState.IsCreateOnPreExistingAccount)
+            if (!previousState.IsCreateOnPreExistingAccount && !spec.IsEip6800Enabled)
             {
                 _worldState.DeleteAccount(callCodeOwner);
             }
@@ -722,7 +744,7 @@ public sealed unsafe partial class VirtualMachine(
     }
 
     /// <summary>
-    /// Executes a precompiled contract operation based on the current execution state. 
+    /// Executes a precompiled contract operation based on the current execution state.
     /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
     /// checks for failure conditions, and adjusts the execution state accordingly.
     /// </summary>
@@ -1044,9 +1066,29 @@ public sealed unsafe partial class VirtualMachine(
         // Obtain a reference to the execution environment for convenience.
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
+        // Cache the available gas from the state for local use.
+        long gasAvailable = vmState.GasAvailable;
+
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
+            if (!_worldState.AccountExists(env.ExecutingAccount))
+            {
+                // here we end up in two cases
+                // 1. trying to see if the tx.To is a contract and execute the contract
+                // 2. executing the *CALL opCode
+                // when we get here the first way, we already have a proof of absence as we access the entire account
+                // as proof of absence so nothing is do there technically in th first case
+                // when we get here in the second case, we just have to make a write touch to the codeHash if there is
+                // a value transfer because we end up creating the account.
+                if (!env.TransferValue.IsZero
+                    && vmState.ExecutionType != ExecutionType.TRANSACTION
+                    && !env.Witness.AccessCodeHash(env.ExecutingAccount, ref gasAvailable, isWrite: true))
+                {
+                    goto OutOfGas;
+                }
+            }
+
             // Ensure the executing account has sufficient balance and exists in the world state.
             _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, _spec);
 
@@ -1065,6 +1107,7 @@ public sealed unsafe partial class VirtualMachine(
             {
                 Metrics.IncrementEmptyCalls();
             }
+            vmState.GasAvailable = gasAvailable;
             goto Empty;
         }
 
@@ -1073,9 +1116,6 @@ public sealed unsafe partial class VirtualMachine(
 
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
         EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
-
-        // Cache the available gas from the state for local use.
-        long gasAvailable = vmState.GasAvailable;
 
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
@@ -1191,6 +1231,14 @@ public sealed unsafe partial class VirtualMachine(
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
                 debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
+
+                if (!EvmState.IsContractDeployment)
+                {
+                    if (!EvmState.Env.Witness.AccessForCodeProgramCounter(EvmState.To, programCounter, ref gasAvailable))
+                    {
+                        goto OutOfGas;
+                    }
+                }
                 // Fetch the current instruction from the code section.
                 Instruction instruction = codeSection[programCounter];
 

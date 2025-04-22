@@ -112,9 +112,6 @@ internal static partial class EvmInstructions
         Address codeSource = stack.PopAddress();
         if (codeSource is null) goto StackUnderflow;
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
-
         // Determine the call value based on the call type.
         UInt256 callValue;
         if (typeof(TOpCall) == typeof(OpStaticCall))
@@ -151,10 +148,32 @@ internal static partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
+        // for static call and delegateCall, transferValue is always zero
+        // transfer is technically a noOp in case of callCode as the caller = target
+        if (spec.IsEip4762Enabled && !transferValue.IsZero && TOpCall.ExecutionType == ExecutionType.CALL)
+        {
+            var gasBefore = gasAvailable;
+            if (!vm.EvmState.Env.Witness.AccessForValueTransfer(caller, target, ref gasAvailable))
+                return EvmExceptionType.OutOfGas;
+            if (gasBefore == gasAvailable)
+            {
+                if (!UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            }
+            vm.EvmState.AccessTracker.WarmUp(caller);
+            vm.EvmState.AccessTracker.WarmUp(target);
+        }
+
+        // TODO: need to check on how to handle delegation charge as well
+        if (transferValue.IsZero || TOpCall.ExecutionType != ExecutionType.CALL)
+        {
+            if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource, opCode: Instruction.CALL))
+                goto OutOfGas;
+        }
+
         long gasExtra = 0L;
 
-        // Add extra gas cost if value is transferred.
-        if (!transferValue.IsZero)
+        // Add extra gas cost if the value is transferred.
+        if (!transferValue.IsZero && !spec.IsEip4762Enabled)
         {
             gasExtra += GasCostOf.CallValue;
         }
@@ -241,6 +260,11 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes(StatusCode.SuccessBytes.Span);
             UpdateGasUp(gasLimitUl, ref gasAvailable);
+            if (!transferValue.IsZero
+                && !vm.EvmState.Env.Witness.AccessCodeHash(target, ref gasAvailable, isWrite: true))
+            {
+                goto OutOfGas;
+            }
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -257,7 +281,8 @@ internal static partial class EvmInstructions
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: codeInfo
+            codeInfo: codeInfo,
+            witness: env.Witness
         );
 
         // Normalize output offset if output length is zero.

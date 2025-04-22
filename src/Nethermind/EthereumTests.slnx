@@ -14,6 +14,7 @@
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
+    <Project Path="Nethermind.Init\Nethermind.Init.csproj" Type="Classic C#" />
     <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
@@ -33,6 +34,7 @@
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
+    <Project Path="Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj" Type="Classic C#" />
     <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   </Folder>
   <Project Path="Ethereum.Abi.Test/Ethereum.Abi.Test.csproj" />

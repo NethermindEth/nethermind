@@ -2,6 +2,7 @@
 // Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
 
 using Nethermind.Core;
+using Nethermind.Evm.ExecutionWitness;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -22,6 +23,7 @@ public class FeesTracer : TxTracer, IBlockTracer
     public bool IsTracingRewards => false;
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
+    public void ReportAccessWitness(IExecutionWitness witness) { }
 
     public void StartNewBlockTrace(Block block)
     {

@@ -321,10 +321,10 @@ namespace Nethermind.Blockchain.Test
 
             SetAccountStates(testCase.MissingAddresses);
 
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            BlockExecutionTracer executionTracer = new(true, true);
+            executionTracer.StartNewBlockTrace(blockToProduce);
 
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, executionTracer, spec);
             blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
     }

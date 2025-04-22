@@ -17,5 +17,11 @@ namespace Nethermind.Db
         public const string Bloom = "bloom";
         public const string Metadata = "metadata";
         public const string BlobTransactions = "blobTransactions";
+        public const string ForwardDiff = "forwardDiff";
+        public const string ReverseDiff = "reverseDiff";
+        public const string Preimages = "preimages";
+        public const string StateRootToBlock = "stateRoots";
+        public const string HistoryOfAccounts = "historyOfAccounts";
+        public const string VerkleState = "verkleState";
     }
 }

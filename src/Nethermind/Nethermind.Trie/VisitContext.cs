@@ -36,10 +36,7 @@ namespace Nethermind.Trie
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
-            internal init
-            {
-                _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
-            }
+            init => _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
         }
 
         public bool IsStorage { get; set; }

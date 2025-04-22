@@ -45,8 +45,10 @@ namespace Nethermind.Core.Test.Builders
         private Account GenerateIndexedAccount(int index)
         {
             Account account = new(
+                0,
                 (UInt256)index,
                 (UInt256)index,
+                0,
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 

@@ -25,7 +25,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        IWorldState worldState = worldStateManager.CreateOverlayWorldState(editableDbProvider.StateDb, editableDbProvider.CodeDb);
+        IWorldState worldState = worldStateManager.CreateOverlayWorldState(editableDbProvider);
         BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
 
         return new SimulateReadOnlyBlocksProcessingEnv(
