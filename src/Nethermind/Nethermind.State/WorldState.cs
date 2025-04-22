@@ -42,14 +42,14 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager)
             : this(trieStore, codeDb, logManager, null, null)
         {
         }
 
         internal WorldState(
             ITrieStore trieStore,
-            IKeyValueStore? codeDb,
+            IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
@@ -63,7 +63,7 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
             : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
         {
         }

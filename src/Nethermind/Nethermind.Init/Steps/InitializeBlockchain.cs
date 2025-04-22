@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -124,6 +125,8 @@ namespace Nethermind.Init.Steps
             {
                 IsMainProcessor = true
             };
+
+            getApi.DisposeStack.Push(blockchainProcessor);
 
             setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
