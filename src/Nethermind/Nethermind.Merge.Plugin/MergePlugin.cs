@@ -402,7 +402,7 @@ public class BaseMergePluginModule : Module
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
-
+            .AddSingleton<IBetterPeerStrategy, LastBlockBetterPeerStrategy>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
