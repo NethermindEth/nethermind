@@ -44,7 +44,7 @@ public class ParallelRunner<TLocation, TLogger>(
                 task = task switch
                 {
                     { IsEmpty: true } => scheduler.NextTask(),
-                    { Validating: false } => TryExecute(task.Version),
+                    { Validating: false } => TryExecute(task),
                     { Validating: true } => NeedsReexecution(task.Version)
                 };
             } while (!scheduler.Done);
@@ -60,12 +60,12 @@ public class ParallelRunner<TLocation, TLogger>(
         }
     }
 
-    private TxTask TryExecute(Version version) =>
-        vm.TryExecute(version.TxIndex, out Version? blockingTx, out var readSet, out var writeSet) == Status.ReadError
-            ? !scheduler.AddDependency(version.TxIndex, blockingTx!.Value.TxIndex)
-                ? TryExecute(version)
+    private TxTask TryExecute(TxTask task) =>
+        vm.TryExecute(task.Version.TxIndex, out Version? blockingTx, out var readSet, out var writeSet) == Status.ReadError
+            ? !scheduler.AddDependency(task.Version.TxIndex, blockingTx!.Value.TxIndex)
+                ? task
                 : new TxTask(Version.Empty, false)
-            : scheduler.FinishExecution(version, memory.Record(version, readSet, writeSet));
+            : scheduler.FinishExecution(task.Version, memory.Record(task.Version, readSet, writeSet));
 
 
     private TxTask NeedsReexecution(Version version)
