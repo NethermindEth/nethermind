@@ -15,6 +15,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NonBlocking;
+using Prometheus;
 
 namespace Nethermind.Network.Discovery;
 
@@ -42,11 +43,15 @@ public class KademliaDiscv4MessageSender(
 
     private LruCache<ValueHash256, DateTimeOffset> _lastPong = new(1024, "");
 
+    private Counter EnsureSessionResult =
+        Prometheus.Metrics.CreateCounter("kademlia_ensure_session_result", "result", "result");
+
     private async Task EnsureSession(Node node, CancellationToken token)
     {
         if (_lastPong.TryGet(node.IdHash, out DateTimeOffset lastPong) && lastPong > DateTimeOffset.Now - TimeSpan.FromHours(12))
         {
             if (_logger.IsTrace) _logger.Trace($"Node already had pong within deadline {node}. Pong duration: {DateTimeOffset.Now - lastPong}");
+            EnsureSessionResult.WithLabels("pong_not_expired");
             return;
         }
 
@@ -63,10 +68,18 @@ public class KademliaDiscv4MessageSender(
             await Task.Delay(_waitAfterPongTimeout, token); // Give some time for peer to process pong.
 
             if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
+            EnsureSessionResult.WithLabels("pong_success");
         }
         catch (OperationCanceledException)
         {
             if (_logger.IsTrace) _logger.Trace($"Node {node} timeout trying to trigger pong.");
+            _logger.Warn($"Node {node} timeout trying to trigger pong.");
+            EnsureSessionResult.WithLabels("pong_timeout");
+        }
+        catch (Exception)
+        {
+            EnsureSessionResult.WithLabels("error");
+            throw;
         }
         finally
         {
@@ -77,12 +90,11 @@ public class KademliaDiscv4MessageSender(
 
     private async Task<T> RunAuthenticatedRequest<T>(Node node, Func<CancellationToken, Task<T>> callRequest, CancellationToken token)
     {
-        Stopwatch sw = Stopwatch.StartNew();
         using var cts = token.CreateChildTokenSource(_requestTimeout);
         token = cts.Token;
 
         {
-            using var firstTryCts = cts.Token.CreateChildTokenSource(_unauthenticatedRequestTimeout);
+            using var firstTryCts = token.CreateChildTokenSource(_unauthenticatedRequestTimeout);
             try
             {
                 return await callRequest(firstTryCts.Token);
@@ -102,11 +114,6 @@ public class KademliaDiscv4MessageSender(
         }
         catch (OperationCanceledException)
         {
-            if (_lastPong.TryGet(node.IdHash, out DateTimeOffset lastPong))
-            {
-                _logger.Info($"Still cancelled after {sw.Elapsed} with pong time {DateTimeOffset.Now - lastPong}");
-            }
-
             _lastPong.Delete(node.IdHash);
             throw;
         }

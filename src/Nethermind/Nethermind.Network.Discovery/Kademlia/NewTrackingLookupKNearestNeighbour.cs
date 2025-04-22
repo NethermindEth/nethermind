@@ -79,6 +79,8 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         int closestNodeRound = 0;
         int currentRound = 0;
         int queryingTask = 0;
+        int minResult = 128;
+        int totalResult = 0;
         bool finished = false;
 
         Task[] worker = Enumerable.Range(0, config.Alpha).Select((i) => Task.Run(async () =>
@@ -105,7 +107,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                 try
                 {
                     queried.TryAdd(toQuery.Value.hash, toQuery.Value.node);
-                    _logger.Warn($"Query {toQuery.Value.node} at round {currentRound}, isself {SameAsSelf(toQuery.Value.node)}");
+                    if (_logger.IsTrace) _logger.Trace($"Query {toQuery.Value.node} at round {currentRound}, isself {SameAsSelf(toQuery.Value.node)}");
                     (TNode, TNode[]? neighbours) result = await WrappedFindNeighbourOp(toQuery.Value.node);
                     if (result.neighbours == null || result.neighbours?.Length == 0)
                     {
@@ -140,6 +142,9 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         await Task.WhenAny(worker);
         finished = true;
 
+        _logger.Warn("Lookup operation finished.");
+        yield break;
+
         async Task<(TNode target, TNode[]? retVal)> WrappedFindNeighbourOp(TNode node)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -155,7 +160,6 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             }
             catch (OperationCanceledException)
             {
-                if (_logger.IsWarn) _logger.Warn($"Find neighbour op timout.");
                 nodeHealthTracker.OnRequestFailed(node);
                 return (node, null);
             }
@@ -189,15 +193,27 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             if (neighbours == null) return;
 
             var writer = outChan.Writer;
+            int queryIgnored = 0;
+            int seenIgnored = 0;
             foreach (TNode neighbour in neighbours)
             {
                 ValueHash256 neighbourHash = nodeHashProvider.GetHash(neighbour);
 
                 // Already queried, we ignore
-                if (queried.ContainsKey(neighbourHash)) continue;
+                if (queried.ContainsKey(neighbourHash))
+                {
+                    queryIgnored++;
+                    continue;
+                }
 
                 // When seen already dont record
-                if (!seen.TryAdd(neighbourHash, neighbour)) continue;
+                if (!seen.TryAdd(neighbourHash, neighbour))
+                {
+                    seenIgnored++;
+                    continue;
+                }
+
+                Interlocked.Increment(ref minResult);
                 await writer.WriteAsync(neighbour, cts.Token);
 
                 using var _ = queueLock.Acquire();
@@ -207,16 +223,18 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                 // If found a better node, reset closes node round and continue
                 if (closestNodeRound < round && foundBetter)
                 {
+                    _logger.Warn($"Found better neighbour {neighbour} at round {round}.");
                     bestNodeId = neighbourHash;
                     closestNodeRound = round;
                 }
             }
+            _logger.Warn($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
         }
 
         bool ShouldStopDueToNoBetterResult(out int round)
         {
             round = Interlocked.Increment(ref currentRound);
-            if (round - closestNodeRound >= (config.Alpha*2))
+            if (totalResult >= minResult && round - closestNodeRound >= (config.Alpha*2))
             {
                 // No closer node for more than or equal to _alpha*2 round.
                 // Assume exit condition

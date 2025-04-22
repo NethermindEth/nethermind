@@ -389,17 +389,18 @@ public class InitializeNetwork : IStep
             _networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
         }
 
-        EnrDiscovery enrDiscovery = new(enrRecordParser, _networkConfig, _api.LogManager); // initialize with a proper network
+        // EnrDiscovery enrDiscovery = new(enrRecordParser, _networkConfig, _api.LogManager); // initialize with a proper network
 
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _ = new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
+            // _ = new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
         }
 
         CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
             ? new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader)
-            : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+            // : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+            : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, _api.DiscoveryApp);
         _api.PeerPool = new PeerPool(nodeSources, _nodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,

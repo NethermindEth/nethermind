@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -567,6 +569,16 @@ public class DiscoveryApp : IDiscoveryApp
     {
         if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        ConcurrentDictionary<ValueHash256, ValueHash256> _writtenNodes = new();
+        int duplicated = 0;
+        int total = 0;
+        int fromNewNode = 0;
+
+        void handler(object? _, Node addedNode)
+        {
+            _writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
+            ch.Writer.TryWrite(addedNode);
+        }
 
         async Task DiscoverAsync(ValueHash256 hash)
         {
@@ -578,6 +590,8 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 anyFound = true;
                 count++;
+                total++;
+                if (!_writtenNodes.TryAdd(node.IdHash, node.IdHash)) duplicated++;
                 await ch.Writer.WriteAsync(node, token);
             }
 
@@ -589,39 +603,22 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 if (_logger.IsDebug) _logger.Debug($"Found {count} nodes");
             }
+            Console.Error.WriteLine($"Total is {total}, duplicated {duplicated}, fromNewNode {fromNewNode}");
         }
-
-        Random random = new();
-
-        const int RandomNodesToLookupCount = 1;
 
         Task discoverTask = Task.Run(async () =>
         {
+            Random random = new();
             ValueHash256 randomNodeId = new();
             while (!token.IsCancellationRequested)
             {
                 Stopwatch iterationTime = Stopwatch.StartNew();
-                foreach (var bootNode in _bootNodes)
-                {
-                    _ = Task.Factory.StartNew(async (obj) =>
-                    {
-                        try
-                        {
-                            Node node = (Node)obj!;
-                            await _discv4MessageSender.Ping(node, token);
-                            _kademlia.AddOrRefresh(node);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                        }
-                    }, bootNode);
-                }
+                await EnsureBootNodes(token);
 
                 try
                 {
-                    List<Task> discoverTasks = new List<Task>();
-                    // discoverTasks.Add(DiscoverAsync(_masterNode.Hash));
-
+                    const int RandomNodesToLookupCount = 3;
+                    using ArrayPoolList<Task> discoverTasks = new ArrayPoolList<Task>(RandomNodesToLookupCount);
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
                         random.NextBytes(randomNodeId.BytesAsSpan);
@@ -645,6 +642,8 @@ public class DiscoveryApp : IDiscoveryApp
 
         try
         {
+            _kademlia.OnNodeAdded += handler;
+
             await foreach (Node node in ch.Reader.ReadAllAsync(token))
             {
                 yield return node;
@@ -653,7 +652,28 @@ public class DiscoveryApp : IDiscoveryApp
         finally
         {
             await discoverTask;
+            _kademlia.OnNodeAdded -= handler;
         }
+    }
+
+    private async Task EnsureBootNodes(CancellationToken token)
+    {
+        Stopwatch sw = Stopwatch.StartNew();
+        int onlineBootnodes = 0;
+        await Parallel.ForEachAsync(_bootNodes, token, async (node, token) =>
+        {
+            try
+            {
+                await _discv4MessageSender.Ping(node, token);
+                onlineBootnodes++;
+                _kademlia.AddOrRefresh(node);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+
+        _logger.Info($"Ensure bootnodes took {sw.Elapsed}. {onlineBootnodes} out of {_bootNodes.Count} online");
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
