@@ -789,7 +789,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         return searchResult switch
         {
-            { ErrorCode : ErrorCodes.PrunedHistoryUnavailable } => GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet()),
+            { ErrorCode: ErrorCodes.PrunedHistoryUnavailable } => GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet()),
             { IsError: true } => ResultWrapper<ReceiptForRpc[]>.Success(null),
             _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
         };
