@@ -32,13 +32,13 @@ namespace Nethermind.EngineApiProxy.Services
                 string nextTimestamp = CalculateNextTimestamp(timestamp);
                 
                 // Generate random prevRandao value
-                string prevRandao = GenerateRandomPrevRandao();
+                string prevRandao = blockData["prevRandao"]?.ToString() ?? GenerateRandomPrevRandao();
                 
                 // Use configured fee recipient
                 string feeRecipient = _config.DefaultFeeRecipient;
                 
                 // Generate a random parentBeaconBlockRoot (32 bytes)
-                string parentBeaconBlockRoot = GenerateRandomHash();
+                string parentBeaconBlockRoot = blockData["parentBeaconBlockRoot"]?.ToString() ?? GenerateRandomHash();
                 
                 // Create payload attributes
                 var payloadAttributes = new JObject
@@ -47,7 +47,7 @@ namespace Nethermind.EngineApiProxy.Services
                     ["prevRandao"] = prevRandao,
                     ["suggestedFeeRecipient"] = feeRecipient,
                     ["parentBeaconBlockRoot"] = parentBeaconBlockRoot,
-                    ["withdrawals"] = new JArray() // Empty withdrawals array
+                    ["withdrawals"] = blockData["withdrawals"] ?? new JArray() // Empty withdrawals array
                 };
                 
                 _logger.Debug($"Generated payload attributes: {payloadAttributes}");

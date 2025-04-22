@@ -48,7 +48,7 @@ namespace Nethermind.EngineApiProxy.Config
         /// Time offset in seconds for block timestamp calculation (default: 12s)
         /// Should be more than 0 second to avoid conflicts with CL timestamp
         /// </summary>
-        public int TimestampOffsetSeconds { get; set; } = 2;
+        public int TimestampOffsetSeconds { get; set; } = 1;
 
         /// <summary>
         /// Mode for block validation:

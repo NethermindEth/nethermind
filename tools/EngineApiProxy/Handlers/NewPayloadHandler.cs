@@ -181,14 +181,8 @@ namespace Nethermind.EngineApiProxy.Handlers
                     {
                         _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
                         
-                        // Create a synthetic FCU request to trigger validation
-                        var syntheticFcuRequest = GenerateSyntheticFcuRequest(request, parentHash);
-                        
-                        // Copy headers from original request
-                        syntheticFcuRequest.OriginalHeaders = request.OriginalHeaders;
-                        
                         // Use the existing FCU validation flow
-                        await _requestOrchestrator.HandleFCUWithValidation(syntheticFcuRequest, parentHash);
+                        await _requestOrchestrator.DoValidationForFCU(payloadId);
                         
                         _logger.Info($"Validation completed for parent hash {parentHash}, forwarding original request");
                     }

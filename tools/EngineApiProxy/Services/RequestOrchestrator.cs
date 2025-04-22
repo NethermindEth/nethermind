@@ -55,7 +55,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// <param name="originalRequest">The original FCU request</param>
         /// <param name="headBlockHash">The head block hash from the FCU request</param>
         /// <returns>The payloadId from the FCU response</returns>
-        public async Task<string> GetPayloadID(JsonRpcRequest originalRequest, string headBlockHash)
+        public async Task<string> GetPayloadID(JsonRpcRequest originalRequest, string headBlockHash, bool fromCL = false)
         {
             _logger.Debug($"Getting payload ID for head block: {headBlockHash}");
             string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
@@ -84,17 +84,49 @@ namespace Nethermind.EngineApiProxy.Services
                 {
                     _logger.Debug("HttpClient DefaultRequestHeaders does not contain Authorization");
                 }
-                
-                // 1. Get the head block data
-                var blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
-                if (blockData == null)
+                JObject payloadAttributes = new JObject();
+                if (!fromCL){
+ // 1. Get the head block data
+                    var blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
+                    if (blockData == null)
+                    {
+                        _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
+                        return string.Empty;
+                    }
+                    
+                    // 2. Generate payload attributes
+                    payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
+                } 
+                else 
                 {
-                    _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
-                    return string.Empty;
+                    // 1. Get the head block data
+                    var beaconBlockHeader = await _blockFetcher.GetBeaconBlockHeader();
+                    if (beaconBlockHeader == null)
+                    {
+                        _logger.Warn("Failed to fetch beacon block header");
+                        return string.Empty;
+                    }
+                    headBlockHash = beaconBlockHeader["data"]?["root"]?.ToString() ?? string.Empty;
+                    
+                    var blockData = await _blockFetcher.GetBeaconBlock(headBlockHash);
+                    if (blockData == null)
+                    {
+                        _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
+                        return string.Empty;
+                    } else {
+                        var payload = blockData["data"]?["message"]?["body"]?["execution_payload"]?.ToObject<JObject>();
+                        if (payload == null)
+                        {
+                            _logger.Warn($"Failed to fetch payload for hash: {headBlockHash}");
+                            return string.Empty;
+                        }
+                        blockData["timestamp"] = payload["timestamp"]?.ToString() ?? null;
+                        blockData["prevRandao"] = payload["prev_randao"]?.ToString() ?? null;
+                        blockData["parentBeaconBlockRoot"] = headBlockHash;
+                        blockData["withdrawals"] = payload["withdrawals"] ?? new JArray();
+                    }
+                    payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
                 }
-                
-                // 2. Generate payload attributes
-                var payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
                 
                 // 3. Clone the request and add payload attributes
                 var modifiedRequest = CloneRequest(originalRequest);
