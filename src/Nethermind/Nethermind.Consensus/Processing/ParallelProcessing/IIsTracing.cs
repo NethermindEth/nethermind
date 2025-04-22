@@ -3,7 +3,8 @@
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
-public class Scheduler
-{
-    
-}
+public interface IIsTracing;
+
+public readonly struct NotTracing : IIsTracing;
+
+public readonly struct IsTracing : IIsTracing;

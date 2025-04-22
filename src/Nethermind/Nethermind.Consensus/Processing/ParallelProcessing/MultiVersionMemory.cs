@@ -4,74 +4,76 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
-public class MultiVersionMemory(ushort txCount)
+public class MultiVersionMemory<TLogger>(ushort txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing
 {
-    public record struct Version(ushort TxIndex, ushort Incarnation);
-    private record struct Value(ushort Incarnation, byte[] Bytes);
-    public record struct Read(int Location, Version Version);
+    private readonly record struct Value(ushort Incarnation, byte[] Bytes);
     private static readonly Value Estimate = new(ushort.MaxValue, []);
-    private static readonly Version Empty = new(ushort.MaxValue, ushort.MaxValue);
-
-    public enum Status { Ok, NotFound, ReadError };
 
     private readonly ConcurrentDictionary<int, Value>[] _data =
         Enumerable.Range(0, txCount)
         .Select(_ => new ConcurrentDictionary<int, Value>())
         .ToArray();
 
-    private readonly int[][] _lastWrittenLocations = new int[txCount][];
-    private readonly Read[][] _lastReads = new Read[txCount][];
+    private readonly Dictionary<int, byte[]>.KeyCollection?[] _lastWrittenLocations = new Dictionary<int, byte[]>.KeyCollection[txCount];
+    private readonly HashSet<Read>?[] _lastReads = new HashSet<Read>[txCount];
 
-    public void ApplyWriteSet(ushort txIndex, ushort incarnation, int[] writeLocations, byte[][] writeValues)
+    private void ApplyWriteSet(Version version, Dictionary<int, byte[]> writeSet)
     {
-        Debug.Assert(writeLocations.Length == writeValues.Length);
-        ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        for (int i = 0; i < writeLocations.Length; i++)
+        ConcurrentDictionary<int, Value> txData = _data[version.TxIndex];
+        foreach (KeyValuePair<int, byte[]> write in writeSet)
         {
-            txData[writeLocations[i]] = new(incarnation, writeValues[i]);
+            txData[write.Key] = new(version.Incarnation, write.Value);
         }
     }
 
-    public bool UpdateWrittenLocations(int txIndex, int[] newLocations)
+    private bool UpdateWrittenLocations(int txIndex, Dictionary<int, byte[]> writeSet)
     {
         ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        ref int[] previousWrittenLocations = ref _lastWrittenLocations[txIndex];
-        foreach (int unwrittenLocation in previousWrittenLocations.Except(newLocations))
+        ref Dictionary<int, byte[]>.KeyCollection? previousWrittenLocations = ref _lastWrittenLocations[txIndex];
+        if (previousWrittenLocations is not null)
         {
-            txData.Remove(unwrittenLocation, out _);
+            foreach (int unwrittenLocation in previousWrittenLocations.Except(writeSet.Keys))
+            {
+                txData.Remove(unwrittenLocation, out _);
+            }
         }
-        previousWrittenLocations = newLocations;
-        return newLocations.Except(previousWrittenLocations).Any();
+
+        bool newLocationWritten = writeSet.Keys.Except((IEnumerable<int>)previousWrittenLocations ?? []).Any();
+        previousWrittenLocations = writeSet.Keys; // TODO: clear values?
+        return newLocationWritten;
     }
 
-    public bool Record(ushort txIndex, ushort incarnation, Read[] readSet, int[] writeLocations, byte[][] writeValues)
+    public bool Record(Version version, HashSet<Read> readSet, Dictionary<int, byte[]> writeSet)
     {
-        ApplyWriteSet(txIndex, incarnation, writeLocations, writeValues);
-        bool wroteNewLocation = UpdateWrittenLocations(txIndex, writeLocations);
-        _lastReads[txIndex] = readSet;
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"{version} Record read-set: {{{string.Join(",", readSet.Select(r => $"{r.Location}:{r.Version}"))}}}, write-set: {{{string.Join(",", writeSet.Select(r => $"{r.Key}:{r.Value.ToHexString()}"))}}}.");
+        ApplyWriteSet(version, writeSet);
+        bool wroteNewLocation = UpdateWrittenLocations(version.TxIndex, writeSet);
+        _lastReads[version.TxIndex] = readSet;
         return wroteNewLocation;
     }
 
     public void ConvertWritesToEstimates(ushort txIndex)
     {
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ConvertWritesToEstimates.");
         ConcurrentDictionary<int, Value> txData = _data[txIndex];
-        int[] previousLocations = _lastWrittenLocations[txIndex];
-        foreach (int location in previousLocations)
+        IEnumerable<int>? previousLocations = _lastWrittenLocations[txIndex];
+        if (previousLocations is not null)
         {
-            txData[location] = Estimate;
+            foreach (int location in previousLocations)
+            {
+                txData[location] = Estimate;
+            }
         }
     }
 
     public Status TryRead(int location, ushort txIndex, out Version version, out byte[]? value)
     {
+        long id = parallelTrace.ReserveId();
         ushort prevTx = txIndex;
         prevTx--;
         while (prevTx != ushort.MaxValue)
@@ -83,11 +85,13 @@ public class MultiVersionMemory(ushort txCount)
                 if (v == Estimate)
                 {
                     value = null;
+                    if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.ReadError} with blocking {version}.");
                     return Status.ReadError;
                 }
                 else
                 {
                     value = v.Bytes;
+                    if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {value.ToHexString()} from {version}.");
                     return Status.Ok;
                 }
             }
@@ -95,65 +99,84 @@ public class MultiVersionMemory(ushort txCount)
             prevTx--;
         }
 
-        version = Empty;
+        version = Version.Empty;
         value = null;
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.NotFound}.");
         return Status.NotFound;
     }
 
-    public void Snapshot()
+    public Dictionary<int, byte[]> Snapshot()
     {
+        Dictionary<int, byte[]> result = new Dictionary<int, byte[]>();
+        for (var index = _data.Length - 1; index >= 0; index--)
+        {
+            ConcurrentDictionary<int, Value> data = _data[index];
+            foreach (KeyValuePair<int, Value> location in data)
+            {
+                result.TryAdd(location.Key, location.Value.Bytes);
+            }
+        }
 
+        return result;
     }
 
     public bool ValidateReadSet(ushort txIndex)
     {
-        Read[] priorReads = _lastReads[txIndex];
-        foreach (Read read in priorReads)
+        HashSet<Read> priorReads = _lastReads[txIndex];
+        if (priorReads is not null)
         {
-            Status status = TryRead(read.Location, txIndex, out Version version, out byte[]? value);
-            switch (status)
+            foreach (Read read in priorReads)
             {
-                case Status.Ok when read.Version != version:
-                case Status.NotFound when read.Version != Empty:
-                case Status.ReadError:
-                    return false;
+                Status status = TryRead(read.Location, txIndex, out Version version, out _);
+                switch (status)
+                {
+                    case Status.Ok when read.Version != version:
+                    case Status.NotFound when !read.Version.IsEmpty:
+                    case Status.ReadError:
+                    {
+                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet failed.");
+                        return false;
+                    }
+                }
             }
         }
 
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet succeeded.");
         return true;
     }
 
-    public ISingleBlockProcessingCache<Address, byte[]> GetAddressCache(ISingleBlockProcessingCache<Address, byte[]> innerCache, ushort txIndex, ushort incarnation)
-    {
-        return new ExecutionCache<Address, byte[]>(this, innerCache, txIndex, incarnation);
-    }
+    // public ISingleBlockProcessingCache<Address, byte[]> GetAddressCache(ISingleBlockProcessingCache<Address, byte[]> innerCache, ushort txIndex, ushort incarnation)
+    // {
+    //     return new ExecutionCache<Address, byte[]>(this, innerCache, txIndex, incarnation);
+    // }
 
-    public class ExecutionCache<TKey, TValue>(
-        MultiVersionMemory multiVersionMemory,
-        ISingleBlockProcessingCache<Address, byte[]> innerCache,
-        ushort txIndex,
-        ushort incarnation) : ISingleBlockProcessingCache<TKey, TValue>
-    {
-        public TValue? GetOrAdd(TKey key, Func<TKey, TValue> valueFactory)
-        {
-            multiVersionMemory
-        }
-
-        public bool TryGetValue(TKey key, out TValue value)
-        {
-            throw new NotImplementedException();
-        }
-
-        public TValue this[TKey key]
-        {
-            get => throw new NotImplementedException();
-            set => throw new NotImplementedException();
-        }
-
-        public bool NoResizeClear()
-        {
-            throw new NotImplementedException();
-        }
-    }
+    // public class ExecutionCache<TKey, TValue>(
+    //     MultiVersionMemory multiVersionMemory,
+    //     ISingleBlockProcessingCache<Address, byte[]> innerCache,
+    //     ushort txIndex,
+    //     ushort incarnation) : ISingleBlockProcessingCache<TKey, TValue>
+    // {
+    //     public TValue? GetOrAdd(TKey key, Func<TKey, TValue> valueFactory)
+    //     {
+    //     }
+    //
+    //     public bool TryGetValue(TKey key, out TValue value)
+    //     {
+    //         throw new NotImplementedException();
+    //     }
+    //
+    //     public TValue this[TKey key]
+    //     {
+    //         get => throw new NotImplementedException();
+    //         set => throw new NotImplementedException();
+    //     }
+    //
+    //     public bool NoResizeClear()
+    //     {
+    //         throw new NotImplementedException();
+    //     }
+    // }
 }
 
+public readonly record struct Read(int Location, Version Version);
+public enum Status { Ok, NotFound, ReadError };
