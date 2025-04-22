@@ -10,4 +10,5 @@ public class CLConfig : ICLConfig
     public int P2PPort { get; set; } = 3030;
     public string? L1BeaconApiEndpoint { get; set; }
     public string? L1EthApiEndpoint { get; set; }
+    public string[]? Bootnodes { get; set; } = [];
 }

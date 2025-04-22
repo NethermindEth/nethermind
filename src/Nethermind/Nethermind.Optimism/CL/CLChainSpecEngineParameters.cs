@@ -42,7 +42,6 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address SystemTransactionSender { get; init; } = new("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001");
     public Address SystemTransactionTo { get; init; } = new("0x4200000000000000000000000000000000000015");
-    public string[]? Nodes { get; init; }
     public ulong? L1BeaconGenesisSlotTime { get; init; }
     public string? EngineName => "OptimismCL";
     public string? SealEngineType => null;

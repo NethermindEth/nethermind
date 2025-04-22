@@ -17,4 +17,6 @@ public interface ICLConfig : IConfig
     string? L1BeaconApiEndpoint { get; set; }
     [ConfigItem(Description = "URL to L1 execution node.", DefaultValue = "null")]
     string? L1EthApiEndpoint { get; set; }
+    [ConfigItem(Description = "List of boot nodes to connect to.", DefaultValue = "[]")]
+    string[]? Bootnodes { get; set; }
 }

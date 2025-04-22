@@ -42,8 +42,8 @@ public class OptimismCL : IDisposable
         IOptimismEngineRpcModule engineRpcModule)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
-        ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+        ArgumentNullException.ThrowIfNull(config.Bootnodes);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
 
         _logger = logManager.GetClassLogger();
@@ -68,7 +68,7 @@ public class OptimismCL : IDisposable
             _logger);
         _p2p = new OptimismCLP2P(
             specProvider.ChainId,
-            engineParameters.Nodes,
+            config.Bootnodes,
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
