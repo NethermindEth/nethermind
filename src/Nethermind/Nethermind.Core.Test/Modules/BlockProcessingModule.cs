@@ -58,6 +58,7 @@ public class BlockProcessingModule : Module
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // These are common between processing and production and worldstate-ful, so they should be scoped instead
             // of singleton.
@@ -76,6 +77,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<MainBlockProcessingContext, ILifetimeScope>(ConfigureMainBlockProcessingContext)
             // Then component that has no ambiguity is extracted back out.
             .Map<IBlockProcessingQueue, MainBlockProcessingContext>(ctx => ctx.BlockProcessingQueue)
+            .Bind<IMainProcessingContext, MainBlockProcessingContext>()
 
 
             // Seems to be only used by block producer.
@@ -139,7 +141,7 @@ public class BlockProcessingModule : Module
                 processingCtxBuilder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    .AddScoped<ReadOnlyTxProcessingEnvFactory>();
+                    ;
             }
         });
 

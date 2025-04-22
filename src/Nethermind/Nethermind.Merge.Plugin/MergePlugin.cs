@@ -51,6 +51,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
+    private PayloadPreparationService? _payloadPreparationService = null;
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -201,7 +202,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (!hasEngineApiConfigured)
         {
             throw new InvalidConfigurationException(
-                "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples",
+                "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/interacting/json-rpc-server/#engine-api",
                 ExitCodes.NoEngineModule);
         }
     }
@@ -215,9 +216,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         if (MergeEnabled)
         {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
+            ArgumentNullException.ThrowIfNull(_api.BlockTree);
+            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+            ArgumentNullException.ThrowIfNull(_api.UnclesValidator);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
@@ -243,16 +244,15 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         if (MergeEnabled)
         {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
-            if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
-            if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
-            if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-            if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
-            if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
+            ArgumentNullException.ThrowIfNull(_api.BlockTree);
+            ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
+            ArgumentNullException.ThrowIfNull(_api.Sealer);
+            ArgumentNullException.ThrowIfNull(_api.BlockValidator);
+            ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
+            ArgumentNullException.ThrowIfNull(_api.TxPool);
+            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+            ArgumentNullException.ThrowIfNull(_api.StateReader);
+            ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
             while (!_api.BlockProcessingQueue.IsEmpty)
@@ -261,16 +261,19 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             }
             Thread.Sleep(5000);
 
+            // Single block shouldn't take a full slot to run
+            // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+            double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
             IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
                 if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
                 {
-                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
                 }
 
                 DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                 IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
-                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, _api.StateReader);
             }
 
             IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
@@ -281,6 +284,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.TimerFactory,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            _payloadPreparationService = payloadPreparationService;
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -289,15 +293,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
             IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
 
-            IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new NewPayloadHandler(
+            NewPayloadHandler newPayloadHandler = new(
                     _api.BlockValidator,
                     _api.BlockTree,
-                    _syncConfig,
                     _poSSwitcher,
                     beaconSyncStrategy,
                     beaconPivot,
@@ -307,7 +305,20 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     beaconSync,
                     _api.LogManager,
                     TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts),
+                    _api.Config<IReceiptConfig>().StoreReceipts);
+
+            bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+            if (simulateBlockProduction)
+            {
+                newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+            }
+
+            IEngineRpcModule engineRpcModule = new EngineRpcModule(
+                new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+                newPayloadHandler,
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
                     _blockFinalizationManager,
@@ -322,8 +333,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
                     _api.LogManager,
-                    _api.Config<IBlocksConfig>().SecondsPerSlot,
-                    _api.Config<IMergeConfig>().SimulateBlockProduction),
+                    simulateBlockProduction),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
@@ -347,7 +357,11 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize { get => true; }
 

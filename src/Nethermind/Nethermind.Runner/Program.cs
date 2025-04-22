@@ -51,6 +51,7 @@ Regex.CacheSize = 128;
 #if !DEBUG
 ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
 #endif
+BlocksConfig.SetDefaultExtraDataWithVersion();
 
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);

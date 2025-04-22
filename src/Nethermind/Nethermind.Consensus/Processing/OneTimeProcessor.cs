@@ -10,7 +10,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class OneTimeChainProcessor : IBlockchainProcessor
+    public sealed class OneTimeChainProcessor : IBlockchainProcessor
     {
         public ITracerBag Tracers => _processor.Tracers;
 
@@ -35,11 +35,11 @@ namespace Nethermind.Consensus.Processing
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer)
+        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
         {
             lock (_lock)
             {
-                return _processor.Process(block, options, tracer);
+                return _processor.Process(block, options, tracer, token);
             }
         }
 
@@ -54,9 +54,6 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 #pragma warning restore 67
 
-        public void Dispose()
-        {
-            _processor?.Dispose();
-        }
+        public ValueTask DisposeAsync() => _processor?.DisposeAsync() ?? default;
     }
 }

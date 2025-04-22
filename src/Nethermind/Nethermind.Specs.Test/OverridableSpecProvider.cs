@@ -9,7 +9,7 @@ namespace Nethermind.Specs.Test
 {
     public class OverridableSpecProvider : ISpecProvider
     {
-        private readonly ISpecProvider _specProvider;
+        public ISpecProvider SpecProvider { get; }
         private readonly Func<IReleaseSpec, ForkActivation, IReleaseSpec> _overrideAction;
 
         public OverridableSpecProvider(ISpecProvider specProvider, Func<IReleaseSpec, IReleaseSpec> overrideAction)
@@ -19,32 +19,32 @@ namespace Nethermind.Specs.Test
 
         public OverridableSpecProvider(ISpecProvider specProvider, Func<IReleaseSpec, ForkActivation, IReleaseSpec> overrideAction)
         {
-            _specProvider = specProvider;
+            SpecProvider = specProvider;
             _overrideAction = overrideAction;
-            TimestampFork = _specProvider.TimestampFork;
+            TimestampFork = SpecProvider.TimestampFork;
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
+            SpecProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
-        public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public ForkActivation? MergeBlockNumber => SpecProvider.MergeBlockNumber;
 
         public ulong TimestampFork { get; set; }
 
-        public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
+        public UInt256? TerminalTotalDifficulty => SpecProvider.TerminalTotalDifficulty;
 
-        public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec, new ForkActivation(0));
+        public IReleaseSpec GenesisSpec => _overrideAction(SpecProvider.GenesisSpec, new ForkActivation(0));
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _overrideAction(_specProvider.GetSpec(forkActivation), forkActivation);
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _overrideAction(SpecProvider.GetSpec(forkActivation), forkActivation);
 
-        public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
-        public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
-        public ulong NetworkId => _specProvider.NetworkId;
-        public ulong ChainId => _specProvider.ChainId;
-        public string SealEngine => _specProvider.SealEngine;
+        public long? DaoBlockNumber => SpecProvider.DaoBlockNumber;
+        public ulong? BeaconChainGenesisTimestamp => SpecProvider.BeaconChainGenesisTimestamp;
+        public ulong NetworkId => SpecProvider.NetworkId;
+        public ulong ChainId => SpecProvider.ChainId;
+        public string SealEngine => SpecProvider.SealEngine;
 
-        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
+        public ForkActivation[] TransitionActivations => SpecProvider.TransitionActivations;
     }
 }
