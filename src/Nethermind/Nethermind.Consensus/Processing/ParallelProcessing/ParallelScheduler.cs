@@ -176,9 +176,9 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         ref TxState state = ref _txStates[version.TxIndex];
         ref int stateInt = ref Unsafe.As<TxState, int>(ref state);
         TxState value = new TxState(TxStatus.Aborting, version.Incarnation);
-        TxState comparand = new TxState(TxStatus.Executed, version.Incarnation);
-        int comparandInt = Unsafe.As<TxState, int>(ref comparand);
-        return Interlocked.CompareExchange(ref stateInt, Unsafe.As<TxState, int>(ref value), comparandInt) == comparandInt;
+        TxState requiredState = new TxState(TxStatus.Executed, version.Incarnation);
+        int requiredInt = Unsafe.As<TxState, int>(ref requiredState);
+        return Interlocked.CompareExchange(ref stateInt, Unsafe.As<TxState, int>(ref value), requiredInt) == requiredInt;
     }
 
     public TxTask FinishValidation(ushort txIndex, bool aborted)
@@ -189,8 +189,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             DecreaseIndex(ref _validationIndex, txIndex + 1, "validation");
             if (Volatile.Read(ref _executionIndex) > txIndex)
             {
-                Version newVersion = TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing);
-                return new TxTask(newVersion, false);
+                return new TxTask(TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing), false);
             }
         }
 
