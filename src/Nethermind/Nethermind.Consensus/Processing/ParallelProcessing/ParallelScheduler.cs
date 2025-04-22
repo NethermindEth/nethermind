@@ -69,7 +69,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
     public TxTask NextTask()
     {
-        bool validating = _validationIndex < _executionIndex;
+        bool validating = Volatile.Read(ref _validationIndex) < Volatile.Read(ref _executionIndex);
         return new TxTask(validating
                 ? FetchNext(ref _validationIndex, TxStatus.Executed, TxStatus.Executed)
                 : FetchNext(ref _executionIndex, TxStatus.Ready, TxStatus.Executing),
