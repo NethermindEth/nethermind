@@ -106,6 +106,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         if (blockingTxStatus == TxStatus.Executed)
         {
             ResumeDependencies(set, blockingTxIndex);
+            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Resume dependencies by Tx {blockingTxIndex} while adding for {txIndex} on race condition");
         }
         else
         {
