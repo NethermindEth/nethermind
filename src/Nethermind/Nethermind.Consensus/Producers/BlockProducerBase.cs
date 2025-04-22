@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -18,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Consensus.Producers
 {
     /// <summary>
@@ -40,7 +42,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
-        protected readonly ITxSource _txSource;
+        protected internal ITxSource TxSource { get; set; }
         protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
@@ -59,7 +61,7 @@ namespace Nethermind.Consensus.Producers
             IDifficultyCalculator? difficultyCalculator,
             IBlocksConfig? blocksConfig)
         {
-            _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
+            TxSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -75,15 +77,14 @@ namespace Nethermind.Consensus.Producers
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+            PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
-            token ??= default;
             Block? block = null;
-            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token.Value))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token.Value, parentHeader, blockTracer, payloadAttributes);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
                 }
                 catch (Exception e) when (e is not TaskCanceledException)
                 {
@@ -134,7 +135,7 @@ namespace Nethermind.Consensus.Producers
                 Block block = PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
+                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -173,7 +174,7 @@ namespace Nethermind.Consensus.Producers
                             }
 
                             return null;
-                        }), token);
+                        }), CancellationToken.None);
                     }
                 }
             }
@@ -201,8 +202,8 @@ namespace Nethermind.Consensus.Producers
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer) =>
-            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance);
+        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token = default) =>
+            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance, token);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {
@@ -250,7 +251,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
+            IEnumerable<Transaction> transactions = TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

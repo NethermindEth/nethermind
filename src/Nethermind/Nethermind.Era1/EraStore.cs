@@ -57,6 +57,7 @@ public class EraStore : IEraStore
     }
 
     private long? _lastBlock = null;
+    private readonly int _verifyConcurrency;
 
     public long LastBlock
     {
@@ -78,7 +79,8 @@ public class EraStore : IEraStore
         string networkName,
         int maxEraSize,
         ISet<ValueHash256>? trustedAcccumulators,
-        string directory
+        string directory,
+        int verifyConcurrency = 0
     )
     {
         _specProvider = specProvider;
@@ -86,6 +88,8 @@ public class EraStore : IEraStore
         _trustedAccumulators = trustedAcccumulators;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
+        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
+        _verifyConcurrency = verifyConcurrency;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
@@ -146,7 +150,7 @@ public class EraStore : IEraStore
 
             Task accumulatorTask = Task.Run(async () =>
             {
-                var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, cancellation);
+                var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
                 if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
                 {
                     throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");

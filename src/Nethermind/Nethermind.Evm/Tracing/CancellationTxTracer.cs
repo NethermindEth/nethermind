@@ -190,12 +190,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
         {
-            innerTracer.StartOperation(pc, opcode, gas, env);
+            innerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -51,9 +52,9 @@ public class CensorshipDetectorTests
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
-        _txPool.Dispose();
+        await _txPool.DisposeAsync();
         _censorshipDetector.Dispose();
     }
 

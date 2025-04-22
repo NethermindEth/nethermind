@@ -18,10 +18,12 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 8009000,
-    "PivotHash": "0x200ae5cfe226b84257254344e7bc5cf883e2cf07d17647aa8b8ee1237e14f3cb",
+    "PivotNumber": 8170000,
+    "PivotHash": "0x50d834b5413ecaf2d36a3db0bdc6dc5617dfdc7184a202666df58dbab1985618",
     "PivotTotalDifficulty": "17000018015853232",
-    "FastSyncCatchUpHeightDelta": 10000000000
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "AncientReceiptsBarrier": 1450408,
+    "AncientBodiesBarrier": 1450408
   },
   "Blocks": {
     "TargetBlockGasLimit": 60000000
