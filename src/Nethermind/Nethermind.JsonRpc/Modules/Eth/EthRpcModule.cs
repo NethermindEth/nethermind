@@ -773,12 +773,11 @@ public partial class EthRpcModule(
         if (receipt is null || gasInfo is null)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash is null)
-            {
-                var error = new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
-                return GetFailureResult<ReceiptForRpc, Block>(error, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
-            }
-            return ResultWrapper<ReceiptForRpc>.Success(null);
+            return blockHash is null
+                ? GetFailureResult<ReceiptForRpc, Block>(
+                    new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable),
+                    _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+                : ResultWrapper<ReceiptForRpc>.Success(null);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
@@ -788,15 +787,12 @@ public partial class EthRpcModule(
     public virtual ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
-        if (searchResult.IsError)
+        return searchResult switch
         {
-            if (searchResult.ErrorCode == ErrorCodes.PrunedHistoryUnavailable)
-            {
-                return GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
-            }
-            return ResultWrapper<ReceiptForRpc[]>.Success(null);
-        }
-        return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
+            { ErrorCode : ErrorCodes.PrunedHistoryUnavailable } => GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet()),
+            { IsError: true } => ResultWrapper<ReceiptForRpc[]>.Success(null),
+            _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
+        };
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
