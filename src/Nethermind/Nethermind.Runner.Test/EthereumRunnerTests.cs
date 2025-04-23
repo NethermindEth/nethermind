@@ -213,7 +213,6 @@ public class EthereumRunnerTests
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-
             foreach (var propertyInfo in api.GetType().Properties())
             {
                 // Property with `SkipServiceCollection` make property from container.

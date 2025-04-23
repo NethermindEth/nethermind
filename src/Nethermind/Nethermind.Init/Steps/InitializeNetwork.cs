@@ -67,7 +67,7 @@ public class InitializeNetwork : IStep
     private readonly EnrDiscovery _enrDiscovery;
     private readonly INetworkStorage _peerStorage;
     private readonly IDiscoveryApp _discoveryApp;
-    private readonly IPeerPool _peerPool;
+    private readonly Lazy<IPeerPool> _peerPool;
 
     private readonly INetworkConfig _networkConfig;
     private readonly ISyncConfig _syncConfig;
@@ -83,7 +83,7 @@ public class InitializeNetwork : IStep
         ISyncPeerPool syncPeerPool,
         EnrDiscovery enrDiscovery,
         IDiscoveryApp discoveryApp,
-        IPeerPool peerPool,
+        Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
         [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
@@ -231,7 +231,7 @@ public class InitializeNetwork : IStep
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
-        _peerPool.Start();
+        _peerPool.Value.Start();
         _api.PeerManager.Start();
         _api.SessionMonitor.Start();
         if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
