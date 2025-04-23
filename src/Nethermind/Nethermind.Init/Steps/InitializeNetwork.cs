@@ -344,7 +344,7 @@ public class InitializeNetwork : IStep
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _ = new NodeSourceToDiscV4Feeder(_enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
+            _ = new NodeSourceToDiscV4Feeder(_enrDiscovery, _discoveryApp, 50).Run(_api.ProcessExit!.Token);
         }
 
         foreach (INethermindPlugin plugin in _api.Plugins)

@@ -24,6 +24,8 @@ namespace Nethermind.Api
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
         IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
+
+        [SkipServiceCollection]
         IDiscoveryApp DiscoveryApp { get; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }

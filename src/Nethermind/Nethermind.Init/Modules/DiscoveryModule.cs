@@ -105,9 +105,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         if (!networkConfig.OnlyStaticPeers)
         {
             // These are INodeSource only if `OnlyStaticPeers` is false.
-            builder
-                .Bind<INodeSource, IDiscoveryApp>()
-                .Bind<INodeSource, EnrDiscovery>();
+            builder.Bind<INodeSource, IDiscoveryApp>();
+            if (networkConfig.EnableEnrDiscovery) builder.Bind<INodeSource, EnrDiscovery>();
         }
     }
 }
