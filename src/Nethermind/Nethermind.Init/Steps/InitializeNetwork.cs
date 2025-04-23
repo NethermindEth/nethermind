@@ -101,14 +101,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        _api.WorldStateManager!.InitializeNetwork(
-            new PathNodeRecovery(
-                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
-                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
-                _api.LogManager
-            )
-        );
-
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
         _ = _api.SyncServer; // Need to be resolved at least once before the peer pool is started.

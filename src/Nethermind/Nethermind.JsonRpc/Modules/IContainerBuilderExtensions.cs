@@ -12,6 +12,12 @@ public static class IContainerBuilderExtensions
     {
         return builder
             .AddSingleton<T, TImpl>()
+            .RegisterSingletonJsonRpcModule<T>();
+    }
+
+    public static ContainerBuilder RegisterSingletonJsonRpcModule<T>(this ContainerBuilder builder) where T : IRpcModule
+    {
+        return builder
             .AddSingleton<RpcModuleInfo>((ctx) =>
             {
                 T instance = ctx.Resolve<T>();
