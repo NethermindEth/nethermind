@@ -22,11 +22,12 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     public bool Done => _done;
     public ManualResetEventSlim WorkAvailable { get; } = new(blockSize > 0);
 
-    private void DecreaseIndex(ref int index, int targetIndex, string name)
+    private void DecreaseIndex(ref int index, int targetIndex, [CallerArgumentExpression(nameof(index))] string name = "")
     {
         long id = parallelTrace.ReserveId();
         int value = InterlockedEx.MutateValue(ref index, targetIndex, static (current, target) => Math.Min(current, target));
         WorkAvailable.Set();
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from DecreaseIndex {name} to {value}");
         int decreaseCount = Interlocked.Increment(ref _decreaseCount);
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Decreased {name} index to {value}, decrease count: {decreaseCount}");
     }
@@ -42,14 +43,23 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             {
                 _done = true;
                 WorkAvailable.Set();
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add("Done");
+                if (typeof(TLogger) == typeof(IsTracing))
+                {
+                    parallelTrace.Add("Done");
+                    parallelTrace.Add("WorkAvailable.Set from CheckDone set to true");
+                }
             }
+        }
+        else
+        {
+            WorkAvailable.Set();
+            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add("WorkAvailable.Set from CheckDone already was true");
         }
 
         return Version.Empty;
     }
 
-    private Version FetchNext(ref int index, ushort requiredStatus, ushort newStatus)
+    private Version FetchNext(ref int index, ushort requiredStatus, ushort newStatus, [CallerArgumentExpression(nameof(index))] string name = "")
     {
         if (Volatile.Read(ref index) >= blockSize)
         {
@@ -58,17 +68,10 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
         Interlocked.Increment(ref _activeTasks);
         ushort nextTx = (ushort)(Interlocked.Increment(ref index) - 1);
-        Version version = TryIncarnate(nextTx, requiredStatus, newStatus);
-
-        if (version.IsEmpty && !Volatile.Read(ref _done))
-        {
-            WorkAvailable.Reset();
-        }
-
-        return version;
+        return TryIncarnate(nextTx, requiredStatus, newStatus, name);
     }
 
-    private Version TryIncarnate(ushort nextTx, ushort requiredStatus, ushort newStatus)
+    private Version TryIncarnate(ushort nextTx, ushort requiredStatus, ushort newStatus, string name)
     {
         if (nextTx < blockSize)
         {
@@ -79,9 +82,17 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
                 return new Version(nextTx, state.Incarnation);
             }
         }
+        else
+        {
+            if (!Volatile.Read(ref _done))
+            {
+                WorkAvailable.Reset();
+                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Reset from FetchNext {name} to {nextTx+1}");
+            }
+        }
 
         Interlocked.Decrement(ref _activeTasks);
-        return CheckDone();
+        return Version.Empty;
     }
 
     public TxTask NextTask()
@@ -165,7 +176,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
             if (min != ushort.MaxValue)
             {
-                DecreaseIndex(ref _executionIndex, min, "execution");
+                DecreaseIndex(ref _executionIndex, min);
             }
         }
     }
@@ -192,14 +203,16 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         {
             if (!wroteNewLocation)
             {
+                WorkAvailable.Set();
+                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from FinishExecution of {version}");
                 return new TxTask(version, true);
             }
 
-            DecreaseIndex(ref _validationIndex, txIndex, "validation");
+            DecreaseIndex(ref _validationIndex, txIndex);
         }
 
         Interlocked.Decrement(ref _activeTasks);
-        return new TxTask(CheckDone(), false);
+        return new TxTask(Version.Empty, false);
     }
 
     public bool TryValidationAbort(Version version)
@@ -217,15 +230,15 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         if (aborted)
         {
             SetReady(txIndex);
-            DecreaseIndex(ref _validationIndex, txIndex + 1, "validation");
+            DecreaseIndex(ref _validationIndex, txIndex + 1);
             if (Volatile.Read(ref _executionIndex) > txIndex)
             {
-                return new TxTask(TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing), false);
+                return new TxTask(TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing, nameof(_executionIndex)), false);
             }
         }
 
         Interlocked.Decrement(ref _activeTasks);
-        return new TxTask(CheckDone(), false);
+        return new TxTask(Version.Empty, false);
     }
 }
 
