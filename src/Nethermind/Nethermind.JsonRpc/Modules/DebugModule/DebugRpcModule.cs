@@ -110,7 +110,7 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
-        
+
         // Check if state is available for the block
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
         if (headerSearch.IsError)
@@ -387,6 +387,13 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<bool> debug_resetHead(Hash256 blockHash)
     {
+        // Check if the block exists before trying to update head
+        SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(new BlockParameter(blockHash));
+        if (headerSearch.IsError)
+        {
+            return ResultWrapper<bool>.Fail($"Block {blockHash} not found", ErrorCodes.ResourceNotFound);
+        }
+
         _debugBridge.UpdateHeadBlock(blockHash);
         return ResultWrapper<bool>.Success(true);
     }
@@ -403,9 +410,13 @@ public class DebugRpcModule : IDebugRpcModule
         {
             return ResultWrapper<string?>.Success(Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true));
         }
-        catch (Exception ex)
+        catch (RlpException ex)
         {
             return ResultWrapper<string?>.Fail($"Error encoding transaction: {ex.Message}", ErrorCodes.InternalError);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ResultWrapper<string?>.Fail($"Invalid transaction format: {ex.Message}", ErrorCodes.InvalidParams);
         }
     }
 
@@ -421,11 +432,11 @@ public class DebugRpcModule : IDebugRpcModule
         {
             return ResultWrapper<byte[][]>.Success([]);
         }
-        
+
         RlpBehaviors behavior =
             (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
             RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-            
+
         var rlp = receipts.Select(tx => Rlp.Encode(tx, behavior).Bytes);
         return ResultWrapper<byte[][]>.Success(rlp.ToArray());
     }
@@ -435,7 +446,7 @@ public class DebugRpcModule : IDebugRpcModule
         Block? block = _debugBridge.GetBlock(blockParameter);
         if (block is null)
         {
-            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
+            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
         }
 
         return ResultWrapper<byte[]>.Success(Rlp.Encode(block).Bytes);
@@ -446,7 +457,7 @@ public class DebugRpcModule : IDebugRpcModule
         Block? block = _debugBridge.GetBlock(blockParameter);
         if (block is null)
         {
-            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
+            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
         }
 
         return ResultWrapper<byte[]>.Success(Rlp.Encode(block.Header).Bytes);
@@ -485,6 +496,7 @@ public class DebugRpcModule : IDebugRpcModule
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         var txTraces = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {txTraces?.Count() ?? 0} traces");
         return ResultWrapper<IEnumerable<string>>.Success(txTraces);
     }
 
