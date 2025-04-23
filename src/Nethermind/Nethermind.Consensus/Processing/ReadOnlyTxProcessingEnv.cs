@@ -71,7 +71,7 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
             CodeInfoRepository = codeInfoRepository;
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 

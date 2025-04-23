@@ -51,8 +51,10 @@ public class ForkInfoTests
     [TestCase(15_051_000, 0ul, "0xf0afd0e3", 1_681_338_455ul, "Future Gray Glacier")]
     [TestCase(15_051_000, 1_681_338_455ul, "0xdce96c2d", 1_710_338_135ul, "First Shanghai timestamp")]
     [TestCase(15_051_000, 1_710_338_134ul, "0xdce96c2d", 1_710_338_135ul, "Future Shanghai timestamp")]
-    [TestCase(15_051_000, 1_710_338_135ul, "0x9f3d2254", 0ul, "First Cancun timestamp")]
-    [TestCase(15_051_000, 1_810_338_135ul, "0x9f3d2254", 0ul, "Future Cancun timestamp")]
+    [TestCase(15_051_000, 1_710_338_135ul, "0x9f3d2254", 1_746_612_311ul, "First Cancun timestamp")]
+    [TestCase(15_051_000, 1_746_612_310ul, "0x9f3d2254", 1_746_612_311ul, "Future Cancun timestamp")]
+    [TestCase(15_051_000, 1_746_612_311ul, "0xc376cf8b", 0ul, "First Prague timestamp")]
+    [TestCase(15_051_000, 1_846_612_311ul, "0xc376cf8b", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
@@ -146,8 +148,10 @@ public class ForkInfoTests
     [TestCase(19040000, 0ul, "0x018479d3", GnosisSpecProvider.ShanghaiTimestamp, "First London block")]
     [TestCase(21735000, 0ul, "0x018479d3", GnosisSpecProvider.ShanghaiTimestamp, "First GIP-31 block")]
     [TestCase(31735000, GnosisSpecProvider.ShanghaiTimestamp, "0x2efe91ba", GnosisSpecProvider.CancunTimestamp, "First Shanghai timestamp")]
-    [TestCase(41735000, GnosisSpecProvider.CancunTimestamp, "0x1384dfc1", 0ul, "First Cancun timestamp")]
-    [TestCase(91735000, GnosisSpecProvider.CancunTimestamp, "0x1384dfc1", 0ul, "Future Cancun timestamp")]
+    [TestCase(41735000, GnosisSpecProvider.CancunTimestamp, "0x1384dfc1", GnosisSpecProvider.PragueTimestamp, "First Cancun timestamp")]
+    [TestCase(91735000, GnosisSpecProvider.CancunTimestamp, "0x1384dfc1", GnosisSpecProvider.PragueTimestamp, "Future Cancun timestamp")]
+    [TestCase(101735000, GnosisSpecProvider.PragueTimestamp, "0x2f095d4a", 0ul, "First Prague timestamp")]
+    [TestCase(101735000, GnosisSpecProvider.PragueTimestamp, "0x2f095d4a", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);

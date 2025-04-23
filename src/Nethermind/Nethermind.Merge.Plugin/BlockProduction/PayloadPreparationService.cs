@@ -348,7 +348,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         }
                     }
                 }
-                _logger.Info($" Produced  {blockFees.ToDecimal(null) / weiToEth,5:N3}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((supportsBlobs && blobs > 0) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
+                _logger.Info($" Produced {blockFees.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((supportsBlobs && blobs > 0) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
             }
             else
             {

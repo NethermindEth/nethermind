@@ -42,7 +42,7 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         StateProvider = overridableScope.WorldState;
 
         CodeInfoRepository = new(new CodeInfoRepository());
-        Machine = new VirtualMachine(blockhashProvider, specProvider, CodeInfoRepository, logManager);
+        Machine = new VirtualMachine(blockhashProvider, specProvider, logManager);
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }
 

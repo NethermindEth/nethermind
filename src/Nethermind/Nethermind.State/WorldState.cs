@@ -44,14 +44,14 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager)
             : this(trieStore, codeDb, logManager, null, null)
         {
         }
 
         internal WorldState(
             ITrieStore trieStore,
-            IKeyValueStore? codeDb,
+            IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
@@ -65,7 +65,7 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
             : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
         {
         }
@@ -133,7 +133,7 @@ namespace Nethermind.State
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }
             }
@@ -166,10 +166,10 @@ namespace Nethermind.State
             EnsureInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             EnsureInScope();
-            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+            return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {

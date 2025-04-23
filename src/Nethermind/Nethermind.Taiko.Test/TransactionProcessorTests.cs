@@ -53,7 +53,7 @@ public class TransactionProcessorTests
         _stateProvider.CommitTree(0);
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 

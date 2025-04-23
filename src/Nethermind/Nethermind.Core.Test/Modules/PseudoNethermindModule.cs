@@ -39,9 +39,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
 
-            .AddModule(new NetworkModule(initConfig))
+            .AddModule(new PsudoNetworkModule(initConfig))
             .AddModule(new DiscoveryModule(initConfig, networkConfig))
-            .AddModule(new WorldStateModule())
             .AddModule(new BlockTreeModule())
             .AddModule(new BlockProcessingModule())
 

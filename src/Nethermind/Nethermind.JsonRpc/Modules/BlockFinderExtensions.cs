@@ -11,6 +11,21 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
+
+        public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
+        {
+            var requestedBlock = blockParameter.BlockNumber;
+            if (requestedBlock is null)
+            {
+                SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
+                if (!headerResult.IsError)
+                {
+                    requestedBlock = headerResult.Object.Number;
+                }
+            }
+            return requestedBlock < blockFinder.GetLowestBlock();
+        }
+
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
             if (blockFinder.Head is null)
@@ -70,6 +85,11 @@ namespace Nethermind.JsonRpc.Modules
                 if (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe))
                 {
                     return new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError);
+                }
+
+                if (blockFinder.IsBlockPruned(blockParameter))
+                {
+                    return new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
                 }
 
                 if (!allowNulls)

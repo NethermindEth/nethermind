@@ -32,7 +32,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class NetworkModule(IInitConfig initConfig) : Module
+public class PsudoNetworkModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -40,7 +40,6 @@ public class NetworkModule(IInitConfig initConfig) : Module
 
         builder
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
@@ -71,18 +70,6 @@ public class NetworkModule(IInitConfig initConfig) : Module
             .AddSingleton<ForkInfo>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
-
-            .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-                ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                    new PathNodeRecovery(
-                        new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
-                        new SnapRangeRecovery(peerPool!, logManager),
-                        logManager
-                    )
-                );
-            })
 
             // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)

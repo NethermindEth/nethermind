@@ -87,7 +87,7 @@ namespace Nethermind.Merge.Plugin.Test
                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            blockRequest.TryGetBlock(out Block? block);
+            Block? block = blockRequest.TryGetBlock().Block;
 
             using var _ =
                 chain.WorldStateManager.GlobalWorldState.BeginScope(chain.WorldStateManager.GlobalWorldState.StateRoot);
@@ -117,7 +117,7 @@ namespace Nethermind.Merge.Plugin.Test
             Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            blockRequestV3.TryGetBlock(out Block? block);
+            Block? block = blockRequestV3.TryGetBlock().Block;
 
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
             using var _ = globalWorldState.BeginScope(globalWorldState.StateRoot);
@@ -140,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            blockRequestV4.TryGetBlock(out Block? block);
+            Block? block = blockRequestV4.TryGetBlock().Block;
 
             var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
             beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header), NullTxTracer.Instance);
@@ -228,7 +228,8 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static bool TryCalculateHash(ExecutionPayload request, out Hash256 hash)
         {
-            if (request.TryGetBlock(out Block? block) && block is not null)
+            Block? block = request.TryGetBlock().Block;
+            if (block is not null)
             {
                 hash = block.CalculateHash();
                 return true;

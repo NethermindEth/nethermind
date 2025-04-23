@@ -19,8 +19,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
-    //TODO correct this timestamp!
-    public const ulong PragueTimestamp = ulong.MaxValue - 2;
+    public const ulong PragueTimestamp = 0x68122dbc;
     public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }

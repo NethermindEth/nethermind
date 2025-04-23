@@ -107,6 +107,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(stateReader, _logger);
+        _loopCancellationSource = new CancellationTokenSource();
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -160,7 +161,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Start()
     {
-        _loopCancellationSource = new CancellationTokenSource();
+        _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
     }
@@ -176,7 +177,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         else
         {
-            _loopCancellationSource?.Cancel();
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
             _recoveryQueue.Writer.TryComplete();
             _blockQueue.Writer.TryComplete();
         }
@@ -213,7 +214,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
             try
             {
@@ -254,6 +255,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private CancellationToken CancellationToken
+        => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
+
     private async Task RunProcessing()
     {
         _isMainProcessingThread.Value = IsMainProcessor;
@@ -280,7 +284,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(CancellationToken))
         {
             using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
@@ -298,7 +302,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), _loopCancellationSource.Token, out string? error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
                 if (processedBlock is null)
                 {
@@ -442,15 +446,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.BlocksToProcess,
                     options,
                     blockTracer);
+                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, _logger);
             }
             catch (InvalidBlockException ex)
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
-                Metrics.BadBlocks++;
-                if (ex.InvalidBlock.IsByNethermindNode())
-                {
-                    Metrics.BadBlocksByNethermindNodes++;
-                }
             }
             catch (Exception ex)
             {
@@ -493,6 +493,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
+                Metrics.BadBlocks++;
+                if (ex.InvalidBlock.IsByNethermindNode())
+                {
+                    Metrics.BadBlocksByNethermindNodes++;
+                }
                 InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
@@ -543,7 +548,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             foreach (Block block in processingBranch.Blocks)
             {
-                _loopCancellationSource?.Token.ThrowIfCancellationRequested();
+                CancellationToken.ThrowIfCancellationRequested();
 
                 if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
                 {
@@ -789,14 +794,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _recoveryComplete = true;
-        _recoveryQueue.Writer.TryComplete();
-        _blockQueue.Writer.TryComplete();
-        _loopCancellationSource?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        await StopAsync(processRemainingBlocks: false);
     }
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]

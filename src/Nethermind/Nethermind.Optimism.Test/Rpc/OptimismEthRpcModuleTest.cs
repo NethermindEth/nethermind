@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -338,6 +339,192 @@ public class OptimismEthRpcModuleTest
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
             JToken.Parse(serialized).Should().BeEquivalentTo(expected);
         }
+    }
+
+    [Test]
+    public async Task GetBlockReceipts_ReturnsDefaultAndOptimismReceipts()
+    {
+        Transaction txA = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+
+        Transaction txB = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithHash(TestItem.KeccakB)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithHash(TestItem.KeccakC)
+                .TestObject)
+            .WithTransactions(txA, txB)
+            .TestObject;
+
+        OptimismTxReceipt receiptA = new()
+        {
+            Sender = txA.SenderAddress!,
+            TxType = txA.Type,
+            TxHash = txA.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = 1,
+            Index = 0,
+            DepositReceiptVersion = 1,
+            DepositNonce = 2,
+        };
+
+        TxReceipt receiptB = new()
+        {
+            Sender = txB.SenderAddress!,
+            TxType = txB.Type,
+            TxHash = txB.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = 1,
+            Index = 1,
+        };
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(block).Returns([receiptA, receiptB]);
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockFinder(blockFinder)
+            .WithReceiptFinder(receiptFinder)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number));
+        var expected = $$"""
+                         {
+                            "jsonrpc":"2.0",
+                            "result": [
+                                {
+                                    "transactionHash": "{{txA.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                    "transactionIndex": "0x0",
+                                    "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                    "blockNumber": "0x1",
+                                    "cumulativeGasUsed": "0x0",
+                                    "gasUsed": "0x0",
+                                    "effectiveGasPrice": "0x1",
+                                    "from": "{{txA.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                    "to": null,
+                                    "contractAddress": null,
+                                    "logs": [],
+                                    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                    "status": "0x0",
+                                    "type": "0x7e",
+                                    "depositReceiptVersion": "0x1",
+                                    "depositNonce": "0x2",
+                                },
+                                {
+                                    "transactionHash": "{{txB.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                    "transactionIndex": "0x1",
+                                    "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                    "blockNumber": "0x1",
+                                    "cumulativeGasUsed": "0x0",
+                                    "gasUsed": "0x0",
+                                    "effectiveGasPrice": "0x1",
+                                    "from": "{{txA.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                    "to": null,
+                                    "contractAddress": null,
+                                    "logs": [],
+                                    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                    "status": "0x0",
+                                    "type": "0x2"
+                                }
+                            ],
+                            "id":67
+                         }
+                         """;
+        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task GetTransactionReceipt_ReturnsDepositReceipt()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithHash(TestItem.KeccakC)
+                .TestObject)
+            .WithTransactions(tx)
+            .TestObject;
+
+        OptimismTxReceipt receipt = new()
+        {
+            Sender = tx.SenderAddress!,
+            TxType = tx.Type,
+            TxHash = tx.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = 1,
+            Index = 0,
+            DepositReceiptVersion = 1,
+        };
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetReceiptAndGasInfo(tx.Hash!).Returns((receipt, new TxGasInfo(1), 0));
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockchainBridge(bridge)
+            .WithBlockFinder(blockFinder)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionReceipt", tx.Hash);
+        var expected = $$"""
+                         {
+                            "jsonrpc":"2.0",
+                            "result": {
+                                "transactionHash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                "transactionIndex": "0x0",
+                                "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                "blockNumber": "0x1",
+                                "cumulativeGasUsed": "0x0",
+                                "gasUsed": "0x0",
+                                "effectiveGasPrice": "0x1",
+                                "from": "{{tx.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                "to": null,
+                                "contractAddress": null,
+                                "logs": [],
+                                "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                "status": "0x0",
+                                "type": "0x7e",
+                                "depositReceiptVersion": "0x1",
+                            },
+                            "id":67
+                         }
+                         """;
+        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
     }
 }
 

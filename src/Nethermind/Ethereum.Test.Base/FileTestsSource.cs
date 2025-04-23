@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
+using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
@@ -20,50 +20,32 @@ namespace Ethereum.Test.Base
             _wildcard = wildcard;
         }
 
-        public IEnumerable<GeneralStateTest> LoadGeneralStateTests()
+        public IEnumerable<EthereumTest> LoadTests(TestType testType)
         {
             try
             {
-                if (Path.GetFileName(_fileName).StartsWith("."))
+                if (Path.GetFileName(_fileName).StartsWith('.'))
                 {
-                    return Enumerable.Empty<GeneralStateTest>();
+                    return [];
                 }
 
                 if (_wildcard is not null && !_fileName.Contains(_wildcard))
                 {
-                    return Enumerable.Empty<GeneralStateTest>();
-                }
-
-                string json = File.ReadAllText(_fileName);
-                return JsonToEthereumTest.Convert(json);
-            }
-            catch (Exception e)
-            {
-                return Enumerable.Repeat(new GeneralStateTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
-            }
-        }
-
-        public IEnumerable<BlockchainTest> LoadBlockchainTests()
-        {
-            try
-            {
-                if (Path.GetFileName(_fileName).StartsWith("."))
-                {
-                    return Enumerable.Empty<BlockchainTest>();
-                }
-
-                if (_wildcard is not null && !_fileName.Contains(_wildcard))
-                {
-                    return Enumerable.Empty<BlockchainTest>();
+                    return [];
                 }
 
                 string json = File.ReadAllText(_fileName, Encoding.Default);
 
-                return JsonToEthereumTest.ConvertToBlockchainTests(json);
+                return testType switch
+                {
+                    TestType.Eof => JsonToEthereumTest.ConvertToEofTests(json),
+                    TestType.State => JsonToEthereumTest.ConvertStateTest(json),
+                    _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
+                };
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new BlockchainTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
+                return [new FailedToLoadTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }];
             }
         }
     }
