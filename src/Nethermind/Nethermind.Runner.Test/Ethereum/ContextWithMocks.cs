@@ -71,12 +71,19 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
                     .AddSingleton(Substitute.For<ISyncServer>())
+                    .AddSingleton<ITxValidator>(new TxValidator(MainnetSpecProvider.Instance.ChainId))
+                    .AddSingleton(Substitute.For<IBlockValidator>())
+                    .AddSingleton(Substitute.For<IHeaderValidator>())
+                    .AddSingleton(Substitute.For<IUnclesValidator>())
+                    .AddSingleton(Substitute.For<IRpcModuleProvider>())
+                    .AddSingleton(Substitute.For<IWorldStateManager>())
+                    .AddSingleton(Substitute.For<IStateReader>())
+                    .AddSingleton(Substitute.For<IEthSyncingInfo>())
                     .Build()
             );
 
             var api = new NethermindApi(apiDependencies);
             MockOutNethermindApi(api);
-            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }
@@ -93,7 +100,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
-            api.BlockValidator = Substitute.For<IBlockValidator>();
             api.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.StaticNodesManager = Substitute.For<IStaticNodesManager>();
@@ -107,39 +113,28 @@ namespace Nethermind.Runner.Test.Ethereum
             api.FilterManager = Substitute.For<IFilterManager>();
             api.FilterStore = Substitute.For<IFilterStore>();
             api.GrpcServer = Substitute.For<IGrpcServer>();
-            api.HeaderValidator = Substitute.For<IHeaderValidator>();
             api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();
-            api.MonitoringService = Substitute.For<IMonitoringService>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
             api.RlpxPeer = Substitute.For<IRlpxHost>();
             api.SealValidator = Substitute.For<ISealValidator>();
             api.SessionMonitor = Substitute.For<ISessionMonitor>();
-            api.StateReader = Substitute.For<IStateReader>();
-            api.VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>();
-            api.MainNodeStorage = Substitute.For<INodeStorage>();
             api.MainProcessingContext = Substitute.For<IMainProcessingContext>();
             api.TxSender = Substitute.For<ITxSender>();
             api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
-            api.NodeStatsManager = Substitute.For<INodeStatsManager>();
-            api.RpcModuleProvider = Substitute.For<IRpcModuleProvider>();
             api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
             api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
-            api.EthSyncingInfo = Substitute.For<IEthSyncingInfo>();
             api.HealthHintService = Substitute.For<IHealthHintService>();
-            api.TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId);
-            api.UnclesValidator = Substitute.For<IUnclesValidator>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
 
-            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
         }
     }

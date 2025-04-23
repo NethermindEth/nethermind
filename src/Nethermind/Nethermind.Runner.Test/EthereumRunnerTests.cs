@@ -29,11 +29,14 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.Flashbots;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -73,7 +76,6 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            Console.Error.WriteLine($"{configFile}");
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
@@ -87,6 +89,15 @@ public class EthereumRunnerTests
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Enqueue(("mainnet-verify-trie-starter", configProvider));
+        }
+
+        {
+            // Flashbots
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
+            result.Enqueue(("flashbots", configProvider));
         }
 
         return result;
@@ -174,8 +185,8 @@ public class EthereumRunnerTests
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.BlockValidator = Substitute.For<IBlockValidator>();
         api.DbProvider = Substitute.For<IDbProvider>();
+        api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
 
         try
         {
@@ -221,6 +232,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IPoSSwitcher>();
             api.Context.Resolve<ISynchronizer>();
             api.Context.Resolve<IAdminEraService>();
+            api.Context.Resolve<IRpcModuleProvider>();
         }
         finally
         {

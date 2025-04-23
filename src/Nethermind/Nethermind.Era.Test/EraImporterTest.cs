@@ -7,8 +7,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
 using Autofac;
+using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
@@ -130,5 +130,79 @@ public class EraImporterTest
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
+    }
+
+    [CancelAfter(2000)]
+    [Test]
+    public async Task ImportAsArchiveSync_WillPaceSuggestBlock(CancellationToken token)
+    {
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        string destinationPath = outputCtx.ResolveTempDirPath();
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .AddSingleton<IEraConfig>(new EraConfig()
+            {
+                ImportBlocksBufferSize = 10,
+                MaxEra1Size = 16,
+                NetworkName = EraTestModule.TestNetwork
+            })
+            .Build();
+
+        ManualResetEventSlim reachedBlock11 = new ManualResetEventSlim();
+        bool shouldUpdateMainChain = false;
+        long maxSuggestedBlocks = 0;
+        long expectedStopBlock = 10;
+        inTree.NewBestSuggestedBlock += (sender, args) =>
+        {
+            if (shouldUpdateMainChain) inTree.UpdateMainChain([args.Block], true);
+            maxSuggestedBlocks = args.Block.Number;
+            if (args.Block.Number == expectedStopBlock) reachedBlock11.Set();
+        };
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Task importTask = sut.Import(destinationPath, 0, long.MaxValue,
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
+
+        reachedBlock11.Wait(token);
+        await Task.Delay(100);
+
+        maxSuggestedBlocks.Should().Be(expectedStopBlock);
+        shouldUpdateMainChain = true;
+        inTree.UpdateMainChain([inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!], true);
+
+        await importTask;
+    }
+
+    [CancelAfter(2000)]
+    [Test]
+    public async Task ImportAsArchiveSync_WhenStartIsLessThanHead_ShouldThrow(CancellationToken token)
+    {
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        string destinationPath = outputCtx.ResolveTempDirPath();
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .AddSingleton<IEraConfig>(new EraConfig()
+            {
+                ImportBlocksBufferSize = 10,
+                MaxEra1Size = 16,
+                NetworkName = EraTestModule.TestNetwork
+            })
+            .Build();
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Func<Task> act = () => sut.Import(destinationPath, 30, long.MaxValue,
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
+
+        await act.Should().ThrowAsync<ArgumentException>();
     }
 }

@@ -23,11 +23,21 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", ArchiveVersion, ArchiveName.Split('.')[0]);
         if (!Directory.Exists(testsDirectoryName)) // Prevent redownloading the fixtures if they already exists with this version and archive name
             DownloadAndExtract(ArchiveVersion, ArchiveName, testsDirectoryName);
-        bool isStateTest = testsDir.Contains("state_tests", StringComparison.InvariantCultureIgnoreCase);
+
+        TestType testType = TestType.Blockchain;
+        foreach (TestType type in Enum.GetValues<TestType>())
+        {
+            if (testsDir.Contains($"{type}_tests", StringComparison.OrdinalIgnoreCase))
+            {
+                testType = type;
+                break;
+            }
+        }
+
         IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
             ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard, isStateTest));
+        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard, testType));
     }
 
     private void DownloadAndExtract(string archiveVersion, string archiveName, string testsDirectoryName)
@@ -44,7 +54,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
 
-    private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, bool isStateTest)
+    private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, TestType testType)
     {
         List<EthereumTest> testsByName = new();
         IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
@@ -52,26 +62,14 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         foreach (string testFile in testFiles)
         {
             FileTestsSource fileTestsSource = new(testFile, wildcard);
-            try
+
+            IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(testType);
+
+            foreach (EthereumTest test in tests)
             {
-                IEnumerable<EthereumTest> tests = isStateTest
-                    ? fileTestsSource.LoadGeneralStateTests()
-                    : fileTestsSource.LoadBlockchainTests();
-                foreach (EthereumTest test in tests)
-                {
-                    test.Category = testDir;
-                }
-                testsByName.AddRange(tests);
+                test.Category ??= testDir;
             }
-            catch (Exception e)
-            {
-                EthereumTest failedTest = isStateTest
-                    ? new GeneralStateTest()
-                    : new BlockchainTest();
-                failedTest.Name = testDir;
-                failedTest.LoadFailure = $"Failed to load: {e}";
-                testsByName.Add(failedTest);
-            }
+            testsByName.AddRange(tests);
         }
 
         return testsByName;

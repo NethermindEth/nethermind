@@ -35,13 +35,14 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public const string Taiko = "Taiko";
     private const string L1OriginDbName = "L1Origin";
@@ -56,9 +57,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     private ISyncConfig _syncConfig = null!;
 
     private IBlockCacheService? _blockCacheService;
-    private IPeerRefresher? _peerRefresher;
-    private IBeaconPivot? _beaconPivot;
-    private BeaconSync? _beaconSync;
 
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
@@ -106,7 +104,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
         ArgumentNullException.ThrowIfNull(_api.SyncModeSelector);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -115,20 +112,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
         ArgumentNullException.ThrowIfNull(_api.StateReader);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
-        ArgumentNullException.ThrowIfNull(_api.TxSender);
-        ArgumentNullException.ThrowIfNull(_api.Wallet);
-        ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
-        ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
-        ArgumentNullException.ThrowIfNull(_beaconPivot);
-        ArgumentNullException.ThrowIfNull(_beaconSync);
-        ArgumentNullException.ThrowIfNull(_peerRefresher);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -136,59 +125,20 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
             await Task.Delay(100);
         await Task.Delay(5000);
 
-
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
-
-        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager!, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
-
-        // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
-        IMainProcessingContext mainScope = _api.MainProcessingContext!;
-
-        BlockProcessor blockProcessor =
-            new(_api.SpecProvider,
-                _api.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
-                scope.WorldState,
-                _api.ReceiptStorage,
-                mainScope.TransactionProcessor,
-                new BeaconBlockRootHandler(mainScope.TransactionProcessor, mainScope.WorldState),
-                new BlockhashStore(_api.SpecProvider, scope.WorldState),
-                _api.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
-
-        IBlockchainProcessor blockchainProcessor =
-            new BlockchainProcessor(
-                _api.BlockTree,
-                blockProcessor,
-                _api.BlockPreprocessor,
-                txProcessingEnv.StateReader,
-                _api.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
-        OneTimeChainProcessor chainProcessor = new(
-            scope.WorldState,
-            blockchainProcessor);
-
         IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
-
-        TaikoPayloadPreparationService payloadPreparationService = new(
-            chainProcessor,
-            scope.WorldState,
-            _api.L1OriginStore,
-            _api.LogManager,
-            txDecoder);
-
+        TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, readonlyBlockTree, txDecoder);
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         ReadOnlyTxProcessingEnvFactory readonlyTxProcessingEnvFactory = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         var invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
+        var peerRefresher = _api.Context.Resolve<IPeerRefresher>();
+        var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+        var beaconSync = _api.Context.Resolve<BeaconSync>();
 
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -198,14 +148,13 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 poSSwitcher,
-                _beaconSync,
-                _beaconPivot,
+                beaconSync,
+                beaconPivot,
                 _blockCacheService,
                 _api.BlockProcessingQueue,
                 invalidChainTracker,
-                _beaconSync,
+                beaconSync,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
@@ -217,13 +166,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
                 _api.BlockProcessingQueue,
                 _blockCacheService,
                 invalidChainTracker,
-                _beaconSync,
-                _beaconPivot,
-                _peerRefresher,
+                beaconSync,
+                beaconPivot,
+                peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool,
                 _api.LogManager,
-                _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
@@ -247,43 +195,55 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }
 
+    private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IReadOnlyBlockTree readonlyBlockTree, IRlpStreamDecoder<Transaction> txDecoder)
+    {
+        ArgumentNullException.ThrowIfNull(api.L1OriginStore);
+        ArgumentNullException.ThrowIfNull(api.SpecProvider);
+
+        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
+            new(api.WorldStateManager!, readonlyBlockTree, api.SpecProvider, api.LogManager);
+
+        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+
+        BlockProcessor blockProcessor =
+            new(api.SpecProvider,
+                api.BlockValidator,
+                NoBlockRewards.Instance,
+                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
+                scope.WorldState,
+                api.ReceiptStorage,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+                new BlockhashStore(api.SpecProvider, scope.WorldState),
+                api.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, api.LogManager)));
+
+        IBlockchainProcessor blockchainProcessor =
+            new BlockchainProcessor(
+                api.BlockTree,
+                blockProcessor,
+                api.BlockPreprocessor,
+                txProcessingEnv.StateReader,
+                api.LogManager,
+                BlockchainProcessor.Options.NoReceipts);
+
+        OneTimeChainProcessor chainProcessor = new(
+            scope.WorldState,
+            blockchainProcessor);
+
+        TaikoPayloadPreparationService payloadPreparationService = new(
+            chainProcessor,
+            scope.WorldState,
+            api.L1OriginStore,
+            api.LogManager,
+            txDecoder);
+
+        return payloadPreparationService;
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize => true;
-
-    // ISynchronizationPlugin
-    public Task InitSynchronization()
-    {
-        if (_api is null)
-            return Task.CompletedTask;
-
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.MainProcessingContext);
-
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
-
-        _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext.BlockchainProcessor);
-
-        _beaconPivot = _api.Context.Resolve<IBeaconPivot>();
-        _beaconSync = _api.Context.Resolve<BeaconSync>();
-
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-        _ = new UnsafeStartingSyncPivotUpdater(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool!,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.LogManager);
-        _beaconSync.AllowBeaconHeaderSync();
-
-        return Task.CompletedTask;
-    }
 
     // IInitializationPlugin
     public IEnumerable<StepInfo> GetSteps()
@@ -319,13 +279,26 @@ public class TaikoModule : Module
 
         builder
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
-            .AddModule(new MergePluginModule())
+            .AddModule(new BaseMergePluginModule())
 
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
 
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+            .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
+
+            .AddDecorator<BeaconSync>((_, strategy) =>
+            {
+                strategy.AllowBeaconHeaderSync();
+                return strategy;
+            })
+
+            // Validators
+            .AddSingleton<IBlockValidator, TaikoBlockValidator>()
+            .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
+            .AddSingleton<IUnclesValidator>(Always.Valid)
+
             ;
     }
 }

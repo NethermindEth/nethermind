@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -17,15 +19,16 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -75,9 +78,14 @@ public partial class BaseEngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null,
-        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
+        Action<ContainerBuilder>? configurer = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
-            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+            .BuildMergeTestBlockchain(configurer: (builder) =>
+            {
+                builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+                configurer?.Invoke(builder);
+            });
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
@@ -123,7 +131,6 @@ public partial class BaseEngineModuleTests
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
-                synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
                 chain.BeaconPivot,
@@ -148,8 +155,7 @@ public partial class BaseEngineModuleTests
                 peerRefresher,
                 chain.SpecProvider,
                 chain.SyncPeerPool,
-                chain.LogManager,
-                new BlocksConfig().SecondsPerSlot),
+                chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
@@ -167,7 +173,7 @@ public partial class BaseEngineModuleTests
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
-        parentBlock.TryGetBlock(out Block? block);
+        Block? block = parentBlock.TryGetBlock().Block;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -191,7 +197,7 @@ public partial class BaseEngineModuleTests
 
             blocks.Add((getPayloadResult));
             parentBlock = getPayloadResult;
-            parentBlock.TryGetBlock(out block!);
+            block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }
@@ -252,7 +258,7 @@ public partial class BaseEngineModuleTests
             return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, predicate);
         }
 
-        public ISealValidator? SealValidator { get; set; }
+        public ISealValidator? SealValidator => Container.Resolve<ISealValidator>();
 
         public IBeaconPivot? BeaconPivot { get; set; }
 
@@ -290,9 +296,22 @@ public partial class BaseEngineModuleTests
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 
-        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override ChainSpec CreateChainSpec()
         {
-            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
+            return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
+        }
+
+        protected override IEnumerable<IConfig> CreateConfigs()
+        {
+            return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
+        }
+
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
+                .AddModule(new MergeModule(configProvider));
+
+        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        {
             IBlockProducer preMergeBlockProducer =
                 base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
@@ -340,7 +359,6 @@ public partial class BaseEngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
@@ -360,22 +378,6 @@ public partial class BaseEngineModuleTests
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        protected IBlockValidator CreateBlockValidator()
-        {
-            _ = new BlockCacheService();
-            PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject }, LogManager);
-            SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
-            HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
-            HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
-
-            return new BlockValidator(
-                new TxValidator(SpecProvider.ChainId),
-                HeaderValidator,
-                Always.Valid,
-                SpecProvider,
-                LogManager);
-        }
-
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
         public IBlockImprovementContextFactory BlockImprovementContextFactory
@@ -387,13 +389,10 @@ public partial class BaseEngineModuleTests
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
-        {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
-            return chain;
-        }
+        public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
+            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
 
-        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
-            (MergeTestBlockchain)await Build(specProvider, null);
+        public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
+            (MergeTestBlockchain)await Build(configurer: configurer);
     }
 }

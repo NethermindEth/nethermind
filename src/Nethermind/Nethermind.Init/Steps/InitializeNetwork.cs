@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -29,11 +26,10 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.SnapServer;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 
@@ -41,8 +37,13 @@ namespace Nethermind.Init.Steps;
 
 public static class NettyMemoryEstimator
 {
-    // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
     private const uint PageSize = 8192;
+
+    public static void SetPageSize()
+    {
+        // For some reason needs to be half page size to get page size
+        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
+    }
 
     public static long Estimate(uint arenaCount, int arenaOrder)
     {
@@ -54,7 +55,6 @@ public static class NettyMemoryEstimator
     typeof(LoadGenesisBlock),
     typeof(UpdateDiscoveryConfig),
     typeof(SetupKeyStore),
-    typeof(InitializeNodeStats),
     typeof(ResolveIps),
     typeof(InitializePlugins),
     typeof(EraStep),
@@ -67,10 +67,12 @@ public class InitializeNetwork : IStep
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     protected readonly ISyncConfig _syncConfig;
+    private readonly INodeStatsManager _nodeStatsManager;
 
-    public InitializeNetwork(INethermindApi api)
+    public InitializeNetwork(INethermindApi api, INodeStatsManager nodeStatsManager)
     {
         _api = api;
+        _nodeStatsManager = nodeStatsManager;
         _logger = _api.LogManager.GetClassLogger();
         _networkConfig = _api.Config<INetworkConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
@@ -98,20 +100,6 @@ public class InitializeNetwork : IStep
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-
-        IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
-        foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
-        {
-            await plugin.InitSynchronization();
-        }
-
-        _api.WorldStateManager!.InitializeNetwork(
-            new PathNodeRecovery(
-                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
-                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
-                _api.LogManager
-            )
-        );
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
@@ -230,7 +218,6 @@ public class InitializeNetwork : IStep
 
     private void InitDiscovery()
     {
-        if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.Timestamper is null) throw new StepDependencyException(nameof(_api.Timestamper));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
         if (_api.CryptoRandom is null) throw new StepDependencyException(nameof(_api.CryptoRandom));
@@ -246,7 +233,7 @@ public class InitializeNetwork : IStep
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
-            _api.NodeStatsManager, _api.IpResolver
+            _nodeStatsManager, _api.IpResolver
         );
     }
 
@@ -285,7 +272,6 @@ public class InitializeNetwork : IStep
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));
         if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
@@ -350,7 +336,7 @@ public class InitializeNetwork : IStep
         ISyncServer syncServer = _api.SyncServer!;
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
-        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
+        ProtocolValidator protocolValidator = new(_nodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
@@ -362,7 +348,7 @@ public class InitializeNetwork : IStep
             _api.DiscoveryApp,
             _api.MessageSerializationService,
             _api.RlpxPeer,
-            _api.NodeStatsManager,
+            _nodeStatsManager,
             protocolValidator,
             peerStorage,
             forkInfo,
@@ -383,7 +369,7 @@ public class InitializeNetwork : IStep
 
         _api.ProtocolValidator = protocolValidator;
 
-        NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
+        NodesLoader nodesLoader = new(_networkConfig, _nodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
 
         // I do not use the key here -> API is broken - no sense to use the node signer here
         NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
@@ -406,11 +392,11 @@ public class InitializeNetwork : IStep
         CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
             ? new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader)
             : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
-        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
+        _api.PeerPool = new PeerPool(nodeSources, _nodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
             _api.PeerPool,
-            _api.NodeStatsManager,
+            _nodeStatsManager,
             _networkConfig,
             _api.LogManager);
 

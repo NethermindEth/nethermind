@@ -19,8 +19,8 @@ namespace Nethermind.Consensus.Transactions
             _innerSource = innerSource;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null) =>
-            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false) =>
+            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource)
                 .OrderBy(static t => t.Nonce)
                 .ThenByDescending(static t => t.Timestamp)
                 .Take(1);

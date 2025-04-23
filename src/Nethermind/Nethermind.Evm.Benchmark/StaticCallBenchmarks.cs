@@ -80,7 +80,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-            IKeyValueStore codeDb = new MemDb();
+            IKeyValueStoreWithBatching codeDb = new MemDb();
 
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Benchmark
 
             Console.WriteLine(MuirGlacier.Instance);
             CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
 
             _environment = new ExecutionEnvironment
             (
@@ -108,18 +108,18 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(Baseline = true)]
         public void ExecuteCode()
         {
-            _virtualMachine.Run<VirtualMachine.IsTracing>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 
         [Benchmark]
         public void ExecuteCodeNoTracing()
         {
-            _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 
-        [Benchmark(Baseline = true)]
+        [Benchmark]
         public void No_machine_running()
         {
             _stateProvider.Reset();

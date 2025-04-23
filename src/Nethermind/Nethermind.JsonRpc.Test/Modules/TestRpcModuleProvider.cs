@@ -69,6 +69,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public void Return(string methodName, IRpcModule rpcModule) => _provider.Return(methodName, rpcModule);
 
-        public IRpcModulePool? GetPool(string moduleType) => _provider.GetPool(moduleType);
+        public IRpcModulePool? GetPoolForMethod(string methodName) => _provider.GetPoolForMethod(methodName);
     }
 }
