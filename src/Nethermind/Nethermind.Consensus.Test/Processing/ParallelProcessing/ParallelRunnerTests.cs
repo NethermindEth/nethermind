@@ -15,7 +15,7 @@ using Version = Nethermind.Consensus.Processing.ParallelProcessing.Version;
 
 namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class ParallelRunnerTests
 {
     public static IEnumerable<TestCaseData> GetTestCases()
@@ -48,15 +48,19 @@ public class ParallelRunnerTests
             TestName = "Two Transactions Dependent, 1st delayed"
         };
 
-        yield return GenerateNTransactions(10);
-        yield return GenerateNTransactions(27);
-        yield return GenerateNTransactions(40);
-        yield return GenerateNTransactions(50);
-        yield return GenerateNTransactions(60);
-        yield return GenerateNTransactions(80);
-        yield return GenerateNTransactions(90);
-        yield return GenerateNTransactions(100);
-        yield return GenerateNTransactions(120);
+        const int stressIterations = 1;
+        for (int i = 0; i < stressIterations; i++)
+        {
+            yield return GenerateNTransactions(10);
+            yield return GenerateNTransactions(27);
+            yield return GenerateNTransactions(40);
+            yield return GenerateNTransactions(50);
+            yield return GenerateNTransactions(60);
+            yield return GenerateNTransactions(80);
+            yield return GenerateNTransactions(90);
+            yield return GenerateNTransactions(100);
+            yield return GenerateNTransactions(120);
+        }
 
         TestCaseData GenerateNTransactions(ushort n)
         {
@@ -114,11 +118,18 @@ public class ParallelRunnerTests
         VmMock<IsTracing> vmMock = new VmMock<IsTracing>(multiVersionMemory, operationsPerTx);
         ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock);
 
-        await runner.Run();
-
+        Task runnerTask = runner.Run();
+        Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
         Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
         await PrintInfo(parallelTrace, result, expected);
-        result.Should().BeEquivalentTo(expected);
+        if (completedTask == runnerTask)
+        {
+            result.Should().BeEquivalentTo(expected);
+        }
+        else
+        {
+            Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
+        }
     }
 
     private static async Task PrintInfo(ParallelTrace<IsTracing> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected)
