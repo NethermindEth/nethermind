@@ -71,18 +71,6 @@ public class PsudoNetworkModule(IInitConfig initConfig) : Module
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
-            .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-                ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                    new PathNodeRecovery(
-                        new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
-                        new SnapRangeRecovery(peerPool!, logManager),
-                        logManager
-                    )
-                );
-            })
-
             // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
 

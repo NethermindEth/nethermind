@@ -34,6 +34,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         builder
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
+            .AddModule(new WorldStateModule())
             .AddModule(new BuiltInStepsModule())
             .AddModule(new RpcModules())
             .AddModule(new EraModule())
