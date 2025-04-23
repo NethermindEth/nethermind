@@ -163,4 +163,9 @@ public sealed class L1BlockGasInfo
             operatorFeeScalar,
             operatorFeeConstant);
     }
+
+    public long CalculateOperatorFee(in long spentGas)
+    {
+        return spentGas * _operatorFeeScalar / 1_000_000 + (long)_operatorFeeConstant;
+    }
 }

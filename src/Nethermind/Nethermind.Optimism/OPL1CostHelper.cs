@@ -92,6 +92,11 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         }
     }
 
+    public UInt256 ComputeOperatorCost(Transaction tx, in BlockExecutionContext blkContext)
+    {
+        throw new NotImplementedException();
+    }
+
     [SkipLocalsInit]
     public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
     {

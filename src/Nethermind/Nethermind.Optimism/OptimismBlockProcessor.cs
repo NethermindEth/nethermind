@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -71,5 +72,11 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         var info = new L1BlockGasInfo(block, _specHelper);
         return new(block.Header, spec, info);
+    }
+
+    public static L1BlockGasInfo GetL1BlockGasInfo(in BlockExecutionContext context)
+    {
+        Debug.Assert(context.ExtensionData != null);
+        return (L1BlockGasInfo)context.ExtensionData;
     }
 }

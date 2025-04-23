@@ -154,6 +154,9 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsIsthmus(header))
             {
+                var l1GasInfo = OptimismBlockProcessor.GetL1BlockGasInfo(env.BlockExecutionContext);
+                WorldState.AddToBalanceAndCreateIfNotExists(PreDeploys.OperatorFeeRecipient,)
+
                 // Op
                 //L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
