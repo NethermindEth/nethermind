@@ -88,7 +88,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             if (!Volatile.Read(ref _done))
             {
                 WorkAvailable.Reset();
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Reset from FetchNext {name} to {nextTx+1}");
+                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Reset from FetchNext {name} to {nextTx + 1}");
             }
         }
 

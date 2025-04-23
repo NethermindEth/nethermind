@@ -20,7 +20,7 @@ public class ParallelRunnerTests
 {
     public static IEnumerable<TestCaseData> GetTestCases()
     {
-        yield return new TestCaseData((ushort) 1, (Operation[][]) [[]], RS())
+        yield return new TestCaseData((ushort)1, (Operation[][])[[]], RS())
         {
             TestName = "Single Empty Transaction"
         };
@@ -102,11 +102,11 @@ public class ParallelRunnerTests
 
     // R - Read
     private static Operation R(int location, byte value) =>
-        new (OperationType.Read, location, [value]);
+        new(OperationType.Read, location, [value]);
 
     // D - Delay
     private static Operation D(int milliseconds = 100) =>
-        new (OperationType.Delay, milliseconds);
+        new(OperationType.Delay, milliseconds);
 
     [TestCaseSource(nameof(GetTestCases))]
     public async Task Run(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected)
@@ -162,28 +162,28 @@ public class ParallelRunnerTests
                 switch (operation.Type)
                 {
                     case OperationType.Read:
-                    {
-                        if (!writeSet.TryGetValue(operation.Location, out lastRead))
                         {
-                            Status result = memory.TryRead(operation.Location, txIndex, out Version version, out var value);
-                            switch (result)
+                            if (!writeSet.TryGetValue(operation.Location, out lastRead))
                             {
-                                case Status.NotFound:
-                                    lastRead = operation.Value; // read from storage
-                                    readSet.Add(new Read<int>(operation.Location, Version.Empty));
-                                    break;
-                                case Status.Ok:
-                                    lastRead = value; // use value from previous transaction
-                                    readSet.Add(new Read<int>(operation.Location, version));
-                                    break;
-                                case Status.ReadError:
-                                    blockingTx = version;
-                                    return Status.ReadError;
+                                Status result = memory.TryRead(operation.Location, txIndex, out Version version, out var value);
+                                switch (result)
+                                {
+                                    case Status.NotFound:
+                                        lastRead = operation.Value; // read from storage
+                                        readSet.Add(new Read<int>(operation.Location, Version.Empty));
+                                        break;
+                                    case Status.Ok:
+                                        lastRead = value; // use value from previous transaction
+                                        readSet.Add(new Read<int>(operation.Location, version));
+                                        break;
+                                    case Status.ReadError:
+                                        blockingTx = version;
+                                        return Status.ReadError;
+                                }
                             }
-                        }
 
-                        break;
-                    }
+                            break;
+                        }
                     case OperationType.Write:
                         writeSet[operation.Location] = operation.Value[0] == Operation.LastRead ? [(byte)(operation.Value[1] + lastRead[0])] : operation.Value;
                         break;

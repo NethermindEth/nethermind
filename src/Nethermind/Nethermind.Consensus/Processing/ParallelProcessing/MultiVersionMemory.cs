@@ -145,10 +145,10 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
                     case Status.Ok when read.Version != version:
                     case Status.NotFound when !read.Version.IsEmpty:
                     case Status.ReadError:
-                    {
-                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet failed.");
-                        return false;
-                    }
+                        {
+                            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet failed.");
+                            return false;
+                        }
                 }
             }
         }
