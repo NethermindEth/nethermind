@@ -36,6 +36,7 @@ public class OptimismTransactionProcessor(
 
         IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
         _currentTxL1Cost = null;
+
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
@@ -65,7 +66,7 @@ public class OptimismTransactionProcessor(
         return result;
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas(Transaction tx, in BlockExecutionContext blkContext, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
@@ -83,7 +84,7 @@ public class OptimismTransactionProcessor(
 
         if (validate && !tx.IsDeposit())
         {
-            if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
+            if (!tx.TryCalculatePremiumPerGas(blkContext.Header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -95,8 +96,10 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-            if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
+            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, blkContext.Header, WorldState);
+            UInt256 maxOperatorCost = l1CostHelper.ComputeOperatorCost(tx.GasLimit, blkContext);
+
+            if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                 return TransactionResult.InsufficientSenderBalance;
@@ -154,38 +157,18 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsIsthmus(header))
             {
-                var l1GasInfo = OptimismBlockProcessor.GetL1BlockGasInfo(env.BlockExecutionContext);
-                WorldState.AddToBalanceAndCreateIfNotExists(PreDeploys.OperatorFeeRecipient,)
+                UInt256 operatorCostMax = l1CostHelper.ComputeOperatorCost(tx.GasLimit, env.BlockExecutionContext);
+                UInt256 operatorCostUsed = l1CostHelper.ComputeOperatorCost(spentGas, env.BlockExecutionContext);
 
-                // Op
-                //L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
+                if (operatorCostMax > operatorCostUsed)
+                {
+                    // Refund the rest
+                    WorldState.AddToBalance(tx.SenderAddress!, operatorCostMax - operatorCostUsed, spec);
+                }
 
-                // Operator Fee refunds are only applied if Isthmus is active and the transaction is *not* a deposit.
-                //     st.refundIsthmusOperatorCost()
-                //
-                //     operatorFeeCost := st.evm.Context.OperatorCostFunc(st.gasUsed(), st.evm.Context.Time)
-                //     st.state.AddBalance(params.OptimismOperatorFeeRecipient, operatorFeeCost, tracing.BalanceIncreaseRewardTransactionFee)
+                // Transfer to fee recipient
+                WorldState.AddToBalance(PreDeploys.OperatorFeeRecipient, operatorCostUsed, spec);
             }
-
-            // if rules.IsOptimismIsthmus {
-            //     // Operator Fee refunds are only applied if Isthmus is active and the transaction is *not* a deposit.
-            //     st.refundIsthmusOperatorCost()
-            //
-            //     operatorFeeCost := st.evm.Context.OperatorCostFunc(st.gasUsed(), st.evm.Context.Time)
-            //     st.state.AddBalance(params.OptimismOperatorFeeRecipient, operatorFeeCost, tracing.BalanceIncreaseRewardTransactionFee)
-            // }
-
-            // func (st *stateTransition) refundIsthmusOperatorCost() {
-            //     // Return ETH to transaction sender for operator cost overcharge.
-            //     operatorCostGasLimit := st.evm.Context.OperatorCostFunc(st.msg.GasLimit, st.evm.Context.Time)
-            //     operatorCostGasUsed := st.evm.Context.OperatorCostFunc(st.gasUsed(), st.evm.Context.Time)
-            //
-            //     if operatorCostGasUsed.Cmp(operatorCostGasLimit) > 0 { // Sanity check.
-            //         panic(fmt.Sprintf("operator cost gas used (%d) > operator cost gas limit (%d)", operatorCostGasUsed, operatorCostGasLimit))
-            //     }
-            //
-            //     st.state.AddBalance(st.msg.From, new(uint256.Int).Sub(operatorCostGasLimit, operatorCostGasUsed), tracing.BalanceIncreaseGasReturn)
-            // }
         }
     }
 

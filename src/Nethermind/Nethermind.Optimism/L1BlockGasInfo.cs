@@ -164,8 +164,6 @@ public sealed class L1BlockGasInfo
             operatorFeeConstant);
     }
 
-    public long CalculateOperatorFee(in long spentGas)
-    {
-        return spentGas * _operatorFeeScalar / 1_000_000 + (long)_operatorFeeConstant;
-    }
+    public UInt256 CalculateOperatorFee(in long spentGas) =>
+        (UInt256)spentGas * _operatorFeeScalar / 1_000_000 + _operatorFeeConstant;
 }

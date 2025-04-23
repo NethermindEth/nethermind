@@ -12,5 +12,5 @@ public interface IL1CostHelper
 {
     UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState);
 
-    UInt256 ComputeOperatorCost(Transaction tx, in BlockExecutionContext blkContext);
+    UInt256 ComputeOperatorCost(long gas, in BlockExecutionContext blkContext);
 }

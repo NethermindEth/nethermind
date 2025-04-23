@@ -92,9 +92,11 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         }
     }
 
-    public UInt256 ComputeOperatorCost(Transaction tx, in BlockExecutionContext blkContext)
+    public UInt256 ComputeOperatorCost(long gas, in BlockExecutionContext blkContext)
     {
-        throw new NotImplementedException();
+        return opSpecHelper.IsIsthmus(blkContext.Header)
+            ? OptimismBlockProcessor.GetL1BlockGasInfo(blkContext).CalculateOperatorFee(gas)
+            : UInt256.Zero;
     }
 
     [SkipLocalsInit]
