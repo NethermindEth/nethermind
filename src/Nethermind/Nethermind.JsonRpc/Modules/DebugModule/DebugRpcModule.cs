@@ -349,12 +349,20 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
     {
         byte[] data = _debugBridge.GetBlockRlp(blockNumber);
+        if (data is null)
+        {
+            return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);
+        }
         return ResultWrapper<byte[]>.Success(data);
     }
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash)
     {
         byte[] data = _debugBridge.GetBlockRlp(hash);
+        if (data is null)
+        {
+            return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);
+        }
         return ResultWrapper<byte[]>.Success(data);
     }
 
@@ -376,6 +384,10 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
         byte[] data = _debugBridge.GetDbValue(dbName, key);
+        if (data is null)
+        {
+            return ResultWrapper<byte[]>.Fail($"Value for key {key.ToHexString()} in database {dbName} was not found", ErrorCodes.ResourceNotFound);
+        }
         return ResultWrapper<byte[]>.Success(data);
     }
 
