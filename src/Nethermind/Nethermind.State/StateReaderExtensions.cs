@@ -61,13 +61,16 @@ namespace Nethermind.State
 
         public static Account GetAccount(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
+            // This method provides a simpler way to get an account without having to handle the
+            // TryGetAccount return value pattern. It maintains consistency with similar patterns
+            // used in other modules and makes code more readable.
             bool exists = stateReader.TryGetAccount(stateRoot, address, out AccountStruct accountStruct);
             if (!exists)
             {
                 // Return empty account if it doesn't exist
                 return Account.TotallyEmpty;
             }
-            
+
             return new Account(
                 accountStruct.Nonce,
                 accountStruct.Balance,
