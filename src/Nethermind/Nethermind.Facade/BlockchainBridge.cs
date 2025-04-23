@@ -425,9 +425,9 @@ namespace Nethermind.Facade
         private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
         {
             if (txResult.Success)
-			{
-				return tracerError is not null ? $"err: {tracerError} (supplied gas {gasLimit})" : null;
-			}
+            {
+                return tracerError is not null ? $"err: {tracerError} (supplied gas {gasLimit})" : null;
+            }
             return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
         }
     }
