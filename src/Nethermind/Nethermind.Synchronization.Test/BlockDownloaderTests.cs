@@ -111,6 +111,36 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Invoke_UpdateMainChain_Once()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        bool withReceipts = true;
+        BlockDownloader downloader = ctx.BlockDownloader;
+
+        Response responseOptions = Response.AllCorrect | Response.WithTransactions;
+        long headNumber = 100;
+        int fastSyncLag = 10;
+
+        // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
+        // will only be fixed slightly later
+        long chainLength = headNumber + 1;
+        SyncPeerMock syncPeer = new(chainLength, withReceipts, responseOptions);
+
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        List<long> newHeadSequence = new List<long>();
+
+        ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, fastSyncLag), CancellationToken.None);
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
+
+        List<long> expectedNewHeadSequence = Enumerable.Range(1, (int)(chainLength - fastSyncLag - 1)).Select((i) => (long)i).ToList();
+        newHeadSequence.Should().BeEquivalentTo(expectedNewHeadSequence);
+    }
+
+    [Test]
     public async Task Ancestor_lookup_simple()
     {
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);
