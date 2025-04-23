@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Channels;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.State;
@@ -24,63 +22,83 @@ internal sealed class StorageValueMap : IDisposable
 {
     private const int DefaultSize = 1024 * 1024;
     private UIntPtr StorageValuesSize => StorageValue.MemorySize * _size;
-    private UIntPtr EpochsSize => sizeof(int) * _size;
 
-    private unsafe StorageValue* _values;
-    private unsafe int* _epochs;
+    private readonly unsafe StorageValue* _values;
+    private readonly int[] _epochs;
 
+    private const int ReservedEpoch = int.MaxValue;
     private int _epoch = 1;
+
     private readonly uint _size;
 
-    public StorageValueMap(uint size = DefaultSize)
+    public unsafe StorageValueMap(uint size = DefaultSize)
     {
         Debug.Assert(BitOperations.IsPow2(size));
 
         _size = size;
+
+        _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
+        GC.AddMemoryPressure((long)StorageValuesSize);
+
+        _epochs = new int[size];
     }
 
     [SkipLocalsInit]
-    public unsafe Ptr Map(in StorageValue value)
+    public unsafe StorageValuePtr Map(in StorageValue value)
     {
         if (value.IsZero)
-            return Ptr.Null;
+            return StorageValuePtr.Null;
 
         var hash = value.GetHashCode();
-        if (_values == null)
-        {
-            Alloc();
-        }
 
-        Debug.Assert(_values != null);
-
-        var values = _values;
-        var epochs = _epochs;
         var mask = _size - 1;
 
-        for (var i = 0; i < DefaultSize; i++)
+        for (var i = 0; i < _size; i++)
         {
             var at = (hash + i) & mask;
-            var ptr = new Ptr(values + at);
 
-            ref var epoch = ref epochs[at];
+            var ptr = new StorageValuePtr(_values + at);
 
-            if (epoch == _epoch)
+            ref var epoch = ref _epochs[at];
+
+            var read = Volatile.Read(ref epoch);
+            if (read == _epoch)
             {
                 // The entry was written in this epoch. Check if it's the mapped one.
                 if (ptr.Ref.Equals(value))
                 {
                     return ptr;
                 }
-            }
-            else
-            {
-                Debug.Assert(epoch < _epoch, "Entry should be from the past");
 
-                // The entry was used in the past. Set the value and immediately return.
-                epoch = _epoch;
+                // Move to the next one, not equal
+                continue;
+            }
+
+            if (read == ReservedEpoch)
+            {
+                // Spin once again as this slot is reserved.
+                // If there's a chance that a thread aborts in this place,
+                // it should be considered migrating to negative epochs for locking as they can be recovered later.
+                Thread.SpinWait(1);
+
+                i--;
+                continue;
+            }
+
+            Debug.Assert(read < _epoch, "The read epoch should be from the past");
+
+            // Try to lock it.
+            if (Interlocked.CompareExchange(ref epoch, ReservedEpoch, read) == read)
+            {
                 ptr.SetValue(value);
+
+                // Commit and unlock
+                Volatile.Write(ref epoch, _epoch);
                 return ptr;
             }
+
+            // Didn't lock, retry
+            i--;
         }
 
         // Return null
@@ -92,28 +110,12 @@ internal sealed class StorageValueMap : IDisposable
         _epoch++;
     }
 
-    private unsafe void Alloc()
-    {
-        _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
-        GC.AddMemoryPressure((long)StorageValuesSize);
-
-        _epochs = (int*)NativeMemory.AlignedAlloc(EpochsSize, sizeof(int));
-        NativeMemory.Clear(_epochs, EpochsSize);
-        GC.AddMemoryPressure((long)EpochsSize);
-    }
-
     private unsafe void Free()
     {
         if (_values != null)
         {
             NativeMemory.AlignedFree(_values);
             GC.RemoveMemoryPressure((long)StorageValuesSize);
-        }
-
-        if (_epochs != null)
-        {
-            NativeMemory.AlignedFree(_epochs);
-            GC.RemoveMemoryPressure((long)EpochsSize);
         }
     }
 
@@ -131,45 +133,5 @@ internal sealed class StorageValueMap : IDisposable
     ~StorageValueMap()
     {
         ReleaseUnmanagedResources();
-    }
-
-    /// <summary>
-    /// A not so managed reference to <see cref="StorageValue"/>.
-    /// Allows quick equality checks and ref returning semantics.
-    /// </summary>
-    internal readonly unsafe struct Ptr : IEquatable<Ptr>
-    {
-        private readonly StorageValue* _pointer;
-
-        public Ptr(StorageValue* pointer)
-        {
-            _pointer = pointer;
-        }
-
-        public bool IsZero => _pointer == null;
-
-        public static readonly Ptr Null = default;
-
-        public ref readonly StorageValue Ref =>
-            ref _pointer == null ? ref StorageValue.Zero : ref Unsafe.AsRef<StorageValue>(_pointer);
-
-        public override bool Equals([NotNullWhen(true)] object? obj)
-        {
-            return obj is Ptr other && Equals(other);
-        }
-
-        public bool Equals(Ptr other) => _pointer == other._pointer;
-
-        public override int GetHashCode() => unchecked((int)(long)_pointer);
-
-        public override string ToString()
-        {
-            return IsZero ? "0" : $"{Ref} @ {new UIntPtr(_pointer)}";
-        }
-
-        public void SetValue(in StorageValue value)
-        {
-            *_pointer = value;
-        }
     }
 }

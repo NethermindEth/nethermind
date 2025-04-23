@@ -413,12 +413,14 @@ public class StorageProviderTests
     [Test]
     public void Selfdestruct_clears_cache()
     {
+        using var map = new StorageValueMap(2);
+
         PreBlockCaches preBlockCaches = new PreBlockCaches();
         Context ctx = new(preBlockCaches);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache[accessedStorageCell] = new StorageValue([1, 2, 3]);
+        preBlockCaches.StorageCache[accessedStorageCell] = map.Map(new StorageValue([1, 2, 3]));
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);

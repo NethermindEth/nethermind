@@ -86,14 +86,15 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     {
         var b = Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes));
 
-        // use only 4 bytes from highest
-        uint hash = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, sizeof(ulong) * 3));
+        // potential seed
+        const uint seed = 13;
 
-        uint hash0 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
-        uint hash1 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
-        uint hash2 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
+        ulong fourth = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 3));
+        uint hash0 = BitOperations.Crc32C(unchecked((uint)(fourth >> 32)), Unsafe.ReadUnaligned<ulong>(ref b));
+        uint hash1 = BitOperations.Crc32C(unchecked((uint)fourth), Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
+        uint hash2 = BitOperations.Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
 
-        return (unchecked((int)BitOperations.Crc32C(hash1, ((ulong)hash0 << (sizeof(uint) * 8)) | hash2)));
+        return unchecked((int)BitOperations.Crc32C(hash1, ((ulong)hash0 << (sizeof(uint) * 8)) | hash2));
     }
 
     private Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));

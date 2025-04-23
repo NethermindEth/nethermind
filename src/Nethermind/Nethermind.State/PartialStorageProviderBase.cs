@@ -162,23 +162,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(StorageValueMap.Ptr.Null, StorageValueMap.Ptr.Null);
+            public static readonly ChangeTrace _zeroBytes = new(StorageValuePtr.Null, StorageValuePtr.Null);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(StorageValueMap.Ptr before, StorageValueMap.Ptr after)
+            public ChangeTrace(StorageValuePtr before, StorageValuePtr after)
             {
                 After = after;
                 Before = before;
             }
 
-            public ChangeTrace(StorageValueMap.Ptr after)
+            public ChangeTrace(StorageValuePtr after)
             {
                 After = after;
-                Before = StorageValueMap.Ptr.Null;
+                Before = StorageValuePtr.Null;
             }
 
-            public StorageValueMap.Ptr Before;
-            public StorageValueMap.Ptr After;
+            public StorageValuePtr Before;
+            public StorageValuePtr After;
         }
 
         /// <summary>
@@ -259,7 +259,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, in StorageValueMap.Ptr value)
+        private void PushUpdate(in StorageCell cell, in StorageValuePtr value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -304,7 +304,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, StorageValueMap.Ptr value)
+            public Change(ChangeType changeType, StorageCell storageCell, StorageValuePtr value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -313,7 +313,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly StorageValueMap.Ptr Value;
+            public readonly StorageValuePtr Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

@@ -46,6 +46,6 @@ public class StorageValueMapTests
         map.Clear();
 
         map.Map(V3).Ref.Should().Be(V3);
-        map.Map(V3).Ref.Should().Be(V4);
+        map.Map(V4).Ref.Should().Be(V4);
     }
 }
