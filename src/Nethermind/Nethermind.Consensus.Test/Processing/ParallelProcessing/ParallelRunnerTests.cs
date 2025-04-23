@@ -48,6 +48,7 @@ public class ParallelRunnerTests
             TestName = "Two Transactions Dependent, 1st delayed"
         };
 
+        yield return GenerateNTransactions(10);
         yield return GenerateNTransactions(27);
         yield return GenerateNTransactions(40);
         yield return GenerateNTransactions(50);
@@ -81,20 +82,25 @@ public class ParallelRunnerTests
         }
     }
 
+    // RS -> Result
     private static Dictionary<int, byte[]> RS(params IEnumerable<(int, byte)> values) =>
         values.ToDictionary<(int, byte), int, byte[]>(v => v.Item1, v => [v.Item2]);
 
     private static IEnumerable<Operation>[] O(params IEnumerable<IEnumerable<Operation>> operations) => operations.ToArray();
 
+    // W - Write
     private static Operation W(int location, byte value) =>
         new(OperationType.Write, location, [value]);
 
+    // WL - Write last read value
     private static Operation WL(int location, byte diff = 0) =>
         new(OperationType.Write, location, [Operation.LastRead, diff]);
 
+    // R - Read
     private static Operation R(int location, byte value) =>
         new (OperationType.Read, location, [value]);
 
+    // D - Delay
     private static Operation D(int milliseconds = 100) =>
         new (OperationType.Delay, milliseconds);
 
@@ -103,8 +109,20 @@ public class ParallelRunnerTests
     {
         ParallelTrace<IsTracing> parallelTrace = new ParallelTrace<IsTracing>();
         MultiVersionMemory<int, IsTracing> multiVersionMemory = new MultiVersionMemory<int, IsTracing>(blockSize, parallelTrace);
-        ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace, new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 100)), multiVersionMemory, parallelTrace, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx));
+        ObjectPool<HashSet<ushort>> setObjectPool = new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 1024);
+        ParallelScheduler<IsTracing> parallelScheduler = new ParallelScheduler<IsTracing>(blockSize, parallelTrace, setObjectPool);
+        VmMock<IsTracing> vmMock = new VmMock<IsTracing>(multiVersionMemory, operationsPerTx);
+        ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock);
+
         await runner.Run();
+
+        Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
+        await PrintInfo(parallelTrace, result, expected);
+        result.Should().BeEquivalentTo(expected);
+    }
+
+    private static async Task PrintInfo(ParallelTrace<IsTracing> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected)
+    {
         foreach ((long, DateTime, string) trace in parallelTrace.GetTraces() ?? [])
         {
             TestContext.Out.Write(trace.Item1);
@@ -114,11 +132,9 @@ public class ParallelRunnerTests
             await TestContext.Out.WriteLineAsync(trace.Item3);
         }
 
-        Dictionary<int,byte[]> result = multiVersionMemory.Snapshot();
         await TestContext.Out.WriteLineAsync($"Expected: {{{string.Join(", ", expected.OrderBy(e => e.Key).Select(e => $"{e.Key}:{e.Value.ToHexString()}"))}}}");
         await TestContext.Out.WriteLineAsync($"Result  : {{{string.Join(", ", result.OrderBy(e => e.Key).Select(e => $"{e.Key}:{e.Value.ToHexString()}"))}}}");
 
-        result.Should().BeEquivalentTo(expected);
     }
 
     public class VmMock<TLogger>(MultiVersionMemory<int, TLogger> memory, IEnumerable<Operation>[] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing

@@ -17,7 +17,7 @@ public class ParallelRunner<TLocation, TLogger>(
     IVm<TLocation> vm,
     int? concurrencyLevel = null) where TLogger : struct, IIsTracing where TLocation : notnull
 {
-    private int _threadIndex = 0;
+    private int _threadIndex = -1;
 
     public async Task Run()
     {
@@ -38,6 +38,11 @@ public class ParallelRunner<TLocation, TLogger>(
         TxTask task = scheduler.NextTask();
         do
         {
+            if (task.IsEmpty)
+            {
+                scheduler.WorkAvailable.Wait();
+            }
+
             if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
             task = task switch
             {
