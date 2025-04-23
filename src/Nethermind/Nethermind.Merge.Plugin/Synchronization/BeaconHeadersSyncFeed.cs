@@ -173,9 +173,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             return;
         }
 
-        BlockHeader? originalFirstHeader = null;
-        if (headersToAdd.Count > 0) originalFirstHeader = headersToAdd[0];
-
         bool mergeWhenInserted = false;
         int lowestIndex = headersToAdd.Count;
         for (int i = headersToAdd.Count - 1; i >= 0; i--)
@@ -208,20 +205,25 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                 $"Adding {headersToAdd.Count} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         AddBlockResult insertOutcome = AddBlockResult.Added;
-        _blockTree.BulkInsertHeader(headersToAdd, headerOptions);
+        try
+        {
+            _blockTree.BulkInsertHeader(headersToAdd, headerOptions);
+        }
+        finally
+        {
+            // Beacon header need to set this manually because fast header sync feed skips setting this when LowestInsertedHeader
+            // is already the lowest header which is the case with beacon header because it is set in blocktree.
+            if (LowestInsertedBlockHeader is not null)
+            {
+                SetExpectedNextHeaderToParent(LowestInsertedBlockHeader);
+            }
+        }
 
         if (_logger.IsTrace)
             _logger.Trace(
                 $"New header starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
 
         if (mergeWhenInserted) _chainMerged = true;
-
-        // Beacon header need to set this manually because fast header sync feed skips setting this when LowestInsertedHeader
-        // is already the lowest header which is the case with beacon header because it is set in blocktree.
-        if (originalFirstHeader is not null)
-        {
-            SetExpectedNextHeaderToParent(originalFirstHeader);
-        }
     }
 
     protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header)
