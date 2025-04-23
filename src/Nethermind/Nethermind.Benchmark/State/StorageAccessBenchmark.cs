@@ -18,6 +18,7 @@ public class StorageAccessBenchmark
 {
     private WorldState _preCached;
     private WorldState _notCached;
+    private StorageValueMap _map;
 
     private const uint MaxPrecalculatedIndex = 1024;
 
@@ -29,6 +30,7 @@ public class StorageAccessBenchmark
     {
         var preCache = new PreBlockCaches();
         var code = new MemDb();
+        _map = new StorageValueMap();
 
         _preCached = new WorldState(new TrieStore(new MemDb("storage"), NullLogManager.Instance), code,
             LimboLogs.Instance, preCache, false);
@@ -43,7 +45,7 @@ public class StorageAccessBenchmark
             var cell = new StorageCell(Account, i);
             var value = new StorageValue(i);
 
-            preCache.StorageCache[cell] = value;
+            preCache.StorageCache[cell] = _map.Map(value);
             _preCached.Set(cell, value);
             _notCached.Set(cell, value);
         }
