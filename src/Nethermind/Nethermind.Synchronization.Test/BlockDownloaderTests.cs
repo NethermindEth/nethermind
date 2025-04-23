@@ -115,11 +115,11 @@ public partial class BlockDownloaderTests
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
-        bool withReceipts = true;
         BlockDownloader downloader = ctx.BlockDownloader;
 
         long headNumber = 100;
         int fastSyncLag = 10;
+        bool withReceipts = true;
         long chainLength = headNumber + 1;
 
         SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
