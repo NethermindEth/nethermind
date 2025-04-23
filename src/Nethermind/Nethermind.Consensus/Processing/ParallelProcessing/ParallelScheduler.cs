@@ -6,18 +6,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
-public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing
+public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<ushort>> setPool) where TLogger : struct, IIsTracing
 {
-    private int _executionIndex = 0;
-    private int _validationIndex = 0;
-    private int _decreaseCount = 0;
-    private int _activeTasks = 0;
+    private int _executionIndex;
+    private int _validationIndex;
+    private int _decreaseCount;
+    private int _activeTasks;
     private readonly TxState[] _txStates = new TxState[blockSize];
-    private readonly HashSet<ushort>[] _txDependencies = Enumerable.Range(0, blockSize).Select(_ => new HashSet<ushort>()).ToArray();
+    private readonly HashSet<ushort>[] _txDependencies = Enumerable.Range(0, blockSize).Select(_ => setPool.Get()).ToArray();
 
     public bool Done { get; private set; } = false;
 
@@ -129,6 +130,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
                 if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Resumed dependencies by Tx {blockingTxIndex}: {string.Join(", ", dependentTxs)}");
                 dependentTxs.Clear();
+                setPool.Return(dependentTxs);
             }
 
             if (min != ushort.MaxValue)
@@ -154,7 +156,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         Interlocked.Exchange(ref state.Status, TxStatus.Executed);
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Set Tx {txIndex} status to Executed");
 
-        HashSet<ushort> dependencies = Interlocked.Exchange(ref _txDependencies[txIndex], new HashSet<ushort>());
+        HashSet<ushort> dependencies = Interlocked.Exchange(ref _txDependencies[txIndex], setPool.Get());
         ResumeDependencies(dependencies, txIndex);
 
         if (Volatile.Read(ref _validationIndex) > txIndex)

@@ -35,29 +35,19 @@ public class ParallelRunner<TLocation, TLogger>(
     {
         int threadIndex = Interlocked.Increment(ref _threadIndex);
         using var handle = Thread.CurrentThread.BoostPriorityHighest();
-        try
+        TxTask task = scheduler.NextTask();
+        do
         {
-            TxTask task = scheduler.NextTask();
-            do
+            if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
+            task = task switch
             {
-                if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
-                task = task switch
-                {
-                    { IsEmpty: true } => scheduler.NextTask(),
-                    { Validating: false } => TryExecute(task),
-                    { Validating: true } => NeedsReexecution(task.Version)
-                };
-            } while (!scheduler.Done);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-            throw;
-        }
-        finally
-        {
-            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Thread {threadIndex} finished");
-        }
+                { IsEmpty: true } => scheduler.NextTask(),
+                { Validating: false } => TryExecute(task),
+                { Validating: true } => NeedsReexecution(task.Version)
+            };
+        } while (!scheduler.Done);
+
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Thread {threadIndex} finished");
     }
 
     private TxTask TryExecute(TxTask task) =>

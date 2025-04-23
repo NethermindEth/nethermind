@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Consensus.Processing.ParallelProcessing;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -102,7 +103,7 @@ public class ParallelRunnerTests
     {
         ParallelTrace<IsTracing> parallelTrace = new ParallelTrace<IsTracing>();
         MultiVersionMemory<int, IsTracing> multiVersionMemory = new MultiVersionMemory<int, IsTracing>(blockSize, parallelTrace);
-        ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace), multiVersionMemory, parallelTrace, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx));
+        ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(new ParallelScheduler<IsTracing>(blockSize, parallelTrace, new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 100)), multiVersionMemory, parallelTrace, new VmMock<IsTracing>(multiVersionMemory, operationsPerTx));
         await runner.Run();
         foreach ((long, DateTime, string) trace in parallelTrace.GetTraces() ?? [])
         {
