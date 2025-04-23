@@ -86,13 +86,12 @@ public readonly struct StorageValue : IEquatable<StorageValue>
     {
         var b = Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes));
 
-        uint hash = 13;
+        // use only 4 bytes from highest
+        uint hash = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, sizeof(ulong) * 3));
 
         uint hash0 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
         uint hash1 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
         uint hash2 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
-
-        // Omit the highest that are likely 00000.
 
         return (unchecked((int)BitOperations.Crc32C(hash1, ((ulong)hash0 << (sizeof(uint) * 8)) | hash2)));
     }

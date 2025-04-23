@@ -3,47 +3,40 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.State;
 
 /// <summary>
-///
+/// Provides a <see cref="StorageValue"/> to a pointer mapping.
 /// </summary>
+/// <remarks>
+/// The implementation is based on a version (epochs) hash map that provides a fast cleanup
+/// after paying 4MB of the book keeping cost.
+/// </remarks>
 internal sealed class StorageValueMap : IDisposable
 {
-    private const int StorageValuesCount = 1024 * 1024;
-    private const int StorageValuesCountMask = StorageValuesCount - 1;
-    private const UIntPtr StorageValuesSize = StorageValue.MemorySize * StorageValuesCount;
+    private const int DefaultSize = 1024 * 1024;
+    private UIntPtr StorageValuesSize => StorageValue.MemorySize * _size;
+    private UIntPtr EpochsSize => sizeof(int) * _size;
+
     private unsafe StorageValue* _values;
-    private static readonly ConcurrentQueue<UIntPtr> Pool = new();
-    private static readonly Channel<UIntPtr> CleaningQueue = Channel.CreateUnbounded<UIntPtr>();
-    private static object Cleaner;
+    private unsafe int* _epochs;
 
-    private static unsafe StorageValue* Alloc()
+    private int _epoch = 1;
+    private readonly uint _size;
+
+    public StorageValueMap(uint size = DefaultSize)
     {
-        if (Pool.TryDequeue(out var dequeued))
-        {
-            return (StorageValue*)dequeued.ToPointer();
-        }
+        Debug.Assert(BitOperations.IsPow2(size));
 
-        var alloc = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
-        GC.AddMemoryPressure((long)StorageValuesSize);
-
-        Clean(new UIntPtr(alloc));
-
-        return alloc;
-    }
-
-    private static unsafe void Clean(UIntPtr alloc)
-    {
-        NativeMemory.Clear(alloc.ToPointer(), StorageValuesSize);
+        _size = size;
     }
 
     [SkipLocalsInit]
@@ -55,24 +48,36 @@ internal sealed class StorageValueMap : IDisposable
         var hash = value.GetHashCode();
         if (_values == null)
         {
-            _values = Alloc();
+            Alloc();
         }
 
+        Debug.Assert(_values != null);
+
         var values = _values;
+        var epochs = _epochs;
+        var mask = _size - 1;
 
-        for (var i = 0; i < StorageValuesCount; i++)
+        for (var i = 0; i < DefaultSize; i++)
         {
-            var at = (hash + i) & StorageValuesCountMask;
-
+            var at = (hash + i) & mask;
             var ptr = new Ptr(values + at);
 
-            if (ptr.Ref.Equals(value))
-            {
-                return ptr;
-            }
+            ref var epoch = ref epochs[at];
 
-            if (ptr.Ref.IsZero)
+            if (epoch == _epoch)
             {
+                // The entry was written in this epoch. Check if it's the mapped one.
+                if (ptr.Ref.Equals(value))
+                {
+                    return ptr;
+                }
+            }
+            else
+            {
+                Debug.Assert(epoch < _epoch, "Entry should be from the past");
+
+                // The entry was used in the past. Set the value and immediately return.
+                epoch = _epoch;
                 ptr.SetValue(value);
                 return ptr;
             }
@@ -84,59 +89,48 @@ internal sealed class StorageValueMap : IDisposable
 
     public void Clear()
     {
-        ReturnValues();
+        _epoch++;
     }
 
-    private unsafe void ReturnValues()
+    private unsafe void Alloc()
     {
-        if (_values == null)
-            return;
+        _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
+        GC.AddMemoryPressure((long)StorageValuesSize);
 
-        if (Volatile.Read(ref Cleaner) == null)
-        {
-            TryStartCleaner();
-        }
-
-        while (CleaningQueue.Writer.TryWrite(new UIntPtr(_values)) == false)
-        {
-            // should always happen
-            default(SpinWait).SpinOnce();
-        }
-
-        _values = null;
+        _epochs = (int*)NativeMemory.AlignedAlloc(EpochsSize, sizeof(int));
+        NativeMemory.Clear(_epochs, EpochsSize);
+        GC.AddMemoryPressure((long)EpochsSize);
     }
 
-    private static void TryStartCleaner()
+    private unsafe void Free()
     {
-        // Use CleaningQueue as an exchange token
-        var obj = CleaningQueue;
-
-        var startedBefore = Interlocked.Exchange(ref Cleaner, obj);
-        if (startedBefore == null)
+        if (_values != null)
         {
-            var task = Task.Factory.StartNew(async () =>
-            {
-                try
-                {
-                    var reader = CleaningQueue.Reader;
-                    while (await reader.WaitToReadAsync())
-                    {
-                        while (reader.TryRead(out var toClean))
-                        {
-                            Clean(toClean);
-                            Pool.Enqueue(toClean);
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                    throw;
-                }
-            });
-
-            Volatile.Write(ref Cleaner, task);
+            NativeMemory.AlignedFree(_values);
+            GC.RemoveMemoryPressure((long)StorageValuesSize);
         }
+
+        if (_epochs != null)
+        {
+            NativeMemory.AlignedFree(_epochs);
+            GC.RemoveMemoryPressure((long)EpochsSize);
+        }
+    }
+
+    private void ReleaseUnmanagedResources()
+    {
+        Free();
+    }
+
+    public void Dispose()
+    {
+        ReleaseUnmanagedResources();
+        GC.SuppressFinalize(this);
+    }
+
+    ~StorageValueMap()
+    {
+        ReleaseUnmanagedResources();
     }
 
     /// <summary>
@@ -177,21 +171,5 @@ internal sealed class StorageValueMap : IDisposable
         {
             *_pointer = value;
         }
-    }
-
-    private void ReleaseUnmanagedResources()
-    {
-        ReturnValues();
-    }
-
-    public void Dispose()
-    {
-        ReleaseUnmanagedResources();
-        GC.SuppressFinalize(this);
-    }
-
-    ~StorageValueMap()
-    {
-        ReleaseUnmanagedResources();
     }
 }
