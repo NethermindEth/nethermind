@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Tasks;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -20,7 +21,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     private readonly HashSet<ushort>?[] _txDependencies = new HashSet<ushort>?[blockSize];
     private bool _done = false;
     public bool Done => _done;
-    public ManualResetEventSlim WorkAvailable { get; } = new(blockSize > 0);
+    public AsyncManualResetEventSlim WorkAvailable { get; } = new(blockSize > 0);
 
     private void DecreaseIndex(ref int index, int targetIndex, [CallerArgumentExpression(nameof(index))] string name = "")
     {
@@ -238,7 +239,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         }
 
         Interlocked.Decrement(ref _activeTasks);
-        return new TxTask(Version.Empty, false);
+        return new TxTask(CheckDone(), false);
     }
 }
 

@@ -31,7 +31,7 @@ public class ParallelRunner<TLocation, TLogger>(
         await Task.WhenAll(tasks.AsSpan());
     }
 
-    private void Loop()
+    private async Task Loop()
     {
         int threadIndex = Interlocked.Increment(ref _threadIndex);
         using var handle = Thread.CurrentThread.BoostPriorityHighest();
@@ -40,7 +40,10 @@ public class ParallelRunner<TLocation, TLogger>(
         {
             if (task.IsEmpty)
             {
-                scheduler.WorkAvailable.Wait();
+                // Alternatives:
+                // - Use ManualResetEventSlim and block threads, but don't have this complicated TCS stuff
+                // - Spin this loop until scheduler.Done (what paper proposes)
+                await scheduler.WorkAvailable.WaitAsync();
             }
 
             if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
