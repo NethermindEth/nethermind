@@ -16,7 +16,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using FluentAssertions;
-using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.Serialization;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
