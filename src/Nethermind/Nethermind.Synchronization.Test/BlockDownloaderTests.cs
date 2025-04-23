@@ -118,15 +118,11 @@ public partial class BlockDownloaderTests
         bool withReceipts = true;
         BlockDownloader downloader = ctx.BlockDownloader;
 
-        Response responseOptions = Response.AllCorrect | Response.WithTransactions;
         long headNumber = 100;
         int fastSyncLag = 10;
-
-        // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
-        // will only be fixed slightly later
         long chainLength = headNumber + 1;
-        SyncPeerMock syncPeer = new(chainLength, withReceipts, responseOptions);
 
+        SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
