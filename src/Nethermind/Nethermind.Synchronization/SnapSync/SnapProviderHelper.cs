@@ -32,6 +32,16 @@ namespace Nethermind.Synchronization.SnapSync
             // TODO: Check the accounts boundaries and sorting
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
+
+            // Validate sorting order
+            for (int i = 1; i < accounts.Count; i++)
+            {
+                if (accounts[i - 1].Path.CompareTo(accounts[i].Path) >= 0)
+                {
+                    return (AddRangeResult.InvalidOrder, true, null, null);
+                }
+            }
+
             ValueHash256 lastHash = accounts[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
@@ -119,7 +129,17 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<byte[]>? proofs = null
         )
         {
-            // TODO: Check the slots boundaries and sorting
+            if (slots.Count == 0)
+                throw new ArgumentException("Cannot be empty.", nameof(slots));
+
+            // Validate sorting order
+            for (int i = 1; i < slots.Count; i++)
+            {
+                if (slots[i - 1].Path.CompareTo(slots[i].Path) >= 0)
+                {
+                    return (AddRangeResult.InvalidOrder, true);
+                }
+            }
 
             ValueHash256 lastHash = slots[^1].Path;
 
