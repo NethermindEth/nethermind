@@ -4,7 +4,11 @@
 using System.Linq;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -14,7 +18,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.Core.Test.Modules;
+namespace Nethermind.Init.Modules;
 
 public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
@@ -40,6 +44,19 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
+
+            // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
+            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
+            {
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+
+                string dbName = INetworkStorage.PeerDb;
+                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
+                    ? new MemDb(dbName)
+                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                        logManager);
+                return new NetworkStorage(peersDb, logManager);
+            })
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
