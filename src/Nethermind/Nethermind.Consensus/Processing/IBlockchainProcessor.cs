@@ -9,7 +9,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
 {
-    public interface IBlockchainProcessor : IDisposable
+    public interface IBlockchainProcessor : IAsyncDisposable
     {
         ITracerBag Tracers { get; }
 
