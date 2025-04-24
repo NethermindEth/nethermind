@@ -25,6 +25,7 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -49,7 +50,8 @@ public class DebugModuleTests
             specProvider,
             Substitute.For<IBlockchainBridge>(),
             new BlocksConfig().SecondsPerSlot,
-            Substitute.For<IBlockFinder>()
+            Substitute.For<IBlockFinder>(),
+            Substitute.For<IStateReader>()
         );
     }
 
