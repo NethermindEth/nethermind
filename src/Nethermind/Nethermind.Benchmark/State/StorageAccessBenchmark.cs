@@ -12,7 +12,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Benchmarks.State;
 
-// Right now to memory tight to be useful.
+[DisassemblyDiagnoser]
 [MemoryDiagnoser]
 public class StorageAccessBenchmark
 {
@@ -23,7 +23,10 @@ public class StorageAccessBenchmark
     private const uint MaxPrecalculatedIndex = 1024;
 
     private static readonly Address Account = new(Keccak.Compute("test"));
-    private static readonly StorageCell StorageCell = new(Account, MaxPrecalculatedIndex / 2);
+    private static readonly StorageCell A = new(Account, MaxPrecalculatedIndex / 2);
+    private static readonly StorageCell B = new(Account, MaxPrecalculatedIndex / 2 - 1);
+    private static readonly StorageCell C = new(Account, MaxPrecalculatedIndex / 2 - 2);
+    private static readonly StorageCell D = new(Account, MaxPrecalculatedIndex / 2 - 3);
 
     [GlobalSetup]
     public void Setup()
@@ -56,23 +59,33 @@ public class StorageAccessBenchmark
         _notCached.CommitTree(123);
     }
 
-    //[Benchmark]
+    [Benchmark]
+    public void Just_reset()
+    {
+        _notCached.Reset(true);
+    }
+
+    [Benchmark (OperationsPerInvoke = 4)]
     public bool PreCached_small_indexes()
     {
         _preCached.Reset(true);
 
-        return _preCached
-            .Get(StorageCell)
-            .IsZero;
+        return
+            _preCached.Get(A).IsZero &&
+            _preCached.Get(B).IsZero &&
+            _preCached.Get(C).IsZero &&
+            _preCached.Get(D).IsZero;
     }
 
-    //[Benchmark]
+    [Benchmark(OperationsPerInvoke = 4)]
     public bool NotCached_small_indexes()
     {
         _notCached.Reset(true);
 
-        return _notCached
-            .Get(StorageCell)
-            .IsZero;
+        return
+            _notCached.Get(A).IsZero &&
+            _notCached.Get(B).IsZero &&
+            _notCached.Get(C).IsZero &&
+            _notCached.Get(D).IsZero;
     }
 }
