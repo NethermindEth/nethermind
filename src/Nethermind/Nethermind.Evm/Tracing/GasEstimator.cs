@@ -76,10 +76,9 @@ namespace Nethermind.Evm.Tracing
                 ? tx.GasLimit
                 : header.GasLimit;
 
-            //This would mean that header gas limit is lower than both intrinsic gas and tx gas limit
             if (leftBound > rightBound)
             {
-                err = "Cannot estimate gas, tx gas limit is greater than header gas limit";
+                err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
                 return 0;
             }
 

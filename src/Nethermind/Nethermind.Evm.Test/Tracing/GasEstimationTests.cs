@@ -284,13 +284,13 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
 
-        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin)]
-        [TestCase(Transaction.BaseTxGasCost, 100)]
-        [TestCase(Transaction.BaseTxGasCost, 1000)]
-        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin)]
-        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin)]
-        [TestCase(Transaction.BaseTxGasCost + 123456789, 123)]
-        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin)
+        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin, false)]
+        [TestCase(Transaction.BaseTxGasCost, 100, false)]
+        [TestCase(Transaction.BaseTxGasCost, 1000, false)]
+        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 123456789, 123, true)]
+        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin, bool fail)
         {
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -306,10 +306,21 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
 
-            using (Assert.EnterMultipleScope())
+            if (fail)
             {
-                Assert.That(err, Is.Null);
-                Assert.That(result, Is.EqualTo(totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit"));
+                    Assert.That(result, Is.EqualTo(0));
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(err, Is.Null);
+                    Assert.That(result, Is.EqualTo(totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
+                }
             }
         }
 
