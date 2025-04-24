@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -34,10 +33,6 @@ namespace Nethermind.Evm.Tracing
             _stateProvider = stateProvider;
             _specProvider = specProvider;
             _blocksConfig = blocksConfig;
-        }
-
-        public class GasEstimateException(string message) : Exception(message)
-        {
         }
 
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
