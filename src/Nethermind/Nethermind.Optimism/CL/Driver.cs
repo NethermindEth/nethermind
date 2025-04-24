@@ -19,6 +19,7 @@ public class Driver : IDisposable
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
+    private readonly ulong _l2BlockTime;
 
     public Driver(IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
@@ -31,6 +32,7 @@ public class Driver : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+        _l2BlockTime = engineParameters.L2BlockTime.Value;
         _logger = logger;
         _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
@@ -41,8 +43,10 @@ public class Driver : IDisposable
             new DepositTransactionBuilder(chainId, engineParameters),
             logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge,
-            l2GenesisTimestamp, engineParameters.L2BlockTime.Value, chainId, _logger);
+            l2GenesisTimestamp, _l2BlockTime, chainId, _logger);
     }
+
+    private ulong _currentDerivedBlock;
 
     public async Task Run(CancellationToken token)
     {
@@ -50,8 +54,19 @@ public class Driver : IDisposable
         {
             BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
 
-            ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
-            L2Block l2Parent = await _l2Api.GetBlockByNumber(parentNumber);
+            ulong firstBlockNumber = decodedBatch.RelTimestamp / _l2BlockTime;
+            ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
+            if (lastBlockNumber <= _currentDerivedBlock)
+            {
+                continue;
+            }
+
+            if (_currentDerivedBlock + 1 < firstBlockNumber)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Derived batch is out of order. Highest derived block: {_currentDerivedBlock}, Batch first block: {firstBlockNumber}");
+                throw new ArgumentException("Batch is out of order");
+            }
+            L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
 
             var derivedPayloadAttributes = _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token)
                 .GetAsyncEnumerator(token);
@@ -64,8 +79,15 @@ public class Driver : IDisposable
                     if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
                     break;
                 }
+
+                _currentDerivedBlock = payloadAttributes.Number;
             }
         }
+    }
+
+    public void Reset(ulong finalizedBlockNumber)
+    {
+        _currentDerivedBlock = finalizedBlockNumber;
     }
 
     public void Dispose()

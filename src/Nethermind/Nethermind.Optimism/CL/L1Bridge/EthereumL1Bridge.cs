@@ -62,52 +62,26 @@ public class EthereumL1Bridge : IL1Bridge
         {
             L1Block newHead = await GetFinalized(token);
             ulong newHeadNumber = newHead.Number;
-
-            int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHead.Number - 1;
-            if (numberOfMissingBlocks > L1BlocksUntilFinalization)
+            if (newHeadNumber == _currentHead.Number)
             {
-                if (_logger.IsInfo) _logger.Info(
-                    $"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHead.Number}, new head number: {newHeadNumber}");
-                // Try to build up instead of rolling back
-                // At this point we already got blocks up until _currentHead.
-                // if _currentHead was not reorged => we need blocks from _currentHead up to newHead
-                // if _currentHead was reorged => we need to re-run all blocks from _currentFinalized up to newHead
-                L1Block newFinalized = await GetFinalized(token);
-                L1Block currentHeadBlock = await GetBlock(_currentHead.Number, token);
-                if (currentHeadBlock.Hash != _currentHead.Hash)
-                {
-                    // Reorg currentHead
-                    await BuildUp(_currentFinalized.Number, newFinalized.Number, token);
-                    await RollBack(newHead.Hash, newHeadNumber, newFinalized.Number, token);
-                }
-                else
-                {
-                    // CurrentHead is ok
-                    await BuildUp(_currentHead.Number, newFinalized.Number, token); // Will build up if _currentHead < newFinalized
-                    await RollBack(newHead.Hash, newHeadNumber, _currentHead.Number, token);
-                }
-
-                SetFinalized(newFinalized);
+                await Task.Delay(1000, token);
+                continue;
             }
-            else if (numberOfMissingBlocks > 0)
-            {
-                await RollBack(newHead.Hash, newHeadNumber, _currentHead.Number, token);
-            }
+            await BuildUp(_currentHead.Number, newHeadNumber, token);
+            await ProcessBlock(newHead, token);
 
             _currentHead = BlockId.FromL1Block(newHead);
-
-            await ProcessBlock(newHead, token);
-            await TryUpdateFinalized(token);
+            _currentFinalized = BlockId.FromL1Block(newHead);
 
             await Task.Delay(L1SlotTimeMilliseconds, token);
         }
     }
 
-    private async Task ProcessBlock(L1Block block, CancellationToken cancellationToken)
+    private async Task ProcessBlock(L1Block block, CancellationToken token)
     {
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"New L1 Block. Number {block.Number}");
+            if (_logger.IsInfo) _logger.Info($"New L1 Block. Number {block.Number}");
             int startingBlobIndex = 0;
             // Filter batch submitter transaction
             foreach (L1Transaction transaction in block.Transactions!)
@@ -118,7 +92,7 @@ public class EthereumL1Bridge : IL1Bridge
                         _batchSubmitter == transaction.From)
                     {
                         ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
-                        await ProcessBlobBatcherTransaction(transaction, startingBlobIndex, slotNumber, cancellationToken);
+                        await ProcessBlobBatcherTransaction(transaction, startingBlobIndex, slotNumber, token);
                     }
 
                     startingBlobIndex += transaction.BlobVersionedHashes!.Length;
@@ -128,7 +102,7 @@ public class EthereumL1Bridge : IL1Bridge
                     if (_batcherInboxAddress == transaction.To &&
                         _batchSubmitter == transaction.From)
                     {
-                        ProcessCalldataBatcherTransaction(transaction);
+                        await ProcessCalldataBatcherTransaction(transaction, token);
                     }
                 }
             }
@@ -150,10 +124,10 @@ public class EthereumL1Bridge : IL1Bridge
         return (timestamp - _l1BeaconGenesisSlotTime) / l1SlotTime;
     }
 
-    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber, CancellationToken cancellationToken)
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber, CancellationToken token)
     {
         BlobSidecar[] blobSidecars = await _beaconApi.GetBlobSidecars(slotNumber, startingBlobIndex,
-            startingBlobIndex + transaction.BlobVersionedHashes!.Length - 1, cancellationToken);
+            startingBlobIndex + transaction.BlobVersionedHashes!.Length - 1, token);
 
         if (blobSidecars is null)
         {
@@ -168,27 +142,17 @@ public class EthereumL1Bridge : IL1Bridge
 
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
-            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob, cancellationToken);
+            await _decodingPipeline.DaDataWriter.WriteAsync(
+                new DaDataSource { Data = blobSidecars[i].Blob, DataType = DaDataType.Blob }, token);
         }
     }
 
-    private void ProcessCalldataBatcherTransaction(L1Transaction transaction)
+    private async Task ProcessCalldataBatcherTransaction(L1Transaction transaction, CancellationToken token)
     {
-        if (_logger.IsError)
-        {
-            _logger.Error($"GOT REGULAR TRANSACTION");
-        }
-
-        throw new NotImplementedException();
-    }
-
-    private async Task TryUpdateFinalized(CancellationToken token)
-    {
-        if (_currentHead.Number - _currentFinalized.Number >= 64)
-        {
-            L1Block newFinalized = await GetFinalized(token);
-            SetFinalized(newFinalized);
-        }
+        ArgumentNullException.ThrowIfNull(transaction.Input);
+        if (_logger.IsInfo) _logger.Info($"Processing Calldata Batcher transaction. TxHash: {transaction.Hash}");
+        await _decodingPipeline.DaDataWriter.WriteAsync(
+            new DaDataSource { Data = transaction.Input, DataType = DaDataType.Calldata }, token);
     }
 
     private void SetFinalized(L1Block newFinalized)
@@ -273,5 +237,32 @@ public class EthereumL1Bridge : IL1Bridge
         if (_logger.IsInfo) _logger.Info($"Resetting L1 bridge. New head number: {highestFinalizedOrigin.Number}, new head hash {highestFinalizedOrigin.BlockHash}");
         _currentHead = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
         _currentFinalized = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
+    }
+
+    public async Task Initialize(CancellationToken token)
+    {
+        L1Block finalized = await GetFinalized(token);
+        _currentHead = BlockId.FromL1Block(finalized);
+        _currentFinalized = BlockId.FromL1Block(finalized);
+        if (_logger.IsInfo) _logger.Info($"Initializing L1 bridge. New head number: {finalized.Number}, new head hash {finalized.Hash}");
+    }
+    public async Task ProcessUntilHead(CancellationToken token)
+    {
+        if (_logger.IsInfo) _logger.Info("Deriving blocks after restart");
+        while (!token.IsCancellationRequested)
+        {
+            L1Block newHead = await GetFinalized(token);
+            ulong newHeadNumber = newHead.Number;
+            if (newHeadNumber == _currentHead.Number)
+            {
+                return;
+            }
+
+            await BuildUp(_currentHead.Number, newHeadNumber, token);
+            await ProcessBlock(newHead, token);
+
+            _currentHead = BlockId.FromL1Block(newHead);
+            _currentFinalized = BlockId.FromL1Block(newHead);
+        }
     }
 }

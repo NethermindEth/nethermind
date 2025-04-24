@@ -8,44 +8,36 @@ using Nethermind.Optimism.CL.Derivation;
 
 namespace Nethermind.Optimism.CL;
 
-public class ExecutionEngineManager : IExecutionEngineManager
+public class ExecutionEngineManager(
+    IL2Api l2Api,
+    ILogger logger) : IExecutionEngineManager
 {
-    private readonly IL2Api _l2Api;
-    private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
-    private readonly ILogger _logger;
+    private readonly IDerivedBlocksVerifier _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
 
     private BlockId _currentHead;
     private BlockId _currentFinalizedHead;
     private BlockId _currentSafeHead;
 
-    public ExecutionEngineManager(IL2Api l2Api, ILogger logger)
-    {
-        _l2Api = l2Api;
-        _logger = logger;
-        _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
-    }
-
     public async Task Initialize()
     {
-        var headBlock = await _l2Api.GetHeadBlock();
+        var headBlock = await l2Api.GetHeadBlock();
+        var finalizedBlock = await l2Api.GetFinalizedBlock();
+        var safeBlock = await l2Api.GetSafeBlock();
+
         _currentHead = BlockId.FromL2Block(headBlock);
-
-        var finalizedBlock = await _l2Api.GetFinalizedBlock();
         _currentFinalizedHead = BlockId.FromL2Block(finalizedBlock);
-
-        var safeBlock = await _l2Api.GetSafeBlock();
         _currentSafeHead = BlockId.FromL2Block(safeBlock);
 
-        if (_logger.IsInfo)
-            _logger.Info($"EL manager initialization complete: current head {_currentHead}, current finalized head hash {_currentFinalizedHead.Hash}, current safe hash {_currentSafeHead.Hash}");
+        if (logger.IsInfo)
+            logger.Info($"EL manager initialization complete: current head {_currentHead}, current finalized head hash {_currentFinalizedHead.Hash}, current safe hash {_currentSafeHead.Hash}");
     }
 
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
         if (_currentHead.Number >= payloadAttributes.Number)
         {
-            if (_logger.IsInfo) _logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
-            L2Block actualBlock = await _l2Api.GetBlockByNumber(payloadAttributes.Number);
+            if (logger.IsInfo) logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
+            L2Block actualBlock = await l2Api.GetBlockByNumber(payloadAttributes.Number);
             if (_derivedBlocksVerifier.ComparePayloadAttributes(
                     actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
             {
@@ -56,7 +48,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return false;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
+        if (logger.IsInfo) logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
         ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
         if (executionPayload is null)
         {
@@ -67,25 +59,87 @@ public class ExecutionEngineManager : IExecutionEngineManager
         return await SendForkChoiceUpdated(newHead, newHead, newHead);
     }
 
-    public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3)
+    public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayload)
     {
-        return await SendNewPayload(executionPayloadV3) &&
-               await SendForkChoiceUpdated(BlockId.FromExecutionPayload(executionPayloadV3), _currentFinalizedHead, _currentSafeHead);
+        if (_currentHead.Number >= (ulong)executionPayload.BlockNumber)
+        {
+            if (logger.IsTrace) logger.Trace($"Got old P2P payload. Number: {executionPayload.BlockNumber}");
+        }
+        if (logger.IsInfo) logger.Info($"New P2P Execution Payload. {executionPayload.BlockNumber} ({executionPayload.BlockHash})");
+        PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
+        switch (npResult.Status)
+        {
+            case PayloadStatus.Invalid:
+            {
+                if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
+                return false;
+            }
+            case PayloadStatus.Valid:
+            {
+                if (logger.IsTrace) logger.Trace($"NewPayload Valid P2P payload. {executionPayload}");
+                break;
+            }
+            case PayloadStatus.Accepted:
+            {
+                if (logger.IsTrace) logger.Trace($"Accepted P2P payload. {executionPayload}");
+                break;
+            }
+            case PayloadStatus.Syncing:
+            {
+                if (logger.IsTrace) logger.Trace($"Syncing P2P payload. {executionPayload}");
+                break;
+            }
+        }
+
+        var fcuResult = await l2Api.ForkChoiceUpdatedV3(executionPayload.BlockHash, _currentFinalizedHead.Hash, _currentSafeHead.Hash);
+        switch (fcuResult.PayloadStatus.Status)
+        {
+            case PayloadStatus.Invalid:
+            {
+                if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
+                return false;
+            }
+            case PayloadStatus.Valid:
+            {
+                if (logger.IsInfo) logger.Info($"FCU Valid P2P payload. {executionPayload}");
+                if (_isInSyncMode)
+                {
+                    if (logger.IsTrace) logger.Trace("EL sync completed");
+                    _isInSyncMode = false;
+                    _elSyncedTaskCompletionSource.SetResult();
+                }
+                break;
+            }
+            case PayloadStatus.Accepted:
+            {
+                if (logger.IsError) logger.Error($"FCU Accepted P2P payload. {executionPayload}");
+                break;
+            }
+            case PayloadStatus.Syncing:
+            {
+                if (logger.IsInfo) logger.Info($"FCU Syncing P2P payload. {executionPayload}");
+                break;
+            }
+        }
+
+        _currentHead = BlockId.FromExecutionPayload(executionPayload);
+
+        return true;
     }
 
     private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
-        var fcuResult = await _l2Api.ForkChoiceUpdatedV3(
+        var fcuResult = await l2Api.ForkChoiceUpdatedV3(
             _currentHead.Hash, _currentFinalizedHead.Hash, _currentSafeHead.Hash,
             payloadAttributes.PayloadAttributes);
 
         if (fcuResult.PayloadStatus.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"ForkChoiceUpdated result: {fcuResult.PayloadStatus.Status}, payload number: {payloadAttributes.Number}");
+            if (logger.IsWarn) logger.Warn($"ForkChoiceUpdated result: {fcuResult.PayloadStatus.Status}, payload number: {payloadAttributes.Number}");
             return null;
         }
 
-        var getPayloadResult = await _l2Api.GetPayloadV3(fcuResult.PayloadId!);
+        var getPayloadResult = await l2Api.GetPayloadV3(fcuResult.PayloadId!);
         if (!await SendNewPayload(getPayloadResult.ExecutionPayload))
         {
             return null;
@@ -95,19 +149,19 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
     private async Task<bool> SendNewPayload(ExecutionPayloadV3 executionPayload)
     {
-        PayloadStatusV1 npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
+        PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
 
         while (npResult.Status == PayloadStatus.Syncing)
         {
             // retry after delay
-            if (_logger.IsWarn) _logger.Warn($"Got Syncing after NewPayload. {executionPayload.BlockNumber}");
+            if (logger.IsWarn) logger.Warn($"Got Syncing after NewPayload. {executionPayload.BlockNumber}");
             await Task.Delay(100);
-            npResult = await _l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
+            npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
         }
 
         if (npResult.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"NewPayloadV3 result: {npResult.Status}, payload number: {executionPayload.BlockNumber}");
+            if (logger.IsWarn) logger.Warn($"NewPayloadV3 result: {npResult.Status}, payload number: {executionPayload.BlockNumber}");
             return false;
         }
         return true;
@@ -125,11 +179,11 @@ public class ExecutionEngineManager : IExecutionEngineManager
             return true;
         }
 
-        var result = await _l2Api.ForkChoiceUpdatedV3(headBlock.Hash, finalizedBlock.Hash, safeBlock.Hash);
+        var result = await l2Api.ForkChoiceUpdatedV3(headBlock.Hash, finalizedBlock.Hash, safeBlock.Hash);
 
         if (result.PayloadStatus.Status != PayloadStatus.Valid)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid ForkChoiceUpdatedV3({headBlock.Hash}, {finalizedBlock.Hash}, {safeBlock.Hash}), Result: {result.PayloadStatus.Status}");
+            if (logger.IsWarn) logger.Warn($"Invalid ForkChoiceUpdatedV3({headBlock.Hash}, {finalizedBlock.Hash}, {safeBlock.Hash}), Result: {result.PayloadStatus.Status}");
             return false;
         }
         _currentHead = headBlock;
@@ -138,4 +192,8 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
         return true;
     }
+
+    private bool _isInSyncMode = true;
+    private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();
+    public Task OnELSynced => _elSyncedTaskCompletionSource.Task;
 }

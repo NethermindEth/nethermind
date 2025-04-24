@@ -44,7 +44,6 @@ public class OptimismCLP2P : IDisposable
     private PubsubRouter? _router;
     private ILocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
-    private ulong _headPayloadNumber;
 
     public OptimismCLP2P(
         ulong chainId,
@@ -93,6 +92,10 @@ public class OptimismCLP2P : IDisposable
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
                 await _blocksP2PMessageChannel.Writer.WriteAsync(payload, token);
             }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn("Got invalid message from P2P");
+            }
         }
         catch (Exception e)
         {
@@ -108,21 +111,12 @@ public class OptimismCLP2P : IDisposable
             {
                 ExecutionPayloadV3 payload = await _blocksP2PMessageChannel.Reader.ReadAsync(token);
 
-                if (_headPayloadNumber >= (ulong)payload.BlockNumber)
-                {
-                    // Old payload. skip
-                    return;
-                }
-
                 if (_blockValidator.IsBlockNumberPerHeightLimitReached(payload) is not ValidityStatus.Valid)
                 {
                     return;
                 }
 
-                if (await _executionEngineManager.ProcessNewP2PExecutionPayload(payload))
-                {
-                    _headPayloadNumber = (ulong)payload.BlockNumber;
-                }
+                await _executionEngineManager.ProcessNewP2PExecutionPayload(payload);
             }
             catch (Exception e)
             {
