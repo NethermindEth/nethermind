@@ -106,13 +106,14 @@ public partial class EthRpcModuleTests
         LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
         {
             From = TestItem.AddressA,
-            Input = [1, 2, 3]
+            Input = [1, 2, 3],
+			Gas = 100000000
         };
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"StackUnderflow\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: StackUnderflow (supplied gas 100000000)\"},\"id\":67}"));
     }
 
 
@@ -303,10 +304,10 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\", \"gas\": 100000000}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"revert\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: revert (supplied gas 100000000)\"},\"id\":67}"));
     }
 
     [TestCase(
