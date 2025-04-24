@@ -88,8 +88,6 @@ public class RegisterRpcModules : IStep
             _api.KeyStore);
         rpcModuleProvider.RegisterSingle<IPersonalRpcModule>(personalRpcModule);
 
-        StepDependencyException.ThrowIfNull(_api.PeerManager);
-        StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
 
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
