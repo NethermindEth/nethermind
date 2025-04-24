@@ -264,7 +264,11 @@ namespace Nethermind.EngineApiProxy
                     response = await responseTask;
                     _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
                 }
-                else if (request.Method.StartsWith("engine_forkchoiceUpdated") && (_config.ValidationMode == ValidationMode.Fcu || _config.ValidationMode == ValidationMode.Merged))
+                // In LH mode, we want to handle FCU requests specially but still queue them
+                else if (request.Method.StartsWith("engine_forkchoiceUpdated") && 
+                        (_config.ValidationMode == ValidationMode.Fcu || 
+                         _config.ValidationMode == ValidationMode.Merged || 
+                         _config.ValidationMode == ValidationMode.LH))
                 {
                     // Queue the forkChoiceUpdated message and wait for the response
                     Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);

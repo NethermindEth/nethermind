@@ -55,6 +55,31 @@ namespace Nethermind.EngineApiProxy.Handlers
                     return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
                 }
             }
+            else if (_config.ValidationMode == ValidationMode.LH)
+            {
+                // Log the request
+                _logger.Info("---------------(LH flow)-----------------");
+                _logger.Debug($"Processing engine_forkchoiceUpdated (LH flow): {request}");
+                
+                try
+                {
+                    // Check if we should validate this block
+                    bool shouldValidate = ShouldValidateBlock(request);
+                    _logger.Info($"ShouldValidateBlock for FCU: {shouldValidate} for LH mode");
+                    
+                    // For LH mode:
+                    // 1. Intercept existing PayloadAttributes from FCU request (if present)
+                    // 2. Forward FCU with intercepted PayloadAttributes to EL
+                    // 3. Store the payloadID from the response
+                    // 4. Return FCU response without payloadID to CL
+                    return await ProcessLHFCU(request);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error handling forkChoiceUpdated in LH mode: {ex.Message}", ex);
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
+                }
+            }
 
             // Log the forkChoiceUpdated request
             _logger.Info("---------------(FCU flow)-----------------");
@@ -100,7 +125,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 
                 if (request.Params?.Count > 1 && request.Params[1] is JObject)
                 {
-                    _logger.Info("Skipping validation because request already contains payload attributes");
+                    _logger.Info($"Skipping validation because request already contains payload attributes. shouldValidate: {shouldValidate}");
                 }
             }
             
@@ -208,7 +233,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 _logger.Info($"Starting merged validation flow for head block: {headBlockHashStr}");
                 
                 // 1. Get payload ID but don't validate yet
-                payloadId = await _requestOrchestrator.GetPayloadID(request, headBlockHashStr);
+                payloadId = await _requestOrchestrator.GetPayloadID(request, headBlockHashStr, true);
                 
                 if (string.IsNullOrEmpty(payloadId))
                 {
@@ -238,6 +263,8 @@ namespace Nethermind.EngineApiProxy.Handlers
                     }
                 };
                 
+                // We do this in the DefaultRequestHandler 
+
                 // // Store info for validation that will happen after response
                 // string storedPayloadId = payloadId;
                 
@@ -268,6 +295,53 @@ namespace Nethermind.EngineApiProxy.Handlers
             {
                 _logger.Error($"Error handling merged FCU: {ex.Message}", ex);
                 return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling merged FCU: {ex.Message}");
+            }
+        }
+
+        private async Task<JsonRpcResponse> ProcessLHFCU(JsonRpcRequest request)
+        {
+            _logger.Debug("Processing LH FCU flow");
+            
+            try
+            {
+                // Forward the original request to EL
+                var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                
+                // If response contains payloadId, extract headBlockHash and store it for tracking
+                if (response.Result is JObject resultObj && 
+                    resultObj["payloadId"] != null &&
+                    request.Params != null &&
+                    request.Params.Count > 0 &&
+                    request.Params[0] is JObject fcState &&
+                    fcState["headBlockHash"] != null)
+                {
+                    string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
+                    string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
+                    
+                    if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
+                    {
+                        _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
+                        // Track this payload ID with the hash so it can be found later
+                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                        _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                    }
+                    else
+                    {
+                        _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
+                    }
+                }
+                else
+                {
+                    _logger.Warn("LH validation flow received response with no payloadId or could not extract headBlockHash");
+                }
+                
+                // Return the original response without modifications
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error handling LH FCU: {ex.Message}", ex);
+                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling LH FCU: {ex.Message}");
             }
         }
 

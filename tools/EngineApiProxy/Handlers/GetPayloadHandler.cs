@@ -38,15 +38,15 @@ namespace Nethermind.EngineApiProxy.Handlers
                         _logger.Debug($"Retrieved payload for payloadId {payloadId}");
                         
                         // For merged validation mode, track additional information about the payload
-                        if (_config.ValidationMode == ValidationMode.Merged)
+                        if (_config.ValidationMode == ValidationMode.Merged || _config.ValidationMode == ValidationMode.LH)
                         {
-                            _logger.Debug($"Merged validation mode: Processing payload for payloadId {payloadId}");
+                            _logger.Debug($"{_config.ValidationMode} validation mode: Processing payload for payloadId {payloadId}");
                             
                             // Extract block hash from the payload if available
                             if (payloadObj["blockHash"] != null)
                             {
                                 string blockHash = payloadObj["blockHash"]?.ToString() ?? string.Empty;
-                                _logger.Debug($"Merged validation: Retrieved blockHash {blockHash} for payloadId {payloadId}");
+                                _logger.Debug($"{_config.ValidationMode} validation: Retrieved blockHash {blockHash} for payloadId {payloadId}");
                             }
                         }
                     }

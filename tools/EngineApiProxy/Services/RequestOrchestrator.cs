@@ -84,9 +84,20 @@ namespace Nethermind.EngineApiProxy.Services
                 {
                     _logger.Debug("HttpClient DefaultRequestHeaders does not contain Authorization");
                 }
+                
+                // For LH mode, we don't need to do any special processing here as the ForkChoiceUpdatedHandler
+                // will directly forward the original request and extract the payloadId from the response
+                if (_config.ValidationMode == ValidationMode.LH)
+                {
+                    _logger.Info("LH mode: Skipping GetPayloadID processing as we're using the original request/response flow");
+                    return string.Empty;
+                }
+                
                 JObject payloadAttributes = new JObject();
-                if (!fromCL){
- // 1. Get the head block data
+                
+                // Original behavior for non-LH modes
+                if (!fromCL)
+                {
                     var blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
                     if (blockData == null)
                     {
@@ -94,12 +105,12 @@ namespace Nethermind.EngineApiProxy.Services
                         return string.Empty;
                     }
                     
-                    // 2. Generate payload attributes
+                    // Generate payload attributes
                     payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
                 } 
                 else 
                 {
-                    // 1. Get the head block data
+                    // Get the head block data
                     var beaconBlockHeader = await _blockFetcher.GetBeaconBlockHeader();
                     if (beaconBlockHeader == null)
                     {
@@ -113,7 +124,9 @@ namespace Nethermind.EngineApiProxy.Services
                     {
                         _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
                         return string.Empty;
-                    } else {
+                    } 
+                    else 
+                    {
                         var payload = blockData["data"]?["message"]?["body"]?["execution_payload"]?.ToObject<JObject>();
                         if (payload == null)
                         {

@@ -35,9 +35,9 @@ namespace Nethermind.EngineApiProxy.Handlers
                 return await _requestForwarder.ForwardRequestToExecutionClient(request);
             }
             
-            if (_config.ValidationMode == ValidationMode.Merged)
+            if (_config.ValidationMode == ValidationMode.Merged || _config.ValidationMode == ValidationMode.LH)
             {
-                _logger.Debug("Processing NewPayload in Merged validation mode");
+                _logger.Debug($"Processing NewPayload in {_config.ValidationMode} validation mode");
                 return await ProcessWithMergedValidation(request);
             }
             
@@ -159,13 +159,13 @@ namespace Nethermind.EngineApiProxy.Handlers
                     
                 if (string.IsNullOrEmpty(parentHash))
                 {
-                    _logger.Warn("Could not extract parent hash in merged mode, forwarding request as-is");
+                    _logger.Warn($"Could not extract parent hash in {_config.ValidationMode} mode, forwarding request as-is");
                     return await _requestForwarder.ForwardRequestToExecutionClient(request);
                 }
                 
-                _logger.Info($"Merged validation for block with hash: {blockHash}, parent: {parentHash}");
+                _logger.Info($"{_config.ValidationMode} validation for block with hash: {blockHash}, parent: {parentHash}");
                 
-                // In merged mode, we should:
+                // In merged/LH mode, we should:
                 // 1. Use parentHash to get payloadID from the tracker (stored during FCU)
                 // 2. Call engine_getPayload with this payloadID
                 // 3. Send a synthetic newPayload with the payload from getPayload
@@ -194,7 +194,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 catch (Exception ex)
                 {
                     // If the validation flow fails, log the error but continue with the original request
-                    _logger.Error($"Error in merged validation flow: {ex.Message}", ex);
+                    _logger.Error($"Error in {_config.ValidationMode} validation flow: {ex.Message}", ex);
                 }
                 
                 // Register this newPayload for future reference
@@ -207,7 +207,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 if (response.Result is JObject result && result["status"] != null)
                 {
                     string status = result["status"]?.ToString() ?? "unknown";
-                    _logger.Info($"Merged validation block {blockHash} status: {status}");
+                    _logger.Info($"{_config.ValidationMode} validation block {blockHash} status: {status}");
                 }
                 
                 return response;
@@ -215,7 +215,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             finally
             {
                 // Always resume processing, even if there was an error
-                _logger.Info("Resuming message queue processing for merged validation");
+                _logger.Info($"Resuming message queue processing for {_config.ValidationMode} validation");
                 _messageQueue.ResumeProcessing();
             }
         }

@@ -4,7 +4,8 @@ namespace Nethermind.EngineApiProxy.Config
     {
         Fcu,
         NewPayload,
-        Merged
+        Merged,
+        LH
     }
 
     public class ProxyConfig
@@ -42,7 +43,7 @@ namespace Nethermind.EngineApiProxy.Config
         /// <summary>
         /// Default fee recipient address to use when generating payload attributes
         /// </summary>
-        public string DefaultFeeRecipient { get; set; } = "0x0000000000000000000000000000000000000000";
+        public string DefaultFeeRecipient { get; set; } = "0x1268ad189526ac0b386faf06effc46779c340ee6";
 
         /// <summary>
         /// Time offset in seconds for block timestamp calculation (default: 12s)
@@ -55,6 +56,7 @@ namespace Nethermind.EngineApiProxy.Config
         /// - Fcu: Validation happens at FCU time
         /// - NewPayload: Validation happens at new payload time
         /// - Merged: FCU stores PayloadID without validation, and validation happens at next new_payload request
+        /// - LH: Similar to Merged, but intercepts PayloadAttributes from existing FCU requests instead of generating them
         /// </summary>
         public ValidationMode ValidationMode { get; set; } = ValidationMode.NewPayload;
 

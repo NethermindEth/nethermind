@@ -63,7 +63,7 @@ namespace Nethermind.EngineApiProxy
             
             var validationModeOption = new Option<ValidationMode>(
                 name: "--validation-mode",
-                description: "Mode for block validation (Fcu, NewPayload, or Merged)",
+                description: "Mode for block validation (Fcu, NewPayload, Merged, or LH)",
                 getDefaultValue: () => ValidationMode.Merged);
             
             // Create root command with options
