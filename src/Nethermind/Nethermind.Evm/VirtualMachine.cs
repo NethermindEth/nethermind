@@ -736,15 +736,17 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                     ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
                     chunkExecutionState.ReturnDataBuffer = _returnDataBuffer;
-
-                    if (env.CodeInfo.IlInfo.PrecompiledContract(in codeAsSpan[0],
-                        _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
-                        ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), _txTracer, _logger,
-                        ref chunkExecutionState))
+                    fixed(void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
                     {
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
-                        Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
-                        return new CallResult(chunkExecutionState.CallResult);
+                        if (env.CodeInfo.IlInfo.PrecompiledContract(in Unsafe.AsRef<byte>(codePtr),
+                            _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
+                            ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head), _txTracer, _logger,
+                            ref chunkExecutionState))
+                        {
+                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
+                            Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
+                            return new CallResult(chunkExecutionState.CallResult);
+                        }
                     }
 
                     UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);

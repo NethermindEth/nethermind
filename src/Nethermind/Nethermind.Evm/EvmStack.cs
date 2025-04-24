@@ -27,8 +27,7 @@ public ref struct EvmStack<TTracing>
     public const int MaxStackSize = EvmStack.MaxStackSize;
     public const int WordSize = EvmStack.WordSize;
     public const int AddressSize = EvmStack.AddressSize;
-
-    public ref byte HeadRef => ref _bytes[Head * EvmStack.WordSize];
+    public Span<byte> Bytes => _bytes;
 
     public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes)
     {
