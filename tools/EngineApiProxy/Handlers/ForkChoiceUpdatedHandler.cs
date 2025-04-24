@@ -5,24 +5,46 @@ using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Collections.Concurrent;
 
 namespace Nethermind.EngineApiProxy.Handlers
 {
-    public class ForkChoiceUpdatedHandler(
-        ProxyConfig config,
-        RequestForwarder requestForwarder,
-        MessageQueue messageQueue,
-        PayloadTracker payloadTracker,
-        RequestOrchestrator requestOrchestrator,
-        ILogManager logManager)
+    public class ForkChoiceUpdatedHandler : IDisposable
     {
-        private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
-        private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
-        private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
-        private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
+        private readonly ProxyConfig _config;
+        private readonly ILogger _logger;
+        private readonly RequestForwarder _requestForwarder;
+        private readonly MessageQueue _messageQueue;
+        private readonly PayloadTracker _payloadTracker;
+        private readonly RequestOrchestrator _requestOrchestrator;
+        
+        // Cache for LH mode to avoid duplicate FCU requests to EL
+        private readonly ConcurrentDictionary<string, JsonRpcResponse> _lhResponseCache = new();
+        private readonly ConcurrentDictionary<string, DateTime> _lhCacheTimestamps = new();
+        private readonly TimeSpan _lhCacheExpiryTime = TimeSpan.FromSeconds(30);
+        private readonly System.Threading.Timer _cacheCleanupTimer;
+        private bool _disposed;
+
+        public ForkChoiceUpdatedHandler(
+            ProxyConfig config,
+            RequestForwarder requestForwarder,
+            MessageQueue messageQueue,
+            PayloadTracker payloadTracker,
+            RequestOrchestrator requestOrchestrator,
+            ILogManager logManager)
+        {
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+            _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
+            _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+            _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
+            
+            // Start cache cleanup timer (every 30 seconds)
+            _cacheCleanupTimer = new System.Threading.Timer(CleanupExpiredCacheEntries, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }
 
         public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
         {
@@ -304,45 +326,165 @@ namespace Nethermind.EngineApiProxy.Handlers
             
             try
             {
-                // Forward the original request to EL
-                var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                // Check if request contains payload attributes
+                bool hasPayloadAttributes = request.Params != null &&
+                                          request.Params.Count > 1 && 
+                                          request.Params[1] is JObject;
                 
-                // If response contains payloadId, extract headBlockHash and store it for tracking
-                if (response.Result is JObject resultObj && 
-                    resultObj["payloadId"] != null &&
-                    request.Params != null &&
-                    request.Params.Count > 0 &&
-                    request.Params[0] is JObject fcState &&
-                    fcState["headBlockHash"] != null)
+                // For requests with payload attributes, implement deduplication
+                if (hasPayloadAttributes)
                 {
-                    string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
-                    string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
+                    // Create a fingerprint of the request to identify duplicates
+                    string requestFingerprint = ComputeRequestFingerprint(request);
                     
-                    if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
+                    // Check if we've seen this exact request recently
+                    if (_lhResponseCache.TryGetValue(requestFingerprint, out var cachedResponse))
                     {
-                        _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
-                        // Track this payload ID with the hash so it can be found later
-                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
-                        _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                        if (_lhCacheTimestamps.TryGetValue(requestFingerprint, out var timestamp))
+                        {
+                            if (DateTime.UtcNow - timestamp < _lhCacheExpiryTime)
+                            {
+                                _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...), returning cached response");
+                                
+                                // Update ID to match the current request
+                                var clonedResponse = CloneResponseWithNewId(cachedResponse, request.Id);
+                                return clonedResponse;
+                            }
+                            else
+                            {
+                                // Cache entry expired, remove it
+                                _logger.Debug($"LH mode: Cache entry expired for fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}..., will forward to EL");
+                                _lhResponseCache.TryRemove(requestFingerprint, out _);
+                                _lhCacheTimestamps.TryRemove(requestFingerprint, out _);
+                            }
+                        }
+                    }
+                    
+                    _logger.Info($"LH mode: New unique FCU request with payload attributes (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...)");
+                    
+                    // Extract the head block hash for tracking
+                    string headBlockHashStr = string.Empty;
+                    if (request.Params != null &&
+                        request.Params.Count > 0 &&
+                        request.Params[0] is JObject fcState &&
+                        fcState["headBlockHash"] != null)
+                    {
+                        headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
+                    }
+                    
+                    // Forward the original request to EL
+                    var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                    
+                    // If response contains payloadId, store it for tracking
+                    if (response.Result is JObject resultObj && 
+                        resultObj["payloadId"] != null)
+                    {
+                        string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
+                        
+                        if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
+                        {
+                            _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
+                            // Track this payload ID with the hash so it can be found later
+                            var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                            _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                            
+                            // Only cache the response if we have less than 100 entries (prevent memory issues)
+                            if (_lhResponseCache.Count < 100)
+                            {
+                                _lhResponseCache[requestFingerprint] = response;
+                                _lhCacheTimestamps[requestFingerprint] = DateTime.UtcNow;
+                                _logger.Debug($"LH mode: Cached response for FCU request (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...)");
+                            }
+                            else
+                            {
+                                _logger.Warn($"LH mode: Cache full (size: {_lhResponseCache.Count}), not caching response");
+                            }
+                        }
+                        else
+                        {
+                            _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
+                        }
                     }
                     else
                     {
-                        _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
+                        _logger.Warn("LH validation flow received response with no payloadId");
                     }
+                    
+                    return response;
                 }
                 else
                 {
-                    _logger.Warn("LH validation flow received response with no payloadId or could not extract headBlockHash");
+                    // For requests without payload attributes, just forward as usual
+                    _logger.Debug("LH mode: FCU request without payload attributes, forwarding normally");
+                    
+                    // Forward the original request to EL
+                    var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                    
+                    // Process response normally
+                    if (response.Result is JObject resultObj && 
+                        resultObj["payloadId"] != null &&
+                        request.Params != null &&
+                        request.Params.Count > 0 &&
+                        request.Params[0] is JObject fcState &&
+                        fcState["headBlockHash"] != null)
+                    {
+                        string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
+                        string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
+                        
+                        if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
+                        {
+                            _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
+                            // Track this payload ID with the hash so it can be found later
+                            var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                            _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                        }
+                    }
+                    
+                    return response;
                 }
-                
-                // Return the original response without modifications
-                return response;
             }
             catch (Exception ex)
             {
                 _logger.Error($"Error handling LH FCU: {ex.Message}", ex);
                 return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling LH FCU: {ex.Message}");
             }
+        }
+        
+        /// <summary>
+        /// Computes a fingerprint for FCU requests to identify duplicates
+        /// </summary>
+        private static string ComputeRequestFingerprint(JsonRpcRequest request)
+        {
+            // We only need the params to determine if two requests are identical
+            if (request.Params == null)
+                return string.Empty;
+                
+            // Create a normalized JSON string of the params
+            return JsonConvert.SerializeObject(request.Params);
+        }
+        
+        /// <summary>
+        /// Creates a clone of a response with a new ID to match the current request
+        /// </summary>
+        private static JsonRpcResponse CloneResponseWithNewId(JsonRpcResponse response, object? newId)
+        {
+            return new JsonRpcResponse
+            {
+                Id = newId,
+                Result = response.Result != null 
+                    ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Result)) 
+                    : null,
+                Error = response.Error != null 
+                    ? new JsonRpcError 
+                    { 
+                        Code = response.Error.Code, 
+                        Message = response.Error.Message, 
+                        Data = response.Error.Data != null
+                            ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Error.Data))
+                            : null
+                    } 
+                    : null
+            };
         }
 
         private static string ExtractHeadBlockHash(JsonRpcRequest request)
@@ -354,6 +496,86 @@ namespace Nethermind.EngineApiProxy.Handlers
             }
             
             return string.Empty;
+        }
+
+        private void CleanupExpiredCacheEntries(object? state)
+        {
+            try
+            {
+                int removedCount = 0;
+                var now = DateTime.UtcNow;
+                
+                // Find all expired entries
+                var expiredKeys = _lhCacheTimestamps
+                    .Where(kvp => now - kvp.Value > _lhCacheExpiryTime)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                
+                // Remove expired entries
+                foreach (var key in expiredKeys)
+                {
+                    if (_lhResponseCache.TryRemove(key, out _))
+                    {
+                        removedCount++;
+                    }
+                    
+                    _lhCacheTimestamps.TryRemove(key, out _);
+                }
+                
+                if (removedCount > 0)
+                {
+                    _logger.Debug($"LH mode: Cleaned up {removedCount} expired cache entries. Cache size: {_lhResponseCache.Count}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error during cache cleanup: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Safe substring helper that handles null or short strings
+        /// </summary>
+        private static string GetSafeSubstring(string input, int startIndex, int length)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+                
+            if (startIndex >= input.Length)
+                return string.Empty;
+                
+            // Calculate safe length to prevent going past end of string
+            int safeLength = Math.Min(length, input.Length - startIndex);
+            return input.Substring(startIndex, safeLength);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+                
+            if (disposing)
+            {
+                // Dispose managed resources
+                _cacheCleanupTimer.Dispose();
+                
+                // Clear caches
+                _lhResponseCache.Clear();
+                _lhCacheTimestamps.Clear();
+            }
+            
+            _disposed = true;
+        }
+        
+        ~ForkChoiceUpdatedHandler()
+        {
+            Dispose(false);
         }
     }
 } 
