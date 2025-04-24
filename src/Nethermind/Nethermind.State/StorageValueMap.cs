@@ -47,17 +47,19 @@ internal sealed class StorageValueMap : IDisposable
     public unsafe StorageValuePtr Map(in StorageValue value)
     {
         if (value.IsZero)
-            return StorageValuePtr.Null;
+            goto Nothing;
 
         var hash = value.GetHashCode();
 
         var mask = _size - 1;
+        var i = 0;
+        StorageValuePtr ptr;
 
-        for (var i = 0; i < _size; i++)
+        do
         {
             var at = (hash + i) & mask;
 
-            var ptr = new StorageValuePtr(_values + at);
+            ptr = new StorageValuePtr(_values + at);
 
             ref var epoch = ref _epochs[at];
 
@@ -67,10 +69,11 @@ internal sealed class StorageValueMap : IDisposable
                 // The entry was written in this epoch. Check if it's the mapped one.
                 if (ptr.Ref.Equals(value))
                 {
-                    return ptr;
+                    goto Return;
                 }
 
                 // Move to the next one, not equal
+                i++;
                 continue;
             }
 
@@ -80,8 +83,6 @@ internal sealed class StorageValueMap : IDisposable
                 // If there's a chance that a thread aborts in this place,
                 // it should be considered migrating to negative epochs for locking as they can be recovered later.
                 Thread.SpinWait(1);
-
-                i--;
                 continue;
             }
 
@@ -94,15 +95,17 @@ internal sealed class StorageValueMap : IDisposable
 
                 // Commit and unlock
                 Volatile.Write(ref epoch, _epoch);
-                return ptr;
+                goto Return;
             }
 
             // Didn't lock, retry
-            i--;
-        }
+        } while (i < _size);
 
-        // Return null
-        return default;
+    Nothing:
+        ptr = default;
+
+    Return:
+        return ptr;
     }
 
     public void Clear()
