@@ -5,6 +5,7 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -27,6 +28,11 @@ public class StorageAccessBenchmark
     private static readonly StorageCell B = new(Account, MaxPrecalculatedIndex / 2 - 1);
     private static readonly StorageCell C = new(Account, MaxPrecalculatedIndex / 2 - 2);
     private static readonly StorageCell D = new(Account, MaxPrecalculatedIndex / 2 - 3);
+
+    private static readonly StorageValue ValueA = new(new UInt256(1));
+    private static readonly StorageValue ValueB = new(new UInt256(2));
+    private static readonly StorageValue ValueC = new(new UInt256(3));
+    private static readonly StorageValue ValueD = new(new UInt256(4));
 
     [GlobalSetup]
     public void Setup()
@@ -65,7 +71,7 @@ public class StorageAccessBenchmark
         _notCached.Reset(true);
     }
 
-    [Benchmark (OperationsPerInvoke = 4)]
+    [Benchmark(OperationsPerInvoke = 4)]
     public bool PreCached_small_indexes()
     {
         _preCached.Reset(true);
@@ -87,5 +93,16 @@ public class StorageAccessBenchmark
             _notCached.Get(B).IsZero &&
             _notCached.Get(C).IsZero &&
             _notCached.Get(D).IsZero;
+    }
+
+    [Benchmark(OperationsPerInvoke = 4)]
+    public void Set()
+    {
+        _notCached.Reset(true);
+
+        _notCached.Set(A, ValueA);
+        _notCached.Set(B, ValueB);
+        _notCached.Set(C, ValueC);
+        _notCached.Set(D, ValueD);
     }
 }
