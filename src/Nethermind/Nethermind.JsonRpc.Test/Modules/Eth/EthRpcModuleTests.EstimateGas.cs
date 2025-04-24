@@ -338,31 +338,38 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        // Get the current block's gas limit
-        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
-        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
-        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+		string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
+		string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
+		string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
+		long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"data\": \"{InfiniteLoopCode.ToHexString()}\"}}");
-
-        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
-        JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32015,\"message\":\"err: OutOfGas (supplied gas {blockGasLimit})\"}},\"id\":67}}");
+        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit);
     }
 
     [Test]
     public async Task Estimate_gas_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        long specifiedGasLimit = 30000000;
+        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000);
+    }
 
+    [Test]
+    public async Task Estimate_gas_cannot_exceed_gas_cap()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = 50000000;
+        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000);
+    }
+
+    private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
+    {
+        string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gas\": \"0x{specifiedGasLimit:X}\", \"data\": \"{InfiniteLoopCode.ToHexString()}\"}}");
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"{gasParam}, \"data\": \"{InfiniteLoopCode.ToHexString()}\"}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32015,\"message\":\"err: OutOfGas (supplied gas {specifiedGasLimit})\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32015,\"message\":\"err: OutOfGas (supplied gas {expectedGasLimit})\"}},\"id\":67}}");
     }
+
 }
