@@ -338,10 +338,10 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-		string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
-		string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
-		string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-		long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
+        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
+        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
+        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         await TestEstimateGasOutOfGas(ctx, null, blockGasLimit);
     }

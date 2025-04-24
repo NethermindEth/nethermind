@@ -107,7 +107,7 @@ public partial class EthRpcModuleTests
         {
             From = TestItem.AddressA,
             Input = [1, 2, 3],
-			Gas = 100000000
+            Gas = 100000000
         };
 
         string serialized =
