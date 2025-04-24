@@ -17,7 +17,6 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Dns;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -64,7 +63,7 @@ public class InitializeNetwork : IStep
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly ISynchronizer _synchronizer;
     private readonly ISyncPeerPool _syncPeerPool;
-    private readonly EnrDiscovery _enrDiscovery;
+    private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly INetworkStorage _peerStorage;
     private readonly IDiscoveryApp _discoveryApp;
     private readonly Lazy<IPeerPool> _peerPool;
@@ -81,7 +80,7 @@ public class InitializeNetwork : IStep
         ISyncServer _, // Need to be resolved at least once
         ISynchronizer synchronizer,
         ISyncPeerPool syncPeerPool,
-        EnrDiscovery enrDiscovery,
+        NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
         [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
@@ -95,7 +94,7 @@ public class InitializeNetwork : IStep
         _nodeStatsManager = nodeStatsManager;
         _synchronizer = synchronizer;
         _syncPeerPool = syncPeerPool;
-        _enrDiscovery = enrDiscovery;
+        _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
         _peerStorage = peerStorage;
@@ -344,7 +343,7 @@ public class InitializeNetwork : IStep
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _ = new NodeSourceToDiscV4Feeder(_enrDiscovery, _discoveryApp, 50).Run(_api.ProcessExit!.Token);
+            _ = _enrDiscoveryAppFeeder.Run();
         }
 
         foreach (INethermindPlugin plugin in _api.Plugins)

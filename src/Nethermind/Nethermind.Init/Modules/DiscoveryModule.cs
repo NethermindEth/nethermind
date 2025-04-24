@@ -4,7 +4,6 @@
 using System.Linq;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -35,6 +34,10 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 return new EnrDiscovery(enrRecordParser, networkConfig, logManager); // initialize with a proper network
             })
 
+            // Allow feeding discovery app bootnodes from enr. Need `Run` to be called.
+            .AddSingleton<NodeSourceToDiscV4Feeder>()
+            .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
+
             // Uses by RPC also.
             .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
             // This load from file.
@@ -50,6 +53,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             {
                 ILogManager logManager = ctx.Resolve<ILogManager>();
 
+                // ToDo: PeersDB is registered outside dbProvider
                 string dbName = INetworkStorage.PeerDb;
                 IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                     ? new MemDb(dbName)
