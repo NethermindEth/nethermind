@@ -684,7 +684,10 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                if(vmState.Env.CodeInfo.Codehash is not null)
+                {
+                    IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                }
                 //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
         }
