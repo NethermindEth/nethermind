@@ -3,12 +3,14 @@
 
 using Nethermind.Specs;
 using NUnit.Framework;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Evm.Test;
 
 public class Eip2537Tests : VirtualMachineTestsBase
 {
+    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => (ulong)((long)MainnetSpecProvider.PragueBlockTimestamp + _timestampAdjustment);
 
     private long _timestampAdjustment;
@@ -25,22 +27,20 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_add_before_prague()
     {
         _timestampAdjustment = -12;
-        byte[] code = Prepare.EvmCode
-            .CallWithInput(G1AddPrecompile.Address, 1000L, new byte[256])
-            .Done;
-        TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150);
+        Assert.That(G1AddPrecompile.Address.IsPrecompile(Spec), Is.False);
     }
 
     [Test]
     public void Test_add_after_prague()
     {
+        Assert.That(G1AddPrecompile.Address.IsPrecompile(Spec), Is.True);
+
         byte[] code = Prepare.EvmCode
             .CallWithInput(G1AddPrecompile.Address, 1000L, new byte[256])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+		// 21592
         AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 375);
     }
 
