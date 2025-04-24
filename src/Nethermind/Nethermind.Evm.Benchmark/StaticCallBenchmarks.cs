@@ -80,7 +80,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-            IKeyValueStore codeDb = new MemDb();
+            IKeyValueStoreWithBatching codeDb = new MemDb();
 
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());

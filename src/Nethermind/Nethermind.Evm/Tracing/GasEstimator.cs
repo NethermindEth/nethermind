@@ -127,14 +127,12 @@ namespace Nethermind.Evm.Tracing
         {
             OutOfGasTracer tracer = new();
 
-            // TODO: Workaround to not mutate the original Tx
-            long originalGasLimit = transaction.GasLimit;
-
-            transaction.GasLimit = gasLimit;
+            Transaction txClone = new Transaction();
+            transaction.CopyTo(txClone);
+            txClone.GasLimit = gasLimit;
 
             BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
-            _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
-            transaction.GasLimit = originalGasLimit;
+            _transactionProcessor.CallAndRestore(txClone, in blCtx, tracer.WithCancellation(token));
 
             return !tracer.OutOfGas;
         }

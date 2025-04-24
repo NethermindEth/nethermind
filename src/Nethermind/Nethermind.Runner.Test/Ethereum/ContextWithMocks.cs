@@ -76,13 +76,14 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<IHeaderValidator>())
                     .AddSingleton(Substitute.For<IUnclesValidator>())
                     .AddSingleton(Substitute.For<IRpcModuleProvider>())
+                    .AddSingleton(Substitute.For<IWorldStateManager>())
+                    .AddSingleton(Substitute.For<IStateReader>())
                     .AddSingleton(Substitute.For<IEthSyncingInfo>())
                     .Build()
             );
 
             var api = new NethermindApi(apiDependencies);
             MockOutNethermindApi(api);
-            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }
@@ -120,9 +121,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.RlpxPeer = Substitute.For<IRlpxHost>();
             api.SealValidator = Substitute.For<ISealValidator>();
             api.SessionMonitor = Substitute.For<ISessionMonitor>();
-            api.StateReader = Substitute.For<IStateReader>();
-            api.VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>();
-            api.MainNodeStorage = Substitute.For<INodeStorage>();
             api.MainProcessingContext = Substitute.For<IMainProcessingContext>();
             api.TxSender = Substitute.For<ITxSender>();
             api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -137,7 +135,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
 
-            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
         }
     }

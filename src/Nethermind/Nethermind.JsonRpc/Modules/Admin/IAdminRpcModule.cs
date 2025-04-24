@@ -62,23 +62,11 @@ public interface IAdminRpcModule : IContextAwareRpcModule
         IsImplemented = false)]
     ResultWrapper<bool> admin_setSolc();
 
-    [JsonRpcMethod(Description = "Runs full pruning if enabled.",
-        EdgeCaseHint = "",
-        ExampleResponse = "\"Starting\"",
-        IsImplemented = true)]
-    ResultWrapper<PruningStatus> admin_prune();
-
     [JsonRpcMethod(Description = "True if state root for the block is available",
         EdgeCaseHint = "",
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block);
-
-    [JsonRpcMethod(Description = "Runs VerifyTrie.",
-        EdgeCaseHint = "",
-        ExampleResponse = "\"Starting\"",
-        IsImplemented = true)]
-    ResultWrapper<string> admin_verifyTrie(BlockParameter block);
 
     [JsonRpcMethod(Description = "Adds given node as a trusted peer, allowing the node to always connect even if slots are full.",
         EdgeCaseHint = "",
