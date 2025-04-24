@@ -424,11 +424,14 @@ namespace Nethermind.Facade
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
         {
-            if (txResult.Success)
+            var error = txResult switch
             {
-                return tracerError is not null ? $"err: {tracerError} (supplied gas {gasLimit})" : null;
-            }
-            return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
+                { Success: true } when tracerError is not null => tracerError,
+                { Success: false, Error: not null } => txResult.Error,
+                _ => null
+            };
+
+            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
         }
     }
 }
