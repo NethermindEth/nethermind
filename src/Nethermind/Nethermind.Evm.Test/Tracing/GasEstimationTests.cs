@@ -329,9 +329,13 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? _, GasEstimator.DefaultErrorMargin);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, GasEstimator.DefaultErrorMargin);
 
-            Assert.That(result, Is.Not.EqualTo(totalGas).Within(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(result, Is.Not.EqualTo(totalGas).Within(10));
+            }
         }
 
         [Test]
@@ -350,9 +354,13 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? _, 0);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, 0);
 
-            Assert.That(result, Is.EqualTo(totalGas));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(result, Is.EqualTo(totalGas));
+            }
         }
 
         private class TestEnvironment

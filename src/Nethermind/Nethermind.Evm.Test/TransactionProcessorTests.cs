@@ -317,7 +317,10 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        return estimator.Estimate(tx, block.Header, tracer, out string? _, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(err, Is.Null);
+
+        return estimate;
     }
 
     public static IEnumerable<TestCaseData> EstimateWithHighTxValueTestCases
