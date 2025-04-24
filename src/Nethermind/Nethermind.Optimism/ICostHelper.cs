@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public interface IL1CostHelper
+public interface ICostHelper
 {
     UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState);
 
-    UInt256 ComputeOperatorCost(long gas, in BlockExecutionContext blkContext);
+    UInt256 ComputeOperatorCost(long gas, BlockHeader header, IWorldState worldState);
 }

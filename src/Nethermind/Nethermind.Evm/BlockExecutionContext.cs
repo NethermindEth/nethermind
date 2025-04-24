@@ -13,12 +13,7 @@ public readonly struct BlockExecutionContext
     public BlockHeader Header { get; }
     public UInt256? BlobBaseFee { get; }
 
-    /// <summary>
-    /// Extension data scoped to per block execution. Used for cached, network specific information.
-    /// </summary>
-    public object? ExtensionData { get; }
-
-    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, object? extensionData = null)
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
     {
         Header = blockHeader;
         if (blockHeader?.ExcessBlobGas is not null)
@@ -29,14 +24,11 @@ public readonly struct BlockExecutionContext
             }
             BlobBaseFee = feePerBlobGas;
         }
-
-        ExtensionData = extensionData;
     }
 
-    public BlockExecutionContext(BlockHeader blockHeader, in UInt256 forceBlobBaseFee, object? extensionData = null)
+    public BlockExecutionContext(BlockHeader blockHeader, in UInt256 forceBlobBaseFee)
     {
         Header = blockHeader;
         BlobBaseFee = forceBlobBaseFee;
-        ExtensionData = extensionData;
     }
 }

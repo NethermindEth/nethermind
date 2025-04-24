@@ -137,19 +137,19 @@ public sealed class L1BlockGasInfo
             }
             if (_isFjord)
             {
-                UInt256 fastLzSize = OPL1CostHelper.ComputeFlzCompressLen(tx);
-                l1Fee = OPL1CostHelper.ComputeL1CostFjord(fastLzSize, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value, out UInt256 estimatedSize);
-                l1GasUsed = OPL1CostHelper.ComputeGasUsedFjord(estimatedSize);
+                UInt256 fastLzSize = OptimismCostHelper.ComputeFlzCompressLen(tx);
+                l1Fee = OptimismCostHelper.ComputeL1CostFjord(fastLzSize, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value, out UInt256 estimatedSize);
+                l1GasUsed = OptimismCostHelper.ComputeGasUsedFjord(estimatedSize);
             }
             else if (_isEcotone)
             {
-                l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isPostRegolith);
-                l1Fee = OPL1CostHelper.ComputeL1CostEcotone(l1GasUsed.Value, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value);
+                l1GasUsed = OptimismCostHelper.ComputeDataGas(tx, _isPostRegolith);
+                l1Fee = OptimismCostHelper.ComputeL1CostEcotone(l1GasUsed.Value, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value);
             }
             else
             {
-                l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isPostRegolith) + _overhead;
-                l1Fee = OPL1CostHelper.ComputeL1CostPreEcotone(l1GasUsed.Value, _l1BaseFee, _feeScalar);
+                l1GasUsed = OptimismCostHelper.ComputeDataGas(tx, _isPostRegolith) + _overhead;
+                l1Fee = OptimismCostHelper.ComputeL1CostPreEcotone(l1GasUsed.Value, _l1BaseFee, _feeScalar);
             }
         }
 
@@ -163,7 +163,4 @@ public sealed class L1BlockGasInfo
             operatorFeeScalar,
             operatorFeeConstant);
     }
-
-    public UInt256 CalculateOperatorFee(in long spentGas) =>
-        (UInt256)spentGas * _operatorFeeScalar / 1_000_000 + _operatorFeeConstant;
 }

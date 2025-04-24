@@ -21,7 +21,7 @@ public class OptimismTransactionProcessorTests
     private VirtualMachine _machine;
     private IDb _codeDb;
     private OptimismSpecHelper _optimismSpec;
-    private OPL1CostHelper _l1CostHelper;
+    private OptimismCostHelper _l1CostHelper;
     private OptimismTransactionProcessor _processor;
 
     private static readonly Address L1Address = Address.FromNumber(53455325324534);
@@ -47,7 +47,7 @@ public class OptimismTransactionProcessorTests
             IsthmusTimestamp = IsthmusTimestamp,
         });
 
-        _l1CostHelper = new OPL1CostHelper(_optimismSpec, L1Address);
+        _l1CostHelper = new OptimismCostHelper(_optimismSpec, L1Address);
 
         _processor = new OptimismTransactionProcessor(_spec, _worldState, _machine, LimboLogs.Instance, _l1CostHelper, _optimismSpec, _code);
     }

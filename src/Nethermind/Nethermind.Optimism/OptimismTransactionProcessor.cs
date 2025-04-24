@@ -17,7 +17,7 @@ public class OptimismTransactionProcessor(
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
@@ -94,8 +94,8 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, blkContext.Header, WorldState);
-            UInt256 maxOperatorCost = l1CostHelper.ComputeOperatorCost(tx.GasLimit, blkContext);
+            UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, blkContext.Header, WorldState);
+            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, blkContext.Header, WorldState);
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
@@ -149,14 +149,14 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsBedrock(header))
             {
-                UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+                UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
                 WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
             }
 
             if (opSpecHelper.IsIsthmus(header))
             {
-                UInt256 operatorCostMax = l1CostHelper.ComputeOperatorCost(tx.GasLimit, env.BlockExecutionContext);
-                UInt256 operatorCostUsed = l1CostHelper.ComputeOperatorCost(spentGas, env.BlockExecutionContext);
+                UInt256 operatorCostMax = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+                UInt256 operatorCostUsed = costHelper.ComputeOperatorCost(spentGas, header, WorldState);
 
                 if (operatorCostMax > operatorCostUsed)
                 {
