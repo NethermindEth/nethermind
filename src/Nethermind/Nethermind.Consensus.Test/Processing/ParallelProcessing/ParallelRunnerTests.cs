@@ -51,18 +51,21 @@ public class ParallelRunnerTests
         const int stressIterations = 1;
         for (int i = 0; i < stressIterations; i++)
         {
-            yield return GenerateNTransactions(10);
-            yield return GenerateNTransactions(27);
-            yield return GenerateNTransactions(40);
-            yield return GenerateNTransactions(50);
-            yield return GenerateNTransactions(60);
-            yield return GenerateNTransactions(80);
-            yield return GenerateNTransactions(90);
-            yield return GenerateNTransactions(100);
-            yield return GenerateNTransactions(120);
+            yield return GenerateNDependantTransactions(10);
+            yield return GenerateNDependantTransactions(27);
+            yield return GenerateNDependantTransactions(40);
+            yield return GenerateNDependantTransactions(50);
+            yield return GenerateNDependantTransactions(60);
+            yield return GenerateNDependantTransactions(80);
+            yield return GenerateNDependantTransactions(90);
+            yield return GenerateNDependantTransactions(100);
+            yield return GenerateNDependantTransactions(120);
         }
 
-        TestCaseData GenerateNTransactions(ushort n)
+        // Generates N transactions that each K transaction is dependent on K-1 transaction
+        // Also K transaction will have a N-K delay before execution
+        // So basically each transaction is dependent on previous and previous will take longer to complete
+        TestCaseData GenerateNDependantTransactions(ushort n)
         {
             Dictionary<int, byte[]> results = new();
             List<Operation> currentTxOperations = new();

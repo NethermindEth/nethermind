@@ -5,6 +5,9 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Tasks;
 
+/// <summary>
+/// This should be direct replacement of <see cref="ManualResetEventSlim"/> but with Async wait methods.
+/// </summary>
 public class AsyncManualResetEventSlim
 {
     private volatile TaskCompletionSource<bool> _tcs = CreateNewTcs();
