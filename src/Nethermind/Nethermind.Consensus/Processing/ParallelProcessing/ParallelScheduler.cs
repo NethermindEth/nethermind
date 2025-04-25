@@ -50,7 +50,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     /// Maps blocking transaction -> transactions that depend on blocking transaction
     /// </summary>
     private readonly HashSet<ushort>?[] _txDependencies = new HashSet<ushort>?[blockSize];
-    private bool _done = false;
+    private volatile bool _done = false;
 
     /// <summary>
     /// Indicates all work has been completed
@@ -118,6 +118,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             return true;
         }
 
+        // WorkAvailable.Reset?
         return false;
     }
 
@@ -172,7 +173,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         else
         {
             // if we are not done
-            if (!Volatile.Read(ref _done))
+            if (!_done)
             {
                 // we probably don't have anything to do, lets pause the threads until new work can be scheduled
                 WorkAvailable.Reset();
@@ -297,7 +298,10 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
 
             // Decrease execution index to the smallest found transaction
             // We need to re-execute them now
-            DecreaseIndex(ref _executionIndex, min);
+            if (min != ushort.MaxValue)
+            {
+                DecreaseIndex(ref _executionIndex, min);
+            }
         }
     }
 
@@ -338,6 +342,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             // if new location was written, we need to re-do subsequent transaction validations
             if (wroteNewLocation)
             {
+                WorkAvailable.Set(); // TODO: not needed?
                 DecreaseIndex(ref _validationIndex, txIndex);
             }
             else

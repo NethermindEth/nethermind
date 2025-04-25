@@ -23,14 +23,15 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     /// <summary>
     /// Information about stored value for a given location
     /// </summary>
-    /// <param name="Version">What transaction and incarnation stored the value</param>
+    /// <param name="Incarnation">Incarnation of the transaction that stored value</param>
     /// <param name="Bytes">Actual value written by transaction</param>
-    private readonly record struct Value(Version Version, byte[] Bytes) // Maybe instead of byte[] I should use Account and StorageValue?
+    private readonly record struct Value(ushort Incarnation, byte[] Bytes) // Maybe instead of byte[] I should use Account and StorageValue?
     {
         /// <summary>
         /// Special case when we know the transaction will be re-executed, so we can mark it's writes as estimates.
         /// </summary>
-        public static readonly Value Estimate = new(Version.Empty, []);
+        public static readonly Value Estimate = new(ushort.MaxValue, []);
+        public bool IsEstimate => Incarnation == ushort.MaxValue;
     }
 
     /// <summary>
@@ -67,7 +68,7 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
             // This could help in ValidateReadSet where we wouldn't have to check actual value
             // The downside is that we need to do a Read and Write to dictionary most of the times
             // But maybe this will be simplified if used Dictionary with ReadWriterLock?
-            txData[write.Key] = new(version, write.Value);
+            txData[write.Key] = new(version.Incarnation, write.Value);
         }
 
         ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[version.TxIndex];
@@ -163,9 +164,9 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
             // if we find the location written by previous transaction
             if (prevTransactionData.TryGetValue(location, out Value v))
             {
-                version = v.Version; // return version info
+                version = new Version(prevTx, v.Incarnation); // return version info
 
-                if (v == Value.Estimate)
+                if (v.IsEstimate)
                 {
                     // if estimate (prevTx needs re-execution) return ReadError.
                     value = null;
