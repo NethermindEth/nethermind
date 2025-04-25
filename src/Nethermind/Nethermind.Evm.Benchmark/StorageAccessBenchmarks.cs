@@ -129,7 +129,7 @@ namespace Nethermind.Evm.Benchmark
             var addr = Address.Zero;
 
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-            IKeyValueStore codeDb = new MemDb();
+            MemDb codeDb = new MemDb();
 
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(addr, 1000.Ether());
