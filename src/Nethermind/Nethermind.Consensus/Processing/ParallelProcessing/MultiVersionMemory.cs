@@ -215,13 +215,11 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
         for (var index = _data.Length - 1; index >= 0; index--)
         {
             DataDictionary<TLocation, Value> data = _data[index];
-            data.Lock.EnterReadLock();
             foreach (KeyValuePair<TLocation, Value> location in data.Dictionary)
             {
                 // only add if previously not added
                 result.TryAdd(location.Key, location.Value.Bytes);
             }
-            data.Lock.ExitReadLock();
         }
 
         return result;

@@ -40,7 +40,8 @@ public class ParallelRunner<TLocation, TLogger>(
             tasks.Add(Task.Run(Loop));
         }
 
-        await Task.WhenAll(tasks.AsSpan());
+        // We need to wait only for first task, if one reads scheduler.Done, all other will too
+        await Task.WhenAny(tasks.AsSpan());
     }
 
     private void Loop()
