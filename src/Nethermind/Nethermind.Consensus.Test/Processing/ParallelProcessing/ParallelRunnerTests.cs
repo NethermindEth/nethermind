@@ -76,19 +76,20 @@ public class ParallelRunnerTests
         {
             Dictionary<int, byte[]> results = new();
             List<Operation> currentTxOperations = new();
-            List<IEnumerable<Operation>> operations = [currentTxOperations];
+            List<Operation[]> operations = [];
 
             currentTxOperations.Add(D(n));
             currentTxOperations.Add(W(0, 1));
+            operations.Add(currentTxOperations.ToArray());
             results.Add(0, [1]);
 
             for (int i = 1; i < n; i++)
             {
                 currentTxOperations = new();
-                operations.Add(currentTxOperations);
                 currentTxOperations.Add(D(n - i));
                 currentTxOperations.Add(R(i - 1, 255));
                 currentTxOperations.Add(WL(i, 1));
+                operations.Add(currentTxOperations.ToArray());
                 results.Add(i, [(byte)(i + 1)]);
             }
 
@@ -98,14 +99,14 @@ public class ParallelRunnerTests
         TestCaseData GenerateNIndependentTransactions(ushort n)
         {
             Dictionary<int, byte[]> results = new();
-            List<IEnumerable<Operation>> operations = [];
+            List<Operation[]> operations = [];
 
             for (int i = 0; i < n; i++)
             {
                 List<Operation> currentTxOperations = new();
-                operations.Add(currentTxOperations);
                 // currentTxOperations.Add(D(1));
                 currentTxOperations.Add(W(i, 1));
+                operations.Add(currentTxOperations.ToArray());
                 results.Add(i, [1]);
             }
 
@@ -117,7 +118,7 @@ public class ParallelRunnerTests
     private static Dictionary<int, byte[]> RS(params IEnumerable<(int, byte)> values) =>
         values.ToDictionary<(int, byte), int, byte[]>(v => v.Item1, v => [v.Item2]);
 
-    private static IEnumerable<Operation>[] O(params IEnumerable<IEnumerable<Operation>> operations) => operations.ToArray();
+    private static Operation[][] O(params IEnumerable<IEnumerable<Operation>> operations) => operations.Select(o => o.ToArray()).ToArray();
 
     // W - Write
     private static Operation W(int location, byte value) =>
@@ -136,17 +137,17 @@ public class ParallelRunnerTests
         new(OperationType.Delay, milliseconds);
 
     [TestCaseSource(nameof(GetTestCases))]
-    public Task Run(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected) =>
+    public Task Run(ushort blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) =>
         Run<NotTracing>(blockSize, operationsPerTx, expected);
 
-    private async Task Run<T>(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
+    private async Task Run<T>(ushort blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
     {
         ParallelTrace<T> parallelTrace = new ParallelTrace<T>();
         MultiVersionMemory<int, T> multiVersionMemory = new MultiVersionMemory<int, T>(blockSize, parallelTrace);
         ObjectPool<HashSet<ushort>> setObjectPool = new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 1024);
         ParallelScheduler<T> parallelScheduler = new ParallelScheduler<T>(blockSize, parallelTrace, setObjectPool);
-        VmMock<T> vmMock = new VmMock<T>(multiVersionMemory, operationsPerTx);
-        ParallelRunner<int, T> runner = new ParallelRunner<int, T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock);
+        VmMock<T> vmMock = new VmMock<T>(blockSize, multiVersionMemory, operationsPerTx);
+        ParallelRunner<int, T> runner = new ParallelRunner<int, T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
 
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
@@ -182,13 +183,18 @@ public class ParallelRunnerTests
 
     }
 
-    public class VmMock<TLogger>(MultiVersionMemory<int, TLogger> memory, IEnumerable<Operation>[] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing
+    public class VmMock<TLogger>(ushort blockSize, MultiVersionMemory<int, TLogger> memory, Operation[][] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing
     {
+        private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
+        private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();
+
         public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
         {
-            readSet = new HashSet<Read<int>>();
-            writeSet = new Dictionary<int, byte[]>();
-            IEnumerable<Operation> operations = operationsPerTx[txIndex];
+            readSet = _readSets[txIndex];
+            readSet.Clear();
+            writeSet = _writeSets[txIndex];
+            writeSet.Clear();
+            Operation[] operations = operationsPerTx[txIndex];
             byte[] lastRead = null;
 
             foreach (Operation operation in operations)
@@ -196,28 +202,28 @@ public class ParallelRunnerTests
                 switch (operation.Type)
                 {
                     case OperationType.Read:
+                    {
+                        if (!writeSet.TryGetValue(operation.Location, out lastRead))
                         {
-                            if (!writeSet.TryGetValue(operation.Location, out lastRead))
+                            Status result = memory.TryRead(operation.Location, txIndex, out Version version, out var value);
+                            switch (result)
                             {
-                                Status result = memory.TryRead(operation.Location, txIndex, out Version version, out var value);
-                                switch (result)
-                                {
-                                    case Status.NotFound:
-                                        lastRead = operation.Value; // read from storage
-                                        readSet.Add(new Read<int>(operation.Location, Version.Empty));
-                                        break;
-                                    case Status.Ok:
-                                        lastRead = value; // use value from previous transaction
-                                        readSet.Add(new Read<int>(operation.Location, version));
-                                        break;
-                                    case Status.ReadError:
-                                        blockingTx = version;
-                                        return Status.ReadError;
-                                }
+                                case Status.NotFound:
+                                    lastRead = operation.Value; // read from storage
+                                    readSet.Add(new Read<int>(operation.Location, Version.Empty));
+                                    break;
+                                case Status.Ok:
+                                    lastRead = value; // use value from previous transaction
+                                    readSet.Add(new Read<int>(operation.Location, version));
+                                    break;
+                                case Status.ReadError:
+                                    blockingTx = version;
+                                    return Status.ReadError;
                             }
-
-                            break;
                         }
+
+                        break;
+                    }
                     case OperationType.Write:
                         writeSet[operation.Location] = operation.Value[0] == Operation.LastRead ? [(byte)(operation.Value[1] + lastRead[0])] : operation.Value;
                         break;
