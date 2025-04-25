@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
@@ -41,9 +42,9 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     /// <remarks>
     /// While only one thread should write to each of the dictionary at same point of time, multiple threads could read it.
     /// </remarks>
-    private readonly ConcurrentDictionary<TLocation, Value>[] _data =
+    private readonly DataDictionary<TLocation, Value>[] _data =
         Enumerable.Range(0, txCount)
-        .Select(_ => new ConcurrentDictionary<TLocation, Value>())
+        .Select(_ => new DataDictionary<TLocation, Value>())
         .ToArray();
     // TODO: Consider going to regular Dictionary with ReadWriterLock as writes will be rare and single-threaded
     // TODO: Or we could consider to flatten all the dictionaries per transaction to one big ConcurrentDictionary that would keep the highest transaction write per location
@@ -61,18 +62,19 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     // For given transaction incarnation it stores it's writeset into _data and updates _lastWrittenLocations
     private bool ApplyWriteSet(Version version, Dictionary<TLocation, byte[]> writeSet)
     {
-        ConcurrentDictionary<TLocation, Value> txData = _data[version.TxIndex]; // writes of current tx (currently from previous incarnation)
+        DataDictionary<TLocation, Value> txData = _data[version.TxIndex]; // writes of current tx (currently from previous incarnation)
+        ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[version.TxIndex];
+        lastWritten ??= new HashSet<TLocation>();
+
+        txData.Lock.EnterWriteLock();
         foreach (KeyValuePair<TLocation, byte[]> write in writeSet)
         {
             // TODO: We could potentially not overwrite the key if the value is the same - leaving same lower incarnation
             // This could help in ValidateReadSet where we wouldn't have to check actual value
             // The downside is that we need to do a Read and Write to dictionary most of the times
             // But maybe this will be simplified if used Dictionary with ReadWriterLock?
-            txData[write.Key] = new(version.Incarnation, write.Value);
+            txData.Dictionary[write.Key] = new(version.Incarnation, write.Value);
         }
-
-        ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[version.TxIndex];
-        lastWritten ??= new HashSet<TLocation>();
 
         // if previous incarnation written locations
         if (lastWritten.Count != 0)
@@ -91,9 +93,10 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
             foreach (var id in toRemove)
             {
                 lastWritten.Remove(id);
-                txData.TryRemove(id, out _);
+                txData.Dictionary.Remove(id, out _);
             }
         }
+        txData.Lock.ExitWriteLock();
 
         int oldCount = lastWritten.Count;
 
@@ -133,11 +136,13 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
         HashSet<TLocation>? previousLocations = _lastWrittenLocations[txIndex];
         if (previousLocations is not null)
         {
-            ConcurrentDictionary<TLocation, Value> txData = _data[txIndex];
+            DataDictionary<TLocation, Value> txData = _data[txIndex];
+            txData.Lock.EnterWriteLock();
             foreach (var location in previousLocations)
             {
-                txData[location] = Value.Estimate;
+                txData.Dictionary[location] = Value.Estimate;
             }
+            txData.Lock.ExitWriteLock();
         }
     }
 
@@ -160,10 +165,12 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
         prevTx--; // start from previous transaction and go back through all the previous transactions
         while (prevTx != ushort.MaxValue) // hack for ushort underflow, so going < 0
         {
-            ConcurrentDictionary<TLocation, Value> prevTransactionData = _data[prevTx];
+            DataDictionary<TLocation, Value> prevTransactionData = _data[prevTx];
+            prevTransactionData.Lock.EnterReadLock();
             // if we find the location written by previous transaction
-            if (prevTransactionData.TryGetValue(location, out Value v))
+            if (prevTransactionData.Dictionary.TryGetValue(location, out Value v))
             {
+                prevTransactionData.Lock.ExitReadLock();
                 version = new Version(prevTx, v.Incarnation); // return version info
 
                 if (v.IsEstimate)
@@ -180,6 +187,10 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
                     if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {value.ToHexString()} from {version}.");
                     return Status.Ok;
                 }
+            }
+            else
+            {
+                prevTransactionData.Lock.ExitReadLock();
             }
 
             // if not we are going backwards until we find it or checked all transactions
@@ -203,12 +214,14 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
         // need to iterate backwards, as the later transaction writes are the final writes to the same location
         for (var index = _data.Length - 1; index >= 0; index--)
         {
-            ConcurrentDictionary<TLocation, Value> data = _data[index];
-            foreach (KeyValuePair<TLocation, Value> location in data)
+            DataDictionary<TLocation, Value> data = _data[index];
+            data.Lock.EnterReadLock();
+            foreach (KeyValuePair<TLocation, Value> location in data.Dictionary)
             {
                 // only add if previously not added
                 result.TryAdd(location.Key, location.Value.Bytes);
             }
+            data.Lock.ExitReadLock();
         }
 
         return result;
@@ -286,6 +299,16 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     //         throw new NotImplementedException();
     //     }
     // }
+
+    private readonly struct DataDictionary<TKey, TValue>
+    {
+        public readonly Dictionary<TKey, TValue> Dictionary = new();
+        public readonly ReaderWriterLockSlim Lock = new();
+
+        public DataDictionary()
+        {
+        }
+    }
 }
 
 /// <summary>
