@@ -19,6 +19,11 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// <param name="parallelTrace">Trace</param>
 /// <param name="setPool">Pool of sets</param>
 /// <typeparam name="TLogger">Is tracing on</typeparam>
+/// <remarks>
+/// Algorithm is based on tracking <see cref="_executionIndex"/> and <see cref="_validationIndex"/> of transactions as well as <see cref="_activeTasks"/> that are currently in-flight.
+/// Priority is to always schedule the lowest possible transaction that needs work.
+/// When transactions finish out-of-order or dependency is detected then corresponding indexes are decreased and transactions are re-validated or re-executed depending on the need.
+/// </remarks>
 public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<ushort>> setPool) where TLogger : struct, IIsTracing
 {
     /// <summary>
@@ -70,17 +75,17 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     /// <param name="name">Name of the index</param>
     private void DecreaseIndex(ref int index, int targetValue, [CallerArgumentExpression(nameof(index))] string name = "")
     {
-        // We should keep the index minimal of current and target
+        // we should keep the index minimal of current and target
         static int Mutator(int current, int target) => Math.Min(current, target);
 
         long id = parallelTrace.ReserveId();
         int value = InterlockedEx.MutateValue(ref index, targetValue, Mutator);
 
-        // If we decreased the index now there is new work to do.
+        // if we decreased the index now there is new work to do.
         WorkAvailable.Set();
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from DecreaseIndex {name} to {value}");
 
-        // Increase the counter of decreases
+        // increase the counter of decreases
         int decreaseCount = Interlocked.Increment(ref _decreaseCount);
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Decreased {name} index to {value}, decrease count: {decreaseCount}");
     }
@@ -106,9 +111,9 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
                     parallelTrace.Add("Done");
                     parallelTrace.Add("WorkAvailable.Set from CheckDone set to true");
                 }
-
-                return true;
             }
+
+            return done;
         }
         else
         {
@@ -117,9 +122,6 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add("WorkAvailable.Set from CheckDone already was true");
             return true;
         }
-
-        // WorkAvailable.Reset?
-        return false;
     }
 
     /// <summary>
@@ -136,11 +138,19 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         if (Volatile.Read(ref index) >= blockSize)
         {
             // check if work is done, and return there is no work at the moment
-            CheckDone();
+            if (!CheckDone())
+            {
+                if (Volatile.Read(ref _validationIndex) >= blockSize)
+                {
+                    // if nothing to validate and not done, then only have tasks in-flight and no available work until then
+                    WorkAvailable.Reset();
+                }
+            }
+
             return Version.Empty;
         }
 
-        // We might spawn a new task, optimistically assume so
+        // we might spawn a new task, optimistically assume so
         Interlocked.Increment(ref _activeTasks);
 
         // fetch current new index
@@ -342,14 +352,12 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             // if new location was written, we need to re-do subsequent transaction validations
             if (wroteNewLocation)
             {
-                WorkAvailable.Set(); // TODO: not needed?
                 DecreaseIndex(ref _validationIndex, txIndex);
             }
             else
             {
-                // validate this transaction
-                WorkAvailable.Set(); //TODO: not needed?
                 if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from FinishExecution of {version}");
+                // validate this transaction
                 // don't decrement _activeTasks as we spawn new one
                 return new TxTask(version, true);
             }
