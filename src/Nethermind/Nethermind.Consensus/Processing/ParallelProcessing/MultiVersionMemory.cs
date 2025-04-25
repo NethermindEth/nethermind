@@ -25,7 +25,7 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     /// </summary>
     /// <param name="Incarnation">Incarnation of the transaction that stored value</param>
     /// <param name="Bytes">Actual value written by transaction</param>
-    private readonly record struct Value(ushort Incarnation, byte[] Bytes) // Maybe instead of byte[] I should use Account and StorageValue?
+    private readonly record struct Value(ushort Incarnation, byte[] Bytes) // TODO: Maybe instead of byte[] I should use Account and StorageValue?
     {
         /// <summary>
         /// Special case when we know the transaction will be re-executed, so we can mark it's writes as estimates.
@@ -294,7 +294,7 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
 /// <param name="Location">Location that was read</param>
 /// <param name="Version">Version of transaction that written that Location earlier. <see cref="ParallelProcessing.Version.Empty"/> if Location was read from database</param>
 /// <typeparam name="TLocation">Location Id type</typeparam>
-public readonly record struct Read<TLocation>(TLocation Location, Version Version);
+public readonly record struct Read<TLocation>(TLocation Location, Version Version); // TODO: version->incarnation?
 
 /// <summary>
 /// Information about status of reading a Location

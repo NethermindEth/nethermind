@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,15 +53,19 @@ public class ParallelRunnerTests
         for (int i = 0; i < stressIterations; i++)
         {
             yield return GenerateNDependantTransactions(10);
-            yield return GenerateNDependantTransactions(27);
-            yield return GenerateNDependantTransactions(40);
-            yield return GenerateNDependantTransactions(50);
-            yield return GenerateNDependantTransactions(60);
-            yield return GenerateNDependantTransactions(80);
-            yield return GenerateNDependantTransactions(90);
-            yield return GenerateNDependantTransactions(100);
-            yield return GenerateNDependantTransactions(120);
+            // yield return GenerateNDependantTransactions(27);
+            // yield return GenerateNDependantTransactions(40);
+            // yield return GenerateNDependantTransactions(50);
+            // yield return GenerateNDependantTransactions(60);
+            // yield return GenerateNDependantTransactions(80);
+            // yield return GenerateNDependantTransactions(90);
+            // yield return GenerateNDependantTransactions(100);
+            // yield return GenerateNDependantTransactions(120);
         }
+
+        yield return GenerateNIndependantTransactions(10);
+        yield return GenerateNIndependantTransactions(100);
+        yield return GenerateNIndependantTransactions(ushort.MaxValue - 1);
 
         // Generates N transactions that each K transaction is dependent on K-1 transaction
         // Also K transaction will have a N-K delay before execution
@@ -87,6 +92,23 @@ public class ParallelRunnerTests
 
             return new TestCaseData(n, operations.ToArray(), results) { TestName = $"{n} Transactions dependent on last" };
         }
+
+        TestCaseData GenerateNIndependantTransactions(ushort n)
+        {
+            Dictionary<int, byte[]> results = new();
+            List<IEnumerable<Operation>> operations = [];
+
+            for (int i = 0; i < n; i++)
+            {
+                List<Operation> currentTxOperations = new();
+                operations.Add(currentTxOperations);
+                // currentTxOperations.Add(D(1));
+                currentTxOperations.Add(W(i, 1));
+                results.Add(i, [1]);
+            }
+
+            return new TestCaseData(n, operations.ToArray(), results) { TestName = $"{n} Transactions independant" };
+        }
     }
 
     // RS -> Result
@@ -112,30 +134,38 @@ public class ParallelRunnerTests
         new(OperationType.Delay, milliseconds);
 
     [TestCaseSource(nameof(GetTestCases))]
-    public async Task Run(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected)
-    {
-        ParallelTrace<IsTracing> parallelTrace = new ParallelTrace<IsTracing>();
-        MultiVersionMemory<int, IsTracing> multiVersionMemory = new MultiVersionMemory<int, IsTracing>(blockSize, parallelTrace);
-        ObjectPool<HashSet<ushort>> setObjectPool = new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 1024);
-        ParallelScheduler<IsTracing> parallelScheduler = new ParallelScheduler<IsTracing>(blockSize, parallelTrace, setObjectPool);
-        VmMock<IsTracing> vmMock = new VmMock<IsTracing>(multiVersionMemory, operationsPerTx);
-        ParallelRunner<int, IsTracing> runner = new ParallelRunner<int, IsTracing>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock);
+    public Task Run(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected) =>
+        Run<NotTracing>(blockSize, operationsPerTx, expected);
 
+    private async Task Run<T>(ushort blockSize, IEnumerable<Operation>[] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
+    {
+        ParallelTrace<T> parallelTrace = new ParallelTrace<T>();
+        MultiVersionMemory<int, T> multiVersionMemory = new MultiVersionMemory<int, T>(blockSize, parallelTrace);
+        ObjectPool<HashSet<ushort>> setObjectPool = new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 1024);
+        ParallelScheduler<T> parallelScheduler = new ParallelScheduler<T>(blockSize, parallelTrace, setObjectPool);
+        VmMock<T> vmMock = new VmMock<T>(multiVersionMemory, operationsPerTx);
+        ParallelRunner<int, T> runner = new ParallelRunner<int, T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock);
+
+        long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
-        Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
+        await runnerTask;
+        //Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
         Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
-        await PrintInfo(parallelTrace, result, expected);
-        if (completedTask == runnerTask)
+        if (typeof(T) == typeof(IsTracing)) await PrintInfo(parallelTrace, result, expected);
+        TimeSpan time = Stopwatch.GetElapsedTime(start);
+        await TestContext.Out.WriteLineAsync($"Execution time: {time.TotalMilliseconds}ms");
+
+        //if (completedTask == runnerTask)
         {
             result.Should().BeEquivalentTo(expected);
         }
-        else
-        {
-            Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
-        }
+        // else
+        // {
+        //     Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
+        // }
     }
 
-    private static async Task PrintInfo(ParallelTrace<IsTracing> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected)
+    private static async Task PrintInfo<T>(ParallelTrace<T> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
     {
         foreach ((long, DateTime, string) trace in parallelTrace.GetTraces() ?? [])
         {

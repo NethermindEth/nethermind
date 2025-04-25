@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
-using Nethermind.Core.Tasks;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -26,6 +25,8 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// </remarks>
 public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<ushort>> setPool) where TLogger : struct, IIsTracing
 {
+    // TODO: Move blockSize to int if we need to support more than 65534 transactions in block
+
     /// <summary>
     /// Index to fetch next transaction to execute
     /// </summary>
@@ -63,11 +64,6 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     public bool Done => _done;
 
     /// <summary>
-    /// Signals new work became available
-    /// </summary>
-    public AsyncManualResetEventSlim WorkAvailable { get; } = new(blockSize > 0);
-
-    /// <summary>
     /// Decreases one of <see cref="_executionIndex"/> or <see cref="_validationIndex"/>
     /// </summary>
     /// <param name="index">Reference to index to decrease</param>
@@ -81,8 +77,6 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         long id = parallelTrace.ReserveId();
         int value = InterlockedEx.MutateValue(ref index, targetValue, Mutator);
 
-        // if we decreased the index now there is new work to do.
-        WorkAvailable.Set();
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from DecreaseIndex {name} to {value}");
 
         // increase the counter of decreases
@@ -93,7 +87,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
     /// <summary>
     /// Checks if all work has been done
     /// </summary>
-    private bool CheckDone()
+    private void CheckDone()
     {
         if (!_done)
         {
@@ -104,23 +98,8 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             if (done)
             {
                 _done = true;
-                // unblock threads to finish them
-                WorkAvailable.Set();
-                if (typeof(TLogger) == typeof(IsTracing))
-                {
-                    parallelTrace.Add("Done");
-                    parallelTrace.Add("WorkAvailable.Set from CheckDone set to true");
-                }
+                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add("Done");
             }
-
-            return done;
-        }
-        else
-        {
-            // unblock threads to finish them
-            WorkAvailable.Set();
-            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add("WorkAvailable.Set from CheckDone already was true");
-            return true;
         }
     }
 
@@ -137,16 +116,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
         // if our index is outside the work in a block we potentially finished the work
         if (Volatile.Read(ref index) >= blockSize)
         {
-            // check if work is done, and return there is no work at the moment
-            if (!CheckDone())
-            {
-                if (Volatile.Read(ref _validationIndex) >= blockSize)
-                {
-                    // if nothing to validate and not done, then only have tasks in-flight and no available work until then
-                    WorkAvailable.Reset();
-                }
-            }
-
+            CheckDone();
             return Version.Empty;
         }
 
@@ -176,18 +146,8 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             if (Interlocked.CompareExchange(ref state.Status, newStatus, requiredStatus) == requiredStatus)
             {
                 // return new incarnation
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Set Tx {nextTx} status to {TxStatus.GetName(requiredStatus)}");
+                if (typeof(TLogger) == typeof(IsTracing) && newStatus != requiredStatus) parallelTrace.Add($"Set Tx {nextTx} status to {TxStatus.GetName(requiredStatus)}");
                 return new Version(nextTx, state.Incarnation);
-            }
-        }
-        else
-        {
-            // if we are not done
-            if (!_done)
-            {
-                // we probably don't have anything to do, lets pause the threads until new work can be scheduled
-                WorkAvailable.Reset();
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Reset from FetchNext {name} to {nextTx + 1}");
             }
         }
 
@@ -352,7 +312,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             // if new location was written, we need to re-do subsequent transaction validations
             if (wroteNewLocation)
             {
-                DecreaseIndex(ref _validationIndex, txIndex);
+                DecreaseIndex(ref _validationIndex, txIndex); // TODO txIndex + 1?
             }
             else
             {

@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 public class ParallelRunner<TLocation, TLogger>(
     ParallelScheduler<TLogger> scheduler,
     MultiVersionMemory<TLocation, TLogger> memory,
-    ParallelTrace<IsTracing> parallelTrace,
+    ParallelTrace<TLogger> parallelTrace,
     IVm<TLocation> vm,
     int? concurrencyLevel = null) where TLogger : struct, IIsTracing where TLocation : notnull
 {
@@ -43,26 +43,13 @@ public class ParallelRunner<TLocation, TLogger>(
         await Task.WhenAll(tasks.AsSpan());
     }
 
-    private async Task Loop()
+    private void Loop()
     {
         int threadIndex = Interlocked.Increment(ref _threadIndex);
         using var handle = Thread.CurrentThread.BoostPriorityHighest();
         TxTask task = scheduler.NextTask();
         do
         {
-            // Tasks can be empty if there is no work
-            // This can happen when other threads exhausted current work before this one
-            if (task.IsEmpty)
-            {
-                // There are 3 alternatives when there isn't any work:
-                // 1. We can spin loop querying NextTask until there will be work, this is what original Block-STM paper does.
-                // 2. We can pause a thread with a ManualResetEventSlim.Wait()
-                //      - As currently I'm using tasks for scheduling I would prefer to avoid it. But we can consider going to dedicated thread pool?
-                // 3. We can try using tasks, which is current implementation
-                // Approaches 1&2 can be found and reviewed in commit history.
-                await scheduler.WorkAvailable.WaitAsync();
-            }
-
             if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
             // There can be 3 kinds of tasks
             // Only 1 task per transaction should be run at the same time
