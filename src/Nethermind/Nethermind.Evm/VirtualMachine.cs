@@ -669,7 +669,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    private unsafe CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -686,7 +686,16 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 if(vmState.Env.CodeInfo.Codehash is not null)
                 {
-                    IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                    try
+                    {
+                        Console.WriteLine("Analyse Site entred");
+                        IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                        Console.WriteLine("Analyse Site exited");
+                    } catch(Exception e)
+                    {
+                        Console.WriteLine("Analyse Site failed with excetion {0}", e);
+                        throw;
+                    }
                 }
                 //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
@@ -724,42 +733,43 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if(typeof(IsPrecompiling) == typeof(TOptimizing))
         {
-            unsafe
+            if (env.CodeInfo.IlInfo.IsProcessed)
             {
-                if (env.CodeInfo.IlInfo.IsProcessed)
+                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
+                Console.WriteLine("Call Site entered");
+
+
+                int programCounter = vmState.ProgramCounter;
+
+                var codeAsSpan = env.CodeInfo.MachineCode.Span; 
+
+                ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
+                chunkExecutionState.ReturnDataBuffer = _returnDataBuffer;
+                fixed(void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
                 {
-                    Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
-
-                    int programCounter = vmState.ProgramCounter;
-
-                    var codeAsSpan = env.CodeInfo.MachineCode.Span; 
-
-                    ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                    chunkExecutionState.ReturnDataBuffer = _returnDataBuffer;
-                    fixed(void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
+                    if (env.CodeInfo.IlInfo.PrecompiledContract(in Unsafe.AsRef<byte>(codePtr),
+                        _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
+                        ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head), _txTracer, _logger,
+                        ref chunkExecutionState))
                     {
-                        if (env.CodeInfo.IlInfo.PrecompiledContract(in Unsafe.AsRef<byte>(codePtr),
-                            _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
-                            ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head), _txTracer, _logger,
-                            ref chunkExecutionState))
-                        {
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
-                            Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
-                            return new CallResult(chunkExecutionState.CallResult);
-                        }
+                        Console.WriteLine("Call Continuation Scheduled");
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
+                        Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
+                        return new CallResult(chunkExecutionState.CallResult);
                     }
+                }
+                Console.WriteLine("Call Site Exited");
 
-                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
-                    switch(chunkExecutionState.ContractState)
-                    {
-                        case ContractState.Return or ContractState.Revert:
-                           return new CallResult(chunkExecutionState.ReturnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
-                        case ContractState.Failed:
-                            return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
-                        default:
-                            return CallResult.Empty;
-                    }
+                switch(chunkExecutionState.ContractState)
+                {
+                    case ContractState.Return or ContractState.Revert:
+                        return new CallResult(chunkExecutionState.ReturnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                    case ContractState.Failed:
+                        return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
+                    default:
+                        return CallResult.Empty;
                 }
             }
         } 
