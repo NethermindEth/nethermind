@@ -53,19 +53,21 @@ public class ParallelRunnerTests
         for (int i = 0; i < stressIterations; i++)
         {
             yield return GenerateNDependantTransactions(10);
-            // yield return GenerateNDependantTransactions(27);
-            // yield return GenerateNDependantTransactions(40);
-            // yield return GenerateNDependantTransactions(50);
-            // yield return GenerateNDependantTransactions(60);
-            // yield return GenerateNDependantTransactions(80);
-            // yield return GenerateNDependantTransactions(90);
-            // yield return GenerateNDependantTransactions(100);
-            // yield return GenerateNDependantTransactions(120);
+            yield return GenerateNDependantTransactions(27);
+            yield return GenerateNDependantTransactions(40);
+            yield return GenerateNDependantTransactions(50);
+            yield return GenerateNDependantTransactions(60);
+            yield return GenerateNDependantTransactions(80);
+            yield return GenerateNDependantTransactions(90);
+            yield return GenerateNDependantTransactions(100);
+            yield return GenerateNDependantTransactions(120);
         }
 
-        yield return GenerateNIndependantTransactions(10);
-        yield return GenerateNIndependantTransactions(100);
-        yield return GenerateNIndependantTransactions(ushort.MaxValue - 1);
+        yield return GenerateNIndependentTransactions(10);
+        yield return GenerateNIndependentTransactions(100);
+        yield return GenerateNIndependentTransactions(200);
+        yield return GenerateNIndependentTransactions(1000);
+        yield return GenerateNIndependentTransactions(ushort.MaxValue - 1);
 
         // Generates N transactions that each K transaction is dependent on K-1 transaction
         // Also K transaction will have a N-K delay before execution
@@ -90,10 +92,10 @@ public class ParallelRunnerTests
                 results.Add(i, [(byte)(i + 1)]);
             }
 
-            return new TestCaseData(n, operations.ToArray(), results) { TestName = $"{n} Transactions dependent on last" };
+            return new TestCaseData(n, operations.ToArray(), results) { TestName = $"Dependent Transactions {n}" };
         }
 
-        TestCaseData GenerateNIndependantTransactions(ushort n)
+        TestCaseData GenerateNIndependentTransactions(ushort n)
         {
             Dictionary<int, byte[]> results = new();
             List<IEnumerable<Operation>> operations = [];
@@ -107,7 +109,7 @@ public class ParallelRunnerTests
                 results.Add(i, [1]);
             }
 
-            return new TestCaseData(n, operations.ToArray(), results) { TestName = $"{n} Transactions independant" };
+            return new TestCaseData(n, operations.ToArray(), results) { TestName = $"Independent Transactions {n}" };
         }
     }
 
@@ -148,21 +150,20 @@ public class ParallelRunnerTests
 
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
-        await runnerTask;
-        //Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
+        Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
         Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
         if (typeof(T) == typeof(IsTracing)) await PrintInfo(parallelTrace, result, expected);
         TimeSpan time = Stopwatch.GetElapsedTime(start);
         await TestContext.Out.WriteLineAsync($"Execution time: {time.TotalMilliseconds}ms");
 
-        //if (completedTask == runnerTask)
+        if (completedTask == runnerTask)
         {
             result.Should().BeEquivalentTo(expected);
         }
-        // else
-        // {
-        //     Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
-        // }
+        else
+        {
+            Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
+        }
     }
 
     private static async Task PrintInfo<T>(ParallelTrace<T> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
