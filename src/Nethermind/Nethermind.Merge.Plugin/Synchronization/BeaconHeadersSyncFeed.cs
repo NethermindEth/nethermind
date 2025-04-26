@@ -29,7 +29,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IPivot _pivot;
-    private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     private bool _chainMerged;
 
@@ -59,14 +58,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
         IPivot? pivot,
-        IMergeConfig? mergeConfig,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
         : base(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-        _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _invalidChainTracker = invalidChainTracker;
         _logger = logManager.GetClassLogger();
     }
@@ -89,8 +86,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // First, we assume pivot
         _pivotNumber = ExpectedPivotNumber;
-        _nextHeaderHash = ExpectedPivotHash;
-        _nextHeaderTotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
+        _expectedNextHeader = (ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
 
         long startNumber = _pivotNumber;
 
@@ -99,8 +95,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
         {
             startNumber = lowestInserted.Number - 1;
-            _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
-            _nextHeaderTotalDifficulty = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;
+            SetExpectedNextHeaderToParent(lowestInserted);
         }
 
         // the base class with starts with _lowestRequestedHeaderNumber - 1, so we offset it here.
@@ -193,7 +188,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
-        if (_nextHeaderTotalDifficulty is null)
+        if (_expectedNextHeader.TotalDifficulty is null)
         {
             headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         }
