@@ -88,7 +88,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
                 if (!BlockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body))
                 {
-                    throw new EraVerificationException($"Mismatched block body againts header. Block number {blockNumber}.");
+                    throw new EraVerificationException($"Mismatched block body against header. Block number {blockNumber}.");
                 }
 
                 if (!blockValidator.ValidateOrphanedBlock(err.Block, out string? error))
