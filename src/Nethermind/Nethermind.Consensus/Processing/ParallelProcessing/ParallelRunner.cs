@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
@@ -37,16 +38,25 @@ public class ParallelRunner<TLocation, TLogger>(
         using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(concurrency);
         for (int i = 0; i < concurrency; i++)
         {
+
             tasks.Add(Task.Run(Loop));
         }
 
         // We need to wait only for first task, if one reads scheduler.Done, all other will too
         await Task.WhenAny(tasks.AsSpan());
+
+        // This seems to perform slightly better without async:
+        // ParallelUnbalancedWork.For(0, concurrency, Loop);
     }
 
     private void Loop()
     {
-        int threadIndex = Interlocked.Increment(ref _threadIndex);
+        Loop(Interlocked.Increment(ref _threadIndex));
+    }
+
+    private void Loop(int threadIndex)
+    {
+        long start = Stopwatch.GetTimestamp();
         using var handle = Thread.CurrentThread.BoostPriorityHighest();
         TxTask task = scheduler.NextTask();
         do
@@ -62,7 +72,7 @@ public class ParallelRunner<TLocation, TLogger>(
             };
         } while (!scheduler.Done);
 
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Thread {threadIndex} finished");
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Thread {threadIndex} finished in {Stopwatch.GetElapsedTime(start)}");
     }
 
     /// <summary>

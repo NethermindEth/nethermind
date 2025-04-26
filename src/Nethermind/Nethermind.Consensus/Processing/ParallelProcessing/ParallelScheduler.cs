@@ -312,7 +312,7 @@ public class ParallelScheduler<TLogger>(ushort blockSize, ParallelTrace<TLogger>
             // if new location was written, we need to re-do subsequent transaction validations
             if (wroteNewLocation)
             {
-                DecreaseIndex(ref _validationIndex, txIndex); // TODO txIndex + 1?
+                DecreaseIndex(ref _validationIndex, txIndex);
             }
             else
             {
