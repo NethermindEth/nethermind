@@ -235,6 +235,7 @@ sse.addEventListener("txNodes", (e) => {
   txPoolNodes = data;
 });
 sse.addEventListener("txLinks", (e) => {
+  if (document.hidden) return;
   const data = JSON.parse(e.data) as TxPool;
   updateTxPool(data);
 });
@@ -320,16 +321,17 @@ sse.addEventListener("forkChoice", (e) => {
 
   txsToAdd.push(...mergedData);
   lastBlockTxs = txsToAdd.length;
+
+  if (txsToAdd.length > 250000) txsToAdd.slice(txsToAdd.length - 25000);
 });
 
 let lastBlockTxs:number = 0;
 let txsToAdd: TransactionReceipt[] = [];
 
 sse.addEventListener("peers", (e) => {
-  const data = JSON.parse(e.data) as Peer[];
+  if (document.hidden) return;
 
-  // e.data is a JSON array of Peer objects
-  const peersArray = JSON.parse(e.data) as Peer[];
+  const data = JSON.parse(e.data) as Peer[];
 
   // Aggregate by clientType
   let countsByType: { [k: string]: number } = data.reduce((acc, peer) => {
@@ -351,6 +353,8 @@ sse.addEventListener("peers", (e) => {
 let maxCpuPercent = 0;
 let maxMemoryMb = 0;
 sse.addEventListener("system", (e) => {
+  if (document.hidden) return;
+
   const data = JSON.parse(e.data) as System;
   let memoryMb = data.workingSet / (1024 * 1024);
   if (memoryMb > maxMemoryMb) {
@@ -365,7 +369,6 @@ sse.addEventListener("system", (e) => {
   addCapped(seriesTotalCpu, { t: now, v: data.userPercent + data.privilegedPercent });
   addCapped(seriesMemory, { t: now, v: memoryMb });
 
-  if (document.hidden) return;
 
   updateText(upTime, formatDuration(data.uptime));
 
@@ -391,10 +394,12 @@ sse.addEventListener("log", (e) => {
 let lastFrameTime: number = 0;
 let frameDelta: number = 0;
 function newFrame() {
+  requestAnimationFrame(newFrame);
+  if (document.hidden) return;
+
   const frameTime = performance.now();
   frameDelta = frameTime - lastFrameTime;
 
-  requestAnimationFrame(newFrame);
   appendLogs();
   appendTx();
 

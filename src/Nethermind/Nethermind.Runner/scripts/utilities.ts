@@ -274,13 +274,15 @@ const networks = {
   "Mainnet": "Ethereum mainnet",
   "1": "Ethereum mainnet",
   "480": "World Mainnet",
-  "8453": "Base mainnet"
+  "8453": "Base mainnet",
+  "7032118028": "Ethereum Perfnet"
 }
 const logos = {
   "Mainnet": "ethereum-logo.svg",
   "1": "ethereum-logo.svg",
   "480": "world-logo.svg",
-  "8453": "base-logo.svg"
+  "8453": "base-logo.svg",
+  "7032118028": "perfnet.png"
 }
 
 export function getNetworkName(network: string) {
