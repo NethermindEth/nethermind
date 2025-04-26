@@ -58,6 +58,7 @@ public class Driver : IDisposable
             ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
             if (lastBlockNumber <= _currentDerivedBlock)
             {
+                if (_logger.IsInfo) _logger.Info("Got old batch. Skipping");
                 continue;
             }
 

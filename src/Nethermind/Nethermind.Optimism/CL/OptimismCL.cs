@@ -109,12 +109,13 @@ public class OptimismCL : IDisposable
                 _driver.Reset(finalized.Number);
                 Task driverTask = _driver.Run(_cancellationTokenSource.Token);
                 await _l1Bridge.ProcessUntilHead(_cancellationTokenSource.Token);
-                await Task.WhenAll(
-                    _p2p.Run(_cancellationTokenSource.Token),
+                Task p2pTask = _p2p.Run(_cancellationTokenSource.Token);
+                await _executionEngineManager.OnELSynced.ContinueWith(async _ => await Task.WhenAll(
+                    p2pTask,
                     decodingPipelineTask,
                     _l1Bridge.Run(_cancellationTokenSource.Token),
                     driverTask
-                );
+                ));
             }
         }
         catch (OperationCanceledException)

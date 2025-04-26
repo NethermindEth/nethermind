@@ -27,7 +27,6 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly ILogger _logger;
 
     private BlockId _currentHead;
-    private BlockId _currentFinalized;
 
     private readonly Address _batchSubmitter;
     private readonly Address _batcherInboxAddress;
@@ -71,9 +70,8 @@ public class EthereumL1Bridge : IL1Bridge
             await ProcessBlock(newHead, token);
 
             _currentHead = BlockId.FromL1Block(newHead);
-            _currentFinalized = BlockId.FromL1Block(newHead);
 
-            await Task.Delay(L1SlotTimeMilliseconds, token);
+            await Task.Delay(L1BlocksUntilFinalization * L1SlotTimeMilliseconds, token);
         }
     }
 
@@ -155,37 +153,6 @@ public class EthereumL1Bridge : IL1Bridge
             new DaDataSource { Data = transaction.Input, DataType = DaDataType.Calldata }, token);
     }
 
-    private void SetFinalized(L1Block newFinalized)
-    {
-        if (newFinalized.Hash != _currentFinalized.Hash)
-        {
-            if (_logger.IsInfo) _logger.Info($"New finalized head signal. Number: {newFinalized.Number}, Hash: {newFinalized.Hash}");
-            _currentFinalized = BlockId.FromL1Block(newFinalized);
-        }
-    }
-
-    /// <remarks> Gets all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
-    private async Task RollBack(Hash256 headHash, ulong headNumber, ulong segmentStartNumber, CancellationToken cancellationToken)
-    {
-        Hash256 currentHash = headHash;
-        L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber + 1];
-        for (int i = chainSegment.Length - 1; i >= 0; i--)
-        {
-            _logger.Info($"Rolling back L1 head. {i} to go. Block {currentHash}");
-            chainSegment[i] = await GetBlockByHash(currentHash, cancellationToken);
-            currentHash = chainSegment[i].ParentHash;
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-        }
-
-        for (int i = 0; i < chainSegment.Length; i++)
-        {
-            await ProcessBlock(chainSegment[i], cancellationToken);
-        }
-    }
-
     /// <remarks> Gets all blocks from range ({from}, {to}). It's safe only if {to} is finalized </remarks>
     private async Task BuildUp(ulong from, ulong to, CancellationToken cancellationToken)
     {
@@ -236,14 +203,12 @@ public class EthereumL1Bridge : IL1Bridge
     {
         if (_logger.IsInfo) _logger.Info($"Resetting L1 bridge. New head number: {highestFinalizedOrigin.Number}, new head hash {highestFinalizedOrigin.BlockHash}");
         _currentHead = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
-        _currentFinalized = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
     }
 
     public async Task Initialize(CancellationToken token)
     {
         L1Block finalized = await GetFinalized(token);
         _currentHead = BlockId.FromL1Block(finalized);
-        _currentFinalized = BlockId.FromL1Block(finalized);
         if (_logger.IsInfo) _logger.Info($"Initializing L1 bridge. New head number: {finalized.Number}, new head hash {finalized.Hash}");
     }
     public async Task ProcessUntilHead(CancellationToken token)
@@ -262,7 +227,6 @@ public class EthereumL1Bridge : IL1Bridge
             await ProcessBlock(newHead, token);
 
             _currentHead = BlockId.FromL1Block(newHead);
-            _currentFinalized = BlockId.FromL1Block(newHead);
         }
     }
 }

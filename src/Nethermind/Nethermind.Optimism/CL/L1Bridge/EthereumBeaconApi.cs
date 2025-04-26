@@ -65,12 +65,17 @@ public class EthereumBeaconApi : IBeaconApi
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"GetData<{typeof(T)}>({uri}) result: {await response.Content.ReadAsStringAsync(cancellationToken)}");
+                _logger.Debug(
+                    $"GetData<{typeof(T)}>({uri}) result: {await response.Content.ReadAsStringAsync(cancellationToken)}");
 
             T decoded =
                 _jsonSerializer.Deserialize<T>(await response.Content.ReadAsStreamAsync(cancellationToken));
 
             return decoded;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception e)
         {
