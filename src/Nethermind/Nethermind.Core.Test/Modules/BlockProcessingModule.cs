@@ -35,7 +35,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-            // NOTE: The ordering of block preprocessor is not guarenteed
+            // NOTE: The ordering of block preprocessor is not guaranteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
