@@ -50,7 +50,7 @@ public class ValidateSubmissionHandler
         IHeaderValidator headerValidator,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
         ILogManager logManager,
         ISpecProvider specProvider,
         IFlashbotsConfig flashbotsConfig,

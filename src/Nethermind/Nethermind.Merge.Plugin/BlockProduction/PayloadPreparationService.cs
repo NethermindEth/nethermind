@@ -74,21 +74,24 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))
         {
+            if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
+            long startTimestamp = Stopwatch.GetTimestamp();
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
             ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
         }
         else if (_logger.IsInfo)
         {
             // Shouldn't really happen so move string construction code out of hot method
-            LogMultiStartRequest(payloadId);
+            LogMultiStartRequest(payloadId, parentHeader.Number + 1);
         }
 
         return payloadId;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId)
+        void LogMultiStartRequest(string payloadId, long number)
         {
-            _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+            _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
         }
     }
 

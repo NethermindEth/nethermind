@@ -48,7 +48,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportOperationError(EvmExceptionType error) => throw new OperationCanceledException(ErrorMessage);
 
