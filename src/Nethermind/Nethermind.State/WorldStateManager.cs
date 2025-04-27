@@ -100,7 +100,7 @@ public class WorldStateManager : IWorldStateManager
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
     }
 
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode)
+    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
     {
         OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);

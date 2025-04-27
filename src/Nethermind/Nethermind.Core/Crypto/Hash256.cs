@@ -107,7 +107,7 @@ namespace Nethermind.Core.Crypto
         private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -117,6 +117,8 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
     [JsonConverter(typeof(Hash256Converter))]

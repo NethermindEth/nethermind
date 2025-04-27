@@ -3,25 +3,35 @@
 
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Init;
+using Nethermind.Core;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
 
-namespace Nethermind.Core.Test.Modules;
+namespace Nethermind.Init.Modules;
 
 public class WorldStateModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            // Most config actually done in factory. We just call `Build` and then get back components from its output.
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
+
+            // Used by sync code
             .Map<INodeStorage, PruningTrieStateFactoryOutput>((m) => m.NodeStorage)
+
+            // Some admin rpc to trigger verify trie and pruning
+            .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
+            .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
+
             .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
 
+            // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
             ;
     }
@@ -31,12 +41,14 @@ public class WorldStateModule : Module
     {
         public IWorldStateManager WorldStateManager { get; }
         public INodeStorage NodeStorage { get; }
+        public IPruningTrieStateAdminRpcModule AdminRpcModule { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
-            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, CompositePruningTrigger _) = factory.Build();
+            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, IPruningTrieStateAdminRpcModule adminRpc) = factory.Build();
             WorldStateManager = worldStateManager;
             NodeStorage = mainNodeStorage;
+            AdminRpcModule = adminRpc;
         }
     }
 }
