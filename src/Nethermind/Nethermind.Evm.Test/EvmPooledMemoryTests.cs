@@ -160,6 +160,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
+                codeInfoRepository,
                 LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
@@ -241,7 +242,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
     }
 

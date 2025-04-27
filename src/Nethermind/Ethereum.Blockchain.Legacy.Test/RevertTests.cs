@@ -21,13 +21,13 @@ namespace Ethereum.Blockchain.Legacy.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
-            IEnumerable<GeneralStateTest> tests = loader.LoadTests<GeneralStateTest>();
+            List<GeneralStateTest> tests = (List<GeneralStateTest>)loader.LoadTests();
             HashSet<string> ignoredTests = new()
             {
                 "RevertPrecompiledTouch",
             };
-
-            return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern))); ;
+            tests.RemoveAll(t => ignoredTests.Any(pattern => t.Name.Contains(pattern)));
+            return tests;
         }
     }
 }

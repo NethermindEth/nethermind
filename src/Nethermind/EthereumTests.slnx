@@ -54,7 +54,6 @@
   <Project Path="Ethereum.Trie.Test/Ethereum.Trie.Test.csproj" />
   <Project Path="Ethereum.VM.Test/Ethereum.VM.Test.csproj" />
   <Project Path="Nethermind.Blockchain.Test.Runner/Nethermind.Blockchain.Test.Runner.csproj" />
-  <Project Path="Nethermind.EOFParse.Runner/Nethermind.EOFParse.Runner.csproj" />
   <Project Path="Nethermind.State.Test.Runner.Test/Nethermind.State.Test.Runner.Test.csproj" />
   <Project Path="Nethermind.Test.Runner/Nethermind.Test.Runner.csproj" />
 </Solution>

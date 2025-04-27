@@ -25,7 +25,7 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<EthereumTest> testJsons = new();
+            List<GeneralStateTest> testJsons = new();
             foreach (string testDir in testDirs)
             {
                 testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
@@ -41,9 +41,9 @@ namespace Ethereum.Test.Base
             return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "GeneralStateTests");
         }
 
-        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private IEnumerable<GeneralStateTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
-            List<EthereumTest> testsByName = new();
+            List<GeneralStateTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
             foreach (string testFile in testFiles)
@@ -51,7 +51,7 @@ namespace Ethereum.Test.Base
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
                 try
                 {
-                    var tests = fileTestsSource.LoadTests(TestType.State);
+                    var tests = fileTestsSource.LoadGeneralStateTests();
                     foreach (GeneralStateTest blockchainTest in tests)
                     {
                         blockchainTest.Category = testDir;

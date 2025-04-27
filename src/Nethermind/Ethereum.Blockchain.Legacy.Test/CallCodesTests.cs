@@ -18,6 +18,6 @@ public class CallCodesTests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stCallCodes");
-        return loader.LoadTests<GeneralStateTest>();
+        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

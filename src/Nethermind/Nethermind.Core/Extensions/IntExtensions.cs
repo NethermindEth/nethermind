@@ -36,7 +36,7 @@ public static class IntExtensions
         return bytes;
     }
 
-    public static byte[] ToBigEndianByteArray(this uint value)
+    public static byte[] ToBigEndianByteArray(this int value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
         if (BitConverter.IsLittleEndian)
@@ -46,7 +46,4 @@ public static class IntExtensions
 
         return bytes;
     }
-
-    public static byte[] ToBigEndianByteArray(this int value)
-        => ToBigEndianByteArray((uint)value);
 }

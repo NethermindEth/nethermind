@@ -9,7 +9,6 @@ using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -46,7 +45,7 @@ public class TransactionSubstate
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
-    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
+    public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IReadOnlyCollection<LogEntry> Logs { get; }
@@ -61,18 +60,7 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode { get; } = new TransactionSubstate();
-
-    private TransactionSubstate()
-    {
-        Error = "Eip 7698: Invalid CreateTx InitCode";
-        Refund = 0;
-        DestroyList = _emptyDestroyList;
-        Logs = _emptyLogs;
-        ShouldRevert = true;
-    }
-
-    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+    public TransactionSubstate(ReadOnlyMemory<byte> output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
         IReadOnlyCollection<LogEntry> logs,
@@ -98,10 +86,10 @@ public class TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Bytes.IsEmpty)
+        if (Output.IsEmpty)
             return;
 
-        ReadOnlySpan<byte> span = Output.Bytes.Span;
+        ReadOnlySpan<byte> span = Output.Span;
         Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 

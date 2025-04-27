@@ -19,6 +19,6 @@ public class BugsTets : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stBugs");
-        return loader.LoadTests<GeneralStateTest>();
+        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

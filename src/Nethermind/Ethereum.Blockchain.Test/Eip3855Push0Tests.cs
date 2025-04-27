@@ -20,6 +20,6 @@ public class Eip3855Push0Tests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3855-push0");
-        return loader.LoadTests<GeneralStateTest>();
+        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

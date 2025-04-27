@@ -9,17 +9,19 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class EIP1153transientStorageTests : GeneralStateTestBase
+public class EOFTests : GeneralStateTestBase
 {
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test)
-    {
-        Assert.That(RunTest(test).Pass, Is.True);
-    }
+    // Uncomment when EOF tests are merged
+
+    // [TestCaseSource(nameof(LoadTests))]
+    // public void Test(GeneralStateTest test)
+    // {
+    //     Assert.That(RunTest(test).Pass, Is.True);
+    // }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP1153-transientStorage");
+        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEOF");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

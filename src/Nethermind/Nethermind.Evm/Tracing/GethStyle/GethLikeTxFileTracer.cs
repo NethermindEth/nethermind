@@ -21,7 +21,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
     public override GethLikeTxTrace BuildResult()
     {
-        GethLikeTxTrace trace = base.BuildResult();
+        var trace = base.BuildResult();
 
         if (_startGas.HasValue)
             trace.Gas = _startGas.Value - CurrentTraceEntry.Gas;
@@ -40,7 +40,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
     protected override GethTxFileTraceEntry CreateTraceEntry(Instruction opcode)
     {
-        GethTxFileTraceEntry entry = GetOrCreateTraceEntry();
+        var entry = GetOrCreateTraceEntry();
 
         entry.OpcodeRaw = opcode;
 
@@ -52,7 +52,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (CurrentTraceEntry is null)
             return new();
 
-        GethTxFileTraceEntry entry = CurrentTraceEntry;
+        var entry = CurrentTraceEntry;
 
         entry.Depth = default;
         entry.Error = default;

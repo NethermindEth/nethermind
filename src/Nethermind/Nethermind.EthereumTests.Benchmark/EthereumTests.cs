@@ -18,7 +18,7 @@ namespace Nethermind.EthereumTests.Benchmark
         public void Run(string testFile)
         {
             FileTestsSource source = new(testFile);
-            var tests = source.LoadTests(TestType.State);
+            var tests = source.LoadGeneralStateTests();
 
             foreach (GeneralStateTest test in tests)
             {

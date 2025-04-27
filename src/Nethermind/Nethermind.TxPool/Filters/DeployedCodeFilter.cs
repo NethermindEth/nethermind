@@ -14,11 +14,10 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class DeployedCodeFilter(IReadOnlyStateProvider worldState, ICodeInfoRepository codeInfoRepository, IChainHeadSpecProvider specProvider) : IIncomingTxFilter
     {
-        private readonly Func<Address, bool> _isDelegatedCode = (sender) => codeInfoRepository.TryGetDelegation(worldState, sender, specProvider.GetCurrentHeadSpec(), out _);
+        private readonly Func<Address, bool> _isDelegatedCode = (sender) => codeInfoRepository.TryGetDelegation(worldState, sender, out _);
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
-            IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            return worldState.IsInvalidContractSender(spec,
+            return worldState.IsInvalidContractSender(specProvider.GetCurrentHeadSpec(),
                 tx.SenderAddress!,
                 _isDelegatedCode)
                 ? AcceptTxResult.SenderIsContract

@@ -16,7 +16,7 @@ namespace Ethereum.Test.Base
             if (File.Exists(testName))
             {
                 FileTestsSource fileTestsSource = new(testName, wildcard);
-                IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(TestType.State);
+                IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
 
                 return tests;
             }
@@ -25,15 +25,22 @@ namespace Ethereum.Test.Base
 
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testsDirectory, testName, SearchOption.AllDirectories);
 
-            List<EthereumTest> generalStateTests = new();
+            List<GeneralStateTest> generalStateTests = new();
 
             //load all tests from found test files in ethereum tests submodule
             foreach (string testFile in testFiles)
             {
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
+                try
+                {
+                    IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
 
-                IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(TestType.State);
-                generalStateTests.AddRange(tests);
+                    generalStateTests.AddRange(tests);
+                }
+                catch (Exception e)
+                {
+                    generalStateTests.Add(new GeneralStateTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
+                }
             }
 
             return generalStateTests;

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
@@ -12,7 +13,8 @@ namespace Ethereum.Test.Base
         public IEnumerable<EthereumTest> Load(string testName, string? wildcard = null)
         {
             FileTestsSource fileTestsSource = new(testName, wildcard);
-            return fileTestsSource.LoadTests(TestType.Blockchain);
+            IEnumerable<BlockchainTest> tests = fileTestsSource.LoadBlockchainTests();
+            return tests;
         }
     }
 }

@@ -64,6 +64,7 @@ public class ReorgTests
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
+            codeInfoRepository,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
             specProvider,

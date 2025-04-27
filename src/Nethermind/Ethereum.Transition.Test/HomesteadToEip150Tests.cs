@@ -21,7 +21,7 @@ namespace Ethereum.Transition.Test
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcHomesteadToEIP150");
-            return loader.LoadTests<BlockchainTest>();
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
 }

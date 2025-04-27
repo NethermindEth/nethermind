@@ -7,7 +7,6 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -27,7 +26,7 @@ namespace Nethermind.Evm.Test
                 0x05, 0x06, 0x07, 0x08, 0x09
             };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
-            TransactionSubstate transactionSubstate = new((CodeInfo.Empty, readOnlyMemory),
+            TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
                 Array.Empty<LogEntry>(),
@@ -41,7 +40,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] data = { 0x05, 0x06, 0x07, 0x08, 0x09 };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
-            TransactionSubstate transactionSubstate = new((CodeInfo.Empty, readOnlyMemory),
+            TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
                 Array.Empty<LogEntry>(),
@@ -55,7 +54,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] data = TransactionSubstate.ErrorFunctionSelector.Concat(Bytes.FromHexString("0x00000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000")).ToArray();
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
-            TransactionSubstate transactionSubstate = new((CodeInfo.Empty, readOnlyMemory),
+            TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
                 Array.Empty<LogEntry>(),
@@ -75,7 +74,7 @@ namespace Nethermind.Evm.Test
             byte[] data = Bytes.FromHexString(hex);
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
-                (CodeInfo.Empty, readOnlyMemory),
+                readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
                 Array.Empty<LogEntry>(),
@@ -148,7 +147,7 @@ namespace Nethermind.Evm.Test
             // See: https://docs.soliditylang.org/en/latest/control-structures.html#revert
             ReadOnlyMemory<byte> readOnlyMemory = new(tc.data);
             TransactionSubstate transactionSubstate = new(
-                (CodeInfo.Empty, readOnlyMemory),
+                readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
                 Array.Empty<LogEntry>(),
@@ -172,7 +171,7 @@ namespace Nethermind.Evm.Test
             };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
-                (CodeInfo.Empty, readOnlyMemory),
+                readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
                 Array.Empty<LogEntry>(),

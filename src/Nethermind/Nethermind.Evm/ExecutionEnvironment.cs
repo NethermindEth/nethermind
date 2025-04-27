@@ -12,7 +12,7 @@ namespace Nethermind.Evm
     {
         public ExecutionEnvironment
         (
-            ICodeInfo codeInfo,
+            CodeInfo codeInfo,
             Address executingAccount,
             Address caller,
             Address? codeSource,
@@ -36,7 +36,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public readonly ICodeInfo CodeInfo;
+        public readonly CodeInfo CodeInfo;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).

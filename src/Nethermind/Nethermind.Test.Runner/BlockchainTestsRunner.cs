@@ -29,7 +29,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
         List<EthereumTestResult> testResults = new();
-        IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
+        IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
         foreach (BlockchainTest test in tests)
         {
             if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)

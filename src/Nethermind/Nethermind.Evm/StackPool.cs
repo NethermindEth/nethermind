@@ -3,18 +3,16 @@
 
 using System.Collections.Concurrent;
 
-using static Nethermind.Evm.EvmState;
-
 namespace Nethermind.Evm;
 
-internal sealed class StackPool
+internal class StackPool
 {
     // Also have parallel prewarming and Rpc calls
     private const int MaxStacksPooled = VirtualMachine.MaxCallDepth * 2;
-    private readonly struct StackItem(byte[] dataStack, ReturnState[] returnStack)
+    private readonly struct StackItem(byte[] dataStack, int[] returnStack)
     {
         public readonly byte[] DataStack = dataStack;
-        public readonly ReturnState[] ReturnStack = returnStack;
+        public readonly int[] ReturnStack = returnStack;
     }
 
     private readonly ConcurrentQueue<StackItem> _stackPool = new();
@@ -25,7 +23,7 @@ internal sealed class StackPool
     /// </summary>
     /// <param name="dataStack"></param>
     /// <param name="returnStack"></param>
-    public void ReturnStacks(byte[] dataStack, ReturnState[] returnStack)
+    public void ReturnStacks(byte[] dataStack, int[] returnStack)
     {
         if (_stackPool.Count <= MaxStacksPooled)
         {
@@ -33,7 +31,7 @@ internal sealed class StackPool
         }
     }
 
-    public (byte[], ReturnState[]) RentStacks()
+    public (byte[], int[]) RentStacks()
     {
         if (_stackPool.TryDequeue(out StackItem result))
         {
@@ -43,7 +41,7 @@ internal sealed class StackPool
         return
         (
             new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
-            new ReturnState[EvmStack.ReturnStackSize]
+            new int[EvmStack.ReturnStackSize]
         );
     }
 }

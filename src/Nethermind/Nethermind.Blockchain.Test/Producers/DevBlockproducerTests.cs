@@ -60,6 +60,7 @@ public class DevBlockProducerTests
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
+            codeInfoRepository,
             LimboLogs.Instance);
         TransactionProcessor txProcessor = new(
             specProvider,

@@ -20,7 +20,7 @@ namespace Ethereum.Blockchain.Block.Test
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcWalletTest");
-            return loader.LoadTests<BlockchainTest>();
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
 }

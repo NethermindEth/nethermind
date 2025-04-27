@@ -21,7 +21,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSolidityTest");
-            return loader.LoadTests<GeneralStateTest>();
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
         }
     }
 }

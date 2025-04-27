@@ -119,7 +119,7 @@ namespace Nethermind.State
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
                     }
                 }
             }
@@ -143,9 +143,9 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {

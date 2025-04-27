@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
-
-namespace Ethereum.Test.Base;
-
-public enum TestType
+namespace Ethereum.Test.Base
 {
-    Blockchain,
-    State,
-    Eof
+    public enum TestType
+    {
+        Blockchain,
+        GeneralState,
+        LegacyBlockchain,
+        LegacyGeneralState
+    }
 }

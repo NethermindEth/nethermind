@@ -21,6 +21,6 @@ public class Eip4895WithdrawalsTests : BlockchainTestBase
     public static IEnumerable<BlockchainTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bc4895-withdrawals");
-        return loader.LoadTests<BlockchainTest>();
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
