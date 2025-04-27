@@ -130,23 +130,26 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Invoke_UpdateMainChain_Once()
     {
-        await using IContainer node = CreateNode();
-        Context ctx = node.Resolve<Context>();
-        BlockDownloader downloader = ctx.BlockDownloader;
-
         long headNumber = 100;
         int fastSyncLag = 10;
         bool withReceipts = true;
         long chainLength = headNumber + 1;
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true,
+            StateMinDistanceFromHead = fastSyncLag,
+        }));
+        Context ctx = node.Resolve<Context>();
 
         SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
         List<long> newHeadSequence = new List<long>();
-
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, fastSyncLag), CancellationToken.None);
+
+        await ctx.FastSyncUntilNoRequest(peerInfo);
         ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
 
         List<long> expectedNewHeadSequence = Enumerable.Range(1, (int)(chainLength - fastSyncLag - 1)).Select((i) => (long)i).ToList();
