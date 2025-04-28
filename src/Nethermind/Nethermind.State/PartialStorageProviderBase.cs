@@ -27,6 +27,12 @@ namespace Nethermind.State
         protected readonly ILogger _logger;
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
+
+        /// <summary>
+        /// The map is used for mapping 32-byte wide <see cref="StorageValue"/> to a pointer-sized <see cref="StorageValuePtr"/>.
+        ///
+        /// This makes <see cref="Change"/> and <see cref="ChangeTrace"/> much smaller and allow by-ref/pointer passing by.
+        /// </summary>
         protected readonly StorageValueMap _map;
 
         // stack of snapshot indexes on changes for start of each transaction

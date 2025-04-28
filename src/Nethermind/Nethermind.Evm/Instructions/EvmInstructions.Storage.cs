@@ -114,10 +114,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Pop the 32-byte value from the stack.
-        ref var v = ref stack.PopBytesByRef();
-        if (Unsafe.IsNullRef(ref v)) return EvmExceptionType.StackUnderflow;
-
-        StorageValue value = new StorageValue(in Unsafe.As<byte, Vector256<byte>>(ref v));
+        if (!stack.PopBytes(out StorageValue value)) goto StackUnderflow;
 
         vm.WorldState.SetTransientState(in storageCell, value);
 
@@ -371,9 +368,7 @@ internal static partial class EvmInstructions
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
-        ref var v = ref stack.PopBytesByRef();
-        if (Unsafe.IsNullRef(ref v)) return EvmExceptionType.StackUnderflow;
-        StorageValue value = new StorageValue(in Unsafe.As<byte, Vector256<byte>>(ref v));
+        if (!stack.PopBytes(out StorageValue value)) goto StackUnderflow;
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
         bool newIsZero = value.IsZero;

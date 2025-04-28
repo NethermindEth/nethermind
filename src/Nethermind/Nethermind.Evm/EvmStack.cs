@@ -471,6 +471,15 @@ public ref struct EvmStack
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
+    public bool PopBytes(out StorageValue result)
+    {
+        Unsafe.SkipInit(out result);
+        ref byte bytes = ref PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes)) return false;
+        result = new StorageValue(Unsafe.As<byte, Vector256<byte>>(ref bytes));
+        return true;
+    }
+
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();

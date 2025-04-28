@@ -13,6 +13,8 @@ namespace Nethermind.State;
 
 /// <summary>
 /// Provides a <see cref="StorageValue"/> to a pointer mapping.
+/// This allows keeping a 32-byte storage value hidden behind a pointer-size structure of <see cref="StorageValuePtr"/>,
+/// which consumes much less memory.
 /// </summary>
 /// <remarks>
 /// The implementation is based on a version (epochs) hash map that provides a fast cleanup
