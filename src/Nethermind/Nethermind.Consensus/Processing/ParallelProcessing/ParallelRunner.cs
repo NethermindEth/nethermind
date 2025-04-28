@@ -132,5 +132,5 @@ public interface IVm<TLocation> where TLocation : notnull
     /// <param name="readSet">All locations read by the transaction</param>
     /// <param name="writeSet">All locations and values written by the transaction</param>
     /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
-    public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, byte[]> writeSet);
+    public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, byte[]> writeSet);
 }

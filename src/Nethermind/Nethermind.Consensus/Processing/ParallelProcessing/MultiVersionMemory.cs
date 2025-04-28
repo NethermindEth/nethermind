@@ -19,20 +19,20 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// <param name="parallelTrace">Tracing helper</param>
 /// <typeparam name="TLocation">Location key type</typeparam>
 /// <typeparam name="TLogger">Should log trace</typeparam>
-public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing where TLocation : notnull
+public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing where TLocation : notnull
 {
     /// <summary>
     /// Information about stored value for a given location
     /// </summary>
     /// <param name="Incarnation">Incarnation of the transaction that stored value</param>
     /// <param name="Bytes">Actual value written by transaction</param>
-    private readonly record struct Value(ushort Incarnation, byte[] Bytes) // TODO: Maybe instead of byte[] I should use Account and StorageValue?
+    private readonly record struct Value(int Incarnation, byte[] Bytes) // TODO: Maybe instead of byte[] I should use Account and StorageValue?
     {
         /// <summary>
         /// Special case when we know the transaction will be re-executed, so we can mark it's writes as estimates.
         /// </summary>
-        public static readonly Value Estimate = new(ushort.MaxValue, []);
-        public bool IsEstimate => Incarnation == ushort.MaxValue;
+        public static readonly Value Estimate = new(-1, []);
+        public bool IsEstimate => Incarnation == -1;
     }
 
     /// <summary>
@@ -130,7 +130,7 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     /// Estimates are used, when higher transaction reads a location.
     /// It then knows that it needs to add dependency and wait for this transaction to be executed.
     /// </remarks>
-    public void ConvertWritesToEstimates(ushort txIndex)
+    public void ConvertWritesToEstimates(int txIndex)
     {
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ConvertWritesToEstimates.");
         HashSet<TLocation>? previousLocations = _lastWrittenLocations[txIndex];
@@ -158,12 +158,11 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     /// <see cref="Status.NotFound"/> when value for location is not in memory and needs to be read from database.
     /// <see cref="Status.ReadError"/> when we know previous transaction needs to be re-executed first to correctly read the location.
     /// </returns>
-    public Status TryRead(TLocation location, ushort txIndex, out Version version, out byte[]? value)
+    public Status TryRead(TLocation location, int txIndex, out Version version, out byte[]? value)
     {
         long id = parallelTrace.ReserveId();
-        ushort prevTx = txIndex;
-        prevTx--; // start from previous transaction and go back through all the previous transactions
-        while (prevTx != ushort.MaxValue) // hack for ushort underflow, so going < 0
+        // start from previous transaction and go back through all the previous transactions
+        for (int prevTx = txIndex - 1; prevTx > 0; prevTx--)
         {
             DataDictionary<TLocation, Value> prevTransactionData = _data[prevTx];
             prevTransactionData.Lock.EnterReadLock();
@@ -192,9 +191,6 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
             {
                 prevTransactionData.Lock.ExitReadLock();
             }
-
-            // if not we are going backwards until we find it or checked all transactions
-            prevTx--;
         }
 
         // we iterated through all transactions and didn't find any
@@ -234,7 +230,7 @@ public class MultiVersionMemory<TLocation, TLogger>(ushort txCount, ParallelTrac
     /// Keep in mind that this validation is only against current known state.
     /// If new incarnation of lower-index transaction will write new values, then this validation will be done again.
     /// </remarks>
-    public bool ValidateReadSet(ushort txIndex)
+    public bool ValidateReadSet(int txIndex)
     {
         HashSet<Read<TLocation>> priorReads = _lastReads[txIndex];
         if (priorReads is not null)

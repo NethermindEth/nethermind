@@ -19,28 +19,9 @@ namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
 [Parallelizable(ParallelScope.Self)]
 public class ParallelRunnerTests
 {
-    public static IEnumerable<TestCaseData> GetTestCases()
+    public static IEnumerable<TestCaseData> GetDependantTestCases()
     {
-        yield return new TestCaseData((ushort)1, (Operation[][])[[]], RS())
-        {
-            TestName = "Single Empty Transaction"
-        };
-
-        yield return new TestCaseData((ushort)1, O([W(0, 1), R(0, 2), WL(1)]), RS((0, 1), (1, 1)))
-        {
-            TestName = "Single Transaction"
-        };
-
-        yield return new TestCaseData((ushort)2,
-            O(
-            [W(0, 1), R(0, 0), WL(1, 1)],
-                [R(1, 5)]),
-            RS((0, 1), (1, 2)))
-        {
-            TestName = "Two Transactions"
-        };
-
-        yield return new TestCaseData((ushort)2,
+        yield return new TestCaseData(2,
             O(
                 [D(), W(0, 1), R(0, 0), WL(1, 1)],
                 [R(1, 5), WL(2, 2)]),
@@ -63,16 +44,10 @@ public class ParallelRunnerTests
             yield return GenerateNDependantTransactions(120);
         }
 
-        yield return GenerateNIndependentTransactions(10);
-        yield return GenerateNIndependentTransactions(100);
-        yield return GenerateNIndependentTransactions(200);
-        yield return GenerateNIndependentTransactions(1000);
-        yield return GenerateNIndependentTransactions(ushort.MaxValue - 1);
-
         // Generates N transactions that each K transaction is dependent on K-1 transaction
         // Also K transaction will have a N-K delay before execution
         // So basically each transaction is dependent on previous and previous will take longer to complete
-        TestCaseData GenerateNDependantTransactions(ushort n)
+        TestCaseData GenerateNDependantTransactions(int n)
         {
             Dictionary<int, byte[]> results = new();
             List<Operation> currentTxOperations = new();
@@ -95,8 +70,39 @@ public class ParallelRunnerTests
 
             return new TestCaseData(n, operations.ToArray(), results) { TestName = $"Dependent Transactions {n}" };
         }
+    }
 
-        TestCaseData GenerateNIndependentTransactions(ushort n)
+    public static IEnumerable<TestCaseData> GetIndependantTestCases()
+    {
+        yield return new TestCaseData(1, (Operation[][])[[]], RS())
+        {
+            TestName = "Single Empty Transaction"
+        };
+
+        yield return new TestCaseData(1, O([W(0, 1), R(0, 2), WL(1)]), RS((0, 1), (1, 1)))
+        {
+            TestName = "Single Transaction"
+        };
+
+        yield return new TestCaseData(2,
+            O(
+                [W(0, 1), R(0, 0), WL(1, 1)],
+                [R(1, 5)]),
+            RS((0, 1), (1, 2)))
+        {
+            TestName = "Two Transactions"
+        };
+
+        yield return GenerateNIndependentTransactions(10);
+        yield return GenerateNIndependentTransactions(100);
+        yield return GenerateNIndependentTransactions(200);
+        yield return GenerateNIndependentTransactions(1_000);
+        yield return GenerateNIndependentTransactions(10_000);
+        yield return GenerateNIndependentTransactions(ushort.MaxValue - 1);
+        yield return GenerateNIndependentTransactions(100_000);
+        yield return GenerateNIndependentTransactions(1_000_000);
+
+        TestCaseData GenerateNIndependentTransactions(int n)
         {
             Dictionary<int, byte[]> results = new();
             List<Operation[]> operations = [];
@@ -136,15 +142,19 @@ public class ParallelRunnerTests
     private static Operation D(int milliseconds = 100) =>
         new(OperationType.Delay, milliseconds);
 
-    [TestCaseSource(nameof(GetTestCases))]
-    public Task Run(ushort blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) =>
+    [TestCaseSource(nameof(GetDependantTestCases))]
+    public Task RunDependant(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) =>
+        Run<IsTracing>(blockSize, operationsPerTx, expected);
+
+    [TestCaseSource(nameof(GetIndependantTestCases))]
+    public Task RunIndependant(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) =>
         Run<NotTracing>(blockSize, operationsPerTx, expected);
 
-    private async Task Run<T>(ushort blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
+    private async Task Run<T>(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
     {
         ParallelTrace<T> parallelTrace = new ParallelTrace<T>();
         MultiVersionMemory<int, T> multiVersionMemory = new MultiVersionMemory<int, T>(blockSize, parallelTrace);
-        ObjectPool<HashSet<ushort>> setObjectPool = new DefaultObjectPool<HashSet<ushort>>(new DefaultPooledObjectPolicy<HashSet<ushort>>(), 1024);
+        ObjectPool<HashSet<int>> setObjectPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>(), 1024);
         ParallelScheduler<T> parallelScheduler = new ParallelScheduler<T>(blockSize, parallelTrace, setObjectPool);
         VmMock<T> vmMock = new VmMock<T>(blockSize, multiVersionMemory, operationsPerTx);
         ParallelRunner<int, T> runner = new ParallelRunner<int, T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
@@ -183,12 +193,12 @@ public class ParallelRunnerTests
 
     }
 
-    public class VmMock<TLogger>(ushort blockSize, MultiVersionMemory<int, TLogger> memory, Operation[][] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing
+    public class VmMock<TLogger>(int blockSize, MultiVersionMemory<int, TLogger> memory, Operation[][] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing
     {
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();
 
-        public Status TryExecute(ushort txIndex, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
+        public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
         {
             readSet = _readSets[txIndex];
             readSet.Clear();
