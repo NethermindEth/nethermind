@@ -5,7 +5,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KademliaKademliaMessageReceiver<TNode>(IKademlia<TNode> kademlia, NodeHealthTracker<TNode> healthTracker): IKademliaMessageReceiver<TNode>
+public class KademliaKademliaMessageReceiver<TKey, TNode>(
+    IKademlia<TKey, TNode> kademlia,
+    INodeHealthTracker<TNode> healthTracker
+): IKademliaMessageReceiver<TKey, TNode> where TNode : notnull
 {
     public Task Ping(TNode sender, CancellationToken token)
     {
@@ -13,9 +16,9 @@ public class KademliaKademliaMessageReceiver<TNode>(IKademlia<TNode> kademlia, N
         return Task.CompletedTask;
     }
 
-    public Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token)
+    public Task<TNode[]> FindNeighbours(TNode sender, TKey target, CancellationToken token)
     {
         healthTracker.OnIncomingMessageFrom(sender);
-        return Task.FromResult(kademlia.GetKNeighbour(hash, sender));
+        return Task.FromResult(kademlia.GetKNeighbour(target, sender));
     }
 }

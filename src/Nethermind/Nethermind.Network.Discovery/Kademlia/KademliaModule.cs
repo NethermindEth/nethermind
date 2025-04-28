@@ -6,40 +6,40 @@ using Nethermind.Core;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KademliaModule<TNode> : Module where TNode : notnull
+public class KademliaModule<TKey, TNode> : Module where TNode : notnull
 {
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
-            .AddSingleton<IKademlia<TNode>, Kademlia<TNode>>()
-            .AddSingleton<IKademliaMessageReceiver<TNode>, KademliaKademliaMessageReceiver<TNode>>()
-            .AddSingleton<NewLookupKNearestNeighbour<TNode>>()
-            .AddSingleton<OriginalLookupKNearestNeighbour<TNode>>()
-            .AddSingleton<ILookupAlgo<TNode>>(provider =>
+            .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
+            .AddSingleton<IKademliaMessageReceiver<TKey, TNode>, KademliaKademliaMessageReceiver<TKey, TNode>>()
+            .AddSingleton<NewLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<OriginalLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<ILookupAlgo<TKey, TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.Resolve<KademliaConfig<TNode>>();
                 if (config.UseNewLookup)
                 {
-                    return provider.Resolve<NewLookupKNearestNeighbour<TNode>>();
+                    return provider.Resolve<NewLookupKNearestNeighbour<TKey, TNode>>();
                 }
 
-                return provider.Resolve<OriginalLookupKNearestNeighbour<TNode>>();
+                return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
-            .AddSingleton<ILookupAlgo2<TNode>, NewaTrackingLookupKNearestNeighbour<TNode>>()
-            .AddSingleton<KBucketTree<TNode>>()
-            .AddSingleton<BucketListRoutingTable<TNode>>()
-            .AddSingleton<NodeHealthTracker<TNode>>()
+            .AddSingleton<ILookupAlgo2<TKey, TNode>, NewaTrackingLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<KBucketTree<TKey, TNode>>()
+            .AddSingleton<BucketListRoutingTable<TKey, TNode>>()
+            .AddSingleton<NodeHealthTracker<TKey, TNode>>()
             .AddSingleton<IRoutingTable<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.Resolve<KademliaConfig<TNode>>();
                 if (config.UseTreeBasedRoutingTable)
                 {
-                    return provider.Resolve<KBucketTree<TNode>>();
+                    return provider.Resolve<KBucketTree<TKey, TNode>>();
                 }
 
-                return provider.Resolve<BucketListRoutingTable<TNode>>();
+                return provider.Resolve<BucketListRoutingTable<TKey, TNode>>();
             });
     }
 }

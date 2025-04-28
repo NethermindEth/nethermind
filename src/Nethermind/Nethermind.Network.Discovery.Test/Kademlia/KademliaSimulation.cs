@@ -58,9 +58,9 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Kademlia<TestNode> node1 = fabric.CreateNode(node1Hash);
-        Kademlia<TestNode> node2 = fabric.CreateNode(node2Hash);
-        Kademlia<TestNode> node3 = fabric.CreateNode(node3Hash);
+        Kademlia<ValueHash256, TestNode> node1 = fabric.CreateNode(node1Hash);
+        Kademlia<ValueHash256, TestNode> node2 = fabric.CreateNode(node2Hash);
+        Kademlia<ValueHash256, TestNode> node3 = fabric.CreateNode(node3Hash);
 
         node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray().Should().BeEquivalentTo([node1Hash]);
 
@@ -94,8 +94,8 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Kademlia<TestNode> node1 = fabric.CreateNode(node1Hash);
-        Kademlia<TestNode> node2 = fabric.CreateNode(node2Hash);
+        Kademlia<ValueHash256, TestNode> node1 = fabric.CreateNode(node1Hash);
+        Kademlia<ValueHash256, TestNode> node2 = fabric.CreateNode(node2Hash);
         KademliaContent<TestNode, ValueHash256, ValueHash256> node1Content = fabric.GetKademliaContent(node1Hash);
         KademliaContent<TestNode, ValueHash256, ValueHash256> node2Content = fabric.GetKademliaContent(node2Hash);
         fabric.CreateNode(node3Hash);
@@ -122,7 +122,7 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Kademlia<TestNode> node1 = fabric.CreateNode(node1Hash);
+        Kademlia<ValueHash256, TestNode> node1 = fabric.CreateNode(node1Hash);
 
         (await node1.LookupNodesClosest(node1Hash, cts.Token))
             .Select(n => n.Hash)
@@ -130,7 +130,7 @@ public class KademliaSimulation
             .Should()
             .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash });
 
-        Kademlia<TestNode> node2 = fabric.CreateNode(node2Hash);
+        Kademlia<ValueHash256, TestNode> node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
 
         node1.AddOrRefresh(new TestNode(node2Hash));
@@ -158,14 +158,14 @@ public class KademliaSimulation
         TestFabric fabric = CreateFabric();
         Random rand = new Random(0);
         ValueHash256 mainNodeHash = RandomKeccak(rand);
-        Kademlia<TestNode> mainNode = fabric.CreateNode(mainNodeHash);
+        Kademlia<ValueHash256, TestNode> mainNode = fabric.CreateNode(mainNodeHash);
         KademliaContent<TestNode, ValueHash256, ValueHash256> mainNodeContent = fabric.GetKademliaContent(mainNodeHash);
 
         List<ValueHash256> nodeIds = new();
         for (int i = 0; i < nodeCount; i++)
         {
             ValueHash256 nodeHash = RandomKeccak(rand);
-            Kademlia<TestNode> kad = fabric.CreateNode(nodeHash);
+            Kademlia<ValueHash256, TestNode> kad = fabric.CreateNode(nodeHash);
             kad.AddOrRefresh(new TestNode(mainNodeHash));
             nodeIds.Add(nodeHash);
         }
@@ -202,13 +202,13 @@ public class KademliaSimulation
         TestFabric fabric = CreateFabric();
         Random rand = new Random(0);
         ValueHash256 mainNodeHash = RandomKeccak(rand);
-        Kademlia<TestNode> mainNode = fabric.CreateNode(mainNodeHash);
+        Kademlia<ValueHash256, TestNode> mainNode = fabric.CreateNode(mainNodeHash);
 
         List<ValueHash256> nodeIds = new();
         for (int i = 0; i < nodeCount; i++)
         {
             ValueHash256 nodeHash = RandomKeccak(rand);
-            Kademlia<TestNode> kad = fabric.CreateNode(nodeHash);
+            Kademlia<ValueHash256, TestNode> kad = fabric.CreateNode(nodeHash);
             kad.AddOrRefresh(new TestNode(mainNodeHash));
             nodeIds.Add(nodeHash);
         }
@@ -284,11 +284,26 @@ public class KademliaSimulation
         }
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode>, IContentHashProvider<ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, TestNode>, IContentHashProvider<ValueHash256>
     {
         public ValueHash256 GetHash(TestNode node)
         {
             return node.Hash;
+        }
+
+        public ValueHash256 GetKey(TestNode node)
+        {
+            return node.Hash;
+        }
+
+        public ValueHash256 GetKeyHash(ValueHash256 key)
+        {
+            return key;
+        }
+
+        public ValueHash256 CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
+        {
+            return Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth);
         }
 
         public ValueHash256 GetHash(ValueHash256 key)
@@ -311,12 +326,12 @@ public class KademliaSimulation
         readonly ValueHashNodeHashProvider _nodeHashProvider = new ValueHashNodeHashProvider();
         private readonly Random _random = new Random(0);
 
-        private bool TryGetReceiver(TestNode receiverHash, out IKademliaMessageReceiver<TestNode> contentKademliaMessageReceiver)
+        private bool TryGetReceiver(TestNode receiverHash, out IKademliaMessageReceiver<ValueHash256, TestNode> contentKademliaMessageReceiver)
         {
             contentKademliaMessageReceiver = null!;
             if (_nodes.TryGetValue(receiverHash.Hash, out var serviceProvider))
             {
-                contentKademliaMessageReceiver = serviceProvider!.GetRequiredService<IKademliaMessageReceiver<TestNode>>();
+                contentKademliaMessageReceiver = serviceProvider!.GetRequiredService<IKademliaMessageReceiver<ValueHash256, TestNode>>();
                 return true;
             }
 
@@ -340,15 +355,15 @@ public class KademliaSimulation
             return _nodes[nodeHash].GetRequiredService<KademliaContent<TestNode, ValueHash256, ValueHash256>>();
         }
 
-        public Kademlia<TestNode> CreateNode(ValueHash256 nodeID)
+        public Kademlia<ValueHash256, TestNode> CreateNode(ValueHash256 nodeID)
         {
             var nodeIDTestNode = new TestNode(nodeID);
 
             var serviceProvider = new ServiceCollection()
-                .ConfigureKademliaComponents<TestNode>()
+                .ConfigureKademliaComponents<ValueHash256, TestNode>()
                 .ConfigureKademliaContentComponents<TestNode, ValueHash256, ValueHash256>()
                 .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error))
-                .AddSingleton<INodeHashProvider<TestNode>>(_nodeHashProvider)
+                .AddSingleton<INodeHashProvider<ValueHash256, TestNode>>(_nodeHashProvider)
                 .AddSingleton<IContentHashProvider<ValueHash256>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>()
                 {
@@ -362,17 +377,17 @@ public class KademliaSimulation
                 })
                 .AddSingleton<IKademliaContentStore<ValueHash256, ValueHash256>>(new OnlySelfIKademliaContentStore(nodeID))
                 .AddSingleton<IContentMessageSender<TestNode, ValueHash256, ValueHash256>>(new SenderForNode(nodeIDTestNode, this))
-                .AddSingleton<IKademliaMessageSender<TestNode>>(new SenderForNode(nodeIDTestNode, this))
-                .AddSingleton<Kademlia<TestNode>>()
+                .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
+                .AddSingleton<Kademlia<ValueHash256, TestNode>>()
                 .AddSingleton<KademliaContent<TestNode, ValueHash256, ValueHash256>>()
                 .BuildServiceProvider();
 
             _nodes[nodeID] = serviceProvider;
 
-            return serviceProvider.GetRequiredService<Kademlia<TestNode>>();
+            return serviceProvider.GetRequiredService<Kademlia<ValueHash256, TestNode>>();
         }
 
-        private class SenderForNode(TestNode sender, TestFabric fabric) : IKademliaMessageSender<TestNode>, IContentMessageSender<TestNode, ValueHash256, ValueHash256>
+        private class SenderForNode(TestNode sender, TestFabric fabric) : IKademliaMessageSender<ValueHash256, TestNode>, IContentMessageSender<TestNode, ValueHash256, ValueHash256>
         {
             public async Task Ping(TestNode node, CancellationToken token)
             {
@@ -380,7 +395,7 @@ public class KademliaSimulation
 
                 await fabric.DoSimulateLatency(token);
                 fabric.Debug($"ping from {sender} to {node}");
-                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<TestNode> receiver))
+                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<ValueHash256, TestNode> receiver))
                 {
                     await receiver.Ping(sender, token);
                     return;
@@ -395,7 +410,7 @@ public class KademliaSimulation
 
                 await fabric.DoSimulateLatency(token);
                 fabric.Debug($"findn from {sender} to {node}");
-                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<TestNode> receiver))
+                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<ValueHash256, TestNode> receiver))
                 {
                     return (await receiver.FindNeighbours(sender, hash, token)).Select((node) => new TestNode(node.Hash)).ToArray();
                 }
@@ -440,7 +455,7 @@ public class KademliaSimulation
         {
             foreach (KeyValuePair<ValueHash256, IServiceProvider> kv in _nodes)
             {
-                await kv.Value.GetRequiredService<IKademlia<TestNode>>().Bootstrap(token);
+                await kv.Value.GetRequiredService<IKademlia<ValueHash256, TestNode>>().Bootstrap(token);
             }
         }
     }

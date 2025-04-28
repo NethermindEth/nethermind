@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -14,41 +12,43 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class NewaTrackingLookupKNearestNeighbour<TNode>(
+public class NewaTrackingLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
+    INodeHashProvider<TKey, TNode> nodeHashProvider,
     KademliaConfig<TNode> kademliaConfig,
-    IKademliaMessageSender<TNode> kademliaMessageSender,
-    NodeHealthTracker<TNode> nodeHealthTracker,
+    IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
+    INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager) : ILookupAlgo2<TNode>
+    ILogManager logManager) : ILookupAlgo2<TKey, TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewaTrackingLookupKNearestNeighbour<TNode>>();
+    private readonly ILogger _logger = logManager.GetClassLogger<NewaTrackingLookupKNearestNeighbour<TKey, TNode>>();
     private readonly ValueHash256 _currentNodeIdAsHash = nodeHashProvider.GetHash(kademliaConfig.CurrentNodeId);
 
-    public async Task<TNode[]> LookupFunc(TNode nextNode, ValueHash256 targetHash, CancellationToken token)
+    private async Task<TNode[]> LookupFunc(TNode nextNode, TKey target, CancellationToken token)
     {
         if (SameAsSelf(nextNode))
         {
-            return routingTable.GetKNearestNeighbour(targetHash);
+            return routingTable.GetKNearestNeighbour(nodeHashProvider.GetKeyHash(target));
         }
-        return await kademliaMessageSender.FindNeighbours(nextNode, targetHash, token);
+        return await kademliaMessageSender.FindNeighbours(nextNode, target, token);
     }
 
     private bool SameAsSelf(TNode node)
     {
         return nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
     }
+
     public async IAsyncEnumerable<TNode> Lookup(
-        ValueHash256 targetHash,
+        TKey target,
         [EnumeratorCancellation] CancellationToken token
     ) {
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
+        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {target}");
 
         using var cts = token.CreateChildTokenSource();
         token = cts.Token;
 
+        var targetHash = nodeHashProvider.GetKeyHash(target);
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
         ConcurrentDictionary<ValueHash256, TNode> seen = new();
 
@@ -153,7 +153,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             try
             {
                 // targetHash is implied in findNeighbourOp
-                var ret = await LookupFunc(node, targetHash, cts.Token);
+                var ret = await LookupFunc(node, target, cts.Token);
                 nodeHealthTracker.OnIncomingMessageFrom(node);
 
                 return (node, ret);

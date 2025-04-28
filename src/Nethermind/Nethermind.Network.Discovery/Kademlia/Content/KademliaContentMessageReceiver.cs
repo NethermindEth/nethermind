@@ -4,10 +4,10 @@
 namespace Nethermind.Network.Discovery.Kademlia.Content;
 
 public class KademliaContentMessageReceiver<TNode, TContentKey, TContent>(
-    IKademlia<TNode> kademlia,
-    NodeHealthTracker<TNode> nodeHealthTracker,
+    IRoutingTable<TNode> kademlia,
+    INodeHealthTracker<TNode> nodeHealthTracker,
     IContentHashProvider<TContentKey> contentHashProvider,
-    IKademliaContentStore<TContentKey, TContent> kademliaKademliaContentStore) : IContentMessageReceiver<TNode, TContentKey, TContent>
+    IKademliaContentStore<TContentKey, TContent> kademliaKademliaContentStore) : IContentMessageReceiver<TNode, TContentKey, TContent> where TNode : notnull
 {
     public Task<FindValueResponse<TNode, TContent>> FindValue(TNode sender, TContentKey contentKey, CancellationToken token)
     {
@@ -18,11 +18,13 @@ public class KademliaContentMessageReceiver<TNode, TContentKey, TContent>(
             return Task.FromResult(new FindValueResponse<TNode, TContent>(true, value!, Array.Empty<TNode>()));
         }
 
+        // TODO: Exclude sender.
+
         return Task.FromResult(
             new FindValueResponse<TNode, TContent>(
                 false,
                 default,
-                kademlia.GetKNeighbour(contentHashProvider.GetHash(contentKey), sender, true)
+                kademlia.GetKNearestNeighbour(contentHashProvider.GetHash(contentKey), null, true)
             ));
     }
 }

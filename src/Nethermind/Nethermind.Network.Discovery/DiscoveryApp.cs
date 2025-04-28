@@ -49,8 +49,8 @@ public class DiscoveryApp : IDiscoveryApp
 
     private KademliaDiscv4MessageReceiver _discv4MessageReceiver = null!;
     private KademliaDiscv4MessageSender _discv4MessageSender = null!;
-    private IKademlia<Node> _kademlia = null!;
-    private ILookupAlgo2<Node> _lookup2 = null!;
+    private IKademlia<PublicKey, Node> _kademlia = null!;
+    private ILookupAlgo2<PublicKey, Node> _lookup2 = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
@@ -84,8 +84,8 @@ public class DiscoveryApp : IDiscoveryApp
         _bootNodes = new List<Node>();
         _discoveryStorage.StartBatch();
 
-        // NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes("enode://8cd847302089d4906c5eb3125770b067fbcb7dc6bd62dfd3517483cc2e6acae6141a5fb4061f76825ea9f585d157b625f84f976fb6aa1582dc87b0d0b652f51f@127.0.0.1:40404", _logger);
+        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        // NetworkNode[] bootnodes = NetworkNode.ParseNodes("enode://8cd847302089d4906c5eb3125770b067fbcb7dc6bd62dfd3517483cc2e6acae6141a5fb4061f76825ea9f585d157b625f84f976fb6aa1582dc87b0d0b652f51f@127.0.0.1:40404", _logger);
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -102,14 +102,32 @@ public class DiscoveryApp : IDiscoveryApp
 
             _bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
         }
-        // enr:-Iq4QH5BqYiMrk3JM9PjbWQywalXCmIJEls45OVyd-DOZ662I-h9Te3B3l_DUYb69qODpUJXqROXZ-bsl0KTEsXl4JyGAZZ6r115gmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQNC_Da2PwnTdLvnKpys14XtqIGoZqdngnIMh6cPhVwK3oN1ZHCCo9c
     }
 
-    private class NodeNodeHashProvider : INodeHashProvider<Node>
+    private class NodeNodeHashProvider : INodeHashProvider<PublicKey, Node>
     {
         public ValueHash256 GetHash(Node node)
         {
             return node.Id.Hash;
+        }
+
+        public PublicKey GetKey(Node node)
+        {
+            return node.Id;
+        }
+
+        public ValueHash256 GetKeyHash(PublicKey key)
+        {
+            return key.Hash;
+        }
+
+        public PublicKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
+        {
+            // Obviously, we can't generate this. So we just randomly pick something.
+            // I guess we can brute force it if needed.
+            Span<byte> randomBytes = new byte[64];
+            Random.Shared.NextBytes(randomBytes);
+            return new PublicKey(randomBytes);
         }
     }
 
@@ -130,8 +148,8 @@ public class DiscoveryApp : IDiscoveryApp
         */
 
         _kademliaServices = new ContainerBuilder()
-            .AddModule(new KademliaModule<Node>())
-            .AddSingleton<INodeHashProvider<Node>, NodeNodeHashProvider>()
+            .AddModule(new KademliaModule<PublicKey, Node>())
+            .AddSingleton<INodeHashProvider<PublicKey, Node>, NodeNodeHashProvider>()
             .AddSingleton<ITimestamper>(_timestamper)
             .AddSingleton<INetworkConfig>(_networkConfig)
             .AddSingleton<ILogManager>(_logManager)
@@ -140,12 +158,12 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 CurrentNodeId = new Node(_masterNode, "127.0.0.1", 9999, true)
             })
-            .AddSingleton<IKademliaMessageSender<Node>, KademliaDiscv4MessageSender>()
+            .AddSingleton<IKademliaMessageSender<PublicKey, Node>, KademliaDiscv4MessageSender>()
             .AddSingleton<KademliaDiscv4MessageReceiver>()
             .Build();
 
-        _kademlia = _kademliaServices.Resolve<IKademlia<Node>>();
-        _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<Node>>();
+        _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
+        _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<PublicKey, Node>>();
         _discv4MessageReceiver = _kademliaServices.Resolve<KademliaDiscv4MessageReceiver>();
         _discv4MessageSender = _kademliaServices.Resolve<KademliaDiscv4MessageSender>();
 
@@ -587,13 +605,13 @@ public class DiscoveryApp : IDiscoveryApp
             // ch.Writer.TryWrite(addedNode);
         }
 
-        async Task DiscoverAsync(ValueHash256 hash)
+        async Task DiscoverAsync(PublicKey target)
         {
-            if (_logger.IsDebug) _logger.Debug($"Looking up {hash}");
+            if (_logger.IsDebug) _logger.Debug($"Looking up {target}");
             bool anyFound = false;
             int count = 0;
 
-            await foreach (var node in _lookup2.Lookup(hash, token))
+            await foreach (var node in _lookup2.Lookup(target, token))
             {
                 anyFound = true;
                 count++;
@@ -609,7 +627,7 @@ public class DiscoveryApp : IDiscoveryApp
 
             if (!anyFound)
             {
-                if (_logger.IsDebug) _logger.Debug($"No node found for {hash}");
+                if (_logger.IsDebug) _logger.Debug($"No node found for {target}");
             }
             else
             {
@@ -621,7 +639,7 @@ public class DiscoveryApp : IDiscoveryApp
         Task discoverTask = Task.WhenAll(Enumerable.Range(0, 6).Select((_) => Task.Run(async () =>
         {
             Random random = new();
-            ValueHash256 randomNodeId = new();
+            byte[] randomBytes = new byte[64];
             int iterationCount = 0;
             while (!token.IsCancellationRequested)
             {
@@ -634,8 +652,8 @@ public class DiscoveryApp : IDiscoveryApp
 
                 try
                 {
-                    random.NextBytes(randomNodeId.BytesAsSpan);
-                    await DiscoverAsync(randomNodeId);
+                    random.NextBytes(randomBytes);
+                    await DiscoverAsync(new PublicKey(randomBytes));
                 }
                 catch (Exception ex)
                 {

@@ -8,8 +8,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
+public class KBucketTree<TKey, TNode>: IRoutingTable<TNode> where TNode : notnull
 {
+    private readonly INodeHashProvider<TKey, TNode> _nodeHashProvider;
+
     private class TreeNode
     {
         public KBucket<TNode> Bucket { get; }
@@ -34,10 +36,11 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public KBucketTree(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
+    public KBucketTree(KademliaConfig<TNode> config, INodeHashProvider<TKey, TNode> nodeHashProvider, ILogManager logManager)
     {
         _k = config.KSize;
         _b = config.Beta;
+        _nodeHashProvider = nodeHashProvider;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, new ValueHash256());
         _logger = logManager.GetClassLogger();
@@ -215,7 +218,7 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         }
     }
 
-    public IEnumerable<ValueHash256> IterateBucketRandomHashes()
+    public IEnumerable<(ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket)> IterateBuckets()
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
@@ -223,22 +226,22 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         return DoIterateBucketRandomHashes(_root, 0).ToArray();
     }
 
-    private IEnumerable<ValueHash256> DoIterateBucketRandomHashes(TreeNode node, int depth)
+    private IEnumerable<(ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket)> DoIterateBucketRandomHashes(TreeNode node, int depth)
     {
         if (node.IsLeaf)
         {
-            yield return Hash256XorUtils.GetRandomHashAtDistance(_currentNodeHash, depth);
+            yield return (node.Prefix, depth, node.Bucket);
         }
         else
         {
-            foreach (ValueHash256 bucketHash in DoIterateBucketRandomHashes(node.Left!, depth + 1))
+            foreach (var bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
             {
-                yield return bucketHash;
+                yield return bucketInfo;
             }
 
-            foreach (ValueHash256 bucketHash in DoIterateBucketRandomHashes(node.Right!, depth + 1))
+            foreach (var bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
             {
-                yield return bucketHash;
+                yield return bucketInfo;
             }
         }
     }

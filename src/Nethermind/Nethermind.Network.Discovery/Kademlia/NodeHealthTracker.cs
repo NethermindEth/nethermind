@@ -8,15 +8,21 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class NodeHealthTracker<TNode>(
+public interface INodeHealthTracker<TNode>
+{
+    void OnIncomingMessageFrom(TNode sender);
+    void OnRequestFailed(TNode node);
+}
+
+public class NodeHealthTracker<TKey, TNode>(
     KademliaConfig<TNode> config,
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
-    IKademliaMessageSender<TNode> kademliaMessageSender,
+    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
     ILogManager logManager
-)
+) : INodeHealthTracker<TNode> where TNode : notnull
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthTracker<TNode>>();
+    private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthTracker<TKey, TNode>>();
 
     private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
     private readonly LruCache<ValueHash256, int> _peerFailures = new(1024, "peer failure");

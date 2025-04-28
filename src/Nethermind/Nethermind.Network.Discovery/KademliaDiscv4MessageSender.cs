@@ -24,7 +24,7 @@ public class KademliaDiscv4MessageSender(
     KademliaConfig<Node> kademliaConfig,
     ILogManager logManager,
     ITimestamper timestamper
-): IKademliaMessageSender<Node>
+): IKademliaMessageSender<PublicKey, Node>
 {
     private ILogger _logger = logManager.GetClassLogger<KademliaDiscv4MessageSender>();
     public IMsgSender? MsgSender { get; set; }
@@ -181,7 +181,7 @@ public class KademliaDiscv4MessageSender(
     private Counter FindNeighbourStatus =
         Prometheus.Metrics.CreateCounter("find_neighbour_status", "find neighbour", "status");
 
-    public async Task<Node[]> FindNeighbours(Node receiver, ValueHash256 hash, CancellationToken token)
+    public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
         using var cts = token.CreateChildTokenSource(_requestTimeout);
         token = cts.Token;
@@ -197,7 +197,7 @@ public class KademliaDiscv4MessageSender(
         {
             var result = await RunAuthenticatedRequest(receiver, async token =>
             {
-                FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), hash.ToByteArray());
+                FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), target.Bytes);
 
                 return await CallAndWaitForResponse(_awaitingFindNeighbourMsg, receiver, msg, token);
             }, token);
@@ -324,7 +324,7 @@ public class KademliaDiscv4MessageSender(
 
 #pragma warning disable CS9113 // Parameter is unread.
 public class KademliaDiscv4MessageReceiver(
-     IKademliaMessageReceiver<Node> receiver,
+     IKademliaMessageReceiver<PublicKey, Node> receiver,
      KademliaDiscv4MessageSender sender,
      NodeRecord selfNodeRecord,
      ITimestamper timestamper,
@@ -392,8 +392,8 @@ public class KademliaDiscv4MessageReceiver(
 
         Task.Run(async () =>
         {
-            ValueHash256 searchId = new ValueHash256(msg.SearchedNodeId);
-            Node[] nodes = await receiver.FindNeighbours(node, searchId, _cts.Token);
+            PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
+            Node[] nodes = await receiver.FindNeighbours(node, publicKey, _cts.Token);
             if (nodes.Length > 12)
             {
                 // some issue with large neighbour message. Too large, and its larger than the default mtu 1280.

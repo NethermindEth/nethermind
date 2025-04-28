@@ -9,7 +9,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Main kademlia interface. High level code is expected to interface with this interface.
 /// </summary>
 /// <typeparam name="TNode"></typeparam>
-public interface IKademlia<TNode>
+public interface IKademlia<TKey, TNode>
 {
 
     /// <summary>
@@ -30,7 +30,7 @@ public interface IKademlia<TNode>
     /// <param name="targetHash"></param>
     /// <param name="token"></param>
     /// <param name="k"></param>
-    Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token, int? k = null);
+    Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
 
     /// <summary>
     /// Start timers, refresh and such for maintenance of the table.
@@ -49,10 +49,10 @@ public interface IKademlia<TNode>
     /// Return the K nearest table entry from hash. This does not traverse the network. The returned array is not
     /// sorted. The routing table may return the exact same array for optimization purpose.
     /// </summary>
-    /// <param name="hash"></param>
+    /// <param name="target"></param>
     /// <param name="excluding"></param>
     /// <param name="excludeSelf"></param>
-    TNode[] GetKNeighbour(ValueHash256 hash, TNode? excluding = default, bool excludeSelf = false);
+    TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false);
 
     /// <summary>
     /// Called when a TNode is added to the routing table.

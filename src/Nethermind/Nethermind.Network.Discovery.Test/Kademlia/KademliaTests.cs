@@ -19,7 +19,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 [TestFixture(false)]
 public class KademliaTests
 {
-    private readonly IKademliaMessageSender<ValueHash256> _kademliaMessageSender = Substitute.For<IKademliaMessageSender<ValueHash256>>();
+    private readonly IKademliaMessageSender<ValueHash256, ValueHash256> _kademliaMessageSender = Substitute.For<IKademliaMessageSender<ValueHash256, ValueHash256>>();
     private readonly bool _useTreeBasedBucket;
 
     public KademliaTests(bool useTreeBasedBucket)
@@ -27,25 +27,25 @@ public class KademliaTests
         _useTreeBasedBucket = useTreeBasedBucket;
     }
 
-    private Kademlia<ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
+    private Kademlia<ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
     {
         config.UseTreeBasedRoutingTable = _useTreeBasedBucket;
 
         return new ServiceCollection()
-            .ConfigureKademliaComponents<ValueHash256>()
+            .ConfigureKademliaComponents<ValueHash256, ValueHash256>()
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
-            .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton<INodeHashProvider<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
-            .AddSingleton<Kademlia<ValueHash256>>()
+            .AddSingleton<Kademlia<ValueHash256, ValueHash256>>()
             .BuildServiceProvider()
-            .GetRequiredService<Kademlia<ValueHash256>>();
+            .GetRequiredService<Kademlia<ValueHash256, ValueHash256>>();
     }
 
     [Test]
     public void TestNewNodeAdded()
     {
-        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 0,
@@ -70,7 +70,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
-        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 0,
@@ -100,7 +100,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
-        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             CurrentNodeId = ValueKeccak.Compute("something"),
             KSize = 5,
@@ -142,7 +142,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 1,
@@ -175,11 +175,26 @@ public class KademliaTests
         kad.GetAllAtDistance(250).ToHashSet().Should().BeEquivalentTo(testHashes[10..].ToHashSet());
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {
             return node;
+        }
+
+        public ValueHash256 GetKey(ValueHash256 node)
+        {
+            return node;
+        }
+
+        public ValueHash256 GetKeyHash(ValueHash256 key)
+        {
+            return key;
+        }
+
+        public ValueHash256 CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
+        {
+            return Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth);
         }
     }
 }

@@ -25,35 +25,35 @@ public static class IServiceCollectionExtensions
     /// <param name="collection"></param>
     /// <typeparam name="TNode">The type of node</typeparam>
     /// <returns></returns>
-    public static IServiceCollection ConfigureKademliaComponents<TNode>(this IServiceCollection collection) where TNode : notnull
+    public static IServiceCollection ConfigureKademliaComponents<TKey, TNode>(this IServiceCollection collection) where TNode : notnull
     {
         return collection
-            .AddSingleton<IKademlia<TNode>, Kademlia<TNode>>()
-            .AddSingleton<IKademliaMessageReceiver<TNode>, KademliaKademliaMessageReceiver<TNode>>()
-            .AddSingleton<NewLookupKNearestNeighbour<TNode>>()
-            .AddSingleton<OriginalLookupKNearestNeighbour<TNode>>()
-            .AddSingleton<ILookupAlgo<TNode>>(provider =>
+            .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
+            .AddSingleton<IKademliaMessageReceiver<TKey, TNode>, KademliaKademliaMessageReceiver<TKey, TNode>>()
+            .AddSingleton<NewLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<OriginalLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<ILookupAlgo<TKey, TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.GetRequiredService<KademliaConfig<TNode>>();
                 if (config.UseNewLookup)
                 {
-                    return provider.GetRequiredService<NewLookupKNearestNeighbour<TNode>>();
+                    return provider.GetRequiredService<NewLookupKNearestNeighbour<TKey, TNode>>();
                 }
 
-                return provider.GetRequiredService<OriginalLookupKNearestNeighbour<TNode>>();
+                return provider.GetRequiredService<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
-            .AddSingleton<KBucketTree<TNode>>()
-            .AddSingleton<BucketListRoutingTable<TNode>>()
-            .AddSingleton<NodeHealthTracker<TNode>>()
+            .AddSingleton<KBucketTree<TKey, TNode>>()
+            .AddSingleton<BucketListRoutingTable<TKey, TNode>>()
+            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>()
             .AddSingleton<IRoutingTable<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.GetRequiredService<KademliaConfig<TNode>>();
                 if (config.UseTreeBasedRoutingTable)
                 {
-                    return provider.GetRequiredService<KBucketTree<TNode>>();
+                    return provider.GetRequiredService<KBucketTree<TKey, TNode>>();
                 }
 
-                return provider.GetRequiredService<BucketListRoutingTable<TNode>>();
+                return provider.GetRequiredService<BucketListRoutingTable<TKey, TNode>>();
             });
     }
 }

@@ -7,10 +7,9 @@ using Nethermind.Logging;
 namespace Nethermind.Network.Discovery.Kademlia.Content;
 
 public class KademliaContent<TNode, TContentKey, TContent>(
-    IContentHashProvider<TContentKey> contentHashProvider,
     IKademliaContentStore<TContentKey, TContent> kademliaContentStore,
     IContentMessageSender<TNode, TContentKey, TContent> contentMessageSender,
-    ILookupAlgo<TNode> lookupAlgo,
+    ILookupAlgo<TContentKey, TNode> lookupAlgo,
     KademliaConfig<TNode> config,
     ILogManager logManager
     ): IKademliaContent<TContentKey, TContent> where TNode : notnull
@@ -31,12 +30,10 @@ public class KademliaContent<TNode, TContentKey, TContent>(
             return content;
         }
 
-        ValueHash256 targetHash = contentHashProvider.GetHash(contentKey);
-
         try
         {
             await lookupAlgo.Lookup(
-                targetHash, config.KSize, async (nextNode, token) =>
+                contentKey, config.KSize, async (nextNode, token) =>
                 {
                     FindValueResponse<TNode, TContent> valueResponse = await contentMessageSender.FindValue(nextNode, contentKey, token);
 

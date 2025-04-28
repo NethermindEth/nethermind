@@ -11,7 +11,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Find closest-k is also used to determine which node should store a particular value which is used by
 /// store RPC (not implemented).
 /// </summary>
-public interface ILookupAlgo<TNode>
+public interface ILookupAlgo<TKey, TNode>
 {
     /// <summary>
     /// The find neighbour operation here is configurable because the same algorithm is also used for finding
@@ -23,7 +23,7 @@ public interface ILookupAlgo<TNode>
     /// <param name="token"></param>
     /// <returns></returns>
     Task<TNode[]> Lookup(
-        ValueHash256 targetHash,
+        TKey target,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token

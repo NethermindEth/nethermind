@@ -17,23 +17,23 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// earlier as it converge to the content faster, but take more query for findnodes due to a more strict stop
 /// condition.
 /// </summary>
-public class NewLookupKNearestNeighbour<TNode>(
+public class NewLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
-    NodeHealthTracker<TNode> nodeHealthTracker,
+    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager): ILookupAlgo<TNode>
+    ILogManager logManager): ILookupAlgo<TKey, TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TNode>>();
+    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TKey, TNode>>();
 
     public async Task<TNode[]> Lookup(
-        ValueHash256 targetHash,
+        TKey target,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     ) {
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
+        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {target}");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
@@ -41,6 +41,7 @@ public class NewLookupKNearestNeighbour<TNode>(
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
         ConcurrentDictionary<ValueHash256, TNode> seen = new();
 
+        ValueHash256 targetHash = nodeHashProvider.GetKeyHash(target);
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h1, h2, targetHash));
         IComparer<ValueHash256> comparerReverse = Comparer<ValueHash256>.Create((h1, h2) =>

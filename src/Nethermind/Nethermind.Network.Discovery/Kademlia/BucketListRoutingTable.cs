@@ -3,24 +3,24 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : notnull
+public class BucketListRoutingTable<TKey, TNode>: IRoutingTable<TNode> where TNode : notnull
 {
     private readonly ILogger _logger;
     private readonly KBucket<TNode>[] _buckets;
     private readonly ValueHash256 _currentNodeIdAsHash;
+    private readonly INodeHashProvider<TKey, TNode> _nodeHashProvider;
     private readonly int _kSize;
 
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
+    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TKey, TNode> nodeHashProvider, ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger<BucketListRoutingTable<TNode>>();
+        _logger = logManager.GetClassLogger<BucketListRoutingTable<TKey, TNode>>();
 
         // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
         _buckets = new KBucket<TNode>[Hash256XorUtils.MaxDistance + 1];
@@ -29,6 +29,7 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
             _buckets[i] = new KBucket<TNode>(config.KSize);
         }
 
+        _nodeHashProvider = nodeHashProvider;
         _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _kSize = config.KSize;
     }
@@ -62,14 +63,14 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         return _buckets[i].GetAll();
     }
 
-    public IEnumerable<ValueHash256> IterateBucketRandomHashes()
+    public IEnumerable<(ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket)> IterateBuckets()
     {
         for (var i = 0; i < _buckets.Length; i++)
         {
             if (_buckets[i].Count > 0)
             {
-                ValueHash256 nodeToLookup = Hash256XorUtils.GetRandomHashAtDistance(_currentNodeIdAsHash, i);
-                yield return nodeToLookup;
+                // TODO: Prefix incorrect
+                yield return (_currentNodeIdAsHash, i, _buckets[i]);
             }
         }
     }

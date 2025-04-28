@@ -9,24 +9,25 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <summary>
 /// This find nearest k query follows the kademlia paper faithfully, but does not do much parallelism.
 /// </summary>
-public class OriginalLookupKNearestNeighbour<TNode>(
+public class OriginalLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
-    NodeHealthTracker<TNode> nodeHealthTracker,
+    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager): ILookupAlgo<TNode>
+    ILogManager logManager): ILookupAlgo<TKey, TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TNode>>();
+    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TKey, TNode>>();
 
     public async Task<TNode[]> Lookup(
-        ValueHash256 targetHash,
+        TKey target,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     ) {
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
+        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {target}");
 
+        ValueHash256 targetHash = nodeHashProvider.GetKeyHash(target);
         Func<TNode, Task<(TNode target, TNode[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
