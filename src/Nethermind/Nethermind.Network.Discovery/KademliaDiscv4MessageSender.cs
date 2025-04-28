@@ -29,10 +29,10 @@ public class KademliaDiscv4MessageSender(
     private ILogger _logger = logManager.GetClassLogger<KademliaDiscv4MessageSender>();
     public IMsgSender? MsgSender { get; set; }
     public NodeFilter NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
-    private TimeSpan _unauthenticatedRequestTimeout = TimeSpan.FromSeconds(2.5);
-    private TimeSpan _requestTimeout = TimeSpan.FromSeconds(8);
+    private TimeSpan _unauthenticatedRequestTimeout = TimeSpan.FromSeconds(4);
+    private TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
     private TimeSpan _tryAuthenticatedTimeout = TimeSpan.FromSeconds(1);
-    private TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(100);
+    private TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
 
     private ConcurrentDictionary<ValueHash256, TaskCompletionSource<PongMsg>> _awaitingPingMsg = new();
     private ConcurrentDictionary<ValueHash256, TaskCompletionSource> _awaitingPongToNode = new();
@@ -41,16 +41,26 @@ public class KademliaDiscv4MessageSender(
     private ConcurrentDictionary<ValueHash256, TaskCompletionSource<Node[]>> _awaitingFindNeighbourMsg = new();
     private ConcurrentDictionary<ValueHash256, TaskCompletionSource<EnrResponseMsg>> _awaitingEnrRequestMsg = new();
 
-    private LruCache<ValueHash256, DateTimeOffset> _lastPong = new(1024, "");
+    private LruCache<ValueHash256, DateTimeOffset> _lastPong = new(1024 * 10, "");
+    private LruCache<ValueHash256, DateTimeOffset> _knownFailedFindNeighbour = new(1024 * 10, "");
+
+    private int findNodeFailureLimit = 5;
+    private ConcurrentDictionary<ValueHash256, int> _findNodesFailure = new();
 
     private Counter EnsureSessionResult =
         Prometheus.Metrics.CreateCounter("kademlia_ensure_session_result", "result", "result");
 
+    private bool IsShouldBeAuthenticated(Node node)
+    {
+        return _lastPong.TryGet(node.IdHash, out DateTimeOffset lastPong)
+               && lastPong > DateTimeOffset.Now - TimeSpan.FromHours(12)
+               && (!_findNodesFailure.TryGetValue(node.IdHash, out int failedFinedNodes) || failedFinedNodes <= findNodeFailureLimit);
+    }
+
     private async Task EnsureSession(Node node, CancellationToken token)
     {
-        if (_lastPong.TryGet(node.IdHash, out DateTimeOffset lastPong) && lastPong > DateTimeOffset.Now - TimeSpan.FromHours(12))
+        if (IsShouldBeAuthenticated(node))
         {
-            if (_logger.IsTrace) _logger.Trace($"Node already had pong within deadline {node}. Pong duration: {DateTimeOffset.Now - lastPong}");
             EnsureSessionResult.WithLabels("pong_not_expired");
             return;
         }
@@ -73,7 +83,6 @@ public class KademliaDiscv4MessageSender(
         catch (OperationCanceledException)
         {
             if (_logger.IsTrace) _logger.Trace($"Node {node} timeout trying to trigger pong.");
-            _logger.Warn($"Node {node} timeout trying to trigger pong.");
             EnsureSessionResult.WithLabels("pong_timeout");
         }
         catch (Exception)
@@ -88,33 +97,33 @@ public class KademliaDiscv4MessageSender(
         }
     }
 
+    Counter AuthRequestCounter = Prometheus.Metrics.CreateCounter("kademlia_auth_request", "request", "status");
+    private ConcurrentDictionary<ValueHash256, bool> _previouslyOk = new();
+
+    private ConcurrentDictionary<ValueHash256, TaskCompletionSource> _maybePingOnRequest = new();
     private async Task<T> RunAuthenticatedRequest<T>(Node node, Func<CancellationToken, Task<T>> callRequest, CancellationToken token)
     {
+        AuthRequestCounter.WithLabels("auth_request").Inc();
+        TaskCompletionSource pingCts = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _maybePingOnRequest.TryAdd(node.IdHash, pingCts);
         using var cts = token.CreateChildTokenSource(_requestTimeout);
         token = cts.Token;
 
-        {
-            using var firstTryCts = token.CreateChildTokenSource(_unauthenticatedRequestTimeout);
-            try
-            {
-                return await callRequest(firstTryCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                // If we don't get a response in time, it could just be that we are not authenticated there
-            }
-        }
-
         await EnsureSession(node, token);
-
-        // Then we just try a final time.
         try
         {
-            return await callRequest(token);
+            var resp = await callRequest(token);
+            AuthRequestCounter.WithLabels("ok_attempt").Inc();
+            return resp;
         }
         catch (OperationCanceledException)
         {
-            _lastPong.Delete(node.IdHash);
+            AuthRequestCounter.WithLabels("failed_attempt").Inc();
+            if (IsShouldBeAuthenticated(node))
+            {
+                AuthRequestCounter.WithLabels("failed_attempt_should_be_authenticated").Inc();
+            }
+            // _lastPong.Delete(node.IdHash);
             throw;
         }
     }
@@ -141,7 +150,7 @@ public class KademliaDiscv4MessageSender(
         CancellationToken token
     ) {
         TaskCompletionSource<T> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        CancellationTokenRegistration unregister = token.RegisterToCompletionSource(completionSource);
+        await using CancellationTokenRegistration unregister = token.RegisterToCompletionSource(completionSource);
         ValueHash256 requestHash = receiver.IdHash;
         while (!requestDictionary.TryAdd(requestHash, completionSource))
         {
@@ -165,22 +174,60 @@ public class KademliaDiscv4MessageSender(
         }
         finally
         {
-            unregister.Unregister();
             requestDictionary.TryRemove(requestHash, out _);
         }
     }
+
+    private Counter FindNeighbourStatus =
+        Prometheus.Metrics.CreateCounter("find_neighbour_status", "find neighbour", "status");
 
     public async Task<Node[]> FindNeighbours(Node receiver, ValueHash256 hash, CancellationToken token)
     {
         using var cts = token.CreateChildTokenSource(_requestTimeout);
         token = cts.Token;
 
-        return await RunAuthenticatedRequest(receiver, async token =>
+        if (_knownFailedFindNeighbour.TryGet(receiver.IdHash, out DateTimeOffset lastFailure) &&
+            lastFailure > DateTimeOffset.Now - TimeSpan.FromMinutes(5))
         {
-            FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), hash.ToByteArray());
+            FindNeighbourStatus.WithLabels("Known fail").Inc();
+            return [];
+        }
 
-            return await CallAndWaitForResponse(_awaitingFindNeighbourMsg, receiver, msg, token);
-        }, token);
+        try
+        {
+            var result = await RunAuthenticatedRequest(receiver, async token =>
+            {
+                FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), hash.ToByteArray());
+
+                return await CallAndWaitForResponse(_awaitingFindNeighbourMsg, receiver, msg, token);
+            }, token);
+
+            _findNodesFailure[receiver.IdHash] = 0;
+            FindNeighbourStatus.WithLabels("ok").Inc();
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (_findNodesFailure.TryGetValue(receiver.IdHash, out int failureCount))
+            {
+                _findNodesFailure[receiver.IdHash] = failureCount + 1;
+            }
+            else
+            {
+                _findNodesFailure[receiver.IdHash] = 1;
+            }
+
+            _knownFailedFindNeighbour.Set(receiver.IdHash, DateTimeOffset.Now);
+            if (IsShouldBeAuthenticated(receiver))
+            {
+                FindNeighbourStatus.WithLabels("timeout_should_be_authenticated").Inc();
+            }
+            else
+            {
+                FindNeighbourStatus.WithLabels("timeout").Inc();
+            }
+            throw;
+        }
     }
 
     public async Task<EnrResponseMsg> SendEnrRequest(Node receiver, CancellationToken token)
@@ -213,7 +260,16 @@ public class KademliaDiscv4MessageSender(
         }
         else
         {
-            _logger.Error($"No ping for pong {node} {msg.PingMdc.ToHexString()}");
+            // Pong timeout?
+            // _logger.Error($"No ping for pong {node} {msg.PingMdc.ToHexString()}");
+        }
+    }
+
+    public void OnPing(Node node, PingMsg ping)
+    {
+        if (_maybePingOnRequest.TryRemove(node.IdHash, out var cts))
+        {
+            cts.TrySetResult();
         }
     }
 
@@ -349,6 +405,7 @@ public class KademliaDiscv4MessageReceiver(
 
     private void HandlePing(Node node, PingMsg ping)
     {
+        sender.OnPing(node, ping);
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
         Task.Run(async () =>
         {

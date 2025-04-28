@@ -9,6 +9,7 @@ using System.Threading.Channels;
 using Autofac;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
+using Microsoft.ClearScript;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -22,6 +23,7 @@ using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using Prometheus;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
@@ -82,7 +84,8 @@ public class DiscoveryApp : IDiscoveryApp
         _bootNodes = new List<Node>();
         _discoveryStorage.StartBatch();
 
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        // NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        NetworkNode[] bootnodes = NetworkNode.ParseNodes("enode://8cd847302089d4906c5eb3125770b067fbcb7dc6bd62dfd3517483cc2e6acae6141a5fb4061f76825ea9f585d157b625f84f976fb6aa1582dc87b0d0b652f51f@127.0.0.1:40404", _logger);
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -99,6 +102,7 @@ public class DiscoveryApp : IDiscoveryApp
 
             _bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
         }
+        // enr:-Iq4QH5BqYiMrk3JM9PjbWQywalXCmIJEls45OVyd-DOZ662I-h9Te3B3l_DUYb69qODpUJXqROXZ-bsl0KTEsXl4JyGAZZ6r115gmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQNC_Da2PwnTdLvnKpys14XtqIGoZqdngnIMh6cPhVwK3oN1ZHCCo9c
     }
 
     private class NodeNodeHashProvider : INodeHashProvider<Node>
@@ -565,10 +569,13 @@ public class DiscoveryApp : IDiscoveryApp
     private event EventHandler<NodeEventArgs>? NodeAdded;
     */
 
+    private Gauge _kademliaSize = Prometheus.Metrics.CreateGauge("kademlia_size", "kad size");
+    private Counter _kademliaDiscoveredNodes = Prometheus.Metrics.CreateCounter("kademlia_discovered_nodes", "Discovered");
+
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
         if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
-        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        Channel<Node> ch = Channel.CreateBounded<Node>(64);
         ConcurrentDictionary<ValueHash256, ValueHash256> _writtenNodes = new();
         int duplicated = 0;
         int total = 0;
@@ -576,8 +583,8 @@ public class DiscoveryApp : IDiscoveryApp
 
         void handler(object? _, Node addedNode)
         {
-            _writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
-            ch.Writer.TryWrite(addedNode);
+            // _writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
+            // ch.Writer.TryWrite(addedNode);
         }
 
         async Task DiscoverAsync(ValueHash256 hash)
@@ -591,7 +598,12 @@ public class DiscoveryApp : IDiscoveryApp
                 anyFound = true;
                 count++;
                 total++;
-                if (!_writtenNodes.TryAdd(node.IdHash, node.IdHash)) duplicated++;
+                if (!_writtenNodes.TryAdd(node.IdHash, node.IdHash))
+                {
+                    duplicated++;
+                    continue;
+                }
+                _kademliaDiscoveredNodes.Inc();
                 await ch.Writer.WriteAsync(node, token);
             }
 
@@ -606,26 +618,24 @@ public class DiscoveryApp : IDiscoveryApp
             Console.Error.WriteLine($"Total is {total}, duplicated {duplicated}, fromNewNode {fromNewNode}");
         }
 
-        Task discoverTask = Task.Run(async () =>
+        Task discoverTask = Task.WhenAll(Enumerable.Range(0, 6).Select((_) => Task.Run(async () =>
         {
             Random random = new();
             ValueHash256 randomNodeId = new();
+            int iterationCount = 0;
             while (!token.IsCancellationRequested)
             {
                 Stopwatch iterationTime = Stopwatch.StartNew();
-                await EnsureBootNodes(token);
+                if (iterationCount % 10 == 0)
+                {
+                    // Probably shnould be done once or in a few interval
+                    await EnsureBootNodes(token);
+                }
 
                 try
                 {
-                    const int RandomNodesToLookupCount = 3;
-                    using ArrayPoolList<Task> discoverTasks = new ArrayPoolList<Task>(RandomNodesToLookupCount);
-                    for (int i = 0; i < RandomNodesToLookupCount; i++)
-                    {
-                        random.NextBytes(randomNodeId.BytesAsSpan);
-                        discoverTasks.Add(DiscoverAsync(randomNodeId));
-                    }
-
-                    await Task.WhenAll(discoverTasks);
+                    random.NextBytes(randomNodeId.BytesAsSpan);
+                    await DiscoverAsync(randomNodeId);
                 }
                 catch (Exception ex)
                 {
@@ -635,10 +645,10 @@ public class DiscoveryApp : IDiscoveryApp
                 // Prevent high CPU when all node is not reachable due to network connectivity issue.
                 if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    await Task.Delay(TimeSpan.FromSeconds(1), token);
                 }
             }
-        });
+        })));
 
         try
         {
