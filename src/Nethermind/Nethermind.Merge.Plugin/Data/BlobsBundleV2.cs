@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using Nethermind.Core;
 using System;
 using System.Text.Json.Serialization;
@@ -26,7 +27,7 @@ public class BlobsBundleV2
 
             Commitments = new byte[blobsCount][];
             Blobs = new byte[blobsCount][];
-            Proofs = new byte[blobsCount * Ckzg.Ckzg.CellsPerExtBlob][];
+            Proofs = new byte[blobsCount * Ckzg.CellsPerExtBlob][];
             int blockIndex = 0;
 
             foreach (Transaction? tx in block.Transactions)
@@ -47,7 +48,7 @@ public class BlobsBundleV2
                 {
                     Commitments[blockIndex] = wrapper.Commitments[txIndex];
                     Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                    Array.Copy(wrapper.Proofs, txIndex * Ckzg.Ckzg.CellsPerExtBlob, Proofs, blockIndex * Ckzg.Ckzg.CellsPerExtBlob, Ckzg.Ckzg.CellsPerExtBlob);
+                    Array.Copy(wrapper.Proofs, txIndex * Ckzg.CellsPerExtBlob, Proofs, blockIndex * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob);
                 }
             }
         }

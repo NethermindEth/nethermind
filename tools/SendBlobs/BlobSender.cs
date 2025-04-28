@@ -1,5 +1,6 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
 extern alias BouncyCastle;
 
 using Nethermind.Cli;
@@ -14,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using BouncyCastle::Org.BouncyCastle.Utilities.Encoders;
+using CkzgLib;
 
 namespace SendBlobs;
 internal class BlobSender
@@ -124,9 +126,9 @@ internal class BlobSender
 
                 for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
                 {
-                    blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    blobs[blobIndex] = new byte[Ckzg.BytesPerBlob];
                     random.NextBytes(blobs[blobIndex]);
-                    for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
+                    for (int i = 0; i < Ckzg.BytesPerBlob; i += 32)
                     {
                         blobs[blobIndex][i] = 0;
                     }
@@ -231,14 +233,14 @@ internal class BlobSender
         Signer signer = new(chainId, privateKey, _logManager);
 
 
-        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.Ckzg.BytesPerBlob);
+        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.BytesPerBlob);
 
         byte[][] blobs = new byte[blobCount][];
 
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
-            blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
-            Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+            blobs[blobIndex] = new byte[Ckzg.BytesPerBlob];
+            Array.Copy(data, blobIndex * Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
         }
 
         IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);

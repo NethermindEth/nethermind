@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CkzgLib;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -726,7 +727,7 @@ namespace Nethermind.TxPool.Test
                 // making blobs unique. Otherwise, all txs have the same blob
                 if (uniqueBlobs)
                 {
-                    byte[] blobs = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    byte[] blobs = new byte[Ckzg.BytesPerBlob];
                     blobs[0] = (byte)(i % 256);
 
                     var networkWrapper = blobProofsManager.AllocateWrapper(blobs);
@@ -861,7 +862,7 @@ namespace Nethermind.TxPool.Test
             if (isTxValid)
             {
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1);
                 wrapper.Version.Should().Be(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0);
 
                 blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
@@ -912,7 +913,7 @@ namespace Nethermind.TxPool.Test
             if (isTxValid)
             {
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.Ckzg.CellsPerExtBlob : 1);
+                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1);
                 wrapper.Version.Should().Be(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0);
 
                 blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db

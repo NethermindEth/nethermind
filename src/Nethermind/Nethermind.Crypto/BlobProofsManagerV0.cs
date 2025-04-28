@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using CkzgLib;
 using Nethermind.Core;
 
 namespace Nethermind.Crypto;
@@ -17,8 +18,8 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
         for (int i = 0; i < blobs.Length; i++)
         {
-            result.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-            result.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+            result.Commitments[i] = new byte[Ckzg.BytesPerCommitment];
+            result.Proofs[i] = new byte[Ckzg.BytesPerProof];
         }
 
         return result;
@@ -28,8 +29,8 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
     {
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            Ckzg.Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
-            Ckzg.Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments.CkzgSetup);
         }
     }
 
@@ -42,7 +43,7 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment || wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+            if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment || wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
             {
                 return false;
             }
@@ -57,7 +58,7 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         {
             try
             {
-                return Ckzg.Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs[0], KzgPolynomialCommitments.CkzgSetup);
+                return Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs[0], KzgPolynomialCommitments.CkzgSetup);
             }
             catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
             {
@@ -65,28 +66,28 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
             }
         }
 
-        int length = wrapper.Blobs.Length * Ckzg.Ckzg.BytesPerBlob;
+        int length = wrapper.Blobs.Length * Ckzg.BytesPerBlob;
         byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
 
-        length = wrapper.Blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
+        length = wrapper.Blobs.Length * Ckzg.BytesPerCommitment;
         byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
 
-        length = wrapper.Blobs.Length * Ckzg.Ckzg.BytesPerProof;
+        length = wrapper.Blobs.Length * Ckzg.BytesPerProof;
         byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatProofs = new(flatProofsArray, 0, length);
 
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            wrapper.Blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
-            wrapper.Commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-            wrapper.Proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
+            wrapper.Blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
+            wrapper.Commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.BytesPerCommitment, Ckzg.BytesPerCommitment));
+            wrapper.Proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
         }
 
         try
         {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, wrapper.Blobs.Length, KzgPolynomialCommitments.CkzgSetup);
+            return Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, wrapper.Blobs.Length, KzgPolynomialCommitments.CkzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

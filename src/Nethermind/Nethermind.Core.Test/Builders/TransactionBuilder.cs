@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
+using CkzgLib;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -181,7 +182,7 @@ namespace Nethermind.Core.Test.Builders
 
                 ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([.. Enumerable.Range(1, blobCount).Select(i =>
                 {
-                    byte[] blob = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    byte[] blob = new byte[Ckzg.BytesPerBlob];
                     blob[0] = (byte)(i % 256);
                     return blob;
                 })]);
