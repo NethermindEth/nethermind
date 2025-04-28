@@ -43,12 +43,12 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 23 + // PUSH
-			6 * 8 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			375
-		);
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 23 + // PUSH
+            6 * 8 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            375
+        );
     }
 
     [Test]
@@ -71,12 +71,12 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 39 + // PUSH
-			6 * 16 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			600
-		);
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 39 + // PUSH
+            6 * 16 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            600
+        );
     }
 
     [Test]
@@ -99,12 +99,12 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 17 + // PUSH
-			6 * 5 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			12000
-		);
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 17 + // PUSH
+            6 * 5 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            12000
+        );
     }
 
     [Test]
@@ -127,12 +127,12 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 25 + // PUSH
-			6 * 9 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			22500
-		);
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 25 + // PUSH
+            6 * 9 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            22500
+        );
     }
 
     [Test]
@@ -155,12 +155,12 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 31 + // PUSH
-			6 * 12 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			37700 + 32600
-		);
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 31 + // PUSH
+            6 * 12 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            37700 + 32600
+        );
     }
 
     [Test]
@@ -183,12 +183,12 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 11 + // PUSH
-			6 * 2 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			5500
-		);
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 11 + // PUSH
+            6 * 2 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            5500
+        );
     }
 
     [Test]
@@ -211,11 +211,11 @@ public class Eip2537Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result,
-			GasCostOf.Transaction +
-			GasCostOf.VeryLow * 15 + // PUSH
-			6 * 4 + // MSTORE & expand one word
-			GasCostOf.CallPrecompileEip2929 +
-			23800
-		);
-	}
+            GasCostOf.Transaction +
+            GasCostOf.VeryLow * 15 + // PUSH
+            6 * 4 + // MSTORE & expand one word
+            GasCostOf.CallPrecompileEip2929 +
+            23800
+        );
+    }
 }
