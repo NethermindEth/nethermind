@@ -18,7 +18,7 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            return worldState.IsInvalidContractSender(spec,
+            return state.SenderAccount.HasCode && worldState.IsInvalidContractSender(spec,
                 tx.SenderAddress!,
                 _isDelegatedCode)
                 ? AcceptTxResult.SenderIsContract
