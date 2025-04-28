@@ -59,6 +59,7 @@ namespace Nethermind.Evm
 
         public const long ColdAccountAccess = 2600; // eip-2929
         public const long WarmStateRead = 100; // eip-2929
+        public const long CallPrecompileEip2929 = 100; // eip-2929
 
         public const long AccessAccountListEntry = 2400; // eip-2930
         public const long AccessStorageListEntry = 1900; // eip-2930

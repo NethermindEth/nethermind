@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Specs;
 using NUnit.Framework;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;
 
@@ -24,69 +24,198 @@ public class Eip2537Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_add_before_prague()
+    public void Test_g1_add_before_prague()
     {
         _timestampAdjustment = -12;
         Assert.That(G1AddPrecompile.Address.IsPrecompile(Spec), Is.False);
     }
 
     [Test]
-    public void Test_add_after_prague()
+    public void Test_g1_add_after_prague()
     {
         Assert.That(G1AddPrecompile.Address.IsPrecompile(Spec), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(G1AddPrecompile.Address, 1000L, new byte[256])
             .Done;
+
         TestAllTracerWithOutput result = Execute(code);
+
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-		// 21592
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 375);
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 23 + // PUSH
+			6 * 8 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			375
+		);
     }
 
     [Test]
-    public void Test_msm_before_prague()
+    public void Test_g2_add_before_prague()
     {
         _timestampAdjustment = -12;
-        byte[] code = Prepare.EvmCode
-            .CallWithInput(G1MSMPrecompile.Address, 50000L, new byte[160])
-            .Done;
-        TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 40000L);
+        Assert.That(G2AddPrecompile.Address.IsPrecompile(Spec), Is.False);
     }
 
     [Test]
-    public void Test_msm_after_prague()
+    public void Test_g2_add_after_prague()
     {
+        Assert.That(G2AddPrecompile.Address.IsPrecompile(Spec), Is.True);
+
         byte[] code = Prepare.EvmCode
-            .CallWithInput(G1MSMPrecompile.Address, 10000L, new byte[160])
+            .CallWithInput(G2AddPrecompile.Address, 1000L, new byte[512])
             .Done;
+
         TestAllTracerWithOutput result = Execute(code);
+
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 6000L);
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 39 + // PUSH
+			6 * 16 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			600
+		);
+    }
+
+    [Test]
+    public void Test_g1_msm_before_prague()
+    {
+        _timestampAdjustment = -12;
+        Assert.That(G1MSMPrecompile.Address.IsPrecompile(Spec), Is.False);
+    }
+
+    [Test]
+    public void Test_g1_msm_after_prague()
+    {
+        Assert.That(G1MSMPrecompile.Address.IsPrecompile(Spec), Is.True);
+
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(G1MSMPrecompile.Address, 100000L, new byte[160])
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 17 + // PUSH
+			6 * 5 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			12000
+		);
+    }
+
+    [Test]
+    public void Test_g2_msm_before_prague()
+    {
+        _timestampAdjustment = -12;
+        Assert.That(G2MSMPrecompile.Address.IsPrecompile(Spec), Is.False);
+    }
+
+    [Test]
+    public void Test_g2_msm_after_prague()
+    {
+        Assert.That(G2MSMPrecompile.Address.IsPrecompile(Spec), Is.True);
+
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(G2MSMPrecompile.Address, 100000L, new byte[288])
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 25 + // PUSH
+			6 * 9 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			22500
+		);
     }
 
     [Test]
     public void Test_pairing_before_prague()
     {
         _timestampAdjustment = -12;
-        byte[] code = Prepare.EvmCode
-            .CallWithInput(PairingCheckPrecompile.Address, 200000L, new byte[384])
-            .Done;
-        TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + 100000L + 80000L);
+        Assert.That(PairingCheckPrecompile.Address.IsPrecompile(Spec), Is.False);
     }
 
     [Test]
-    public void Test_pairing_after_prague()
+    public void Test_pairing_check_after_prague()
     {
+        Assert.That(PairingCheckPrecompile.Address.IsPrecompile(Spec), Is.True);
+
         byte[] code = Prepare.EvmCode
-            .CallWithInput(PairingCheckPrecompile.Address, 200000L, new byte[284])
+            .CallWithInput(PairingCheckPrecompile.Address, 100000L, new byte[384])
             .Done;
-        TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
+
+        TestAllTracerWithOutput result = Execute(code);
+
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + 45000L + 34000L);
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 31 + // PUSH
+			6 * 12 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			37700 + 32600
+		);
     }
+
+    [Test]
+    public void Test_map_fp_to_g1_before_prague()
+    {
+        _timestampAdjustment = -12;
+        Assert.That(MapFpToG1Precompile.Address.IsPrecompile(Spec), Is.False);
+    }
+
+    [Test]
+    public void Test_map_fp_to_g1_after_prague()
+    {
+        Assert.That(MapFpToG1Precompile.Address.IsPrecompile(Spec), Is.True);
+
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(MapFpToG1Precompile.Address, 10000L, new byte[64])
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 11 + // PUSH
+			6 * 2 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			5500
+		);
+    }
+
+    [Test]
+    public void Test_map_fp2_to_g2_before_prague()
+    {
+        _timestampAdjustment = -12;
+        Assert.That(MapFp2ToG2Precompile.Address.IsPrecompile(Spec), Is.False);
+    }
+
+    [Test]
+    public void Test_map_fp2_to_g2_after_prague()
+    {
+        Assert.That(MapFp2ToG2Precompile.Address.IsPrecompile(Spec), Is.True);
+
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(MapFp2ToG2Precompile.Address, 100000L, new byte[128])
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertGas(result,
+			GasCostOf.Transaction +
+			GasCostOf.VeryLow * 15 + // PUSH
+			6 * 4 + // MSTORE & expand one word
+			GasCostOf.CallPrecompileEip2929 +
+			23800
+		);
+	}
 }
