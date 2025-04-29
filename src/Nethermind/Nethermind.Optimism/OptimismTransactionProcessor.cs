@@ -139,13 +139,12 @@ public class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee,
-        in TxExecutionContext env, in byte statusCode)
+        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, in byte statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, env, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, statusCode);
 
             if (opSpecHelper.IsBedrock(header))
             {

@@ -60,8 +60,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee,
-        in TxExecutionContext env, in byte statusCode)
+        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
     {
     }
 
