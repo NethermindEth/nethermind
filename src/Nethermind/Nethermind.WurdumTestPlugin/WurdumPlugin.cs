@@ -46,8 +46,8 @@ public class WurdumPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api!.RpcModuleProvider.Register(new SingletonModulePool<IWurdumRpcModule>(
-            new WurdumRpcModule(_api.ManualBlockProductionTrigger, _api.ChainSpec, _api.LogManager.GetClassLogger<WurdumRpcModule>())));
+        WurdumRpcModuleFactory rpcModuleFactory = new(_api.ManualBlockProductionTrigger, _api.ChainSpec, _api.LogManager.GetClassLogger<WurdumRpcModule>());
+        _api!.RpcModuleProvider.Register(new BoundedModulePool<IWurdumRpcModule>(rpcModuleFactory, 1, 30000));
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
