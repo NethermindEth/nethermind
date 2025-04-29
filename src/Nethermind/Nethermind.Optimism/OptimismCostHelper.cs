@@ -125,12 +125,10 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 operatorFee = Parse(span.Slice(span.Length - size));
                 break;
             case < size:
-            {
                 Span<byte> aligned = stackalloc byte[size];
                 span.CopyTo(aligned.Slice(size - span.Length));
                 operatorFee = Parse(aligned);
                 break;
-            }
         }
 
         return (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
@@ -267,7 +265,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             {
                 uint d;
                 uint r;
-                for (;;)
+                for (; ; )
                 {
                     uint s = u24(ip);
                     int h = (int)hash(s);
