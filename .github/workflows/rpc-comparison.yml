@@ -183,7 +183,7 @@ jobs:
     if: always() && needs.aggregate_rpcs.result == 'success'
     timeout-minutes: 1440
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Wait for the nodes to sync
         timeout-minutes: 1440
