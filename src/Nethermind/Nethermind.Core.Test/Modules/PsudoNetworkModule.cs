@@ -59,7 +59,7 @@ public class PsudoNetworkModule(IInitConfig initConfig) : Module
                 serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
                 serializationService.Register(System.Reflection.Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
                 ReceiptsMessageSerializer receiptsMessageSerializer = new(specProvider);
-                serializationService.Register(receiptsMessageSerializer); // TODO: use default serializers registration?
+                serializationService.Register(receiptsMessageSerializer);
                 serializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
                 serializationService.Register<ReceiptsMessage69>(new ReceiptsMessageSerializer69(specProvider));
 

@@ -261,9 +261,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void UpdateSyncModes(SyncMode newModes, string? reason = null)
         {
-            if(_syncPeerPool.AllPeers.Any(p => p.HeadNumber > 0) && newModes == SyncMode.Disconnected)
-                Debugger.Break();
-
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Changing state to {newModes} | {reason}");
@@ -331,9 +328,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notInFastSync), notInFastSync),
                     (nameof(notInStateSync), notInStateSync));
             }
-
-            if(_syncPeerPool.AllPeers.Any(p => p.HeadNumber > 0) && !result)
-                Debugger.Break();
 
             return result;
         }
