@@ -386,7 +386,18 @@ namespace Nethermind.EngineApiProxy.Handlers
                             _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
                             // Track this payload ID with the hash so it can be found later
                             var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
-                            _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                            
+                            // Extract parent beacon block root if available in request
+                            string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
+                            if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+                            {
+                                _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId}");
+                                _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
+                            }
+                            else
+                            {
+                                _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                            }
                             
                             // Only cache the response if we have less than 100 entries (prevent memory issues)
                             if (_lhResponseCache.Count < 100)
@@ -436,7 +447,18 @@ namespace Nethermind.EngineApiProxy.Handlers
                             _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
                             // Track this payload ID with the hash so it can be found later
                             var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
-                            _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                            
+                            // Extract parent beacon block root if available in request
+                            string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
+                            if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+                            {
+                                _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId}");
+                                _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
+                            }
+                            else
+                            {
+                                _payloadTracker.TrackPayload(headBlockHash, payloadId);
+                            }
                         }
                     }
                     
@@ -496,6 +518,22 @@ namespace Nethermind.EngineApiProxy.Handlers
             }
             
             return string.Empty;
+        }
+        
+        /// <summary>
+        /// Extracts the parent beacon block root from FCU request if available
+        /// </summary>
+        private static string? ExtractParentBeaconBlockRoot(JsonRpcRequest request)
+        {
+            // If the FCU request has payload attributes (param index 1)
+            if (request.Params?.Count > 1 && 
+                request.Params[1] is JObject payloadAttributes && 
+                payloadAttributes["parentBeaconBlockRoot"] != null)
+            {
+                return payloadAttributes["parentBeaconBlockRoot"]?.ToString();
+            }
+            
+            return null;
         }
 
         private void CleanupExpiredCacheEntries(object? state)

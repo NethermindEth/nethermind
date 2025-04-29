@@ -182,7 +182,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                         _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
                         
                         // Use the existing FCU validation flow
-                        await _requestOrchestrator.DoValidationForFCU(payloadId);
+                        await _requestOrchestrator.DoValidationForFCU(payloadId, string.Empty);
                         
                         _logger.Info($"Validation completed for parent hash {parentHash}, forwarding original request");
                     }
@@ -218,6 +218,78 @@ namespace Nethermind.EngineApiProxy.Handlers
                 _logger.Info($"Resuming message queue processing for {_config.ValidationMode} validation");
                 _messageQueue.ResumeProcessing();
             }
+        }
+
+        private async Task<JsonRpcResponse> ProcessWithLHValidation(JsonRpcRequest request)
+        {
+            // Log that we're starting validation for this block
+            var blockHash = ExtractBlockHashFromPayload(request);
+            var parentHash = request.Params != null 
+                ? ExtractParentHash(request.Params) 
+                : string.Empty;
+            
+            // Extract parent beacon block root if available in the request
+            var parentBeaconBlockRoot = request.Params != null
+                ? ExtractParentBeaconBlockRoot(request.Params)
+                : string.Empty;
+            
+            _logger.Info($"LH validation for block with hash: {blockHash}, parent: {parentHash}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            
+            // Check if we have a payloadId for the parent hash, indicating that this was from a previous FCU
+            var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
+            if (_payloadTracker.TryGetPayloadId(parentHashObj, out var payloadId) && !string.IsNullOrEmpty(payloadId))
+            {
+                _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
+                
+                // If parentBeaconBlockRoot is not provided in the request, try to get it from the tracker
+                if (string.IsNullOrEmpty(parentBeaconBlockRoot) && 
+                    _payloadTracker.TryGetParentBeaconBlockRoot(parentHashObj, out var trackedParentBeaconBlockRoot) && 
+                    !string.IsNullOrEmpty(trackedParentBeaconBlockRoot))
+                {
+                    parentBeaconBlockRoot = trackedParentBeaconBlockRoot;
+                    _logger.Info($"Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {parentHash}");
+                }
+                
+                try
+                {
+                    // First check if we should run validation by comparing block hashes
+                    bool shouldValidate = await _requestOrchestrator.ValidatePayloadWithBlockHashCheck(payloadId, blockHash);
+                    
+                    if (shouldValidate)
+                    {
+                        // Run the validation only if the previous check passed
+                        // Pass parentBeaconBlockRoot from the original request to ensure it's used
+                        bool validationResult = await _requestOrchestrator.DoValidationForFCU(payloadId, parentBeaconBlockRoot);
+                        
+                        if (validationResult)
+                        {
+                            _logger.Info($"LH validation successful for payloadId {payloadId}");
+                        }
+                        else
+                        {
+                            _logger.Warn($"LH validation failed for payloadId {payloadId}, but still forwarding original request");
+                        }
+                    }
+                    else
+                    {
+                        _logger.Info($"Skipping validation due to potential block hash mismatch, forwarding original request");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"Error during LH validation: {ex.Message}. Falling back to direct forwarding.");
+                }
+            }
+            else
+            {
+                _logger.Info($"No payloadId found for parent hash {parentHash}, forwarding request as-is");
+            }
+            
+            // Register this payload for future reference
+            _payloadTracker.RegisterNewPayload(blockHash, parentHash);
+            
+            // Forward the original request to the execution client
+            return await _requestForwarder.ForwardRequestToExecutionClient(request);
         }
 
         private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
@@ -300,6 +372,19 @@ namespace Nethermind.EngineApiProxy.Handlers
                 return obj["parentHash"]?.ToString() ?? string.Empty;
                 
             return string.Empty;
+        }
+
+        private static string ExtractParentBeaconBlockRoot(JArray parameters)
+        {
+            if (parameters == null || parameters.Count < 3)
+                return string.Empty;
+                
+            // The parentBeaconBlockRoot is the third parameter in the NewPayloadV4 request
+            var parentBeaconBlockRoot = parameters[2];
+            if (parentBeaconBlockRoot == null || parentBeaconBlockRoot.Type == JTokenType.Null)
+                return string.Empty;
+                
+            return parentBeaconBlockRoot.ToString();
         }
     }
 } 

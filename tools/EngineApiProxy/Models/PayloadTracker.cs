@@ -13,6 +13,7 @@ namespace Nethermind.EngineApiProxy.Models
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly ConcurrentDictionary<Hash256, string> _headBlockToPayloadId = new();
         private readonly ConcurrentDictionary<string, Hash256> _payloadIdToHeadBlock = new();
+        private readonly ConcurrentDictionary<Hash256, string> _headBlockToParentBeaconBlockRoot = new();
 
         /// <summary>
         /// Gets the most recently tracked payload ID
@@ -29,7 +30,8 @@ namespace Nethermind.EngineApiProxy.Models
         /// </summary>
         /// <param name="headBlockHash">The hash of the head block from forkChoiceUpdated</param>
         /// <param name="payloadId">The Payload ID returned from the execution client</param>
-        public void TrackPayload(Hash256 headBlockHash, string payloadId)
+        /// <param name="parentBeaconBlockRoot">Optional parent beacon block root to store with this head block</param>
+        public void TrackPayload(Hash256 headBlockHash, string payloadId, string? parentBeaconBlockRoot = null)
         {
             if (headBlockHash == null || string.IsNullOrEmpty(payloadId))
             {
@@ -39,6 +41,14 @@ namespace Nethermind.EngineApiProxy.Models
             
             _headBlockToPayloadId[headBlockHash] = payloadId;
             _payloadIdToHeadBlock[payloadId] = headBlockHash;
+            
+            // Store the parent beacon block root if provided
+            if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+            {
+                _headBlockToParentBeaconBlockRoot[headBlockHash] = parentBeaconBlockRoot;
+                _logger.Debug($"Tracking parentBeaconBlockRoot {parentBeaconBlockRoot} for head block {headBlockHash}");
+            }
+            
             LastTrackedPayloadId = payloadId;
             LastTrackedBlockHash = headBlockHash.ToString();
             
@@ -158,6 +168,37 @@ namespace Nethermind.EngineApiProxy.Models
             // between blocks and their parents for optimized validation in merged mode
             LastTrackedBlockHash = blockHash;
             _logger.Debug($"Registered new payload block {blockHash} with parent {parentHash}");
+        }
+
+        /// <summary>
+        /// Gets the parent beacon block root associated with a head block hash
+        /// </summary>
+        /// <param name="headBlockHash">The hash of the head block</param>
+        /// <returns>The associated parent beacon block root or null if not found</returns>
+        public string? GetParentBeaconBlockRoot(Hash256 headBlockHash)
+        {
+            if (_headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out var parentBeaconBlockRoot))
+            {
+                return parentBeaconBlockRoot;
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Tries to get the parent beacon block root associated with a head block hash
+        /// </summary>
+        /// <param name="headBlockHash">The hash of the head block</param>
+        /// <param name="parentBeaconBlockRoot">The associated parent beacon block root if found</param>
+        /// <returns>True if a parent beacon block root was found, false otherwise</returns>
+        public bool TryGetParentBeaconBlockRoot(Hash256 headBlockHash, out string? parentBeaconBlockRoot)
+        {
+            if (headBlockHash == null)
+            {
+                parentBeaconBlockRoot = default;
+                return false;
+            }
+            return _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out parentBeaconBlockRoot);
         }
     }
 } 

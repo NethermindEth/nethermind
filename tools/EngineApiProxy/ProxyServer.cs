@@ -165,6 +165,14 @@ namespace Nethermind.EngineApiProxy
         public async Task StopAsync(CancellationToken cancellationToken = default)
         {
             await _webHost.StopAsync(cancellationToken);
+            
+            // Dispose of the handlers that require it
+            if (_forkChoiceUpdatedHandler is IDisposable disposableHandler)
+            {
+                disposableHandler.Dispose();
+                _logger.Debug("Disposed ForkChoiceUpdatedHandler");
+            }
+            
             _logger.Info("Engine API Proxy stopped");
         }
 

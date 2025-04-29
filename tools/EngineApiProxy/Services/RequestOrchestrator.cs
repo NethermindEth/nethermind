@@ -1,4 +1,6 @@
 using System.Text;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.Logging;
@@ -43,7 +45,7 @@ namespace Nethermind.EngineApiProxy.Services
             if (!string.IsNullOrEmpty(payloadId))
             {
                 // Then perform validation if we got a valid payload ID
-                await DoValidationForFCU(payloadId);
+                await DoValidationForFCU(payloadId, headBlockHash);
             }
             
             return payloadId;
@@ -215,26 +217,38 @@ namespace Nethermind.EngineApiProxy.Services
         /// <param name="payloadId">The payload ID to validate</param>
         /// <param name="parentBeaconBlockRoot">Optional parent beacon block root</param>
         /// <returns>True if validation succeeded</returns>
-        public async Task<bool> DoValidationForFCU(string payloadId, string? parentBeaconBlockRoot = null)
+        public async Task<bool> DoValidationForFCU(string payloadId, string parentBeaconBlockRoot, bool isApproval = false)
         {
-            _logger.Debug($"Starting validation for payloadId: {payloadId}");
+            _logger.Info($"Starting validation process for payloadId {payloadId}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
             
             try
             {
+                // Get payload ID from the tracking system
+                var headBlock = _payloadTracker.GetHeadBlock(payloadId);
+                if (headBlock == null)
+                {
+                    _logger.Error($"No head block found for payloadId {payloadId}");
+                    return false;
+                }
+                
                 // Wait a short time for EL to prepare the payload
-                // TODO: Make this configurable
                 await Task.Delay(500);
                 
-                // Get the payload and process it
-                await GetAndProcessPayload(payloadId, parentBeaconBlockRoot);
+                // Get the payload and process it, passing along the parentBeaconBlockRoot
+                var response = await GetAndProcessPayload(payloadId, headBlock, parentBeaconBlockRoot);
+                
+                // Check if the response indicates success
+                if (response.Error != null)
+                {
+                    _logger.Error($"Error in payload validation: {response.Error.Code} - {response.Error.Message}");
+                    return false;
+                }
+                
                 return true;
             }
             catch (Exception ex)
             {
                 // If engine_getPayloadV4 fails, log it but don't throw an exception
-                // This allows us to gracefully handle the case where the execution client
-                // doesn't support engine_getPayloadV4
-                // TODO: Make pectra and pre-pectra configurable
                 if (ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
                     (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV4' is not supported")))
                 {
@@ -253,18 +267,29 @@ namespace Nethermind.EngineApiProxy.Services
         /// <param name="payloadId">The payload ID to get</param>
         /// <param name="parentBeaconBlockRoot">The parent beacon block root from the block data</param>
         /// <returns>The get payload response</returns>
-        private async Task<JsonRpcResponse> GetAndProcessPayload(string payloadId, string? parentBeaconBlockRoot = null)
+        private async Task<JsonRpcResponse> GetAndProcessPayload(string payloadId, Hash256 headBlock, string? parentBeaconBlockRoot = null)
         {
+            _logger.Info($"Getting and processing payload for payloadId {payloadId}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            
             try
             {
                 string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
                 _logger.Debug($"Getting payload from execution client at: {targetHost}");
                 
+                // Log the parentBeaconBlockRoot to track it through the validation flow
+                if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+                {
+                    _logger.Debug($"Using parentBeaconBlockRoot in validation flow: {parentBeaconBlockRoot}");
+                }
+                else
+                {
+                    _logger.Debug("No parentBeaconBlockRoot provided for validation flow");
+                }
+                
                 // Create getPayload request
                 var getPayloadRequest = new JsonRpcRequest(
-                    //TODO: add support for engine_getPayloadV3
                     "engine_getPayloadV4",
-                    [payloadId],
+                    new JArray(payloadId),
                     Guid.NewGuid().ToString());
                 
                 // Make sure any authorization headers from HttpClient are included
@@ -303,7 +328,7 @@ namespace Nethermind.EngineApiProxy.Services
                     try
                     {
                         // Create newPayload request from the payload
-                        _logger.Debug($"Creating newPayload request from payload: {payload}");
+                        _logger.Debug($"Creating newPayload request from payload with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
                         var newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot);
                         
                         // Copy auth headers to new request too
@@ -329,18 +354,23 @@ namespace Nethermind.EngineApiProxy.Services
                         {
                             _logger.Warn($"Synthetic newPayload validation resulted in error: {newPayloadResponse.Error.Code} - {newPayloadResponse.Error.Message}");
                         }
+                        else if (newPayloadResponse.Result is JObject resultObj && resultObj["status"]?.ToString() == "INVALID")
+                        {
+                            _logger.Warn($"Synthetic newPayload validation returned status INVALID: {resultObj["validationError"]}");
+                        }
                         else
                         {
                             _logger.Debug($"Completed synthetic block validation flow for payloadId: {payloadId}");
                         }
+                        
+                        return newPayloadResponse;
                     }
                     catch (Exception ex)
                     {
                         // If newPayload fails, just log the error but don't stop the process
                         _logger.Warn($"Error in synthetic newPayload validation, continuing: {ex.Message}");
+                        return JsonRpcResponse.CreateErrorResponse(payloadResponse.Id, -32603, $"Error in synthetic newPayload validation: {ex.Message}");
                     }
-                    
-                    return payloadResponse;
                 }
                 else
                 {
@@ -362,46 +392,76 @@ namespace Nethermind.EngineApiProxy.Services
         /// <returns>A newPayload request</returns>
         private JsonRpcRequest CreateNewPayloadRequest(JObject payload, string? parentBeaconBlockRoot = null)
         {
-            // For engine_newPayloadV3, we need to extract the executionPayload
-            if (payload["executionPayload"] == null)
+            try
             {
-                throw new InvalidOperationException("Payload response does not contain executionPayload");
+                // Extract the executionPayload from the response
+                var executionPayload = payload["executionPayload"] ?? payload;
+                
+                // Create an empty array for blobVersionedHashes (second parameter)
+                var blobVersionedHashes = new JArray();
+                
+                // Check if parentBeaconBlockRoot is provided
+                if (string.IsNullOrEmpty(parentBeaconBlockRoot))
+                {
+                    // Try to get the parentBeaconBlockRoot from the PayloadTracker
+                    // First get the block hash from the payload
+                    string? blockHash = executionPayload["parentHash"]?.ToString();
+                    if (!string.IsNullOrEmpty(blockHash))
+                    {
+                        try
+                        {
+                            var hash = new Hash256(Bytes.FromHexString(blockHash));
+                            parentBeaconBlockRoot = _payloadTracker.GetParentBeaconBlockRoot(hash);
+                            
+                            if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+                            {
+                                _logger.Info($"Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {blockHash}");
+                            }
+                            else
+                            {
+                                _logger.Warn("No parentBeaconBlockRoot found in tracker for this block. This could lead to validation issues.");
+                                parentBeaconBlockRoot = null;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"Error converting block hash for parentBeaconBlockRoot lookup: {ex.Message}");
+                            parentBeaconBlockRoot = null;
+                        }
+                    }
+                    else
+                    {
+                        _logger.Warn("No parentHash found in payload to lookup parentBeaconBlockRoot. This could lead to validation issues.");
+                        parentBeaconBlockRoot = null;
+                    }
+                }
+                else
+                {
+                    _logger.Debug($"Using provided parentBeaconBlockRoot in engine_newPayloadV4: {parentBeaconBlockRoot}");
+                }
+                
+                // Create the parameter array for the newPayload request
+                var parameters = new JArray
+                {
+                    executionPayload,          // First parameter: executionPayload
+                    blobVersionedHashes,       // Second parameter: blobVersionedHashes
+                    parentBeaconBlockRoot,     // Third parameter: parentBeaconBlockRoot
+                    new JArray()               // Fourth parameter: execution_payload_preparation_info
+                };
+                
+                _logger.Debug($"Created engine_newPayloadV4 request with parameters structure: executionPayload, blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}, empty preparation info");
+                
+                return new JsonRpcRequest(
+                    "engine_newPayloadV4",
+                    parameters,
+                    Guid.NewGuid().ToString()
+                );
             }
-            
-            // Extract the executionPayload from the response
-            var executionPayload = payload["executionPayload"]?.ToObject<JObject>();
-            
-            if (executionPayload == null)
+            catch (Exception ex)
             {
-                throw new InvalidOperationException("Failed to parse executionPayload from response");
+                _logger.Error($"Error creating newPayload request: {ex.Message}", ex);
+                throw;
             }
-            
-            // Ensure we have a parentBeaconBlockRoot value
-            if (string.IsNullOrEmpty(parentBeaconBlockRoot) && executionPayload["parentHash"] != null)
-            {
-                // If not provided, use the parentHash from the executionPayload
-                parentBeaconBlockRoot = executionPayload["parentHash"]?.ToString();
-                _logger.Debug($"Using parentHash as parentBeaconBlockRoot: {parentBeaconBlockRoot}");
-            }
-            else if (string.IsNullOrEmpty(parentBeaconBlockRoot))
-            {
-                // If still not available, use a zero hash as fallback
-                parentBeaconBlockRoot = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                _logger.Warn("No parentHash or parentBeaconBlockRoot available, using zero hash");
-            }
-            
-            // For engine_newPayloadV3, we need 3 parameters:
-            // 1. executionPayload - the actual payload object
-            // 2. blobVersionedHashes - array of blob version hashes (empty array for non-blob transactions)
-            // 3. parentBeaconBlockRoot - same as parentHash
-            var blobVersionedHashes = new JArray();
-            
-            _logger.Debug($"Creating newPayloadV4 request with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
-            return new JsonRpcRequest(
-                //TODO: add support for engine_newPayloadV3
-                "engine_newPayloadV4",
-                new JArray { executionPayload, blobVersionedHashes, parentBeaconBlockRoot, new JArray() },
-                Guid.NewGuid().ToString());
         }
         
         /// <summary>
@@ -589,6 +649,56 @@ namespace Nethermind.EngineApiProxy.Services
                     ? new Dictionary<string, string>(request.OriginalHeaders) 
                     : null
             };
+        }
+
+        /// <summary>
+        /// Checks if the execution payload for the given payloadId matches the expected block hash
+        /// and performs validation if appropriate
+        /// </summary>
+        /// <param name="payloadId">The payload ID to check</param>
+        /// <param name="expectedBlockHash">The expected block hash from the original request</param>
+        /// <returns>True if validation should proceed, false if there's a mismatch</returns>
+        public async Task<bool> ValidatePayloadWithBlockHashCheck(string payloadId, string expectedBlockHash)
+        {
+            _logger.Debug($"Checking payload {payloadId} against expected block hash {expectedBlockHash}");
+            
+            try
+            {
+                // Get the head block hash from the payload tracker
+                var headBlock = _payloadTracker.GetHeadBlock(payloadId);
+                if (headBlock == null)
+                {
+                    _logger.Error($"No head block found for payloadId {payloadId}");
+                    return false;
+                }
+                
+                // Get the payload using the existing method
+                var payloadResponse = await GetAndProcessPayload(payloadId, headBlock);
+                
+                // Extract the block hash from the response
+                if (payloadResponse.Result is JObject payload)
+                {
+                    var executionPayload = payload["executionPayload"]?.ToObject<JObject>();
+                    if (executionPayload != null)
+                    {
+                        string? synthBlockHash = executionPayload["blockHash"]?.ToString();
+                        if (!string.IsNullOrEmpty(synthBlockHash) && !string.IsNullOrEmpty(expectedBlockHash) && synthBlockHash != expectedBlockHash)
+                        {
+                            _logger.Info($"LH mode: Payload from EL has different block hash ({synthBlockHash}) than CL block ({expectedBlockHash})");
+                            _logger.Info($"LH mode: Skipping validation to avoid potential block hash mismatch");
+                            return false;
+                        }
+                    }
+                }
+                
+                // If we got here, then either there was no mismatch or we couldn't determine
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Error checking payload against block hash: {ex.Message}");
+                return false;
+            }
         }
     }
 } 
