@@ -105,14 +105,6 @@ async Task<int> ConfigureAsync(string[] args)
         logger.Info($"Version: {ProductInfo.Version}");
     }
 
-    // Console.WriteLine("Waiting for debugger to attach");
-    // while (!System.Diagnostics.Debugger.IsAttached)
-    // {
-    //     Thread.Sleep(100);
-    // }
-    // Console.WriteLine("Debugger attached");
-    // Thread.Sleep(10_000); // Use this time to add breakpoints as needed
-
     AppDomain.CurrentDomain.ProcessExit += (_, _) =>
     {
         processExitSource?.Exit(ExitCodes.SigTerm);
