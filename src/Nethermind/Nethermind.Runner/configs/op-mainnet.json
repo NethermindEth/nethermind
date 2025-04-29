@@ -14,9 +14,7 @@
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
     "AncientBodiesBarrier": 105235063,
-    "AncientReceiptsBarrier": 105235063,
-    "PivotNumber": 135040000,
-    "PivotHash": "0xb6c24fd35a6e050563599763df48c36893882e7d16a1bd27d67594da851a0ce4"
+    "AncientReceiptsBarrier": 105235063
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
