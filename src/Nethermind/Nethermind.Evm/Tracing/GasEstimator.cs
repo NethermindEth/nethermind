@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -20,6 +19,8 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         public const int DefaultErrorMargin = 150;
 
+        private const int MaxErrorMargin = 10000;
+
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
@@ -34,14 +35,24 @@ namespace Nethermind.Evm.Tracing
             _blocksConfig = blocksConfig;
         }
 
-        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
+        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(errorMargin, nameof(errorMargin));
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(errorMargin, 10000, nameof(errorMargin));
+            err = null;
+
+            if (errorMargin < 0)
+            {
+                err = "Invalid error margin, cannot be negative.";
+                return 0;
+            }
+            else if (errorMargin >= MaxErrorMargin)
+            {
+                err = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
+                return 0;
+            }
+
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
             tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
-            tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
 
             // Calculate and return additional gas required in case of insufficient funds.
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
@@ -60,9 +71,11 @@ namespace Nethermind.Evm.Tracing
                 ? tx.GasLimit
                 : header.GasLimit;
 
-            //This would mean that header gas limit is lower than both intrinsic gas and tx gas limit
             if (leftBound > rightBound)
+            {
+                err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
                 return 0;
+            }
 
             // Execute binary search to find the optimal gas estimation.
             return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
@@ -109,14 +122,12 @@ namespace Nethermind.Evm.Tracing
         {
             OutOfGasTracer tracer = new();
 
-            // TODO: Workaround to not mutate the original Tx
-            long originalGasLimit = transaction.GasLimit;
-
-            transaction.GasLimit = gasLimit;
+            Transaction txClone = new Transaction();
+            transaction.CopyTo(txClone);
+            txClone.GasLimit = gasLimit;
 
             BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
-            _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
-            transaction.GasLimit = originalGasLimit;
+            _transactionProcessor.CallAndRestore(txClone, in blCtx, tracer.WithCancellation(token));
 
             return !tracer.OutOfGas;
         }

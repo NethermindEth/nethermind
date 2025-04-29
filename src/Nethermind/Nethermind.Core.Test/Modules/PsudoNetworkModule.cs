@@ -3,13 +3,10 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -23,17 +20,14 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class PsudoNetworkModule(IInitConfig initConfig) : Module
+public class PsudoNetworkModule() : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -73,32 +67,8 @@ public class PsudoNetworkModule(IInitConfig initConfig) : Module
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
-            .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-                ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                    new PathNodeRecovery(
-                        new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
-                        new SnapRangeRecovery(peerPool!, logManager),
-                        logManager
-                    )
-                );
-            })
-
             // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
-
-            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-
-                string dbName = INetworkStorage.PeerDb;
-                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                    ? new MemDb(dbName)
-                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
-                        logManager);
-                return new NetworkStorage(peersDb, logManager);
-            })
 
             .AddAdvance<ProtocolsManager>(cfg =>
             {
