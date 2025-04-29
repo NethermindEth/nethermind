@@ -66,10 +66,4 @@ public class OptimismBlockProcessor : BlockProcessor
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
         return base.ProcessBlock(block, blockTracer, options, token);
     }
-
-    protected override BlockExecutionContext BuildBlockContext(Block block, IReleaseSpec spec)
-    {
-        var info = new L1BlockGasInfo(block, _specHelper);
-        return new(block.Header, spec);
-    }
 }
