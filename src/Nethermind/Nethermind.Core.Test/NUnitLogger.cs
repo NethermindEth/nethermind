@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,14 +7,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
-    public class NUnitLogger : InterfaceLogger
+    public class NUnitLogger(LogLevel level, bool logToError = false) : InterfaceLogger
     {
-        private readonly LogLevel _level;
-
-        public NUnitLogger(LogLevel level)
-        {
-            _level = level;
-        }
+        private readonly LogLevel _level = level;
 
         public void Info(string text)
         {
@@ -64,9 +59,9 @@ namespace Nethermind.Core.Test
 
         private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
 
-        private static void Log(string text, Exception? ex = null)
+        private void Log(string text, Exception? ex = null)
         {
-            Console.WriteLine(text);
+            if (logToError) Console.Error.WriteLine(text); else Console.WriteLine(text);
             // TestContext.Out.WriteLine(text);
 
             if (ex is not null)

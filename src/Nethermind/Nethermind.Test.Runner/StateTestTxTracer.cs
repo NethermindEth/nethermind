@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -67,7 +67,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void ReportOperationError(EvmExceptionType error)
     {
-        _traceEntry.Error = GetErrorDescription(error);
+        if (_traceEntry is not null) _traceEntry.Error = GetErrorDescription(error);
     }
 
     private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
@@ -91,13 +91,13 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         if (!_gasAlreadySetForCurrentOp)
         {
             _gasAlreadySetForCurrentOp = true;
-            _traceEntry.GasCost = _traceEntry.Gas - gas;
+            if (_traceEntry is not null) _traceEntry.GasCost = _traceEntry.Gas - gas;
         }
     }
 
     public void SetOperationStack(TraceStack stack)
     {
-        _traceEntry.Stack = new List<string>();
+        _traceEntry.Stack = [];
         foreach (string s in stack.ToHexWordList())
         {
             ReadOnlySpan<char> inProgress = s.AsSpan();

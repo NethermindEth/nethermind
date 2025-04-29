@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -31,7 +31,7 @@ namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger = new(new NUnitLogger(LogLevel.Info));
+        private static ILogger _logger = new(new NUnitLogger(LogLevel.Info, true));
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
 
@@ -172,10 +172,11 @@ namespace Ethereum.Test.Base
                 TestContext.Out.WriteLine();
                 TestContext.Out.WriteLine("Differences from expected");
                 TestContext.Out.WriteLine();
-            }
-            foreach (string difference in differences)
-            {
-                TestContext.Out.WriteLine(difference);
+
+                foreach (string difference in differences)
+                {
+                    TestContext.Out.WriteLine(difference);
+                }
             }
 
             //            Assert.Zero(differences.Count, "differences");
