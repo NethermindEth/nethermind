@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -527,13 +528,13 @@ namespace Nethermind.TxPool
                 && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
                 && _headInfo.CurrentProofVersion == ProofVersion.V1)
             {
-                List<byte[]> cellProofs = new List<byte[]>(Ckzg.Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+                List<byte[]> cellProofs = new List<byte[]>(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
                 foreach (byte[] blob in wrapper.Blobs)
                 {
-                    byte[] cellProofsOfOneBlob = new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerProof];
+                    byte[] cellProofsOfOneBlob = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
                     KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
-                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.Ckzg.BytesPerProof).ToArray();
+                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
                     cellProofs.AddRange(cellProofsSeparated);
                 }
 

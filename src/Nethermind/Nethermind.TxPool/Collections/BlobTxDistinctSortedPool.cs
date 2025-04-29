@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using CkzgLib;
 using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -81,7 +82,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                             }
 
                             blob = wrapper.Blobs[indexOfBlob];
-                            cellProofs = wrapper.Proofs.Slice(Ckzg.Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.Ckzg.CellsPerExtBlob);
+                            cellProofs = wrapper.Proofs.Slice(Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.CellsPerExtBlob);
                             return true;
                         }
                     }

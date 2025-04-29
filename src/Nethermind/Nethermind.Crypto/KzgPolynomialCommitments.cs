@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -37,7 +38,7 @@ public static class KzgPolynomialCommitments
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
+        _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
 
         if (_ckzgSetup == IntPtr.Zero)
         {
@@ -54,7 +55,7 @@ public static class KzgPolynomialCommitments
     /// <exception cref="ArgumentException"></exception>
     public static bool TryComputeCommitmentHashV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
-        if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
+        if (commitment.Length != Ckzg.BytesPerCommitment)
         {
             return false;
         }
@@ -78,7 +79,7 @@ public static class KzgPolynomialCommitments
     {
         try
         {
-            return Ckzg.Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
+            return Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
@@ -88,7 +89,7 @@ public static class KzgPolynomialCommitments
 
     public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
     {
-        Ckzg.Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.Ckzg.CellsPerExtBlob * Ckzg.Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
+        Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
     }
 }
 
