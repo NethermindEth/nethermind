@@ -14,12 +14,12 @@ namespace Nethermind.Evm;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
+    private readonly Dictionary<Address, ICodeInfo> _codeOverwrites = new();
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
+        return _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
     }
@@ -31,7 +31,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         IWorldState worldState,
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value,
+        ICodeInfo value,
         Address? redirectAddress = null)
     {
         if (redirectAddress is not null)
@@ -45,11 +45,14 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(state, codeSource, authority, spec);
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        codeInfoRepository.TryGetDelegation(worldState, address, out delegatedAddress);
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        codeInfoRepository.TryGetDelegation(worldState, address, vmSpec, out delegatedAddress);
 
-    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address) =>
-        codeInfoRepository.GetExecutableCodeHash(worldState, address);
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        codeInfoRepository.TryGetDelegation(worldState, in codeHash, spec, out delegatedAddress);
+
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec) =>
+        codeInfoRepository.GetExecutableCodeHash(worldState, address, spec);
 
     public void ResetOverrides() => _codeOverwrites.Clear();
 }

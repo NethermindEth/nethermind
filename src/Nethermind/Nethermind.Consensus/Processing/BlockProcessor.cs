@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -329,6 +329,9 @@ public partial class BlockProcessor(
         var blkCtx = BuildBlockContext(block, spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, blkCtx, options, ReceiptsTracer, spec, token);
+
+        _stateProvider.Commit(spec, commitRoots: false);
+
         CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)

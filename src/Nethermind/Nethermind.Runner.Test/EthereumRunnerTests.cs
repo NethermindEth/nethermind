@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
@@ -25,16 +26,20 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.Flashbots;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -44,7 +49,6 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Taiko;
@@ -52,6 +56,7 @@ using Nethermind.Taiko.TaikoSpec;
 using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;
+using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Runner.Test;
 
@@ -74,7 +79,6 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            Console.Error.WriteLine($"{configFile}");
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
@@ -88,6 +92,15 @@ public class EthereumRunnerTests
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Enqueue(("mainnet-verify-trie-starter", configProvider));
+        }
+
+        {
+            // Flashbots
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
+            result.Enqueue(("flashbots", configProvider));
         }
 
         return result;
@@ -172,11 +185,23 @@ public class EthereumRunnerTests
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
+
+        // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
+        Build.MockOutNethermindApi((NethermindApi)api);
+
+        api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
+        api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
+        var ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
+        api.IpResolver = ipResolver;
+
+        api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.DbProvider = Substitute.For<IDbProvider>();
-        api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
+        api.ReceiptFinder = Substitute.For<IReceiptFinder>();
+        api.DbProvider = await TestMemDbProvider.InitAsync();
+        api.EthereumEcdsa = new EthereumEcdsa(runner.LifetimeScope.Resolve<ISpecProvider>());
 
         try
         {
@@ -187,10 +212,6 @@ public class EthereumRunnerTests
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-
-            // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
-            Build.MockOutNethermindApi((NethermindApi)api);
-
             foreach (var propertyInfo in api.GetType().Properties())
             {
                 // Property with `SkipServiceCollection` make property from container.
@@ -222,6 +243,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IPoSSwitcher>();
             api.Context.Resolve<ISynchronizer>();
             api.Context.Resolve<IAdminEraService>();
+            api.Context.Resolve<IRpcModuleProvider>();
         }
         finally
         {

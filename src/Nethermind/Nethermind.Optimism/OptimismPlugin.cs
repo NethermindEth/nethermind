@@ -182,9 +182,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             await Task.Delay(100);
         await Task.Delay(5000);
 
+        // Single block shouldn't take a full slot to run
+        // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+        double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
@@ -265,15 +268,26 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+        StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
 
         ICLConfig clConfig = _api.Config<ICLConfig>();
         if (clConfig.Enabled)
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
-            _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
-            await _cl.Start();
+            _cl = new OptimismCL(
+                _api.SpecProvider,
+                chainSpecEngineParameters,
+                clConfig,
+                _api.EthereumJsonSerializer,
+                _api.EthereumEcdsa,
+                _api.Timestamper,
+                _api.ChainSpec.Genesis.Timestamp,
+                _api!.LogManager,
+                _api.OptimismEthRpcModule,
+                opEngine);
+            _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
+            _api.DisposeStack.Push(_cl);
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");

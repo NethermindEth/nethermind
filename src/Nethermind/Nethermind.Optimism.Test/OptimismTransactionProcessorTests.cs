@@ -38,8 +38,7 @@ public class OptimismTransactionProcessorTests
         ITrieStore trieStore = new TrieStore(_stateDb, LimboLogs.Instance);
         _worldState = new WorldState(trieStore, _codeDb, LimboLogs.Instance);
         _code = new CodeInfoRepository();
-        _machine = new VirtualMachine(NSubstitute.Substitute.For<IBlockhashProvider>(), _spec, _code,
-            LimboLogs.Instance);
+        _machine = new VirtualMachine(NSubstitute.Substitute.For<IBlockhashProvider>(), _spec, LimboLogs.Instance);
 
         _optimismSpec = new OptimismSpecHelper(new OptimismChainSpecEngineParameters
         {

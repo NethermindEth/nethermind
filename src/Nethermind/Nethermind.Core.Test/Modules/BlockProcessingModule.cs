@@ -141,7 +141,7 @@ public class BlockProcessingModule : Module
                 processingCtxBuilder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    .AddScoped<ReadOnlyTxProcessingEnvFactory>();
+                    ;
             }
         });
 

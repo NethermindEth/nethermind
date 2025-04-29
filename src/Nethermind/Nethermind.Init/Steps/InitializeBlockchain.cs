@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -96,7 +97,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(
+                ? new(new ReadOnlyTxProcessingEnvFactory(
                         _api.WorldStateManager!,
                         _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider!,
@@ -124,6 +125,8 @@ namespace Nethermind.Init.Steps
             {
                 IsMainProcessor = true
             };
+
+            getApi.DisposeStack.Push(blockchainProcessor);
 
             setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
@@ -188,7 +191,6 @@ namespace Nethermind.Init.Steps
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
-                codeInfoRepository,
                 _api.LogManager);
 
             return virtualMachine;

@@ -6,15 +6,20 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 
 namespace Nethermind.Optimism.Rpc;
 
 public class OptimismReceiptForRpc : ReceiptForRpc
 {
-    public OptimismReceiptForRpc(Hash256 txHash, OptimismTxReceipt receipt, TxGasInfo gasInfo, L1TxGasInfo l1GasInfo, int logIndexStart = 0) : base(
-        txHash, receipt, gasInfo, logIndexStart)
+    public OptimismReceiptForRpc(
+        Hash256 txHash,
+        OptimismTxReceipt receipt,
+        TxGasInfo gasInfo,
+        L1TxGasInfo l1GasInfo,
+        int logIndexStart = 0) : base(txHash, receipt, gasInfo, logIndexStart)
     {
-        if (receipt.TxType == Core.TxType.DepositTx)
+        if (receipt.TxType == TxType.DepositTx)
         {
             DepositNonce = receipt.DepositNonce;
             DepositReceiptVersion = receipt.DepositReceiptVersion;
@@ -34,6 +39,14 @@ public class OptimismReceiptForRpc : ReceiptForRpc
             OperatorFeeScalar = l1GasInfo.OperatorFeeScalar;
             OperatorFeeConstant = l1GasInfo.OperatorFeeConstant;
         }
+    }
+
+    public OptimismReceiptForRpc(
+        Hash256 txHash,
+        TxReceipt receipt,
+        TxGasInfo gasInfo,
+        int logIndexStart = 0) : base(txHash, receipt, gasInfo, logIndexStart)
+    {
     }
 
     // DepositTx related fields
