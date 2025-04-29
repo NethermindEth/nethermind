@@ -73,6 +73,10 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
         "L1BeaconGenesisSlotTime": {
             "mainnet": 1606824023,
             "sepolia": 1655733600,
+        },
+        "DepositContractAddress": {
+            "mainnet": "0x00000000219ab540356cbb839cbe05303d7705fa",
+            "sepolia": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
         }
     }
     config = merge_all(superchain, chain)
@@ -187,7 +191,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip7251TransitionTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
             "eip7702TransitionTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
             "eip7623TransitionTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
-            "depositContractAddress": lookup(config, ["genesis", "system_config", "batcherAddress"]),
+            "depositContractAddress": lookup(constants, ["DepositContractAddress", l1]),
             "terminalTotalDifficulty": "0x0",
         },
         "genesis": filter_none(
