@@ -13,8 +13,9 @@ namespace Nethermind.Synchronization.StateSync
     {
         private static readonly IPeerAllocationStrategy DefaultStrategy =
             new AllocationStrategy(
-                new TotalDiffStrategy(
-                    new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse));
+                // TODO: use TotalDiffStrategy in non-merge chains?
+                new LastBlockStrategy(
+                    new BySpeedStrategy(TransferSpeedType.NodeData, true), StrategySelectionType.CanBeSlightlyWorse));
 
         public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

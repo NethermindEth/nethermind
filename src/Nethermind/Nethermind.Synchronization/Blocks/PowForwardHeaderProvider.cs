@@ -39,7 +39,7 @@ public class PowForwardHeaderProvider(
     private const int MinCachedHeaderBatchSize = 32;
 
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(new BlocksSyncPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        new TotalDiffStrategy(new BlocksSyncPeerAllocationStrategy(null), StrategySelectionType.AtLeastTheSame);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
