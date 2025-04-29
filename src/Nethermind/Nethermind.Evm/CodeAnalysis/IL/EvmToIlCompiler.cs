@@ -110,7 +110,7 @@ public static class Precompiler
         // Persisted contract
         if (config.IlEvmPersistPrecompiledContractsOnDisk)
         {
-            _currentPersistentModBuilder = _currentPersistentAsmBuilder.Value.DefineDynamicModule("MainModule");
+            _currentPersistentModBuilder = _currentPersistentModBuilder ?? _currentPersistentAsmBuilder.Value.DefineDynamicModule("MainModule");
             CompileContractInternal(_currentPersistentModBuilder, contractName, codeInfo, metadata, config, false, out _);
 
             if (Interlocked.CompareExchange(ref _currentBundleSize, 0, config.IlEvmContractsPerDllCount) == config.IlEvmContractsPerDllCount)
@@ -166,6 +166,7 @@ public static class Precompiler
         ((PersistedAssemblyBuilder)_currentPersistentAsmBuilder.Value).Save(assemblyPath);  // or pass filename to save into a file
 
         _currentPersistentAsmBuilder = new Lazy<PersistedAssemblyBuilder>(() => new PersistedAssemblyBuilder(new AssemblyName(GenerateAssemblyName()), typeof(object).Assembly));
+        _currentPersistentModBuilder = null;
     }
 
     public static Emit<ILExecutionStep> EmitMoveNext(Emit<ILExecutionStep> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
@@ -329,7 +330,7 @@ public static class Precompiler
                 method.LoadConstant(EvmStack.MaxStackSize);
                 method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
             }
-
+            /*
             using Local depth = method.DeclareLocal<int>();
 
             method.LoadEnv(locals, true);
@@ -349,8 +350,8 @@ public static class Precompiler
             method.StoreLocal(instructionName);
 
             method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
-
-            method.GetOpcodeILEmitter(opcodeInfo.Instruction, codeInfo, config, contractMetadata, currentSubsegment, i, opcodeInfo.Metadata, locals, evmExceptionLabels, (ret, jumpTable, exit));
+            */
+            method.GetOpcodeILEmitter(codeInfo, opcodeInfo.Instruction, config, contractMetadata, currentSubsegment, i, opcodeInfo.Metadata, locals, evmExceptionLabels, (ret, jumpTable, exit));
 
             i += opcodeInfo.Metadata.AdditionalBytes;
             if (!opcodeInfo.Instruction.IsTerminating())
