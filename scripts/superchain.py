@@ -187,7 +187,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip7251TransitionTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
             "eip7702TransitionTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
             "eip7623TransitionTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
-            "depositContractAddress": hex(lookup(config, ["genesis", "system_config", "batcherAddress"])),
+            "depositContractAddress": lookup(config, ["genesis", "system_config", "batcherAddress"]),
             "terminalTotalDifficulty": "0x0",
         },
         "genesis": filter_none(
