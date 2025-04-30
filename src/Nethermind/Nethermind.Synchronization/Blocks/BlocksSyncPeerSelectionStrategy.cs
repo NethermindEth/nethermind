@@ -68,8 +68,8 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                UInt256 remoteTd = info.TotalDifficulty;
-                if (remoteTd >= localTotalDiff && remoteTd - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
+                UInt256 remoteTotalDiff = info.TotalDifficulty;
+                if (remoteTotalDiff >= localTotalDiff && remoteTotalDiff - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.Blocks
                     fastestPeer = (info, averageTransferSpeed);
                 }
 
-                if (remoteTd >= (bestDiffPeer.Info?.TotalDifficulty ?? UInt256.Zero))
+                if (remoteTotalDiff >= (bestDiffPeer.Info?.TotalDifficulty ?? UInt256.Zero))
                 {
                     bestDiffPeer = (info, averageTransferSpeed);
                 }
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Blocks
             averageSpeed /= peersCount;
             UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty > localTotalDiff
                 ? bestDiffPeer.Info.TotalDifficulty - localTotalDiff
-                : Uint256.Zero;
+                : UInt256.Zero;
 
             // at least 1 diff times 16 blocks of diff
             if (difficultyDifference > 0

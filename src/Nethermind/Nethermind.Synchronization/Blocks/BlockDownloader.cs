@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
-        private readonly int _maxTxInBuffer = 200000;
+        private readonly int _maxTxInBuffer;
         private const int MinEstimateTxPerBlock = 10;
 
         // Header lookup need to be limited, because `IForwardHeaderProvider.GetBlockHeaders` can be slow.
@@ -132,6 +132,7 @@ namespace Nethermind.Synchronization.Blocks
                 previousStartingHeaderNumber = headers[0].Number;
 
                 (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
+
                 using var satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
 
                 if (satisfiedEntry.Count == 0)
@@ -194,18 +195,12 @@ namespace Nethermind.Synchronization.Blocks
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
             HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
-            using ArrayPoolList<Hash256> toRemove = new ArrayPoolList<Hash256>();
             foreach (var kv in _downloadRequests)
             {
                 if (!currentHeaderHashes.Contains(kv.Key))
                 {
                     _downloadRequests.Remove(kv.Key, out _);
                 }
-            }
-
-            foreach (var hash in toRemove)
-            {
-                _downloadRequests.Remove(hash, out _);
             }
         }
 
