@@ -30,7 +30,7 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
             .AddSingleton<ILookupAlgo2<TKey, TNode>, NewaTrackingLookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<KBucketTree<TKey, TNode>>()
             .AddSingleton<BucketListRoutingTable<TKey, TNode>>()
-            .AddSingleton<NodeHealthTracker<TKey, TNode>>()
+            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>()
             .AddSingleton<IRoutingTable<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.Resolve<KademliaConfig<TNode>>();

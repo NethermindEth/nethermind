@@ -597,7 +597,6 @@ public class DiscoveryApp : IDiscoveryApp
         ConcurrentDictionary<ValueHash256, ValueHash256> _writtenNodes = new();
         int duplicated = 0;
         int total = 0;
-        int fromNewNode = 0;
 
         void handler(object? _, Node addedNode)
         {
@@ -633,7 +632,6 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 if (_logger.IsDebug) _logger.Debug($"Found {count} nodes");
             }
-            Console.Error.WriteLine($"Total is {total}, duplicated {duplicated}, fromNewNode {fromNewNode}");
         }
 
         Task discoverTask = Task.WhenAll(Enumerable.Range(0, 6).Select((_) => Task.Run(async () =>
