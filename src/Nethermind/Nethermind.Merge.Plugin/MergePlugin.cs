@@ -34,6 +34,8 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -378,7 +380,13 @@ public class MergePluginModule : Module
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
-            .AddModule(new BaseMergePluginModule());
+            .AddModule(new BaseMergePluginModule())
+
+            // Protocols
+            .OnActivate<IProtocolsManager>((p, _) =>
+            {
+                p.AddSupportedCapability(new(Protocol.Eth, 69));
+            });
     }
 }
 

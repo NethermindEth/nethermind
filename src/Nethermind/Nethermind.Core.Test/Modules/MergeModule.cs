@@ -83,12 +83,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
                     ctx.Resolve<ILogManager>(),
                     TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot));
             })
-
-            // Protocols
-            .OnActivate<IProtocolsManager>((p, _) =>
-            {
-                p.AddSupportedCapability(new(Protocol.Eth, 69));
-            })
             ;
 
         if (txPoolConfig.BlobsSupport.SupportsReorgs())
