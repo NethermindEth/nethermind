@@ -103,7 +103,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    private class NodeNodeHashProvider : INodeHashProvider<PublicKey, Node>
+    private class NodeNodeHashProvider : INodeHashProvider<Node>, IKeyOperator<PublicKey, Node>
     {
         public ValueHash256 GetHash(Node node)
         {
@@ -148,7 +148,8 @@ public class DiscoveryApp : IDiscoveryApp
 
         _kademliaServices = new ContainerBuilder()
             .AddModule(new KademliaModule<PublicKey, Node>())
-            .AddSingleton<INodeHashProvider<PublicKey, Node>, NodeNodeHashProvider>()
+            .AddSingleton<INodeHashProvider<Node>, NodeNodeHashProvider>()
+            .AddSingleton<IKeyOperator<PublicKey, Node>, NodeNodeHashProvider>()
             .AddSingleton<ITimestamper>(_timestamper)
             .AddSingleton<INetworkConfig>(_networkConfig)
             .AddSingleton<ILogManager>(_logManager)

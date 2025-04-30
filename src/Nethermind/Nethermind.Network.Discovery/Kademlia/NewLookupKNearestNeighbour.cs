@@ -19,7 +19,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 public class NewLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    INodeHashProvider<TNode> nodeHashProvider,
+    IKeyOperator<TKey, TNode> keyOperator,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
     ILogManager logManager): ILookupAlgo<TKey, TNode> where TNode : notnull
@@ -41,7 +42,7 @@ public class NewLookupKNearestNeighbour<TKey, TNode>(
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
         ConcurrentDictionary<ValueHash256, TNode> seen = new();
 
-        ValueHash256 targetHash = nodeHashProvider.GetKeyHash(target);
+        ValueHash256 targetHash = keyOperator.GetKeyHash(target);
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h1, h2, targetHash));
         IComparer<ValueHash256> comparerReverse = Comparer<ValueHash256>.Create((h1, h2) =>

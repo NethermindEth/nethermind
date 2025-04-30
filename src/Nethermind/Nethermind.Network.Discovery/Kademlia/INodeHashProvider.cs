@@ -15,9 +15,12 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// could be specialized.
 /// </summary>
 /// <typeparam name="TNode"></typeparam>
-public interface INodeHashProvider<TKey, in TNode>
+public interface INodeHashProvider<in TNode>
 {
     ValueHash256 GetHash(TNode node);
+}
+
+public interface IKeyOperator<TKey, in TNode> {
     TKey GetKey(TNode node);
     ValueHash256 GetKeyHash(TKey key);
     TKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth);

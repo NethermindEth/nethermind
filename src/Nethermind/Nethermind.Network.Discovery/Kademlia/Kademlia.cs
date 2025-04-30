@@ -10,7 +10,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnull
 {
     private readonly IKademliaMessageSender<TKey, TNode> _kademliaMessageSender;
-    private readonly INodeHashProvider<TKey, TNode> _nodeHashProvider;
+    private readonly INodeHashProvider<TNode> _nodeHashProvider;
+    private readonly IKeyOperator<TKey, TNode> _keyOperator;
     private readonly IRoutingTable<TNode> _routingTable;
     private readonly ILookupAlgo<TKey, TNode> _lookupAlgo;
     private readonly INodeHealthTracker<TNode> _nodeHealthTracker;
@@ -23,7 +24,8 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     private readonly TimeSpan _refreshInterval;
 
     public Kademlia(
-        INodeHashProvider<TKey, TNode> nodeHashProvider,
+        INodeHashProvider<TNode> nodeHashProvider,
+        IKeyOperator<TKey, TNode> keyOperator,
         IKademliaMessageSender<TKey, TNode> sender,
         IRoutingTable<TNode> routingTable,
         ILookupAlgo<TKey, TNode> lookupAlgo,
@@ -32,6 +34,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         KademliaConfig<TNode> config)
     {
         _nodeHashProvider = nodeHashProvider;
+        _keyOperator = keyOperator;
         _kademliaMessageSender = sender;
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
@@ -39,7 +42,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         _logger = logManager.GetClassLogger<Kademlia<TKey, TNode>>();
 
         _currentNodeId = config.CurrentNodeId;
-        _currentNodeIdAsKey = _nodeHashProvider.GetKey(_currentNodeId);
+        _currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
@@ -78,7 +81,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             {
                 if (SameAsSelf(nextNode))
                 {
-                    ValueHash256 keyHash = _nodeHashProvider.GetKeyHash(key);
+                    ValueHash256 keyHash = _keyOperator.GetKeyHash(key);
                     return _routingTable.GetKNearestNeighbour(keyHash);
                 }
                 return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
@@ -125,7 +128,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         // A refresh means to do a k-nearest node lookup for a random hash for that particular bucket.
         foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
         {
-            var keyToLookup = _nodeHashProvider.CreateRandomKeyAtDistance(Prefix, Distance);
+            var keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
             await LookupNodesClosest(keyToLookup, token);
         }
 
@@ -140,7 +143,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     {
         ValueHash256? excludeHash = null;
         if (excluding != null) excludeHash = _nodeHashProvider.GetHash(excluding);
-        ValueHash256 hash = _nodeHashProvider.GetKeyHash(target);
+        ValueHash256 hash = _keyOperator.GetKeyHash(target);
         return _routingTable.GetKNearestNeighbour(hash,  excludeHash, excludeSelf);
     }
 

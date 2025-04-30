@@ -10,8 +10,6 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public class KBucketTree<TKey, TNode>: IRoutingTable<TNode> where TNode : notnull
 {
-    private readonly INodeHashProvider<TKey, TNode> _nodeHashProvider;
-
     private class TreeNode
     {
         public KBucket<TNode> Bucket { get; }
@@ -36,11 +34,10 @@ public class KBucketTree<TKey, TNode>: IRoutingTable<TNode> where TNode : notnul
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public KBucketTree(KademliaConfig<TNode> config, INodeHashProvider<TKey, TNode> nodeHashProvider, ILogManager logManager)
+    public KBucketTree(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
     {
         _k = config.KSize;
         _b = config.Beta;
-        _nodeHashProvider = nodeHashProvider;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, new ValueHash256());
         _logger = logManager.GetClassLogger();

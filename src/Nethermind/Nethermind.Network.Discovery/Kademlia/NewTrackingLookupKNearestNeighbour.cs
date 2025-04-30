@@ -14,7 +14,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public class NewaTrackingLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    INodeHashProvider<TNode> nodeHashProvider,
+    IKeyOperator<TKey, TNode> keyOperator,
     KademliaConfig<TNode> kademliaConfig,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
     INodeHealthTracker<TNode> nodeHealthTracker,
@@ -29,7 +30,7 @@ public class NewaTrackingLookupKNearestNeighbour<TKey, TNode>(
     {
         if (SameAsSelf(nextNode))
         {
-            return routingTable.GetKNearestNeighbour(nodeHashProvider.GetKeyHash(target));
+            return routingTable.GetKNearestNeighbour(keyOperator.GetKeyHash(target));
         }
         return await kademliaMessageSender.FindNeighbours(nextNode, target, token);
     }
@@ -48,7 +49,7 @@ public class NewaTrackingLookupKNearestNeighbour<TKey, TNode>(
         using var cts = token.CreateChildTokenSource();
         token = cts.Token;
 
-        var targetHash = nodeHashProvider.GetKeyHash(target);
+        var targetHash = keyOperator.GetKeyHash(target);
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
         ConcurrentDictionary<ValueHash256, TNode> seen = new();
 

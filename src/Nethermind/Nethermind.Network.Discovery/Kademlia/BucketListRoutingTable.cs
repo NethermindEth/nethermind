@@ -12,13 +12,13 @@ public class BucketListRoutingTable<TKey, TNode>: IRoutingTable<TNode> where TNo
     private readonly ILogger _logger;
     private readonly KBucket<TNode>[] _buckets;
     private readonly ValueHash256 _currentNodeIdAsHash;
-    private readonly INodeHashProvider<TKey, TNode> _nodeHashProvider;
+    private readonly INodeHashProvider<TNode> _nodeHashProvider;
     private readonly int _kSize;
 
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TKey, TNode> nodeHashProvider, ILogManager logManager)
+    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<BucketListRoutingTable<TKey, TNode>>();
 

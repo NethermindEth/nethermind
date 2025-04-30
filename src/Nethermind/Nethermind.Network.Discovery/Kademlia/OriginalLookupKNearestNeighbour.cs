@@ -11,7 +11,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 public class OriginalLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    INodeHashProvider<TNode> nodeHashProvider,
+    IKeyOperator<TKey, TNode> keyOperator,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
     ILogManager logManager): ILookupAlgo<TKey, TNode> where TNode : notnull
@@ -27,7 +28,7 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
     ) {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {target}");
 
-        ValueHash256 targetHash = nodeHashProvider.GetKeyHash(target);
+        ValueHash256 targetHash = keyOperator.GetKeyHash(target);
         Func<TNode, Task<(TNode target, TNode[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);

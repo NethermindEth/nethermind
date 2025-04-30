@@ -17,7 +17,7 @@ public interface INodeHealthTracker<TNode>
 public class NodeHealthTracker<TKey, TNode>(
     KademliaConfig<TNode> config,
     IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TKey, TNode> nodeHashProvider,
+    INodeHashProvider<TNode> nodeHashProvider,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
     ILogManager logManager
 ) : INodeHealthTracker<TNode> where TNode : notnull
