@@ -194,7 +194,7 @@ namespace Nethermind.Synchronization.Blocks
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
             HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
-            HashSet<Hash256> toRemove = new HashSet<Hash256>();
+            using ArrayPoolList<Hash256> toRemove = new ArrayPoolList<Hash256>();
             foreach (var kv in _downloadRequests)
             {
                 if (!currentHeaderHashes.Contains(kv.Key))
