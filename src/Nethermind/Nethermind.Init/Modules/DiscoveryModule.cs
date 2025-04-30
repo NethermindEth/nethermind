@@ -4,7 +4,10 @@
 using System.Linq;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -14,7 +17,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.Core.Test.Modules;
+namespace Nethermind.Init.Modules;
 
 public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
@@ -31,6 +34,10 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 return new EnrDiscovery(enrRecordParser, networkConfig, logManager); // initialize with a proper network
             })
 
+            // Allow feeding discovery app bootnodes from enr. Need `Run` to be called.
+            .AddSingleton<NodeSourceToDiscV4Feeder>()
+            .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
+
             // Uses by RPC also.
             .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
             // This load from file.
@@ -40,6 +47,20 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
+
+            // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
+            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
+            {
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+
+                // ToDo: PeersDB is registered outside dbProvider
+                string dbName = INetworkStorage.PeerDb;
+                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
+                    ? new MemDb(dbName)
+                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                        logManager);
+                return new NetworkStorage(peersDb, logManager);
+            })
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -88,9 +109,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         if (!networkConfig.OnlyStaticPeers)
         {
             // These are INodeSource only if `OnlyStaticPeers` is false.
-            builder
-                .Bind<INodeSource, IDiscoveryApp>()
-                .Bind<INodeSource, EnrDiscovery>();
+            builder.Bind<INodeSource, IDiscoveryApp>();
+            if (networkConfig.EnableEnrDiscovery) builder.Bind<INodeSource, EnrDiscovery>();
         }
     }
 }

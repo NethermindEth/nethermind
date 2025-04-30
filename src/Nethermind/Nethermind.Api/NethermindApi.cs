@@ -9,7 +9,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -135,7 +134,7 @@ namespace Nethermind.Api
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
-        public IDiscoveryApp? DiscoveryApp { get; set; }
+        public IDiscoveryApp DiscoveryApp => Context.Resolve<IDiscoveryApp>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
@@ -157,8 +156,8 @@ namespace Nethermind.Api
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
-        public IPeerManager? PeerManager { get; set; }
-        public IPeerPool? PeerPool { get; set; }
+        public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
+        public IPeerPool? PeerPool => Context.Resolve<IPeerPool>();
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
@@ -192,16 +191,11 @@ namespace Nethermind.Api
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 
         public ISyncPeerPool? SyncPeerPool => Context.Resolve<ISyncPeerPool>();
-        public ISynchronizer? Synchronizer => Context.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer => Context.Resolve<ISyncServer>();
-        public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        public IWorldStateManager? WorldStateManager { get; set; }
-        public INodeStorage? MainNodeStorage { get; set; }
-        public CompositePruningTrigger? PruningTrigger { get; set; }
-        public IVerifyTrieStarter? VerifyTrieStarter { get; set; }
-        public IStateReader? StateReader { get; set; }
-        public IStaticNodesManager? StaticNodesManager { get; set; }
-        public ITrustedNodesManager? TrustedNodesManager { get; set; }
+        public IWorldStateManager? WorldStateManager => Context.Resolve<IWorldStateManager>();
+        public IStateReader? StateReader => Context.Resolve<IStateReader>();
+        public IStaticNodesManager StaticNodesManager => Context.Resolve<IStaticNodesManager>();
+        public ITrustedNodesManager TrustedNodesManager => Context.Resolve<ITrustedNodesManager>();
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public IMainProcessingContext? MainProcessingContext { get; set; }
