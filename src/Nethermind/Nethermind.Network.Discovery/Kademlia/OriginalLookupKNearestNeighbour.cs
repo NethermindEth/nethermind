@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -27,31 +28,6 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
     ) {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
-        Func<TNode, Task<(TNode target, TNode[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(_findNeighbourHardTimeout);
-
-            try
-            {
-                // targetHash is implied in findNeighbourOp
-                var res = await findNeighbourOp(node, cts.Token);
-                nodeHealthTracker.OnIncomingMessageFrom(node);
-                return (node, res);
-            }
-            catch (OperationCanceledException)
-            {
-                nodeHealthTracker.OnRequestFailed(node);
-                return (node, null);
-            }
-            catch (Exception e)
-            {
-                nodeHealthTracker.OnRequestFailed(node);
-                _logger.Error($"Find neighbour op failed. {e}");
-                return (node, null);
-            }
-        };
-
         Dictionary<ValueHash256, TNode> queried = new();
         Dictionary<ValueHash256, TNode> queriedAndResponded = new();
         Dictionary<ValueHash256, TNode> seen = new();
@@ -65,7 +41,7 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
         // Ordered by lowest distance. Will not get popped for next round, but will at final collection.
         PriorityQueue<TNode, ValueHash256> bestSeenAllTime = new (comparer);
 
-        ValueHash256 closestNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+        ValueHash256 closestNodeHash = Hash256XorUtils.GetOppositeHash(targetHash);
         (ValueHash256 nodeHash, TNode node)[] roundQuery = routingTable.GetKNearestNeighbour(targetHash, default)
             .Take(config.Alpha)
             .Select((node) => (nodeHashProvider.GetHash(node), node))
@@ -79,11 +55,14 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
             bestSeenAllTime.Enqueue(node, nodeHash);
         }
 
+        int roundNumber = 0;
         while (roundQuery.Length > 0)
         {
             // TODO: The paper mentioned that the next round can start immediately while waiting
             // for the result of previous round.
             token.ThrowIfCancellationRequested();
+
+            if (_logger.IsTrace) _logger.Trace($"Round {++roundNumber}");
 
             foreach (var kv in roundQuery)
             {
@@ -91,7 +70,7 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
             }
 
             (TNode NodeId, TNode[]? Neighbours)[] currentRoundResponse = await Task.WhenAll(
-                roundQuery.Select((hn) => wrappedFindNeighbourHop(hn.Item2)));
+                roundQuery.Select((hn) => WrappedFindNeighbourHop(hn.Item2)));
 
             bool hasCloserThanClosest = false;
             foreach ((TNode NodeId, TNode[]? Neighbours) response in currentRoundResponse)
@@ -157,7 +136,8 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
 
             // TODO: In parallel?
             // So the paper mentioned that node that it need to query findnode for node that was not queried.
-            (_, TNode[]? nextCandidate) = await wrappedFindNeighbourHop(nextLowest);
+            Stopwatch sw = Stopwatch.StartNew();
+            (_, TNode[]? nextCandidate) = await WrappedFindNeighbourHop(nextLowest);
             if (nextCandidate != null)
             {
                 result.Add(nextLowest);
@@ -165,5 +145,30 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
         }
 
         return result.ToArray();
+
+        async Task<(TNode target, TNode[]? retVal)> WrappedFindNeighbourHop(TNode node)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.CancelAfter(_findNeighbourHardTimeout);
+
+            try
+            {
+                // targetHash is implied in findNeighbourOp
+                var res = await findNeighbourOp(node, cts.Token);
+                nodeHealthTracker.OnIncomingMessageFrom(node);
+                return (node, res);
+            }
+            catch (OperationCanceledException)
+            {
+                nodeHealthTracker.OnRequestFailed(node);
+                return (node, null);
+            }
+            catch (Exception e)
+            {
+                nodeHealthTracker.OnRequestFailed(node);
+                _logger.Error($"Find neighbour op failed. {e}");
+                return (node, null);
+            }
+        }
     }
 }

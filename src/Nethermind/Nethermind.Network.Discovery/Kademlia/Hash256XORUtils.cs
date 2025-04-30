@@ -122,4 +122,10 @@ public static class Hash256XorUtils
         return new ValueHash256(xorBytes);
     }
 
+    public static ValueHash256 GetOppositeHash(ValueHash256 hash)
+    {
+        ValueHash256 opposite = new ValueHash256();
+        (~(new Vector<byte>(hash.BytesAsSpan))).CopyTo(opposite.BytesAsSpan);
+        return opposite;
+    }
 }

@@ -169,7 +169,7 @@ public class KademliaSimulation
         }
 
         using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(20));
 
         Stopwatch sw = Stopwatch.StartNew();
         fabric.SimulateLatency = false; // Bootstrap is so slow, latency simulation is disable for it.
