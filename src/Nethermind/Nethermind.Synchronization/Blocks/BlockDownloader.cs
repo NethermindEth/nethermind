@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.Blocks
         // and _estimateTxPerBlock. It is capped because of memory limit and to reduce workload by `_forwardHeaderProvider`.
         private int HeaderLookupSize => Math.Min(_maxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
 
-        private ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
+        private readonly ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
         private readonly ISyncPeerPool _syncPeerPool;
 
