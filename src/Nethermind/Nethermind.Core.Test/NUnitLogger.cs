@@ -3,11 +3,10 @@
 
 using System;
 using Nethermind.Logging;
-using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
-    public class NUnitLogger(LogLevel level, bool logToError = false) : InterfaceLogger
+    public class NUnitLogger(LogLevel level) : InterfaceLogger
     {
         private readonly LogLevel _level = level;
 
@@ -61,13 +60,13 @@ namespace Nethermind.Core.Test
 
         private void Log(string text, Exception? ex = null)
         {
-            if (logToError) Console.Error.WriteLine(text); else Console.WriteLine(text);
+            //if (logToError) Console.Error.WriteLine(text); else Console.WriteLine(text);
             // TestContext.Out.WriteLine(text);
 
-            if (ex is not null)
-            {
-                TestContext.Out.WriteLine(ex.ToString());
-            }
+            //if (ex is not null)
+            //{
+            //    TestContext.Out.WriteLine(ex.ToString());
+            //}
         }
     }
 }
