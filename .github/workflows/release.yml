@@ -39,8 +39,6 @@ jobs:
           echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
           echo "prerelease=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
           $SCRIPTS_PATH/build-runner.sh $GITHUB_SHA $build_timestamp
-      - name: Build Nethermind.Cli
-        run: $SCRIPTS_PATH/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
       - name: Archive packages
         id: archive
         env:
