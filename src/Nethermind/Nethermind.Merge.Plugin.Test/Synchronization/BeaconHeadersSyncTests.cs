@@ -89,7 +89,6 @@ public class BeaconHeadersSyncTests
             SyncConfig,
             Report,
             BeaconPivot,
-            MergeConfig,
             InvalidChainTracker,
             LimboLogs.Instance
         );

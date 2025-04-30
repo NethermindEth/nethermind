@@ -107,4 +107,7 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{os}` `{runtime}`.")]
     string PublicClientIdFormat { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Enable Enr discovery", HiddenFromDocs = true)]
+    bool EnableEnrDiscovery { get; set; }
 }

@@ -5,18 +5,19 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
+using System.Data;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
-using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
 
@@ -84,8 +85,13 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private static ICodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec)
     {
-        ICodeInfo? cachedCodeInfo = null;
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+        return InternalGetCachedCode(worldState, in codeHash, vmSpec);
+    }
+
+    private static ICodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    {
+        ICodeInfo? cachedCodeInfo = null;
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
@@ -98,7 +104,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             if (code is null)
             {
-                MissingCode(codeSource, codeHash);
+                MissingCode(codeHash);
             }
 
             cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
@@ -113,9 +119,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void MissingCode(Address codeSource, in ValueHash256 codeHash)
+        static void MissingCode(in ValueHash256 codeHash)
         {
-            throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+            throw new DataException($"Code {codeHash} missing in the state");
         }
     }
 
@@ -192,6 +198,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address, spec).MachineCode.Span, out delegatedAddress);
+
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, in codeHash, spec).MachineCode.Span, out delegatedAddress);
 
     private class CachedPrecompile(
         Address address,

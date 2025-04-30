@@ -30,8 +30,6 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IStaticNodesManager _staticNodesManager;
     private readonly IEnode _enode;
     private readonly string _dataDir;
-    private readonly ManualPruningTrigger _pruningTrigger;
-    private readonly IVerifyTrieStarter _verifyTrieStarter;
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
     private readonly ITrustedNodesManager _trustedNodesManager;
@@ -42,11 +40,9 @@ public class AdminRpcModule : IAdminRpcModule
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
-        IVerifyTrieStarter verifyTrieStarter,
         IStateReader stateReader,
         IEnode enode,
         string dataDir,
-        ManualPruningTrigger pruningTrigger,
         ChainParameters parameters,
         ITrustedNodesManager trustedNodesManager,
         ISubscriptionManager subscriptionManager)
@@ -57,9 +53,7 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
-        _verifyTrieStarter = verifyTrieStarter ?? throw new ArgumentNullException(nameof(verifyTrieStarter));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-        _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
         _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
@@ -190,32 +184,6 @@ public class AdminRpcModule : IAdminRpcModule
         }
 
         return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
-    }
-
-    public ResultWrapper<PruningStatus> admin_prune()
-    {
-        return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
-    }
-
-    public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
-    {
-        BlockHeader? header = _blockTree.FindHeader(block);
-        if (header is null)
-        {
-            return ResultWrapper<string>.Fail("Unable to find block. Unable to know state root to verify.");
-        }
-
-        if (!_stateReader.HasStateForBlock(header))
-        {
-            return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
-        }
-
-        if (!_verifyTrieStarter.TryStartVerifyTrie(header))
-        {
-            return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
-        }
-
-        return ResultWrapper<string>.Success("Starting.");
     }
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)

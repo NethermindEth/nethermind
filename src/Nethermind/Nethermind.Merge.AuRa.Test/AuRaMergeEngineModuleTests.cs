@@ -158,7 +158,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             {
                 BlockTree = BlockTree,
                 DbProvider = DbProvider,
-                WorldStateManager = WorldStateManager,
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
             };
