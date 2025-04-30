@@ -65,6 +65,8 @@ public static class OptimismWithdrawals
 
             if (_specHelper.IsIsthmus(header))
             {
+                _state.Commit(spec, commitRoots: true);
+
                 if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
                 {
                     if (_logger.IsDebug)

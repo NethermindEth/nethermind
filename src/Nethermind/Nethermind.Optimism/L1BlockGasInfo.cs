@@ -74,12 +74,14 @@ public sealed class L1BlockGasInfo
 
             if (_isIsthmus)
             {
+                ParsePostEcotoneBaseValues(data, out _l1GasPrice, out _l1BlobBaseFee, out _l1BaseFeeScalar, out _l1BlobBaseFeeScalar);
+
                 if (data.Length != 176)
                 {
+                    _operatorFeeScalar = 0;
+                    _operatorFeeConstant = 0;
                     return;
                 }
-
-                ParsePostEcotoneBaseValues(data, out _l1GasPrice, out _l1BlobBaseFee, out _l1BaseFeeScalar, out _l1BlobBaseFeeScalar);
 
                 // https://github.com/ethereum-optimism/specs/pull/382/files#diff-5ca81beda05e4bfca4ea5db10dcf59329ecc07861e3a710fd08359ebd2074379R27-R28
                 _operatorFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(data[164..168].Span);
