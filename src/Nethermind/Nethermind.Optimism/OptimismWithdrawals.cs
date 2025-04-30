@@ -15,33 +15,6 @@ namespace Nethermind.Optimism;
 /// </summary>
 public static class OptimismWithdrawals
 {
-    private static class ErrorMessages
-    {
-        public const string MissingWithdrawalsRoot = $"{nameof(BlockHeader.WithdrawalsRoot)} is missing";
-
-        public const string WithdrawalsRootShouldBeOfEmptyString =
-            $"{nameof(BlockHeader.WithdrawalsRoot)} should be keccak256(rlp(empty_string_code))";
-
-    }
-
-    public static bool Validate(IOptimismSpecHelper specHelper, BlockHeader header, out string? error)
-    {
-        // From the most recent
-        if (specHelper.IsIsthmus(header))
-        {
-            if (header.WithdrawalsRoot == null)
-            {
-                error = ErrorMessages.MissingWithdrawalsRoot;
-                return false;
-            }
-
-            // The withdrawals root should be checked only after the state transition. This can't be done before.
-        }
-
-        error = null;
-        return true;
-    }
-
     /// <summary>
     /// The withdrawals processor for optimism.
     /// </summary>

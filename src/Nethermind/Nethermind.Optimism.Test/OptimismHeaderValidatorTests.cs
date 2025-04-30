@@ -79,9 +79,26 @@ public class OptimismHeaderValidatorTests
         valid.Should().BeTrue();
     }
 
-    [TestCaseSource(nameof(WithdrawalsRootData))]
-    public void WithdrawalRoot_RequestRoot_Validity(ulong timestamp, Hash256? withdrawalHash, Hash256? requestHash,
-        bool isValid)
+    private static IEnumerable<TestCaseData> WithdrawalsRequestHashTestCases()
+    {
+        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, true)
+            .SetName("Pre Canyon - null request hash");
+        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, true)
+            .SetName("Pre Canyon - some request hash");
+
+        yield return new TestCaseData(Spec.CanyonTimestamp, null, true)
+            .SetName("Post Canyon - null request hash");
+        yield return new TestCaseData(Spec.CanyonTimestamp, TestItem.KeccakA, true)
+            .SetName("Post Canyon - some request hash");
+
+        yield return new TestCaseData(Spec.IsthmusTimeStamp, OptimismPostMergeBlockProducer.PostIsthmusRequestHash, true)
+            .SetName("Post Isthmus - expected request hash");
+        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, false).SetName(
+            "Post Isthmus - invalid request hash");
+    }
+
+    [TestCaseSource(nameof(WithdrawalsRequestHashTestCases))]
+    public void ValidateRequestHash(ulong timestamp, Hash256? requestHash, bool isValid)
     {
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -95,7 +112,6 @@ public class OptimismHeaderValidatorTests
             .WithNonce(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
-            .WithWithdrawalsRoot(withdrawalHash)
             .WithRequestsHash(requestHash)
             .TestObject;
 
@@ -129,18 +145,5 @@ public class OptimismHeaderValidatorTests
         yield return ("0x000000000000000000", false);
         yield return ("0x000000000000000001", false);
         yield return ("0x00ffffffff000001bc00", false);
-    }
-
-    private static IEnumerable<TestCaseData> WithdrawalsRootData()
-    {
-        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, null, true).SetName("Pre Canyon");
-        yield return new TestCaseData(Spec.CanyonTimestamp, Keccak.OfAnEmptySequenceRlp, null, true).SetName(
-            "Post Canyon");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash,
-            OptimismPostMergeBlockProducer.PostIsthmusRequestHash, true).SetName("Post Isthmus");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, OptimismPostMergeBlockProducer.PostIsthmusRequestHash,
-            false).SetName("Post Isthmus - invalid withdrawals hash");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash, null, false).SetName(
-            "Post Isthmus - invalid request hash");
     }
 }

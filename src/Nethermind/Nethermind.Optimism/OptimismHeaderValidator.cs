@@ -6,7 +6,6 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -40,11 +39,6 @@ public class OptimismHeaderValidator(
 {
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
-        if (!OptimismWithdrawals.Validate(specHelper, header, out error))
-        {
-            return false;
-        }
-
         if (specHelper.IsHolocene(header))
         {
             if (!header.TryDecodeEIP1559Parameters(out var parameters, out var decodeError))
