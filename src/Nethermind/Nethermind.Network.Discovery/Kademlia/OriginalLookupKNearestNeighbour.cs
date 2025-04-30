@@ -18,7 +18,7 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
     ILogManager logManager): ILookupAlgo<TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TKey, TNode>>();
+    private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
 
     public async Task<TNode[]> Lookup(
         ValueHash256 targetHash,

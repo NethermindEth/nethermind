@@ -6,12 +6,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Network.Discovery.Kademlia;
 
 /// <summary>
-/// Main find closest-k node within the network. See the kademlia paper, 2.3.
-/// Since find value is basically the same also just with a shortcut, this allow changing the find neighbour op.
-/// Find closest-k is also used to determine which node should store a particular value which is used by
-/// store RPC (not implemented).
+/// Iterate nodes round a target. Returns `IAsyncEnumerable<TNode>` of nodes that it encounters along the way.
+/// This mean that the returned value is not in order and may not be the closest to the target, but it try to
+/// eventually get there. Additionally, the returned `TNode` may not be online unlike the standard algo which
+/// requires it to be online.
 /// </summary>
-public interface ILookupAlgo2<TNode>
+public interface IITeratorAlgo<TNode>
 {
     /// <summary>
     /// The find neighbour operation here is configurable because the same algorithm is also used for finding

@@ -30,14 +30,14 @@ public static class IServiceCollectionExtensions
         return collection
             .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
             .AddSingleton<IKademliaMessageReceiver<TKey, TNode>, KademliaKademliaMessageReceiver<TKey, TNode>>()
-            .AddSingleton<NewLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<LookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<OriginalLookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<ILookupAlgo<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.GetRequiredService<KademliaConfig<TNode>>();
                 if (config.UseNewLookup)
                 {
-                    return provider.GetRequiredService<NewLookupKNearestNeighbour<TKey, TNode>>();
+                    return provider.GetRequiredService<LookupKNearestNeighbour<TKey, TNode>>();
                 }
 
                 return provider.GetRequiredService<OriginalLookupKNearestNeighbour<TKey, TNode>>();

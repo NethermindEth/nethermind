@@ -17,7 +17,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// earlier as it converge to the content faster, but take more query for findnodes due to a more strict stop
 /// condition.
 /// </summary>
-public class NewLookupKNearestNeighbour<TKey, TNode>(
+public class LookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
     INodeHashProvider<TNode> nodeHashProvider,
     INodeHealthTracker<TNode> nodeHealthTracker,
@@ -25,7 +25,7 @@ public class NewLookupKNearestNeighbour<TKey, TNode>(
     ILogManager logManager): ILookupAlgo<TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TKey, TNode>>();
+    private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
 
     public async Task<TNode[]> Lookup(
         ValueHash256 targetHash,

@@ -47,7 +47,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     private KademliaDiscv4Adapter _discv4Adapter = null!;
     private IKademlia<PublicKey, Node> _kademlia = null!;
-    private ILookupAlgo2<Node> _lookup2 = null!;
+    private IITeratorAlgo<Node> _lookup2 = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
@@ -160,7 +160,7 @@ public class DiscoveryApp : IDiscoveryApp
             .Build();
 
         _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
-        _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<Node>>();
+        _lookup2 = _kademliaServices.Resolve<IITeratorAlgo<Node>>();
         _discv4Adapter = _kademliaServices.Resolve<KademliaDiscv4Adapter>();
 
         // TODO: Setup kademlia here

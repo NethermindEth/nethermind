@@ -18,7 +18,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
     KademliaConfig<TNode> kademliaConfig,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager) : ILookupAlgo2<TNode> where TNode : notnull
+    ILogManager logManager) : IITeratorAlgo<TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
     private readonly ILogger _logger = logManager.GetClassLogger<NewaTrackingLookupKNearestNeighbour<TNode>>();
