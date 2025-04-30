@@ -17,8 +17,8 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery;
 
-public class KademliaDiscv4MessageSender(
-    Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademlia, // Cyclic dependency
+public class KademliaDiscv4Adapter(
+    Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
     INetworkConfig networkConfig,
     KademliaConfig<Node> kademliaConfig,
     NodeRecord selfNodeRecord,
@@ -26,7 +26,7 @@ public class KademliaDiscv4MessageSender(
     ITimestamper timestamper
 ): IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
 {
-    private ILogger _logger = logManager.GetClassLogger<KademliaDiscv4MessageSender>();
+    private ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
 
     private readonly CancellationTokenSource _cts = new();
     public IMsgSender? MsgSender { get; set; }
@@ -167,7 +167,7 @@ public class KademliaDiscv4MessageSender(
         Task.Run(async () =>
         {
             PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
-            Node[] nodes = await kademlia.Value.FindNeighbours(node, publicKey, _cts.Token);
+            Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, _cts.Token);
             if (nodes.Length > 12)
             {
                 // some issue with large neighbour message. Too large, and its larger than the default mtu 1280.
@@ -182,7 +182,7 @@ public class KademliaDiscv4MessageSender(
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
         Task.Run(async () =>
         {
-            await kademlia.Value.Ping(node, _cts.Token);
+            await kademliaMessageReceiver.Value.Ping(node, _cts.Token);
             PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
             await SendMessage(node, msg);
         });

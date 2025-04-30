@@ -17,7 +17,7 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
             .AddSingleton<IKademliaMessageReceiver<TKey, TNode>, KademliaKademliaMessageReceiver<TKey, TNode>>()
             .AddSingleton<NewLookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<OriginalLookupKNearestNeighbour<TKey, TNode>>()
-            .AddSingleton<ILookupAlgo<TKey, TNode>>(provider =>
+            .AddSingleton<ILookupAlgo<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.Resolve<KademliaConfig<TNode>>();
                 if (config.UseNewLookup)
@@ -27,7 +27,7 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
 
                 return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
-            .AddSingleton<ILookupAlgo2<TKey, TNode>, NewaTrackingLookupKNearestNeighbour<TKey, TNode>>()
+            .AddSingleton<ILookupAlgo2<TNode>, NewaTrackingLookupKNearestNeighbour<TNode>>()
             .AddSingleton<IRoutingTable<TNode>, KBucketTree<TKey, TNode>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
     }

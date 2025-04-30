@@ -13,7 +13,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     private readonly INodeHashProvider<TNode> _nodeHashProvider;
     private readonly IKeyOperator<TKey, TNode> _keyOperator;
     private readonly IRoutingTable<TNode> _routingTable;
-    private readonly ILookupAlgo<TKey, TNode> _lookupAlgo;
+    private readonly ILookupAlgo<TNode> _lookupAlgo;
     private readonly INodeHealthTracker<TNode> _nodeHealthTracker;
     private readonly ILogger _logger;
 
@@ -28,7 +28,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         IKeyOperator<TKey, TNode> keyOperator,
         IKademliaMessageSender<TKey, TNode> sender,
         IRoutingTable<TNode> routingTable,
-        ILookupAlgo<TKey, TNode> lookupAlgo,
+        ILookupAlgo<TNode> lookupAlgo,
         ILogManager logManager,
         INodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config)
@@ -72,10 +72,10 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         return _nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
     }
 
-    public async Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null)
+    public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null)
     {
-        return await LookupNodesClosest(
-            key,
+        return _lookupAlgo.Lookup(
+            _keyOperator.GetKeyHash(key),
             k ?? _kSize,
             async (nextNode, token) =>
             {
@@ -88,20 +88,6 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             },
             token
         );
-    }
-
-    private Task<TNode[]> LookupNodesClosest(
-        TKey target,
-        int k,
-        Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
-        CancellationToken token
-    )
-    {
-        return _lookupAlgo.Lookup(
-            target,
-            k,
-            findNeighbourOp,
-            token);
     }
 
     public async Task Run(CancellationToken token)

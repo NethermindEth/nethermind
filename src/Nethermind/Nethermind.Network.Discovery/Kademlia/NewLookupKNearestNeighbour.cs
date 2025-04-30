@@ -20,21 +20,20 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public class NewLookupKNearestNeighbour<TKey, TNode>(
     IRoutingTable<TNode> routingTable,
     INodeHashProvider<TNode> nodeHashProvider,
-    IKeyOperator<TKey, TNode> keyOperator,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager): ILookupAlgo<TKey, TNode> where TNode : notnull
+    ILogManager logManager): ILookupAlgo<TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
     private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TKey, TNode>>();
 
     public async Task<TNode[]> Lookup(
-        TKey target,
+        ValueHash256 targetHash,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     ) {
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {target}");
+        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
@@ -42,7 +41,6 @@ public class NewLookupKNearestNeighbour<TKey, TNode>(
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
         ConcurrentDictionary<ValueHash256, TNode> seen = new();
 
-        ValueHash256 targetHash = keyOperator.GetKeyHash(target);
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h1, h2, targetHash));
         IComparer<ValueHash256> comparerReverse = Comparer<ValueHash256>.Create((h1, h2) =>

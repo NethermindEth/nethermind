@@ -25,14 +25,6 @@ public interface IKademlia<TKey, TNode>
     void Remove(TNode node);
 
     /// <summary>
-    /// Lookup k nearest neighbour closest to the target hash. This will traverse the network.
-    /// </summary>
-    /// <param name="targetHash"></param>
-    /// <param name="token"></param>
-    /// <param name="k"></param>
-    Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
-
-    /// <summary>
     /// Start timers, refresh and such for maintenance of the table.
     /// </summary>
     /// <param name="token"></param>
@@ -46,7 +38,15 @@ public interface IKademlia<TKey, TNode>
     Task Bootstrap(CancellationToken token);
 
     /// <summary>
-    /// Return the K nearest table entry from hash. This does not traverse the network. The returned array is not
+    /// Lookup k nearest neighbour closest to the target hash. This will traverse the network.
+    /// </summary>
+    /// <param name="targetHash"></param>
+    /// <param name="token"></param>
+    /// <param name="k"></param>
+    Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
+
+    /// <summary>
+    /// Return the K nearest table entry from target. This does not traverse the network. The returned array is not
     /// sorted. The routing table may return the exact same array for optimization purpose.
     /// </summary>
     /// <param name="target"></param>

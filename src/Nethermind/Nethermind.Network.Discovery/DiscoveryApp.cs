@@ -9,11 +9,9 @@ using System.Threading.Channels;
 using Autofac;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
-using Microsoft.ClearScript;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -47,9 +45,9 @@ public class DiscoveryApp : IDiscoveryApp
     private PublicKey _masterNode = null!;
     private readonly NodeRecord _selfNodeRecorrd;
 
-    private KademliaDiscv4MessageSender _discv4MessageSender = null!;
+    private KademliaDiscv4Adapter _discv4Adapter = null!;
     private IKademlia<PublicKey, Node> _kademlia = null!;
-    private ILookupAlgo2<PublicKey, Node> _lookup2 = null!;
+    private ILookupAlgo2<Node> _lookup2 = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
@@ -158,12 +156,12 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 CurrentNodeId = new Node(_masterNode, "127.0.0.1", 9999, true)
             })
-            .AddSingleton<IKademliaMessageSender<PublicKey, Node>, KademliaDiscv4MessageSender>()
+            .AddSingleton<IKademliaMessageSender<PublicKey, Node>, KademliaDiscv4Adapter>()
             .Build();
 
         _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
-        _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<PublicKey, Node>>();
-        _discv4MessageSender = _kademliaServices.Resolve<KademliaDiscv4MessageSender>();
+        _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<Node>>();
+        _discv4Adapter = _kademliaServices.Resolve<KademliaDiscv4Adapter>();
 
         // TODO: Setup kademlia here
     }
@@ -237,10 +235,10 @@ public class DiscoveryApp : IDiscoveryApp
 
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discv4MessageSender, channel, _messageSerializationService,
+        _discoveryHandler = new NettyDiscoveryHandler(_discv4Adapter, channel, _messageSerializationService,
             _timestamper, _logManager);
 
-        _discv4MessageSender.MsgSender = _discoveryHandler;
+        _discv4Adapter.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
         channel.Pipeline
@@ -337,7 +335,7 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
-            if (!_discv4MessageSender.NodesFilter.Set(networkNode.HostIp))
+            if (!_discv4Adapter.NodesFilter.Set(networkNode.HostIp))
             {
                 // Already seen this node ip recently
                 continue;
@@ -608,7 +606,10 @@ public class DiscoveryApp : IDiscoveryApp
             bool anyFound = false;
             int count = 0;
 
-            await foreach (var node in _lookup2.Lookup(target, token))
+            ValueHash256 targetHash = target.Hash;
+            Func<Node, CancellationToken, Task<Node[]>> lookupOp = (nextNode, token) =>
+                _discv4Adapter.FindNeighbours(nextNode, target, token);
+            await foreach (var node in _lookup2.Lookup(targetHash, lookupOp!, token))
             {
                 anyFound = true;
                 count++;
@@ -688,7 +689,7 @@ public class DiscoveryApp : IDiscoveryApp
         {
             try
             {
-                await _discv4MessageSender.Ping(node, token);
+                await _discv4Adapter.Ping(node, token);
                 onlineBootnodes++;
                 _kademlia.AddOrRefresh(node);
             }
