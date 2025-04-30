@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Blocks
     {
         private static readonly BlocksSyncPeerAllocationStrategy _estimatedAllocationStrategy = new(0);
 
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
