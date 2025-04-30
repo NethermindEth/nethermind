@@ -78,4 +78,57 @@ public class OptimismWithdrawalTests
         yield return new TestCaseData(Spec.CanyonTimestamp, Keccak.OfAnEmptySequenceRlp).SetName("Post Canyon");
         yield return new TestCaseData(Spec.IsthmusTimeStamp, ActualStorageRoot).SetName("Post Isthmus");
     }
+
+    [Test]
+    public void WithdrawalsRoot_IsAlwaysUpToDate_PostIsthmus()
+    {
+        using var db = new MemDb();
+        using var store = new TrieStore(db, TestLogManager.Instance);
+
+        var state = new WorldState(store, NullDb.Instance, TestLogManager.Instance);
+        var processor = new OptimismWithdrawals.Processor(state, TestLogManager.Instance, Spec.Instance);
+        var releaseSpec = Substitute.For<IReleaseSpec>();
+
+        // Initialize the storage root
+        state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
+        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [10]);
+        state.Commit(releaseSpec);
+
+        var header_A = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithTimestamp(Spec.IsthmusTimeStamp)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
+            .TestObject;
+
+        var block_A = Build.A.Block
+            .WithHeader(header_A)
+            .WithTransactions(0, releaseSpec)
+            .TestObject;
+
+        processor.ProcessWithdrawals(block_A, releaseSpec);
+        block_A.WithdrawalsRoot.Should().Be(new("0xe11ca0cf3ff4b6b4f02b42f419c244e0ed4fffac24c14999b2b5bc978c21e652"));
+
+        // Modify the storage root
+        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [20]);
+
+        var header_B = Build.A.BlockHeader
+            .WithNumber(2)
+            .WithTimestamp(Spec.IsthmusTimeStamp + 2)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
+            .TestObject;
+
+        var block_B = Build.A.Block
+            .WithHeader(header_B)
+            .WithTransactions(0, releaseSpec)
+            .TestObject;
+
+        processor.ProcessWithdrawals(block_B, releaseSpec);
+        block_B.WithdrawalsRoot.Should().Be(new("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62"));
+    }
 }
