@@ -47,7 +47,6 @@ public class DiscoveryApp : IDiscoveryApp
     private PublicKey _masterNode = null!;
     private readonly NodeRecord _selfNodeRecorrd;
 
-    private KademliaDiscv4MessageReceiver _discv4MessageReceiver = null!;
     private KademliaDiscv4MessageSender _discv4MessageSender = null!;
     private IKademlia<PublicKey, Node> _kademlia = null!;
     private ILookupAlgo2<PublicKey, Node> _lookup2 = null!;
@@ -159,12 +158,10 @@ public class DiscoveryApp : IDiscoveryApp
                 CurrentNodeId = new Node(_masterNode, "127.0.0.1", 9999, true)
             })
             .AddSingleton<IKademliaMessageSender<PublicKey, Node>, KademliaDiscv4MessageSender>()
-            .AddSingleton<KademliaDiscv4MessageReceiver>()
             .Build();
 
         _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
         _lookup2 = _kademliaServices.Resolve<ILookupAlgo2<PublicKey, Node>>();
-        _discv4MessageReceiver = _kademliaServices.Resolve<KademliaDiscv4MessageReceiver>();
         _discv4MessageSender = _kademliaServices.Resolve<KademliaDiscv4MessageSender>();
 
         // TODO: Setup kademlia here
@@ -239,7 +236,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discv4MessageReceiver, channel, _messageSerializationService,
+        _discoveryHandler = new NettyDiscoveryHandler(_discv4MessageSender, channel, _messageSerializationService,
             _timestamper, _logManager);
 
         _discv4MessageSender.MsgSender = _discoveryHandler;
