@@ -45,7 +45,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ulong _fastHeadersMemoryBudget;
         protected long _lowestRequestedHeaderNumber;
         protected long _pivotNumber;
-        protected (Hash256 Hash, UInt256? TotalDifficulty) _expectedNextHeader;
+
+        protected record NextHeader(Hash256 Hash256, UInt256? TotalDifficulty);
+        protected NextHeader _expectedNextHeader;
 
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again
@@ -192,7 +194,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             (_pivotNumber, Hash256 nextHeaderHash) = _blockTree.SyncPivot;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _expectedNextHeader = (nextHeaderHash, TryGetPivotTotalDifficulty(nextHeaderHash));
+            _expectedNextHeader = new NextHeader(nextHeaderHash, TryGetPivotTotalDifficulty(nextHeaderHash));
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
@@ -835,7 +837,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
-            _expectedNextHeader = (header.ParentHash, DetermineParentTotalDifficulty(header));
+            _expectedNextHeader = new NextHeader(header.ParentHash, DetermineParentTotalDifficulty(header));
         }
 
         protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header)

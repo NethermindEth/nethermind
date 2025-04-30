@@ -86,7 +86,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // First, we assume pivot
         _pivotNumber = ExpectedPivotNumber;
-        _expectedNextHeader = (ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
+        _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
 
         long startNumber = _pivotNumber;
 
