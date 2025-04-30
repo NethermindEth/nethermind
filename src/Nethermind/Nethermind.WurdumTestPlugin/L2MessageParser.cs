@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -22,7 +21,7 @@ public static class L2MessageParser
             return [];
         }
 
-        ReadOnlySpan<byte> l2MsgSpan = Encoding.UTF8.GetBytes(message.L2Msg);
+        ReadOnlySpan<byte> l2MsgSpan = Convert.FromBase64String(message.L2Msg);
 
         switch (message.Header.Kind)
         {
@@ -120,15 +119,15 @@ public static class L2MessageParser
                 return transactions;
 
             case ArbitrumL2MessageKind.SignedTx:
-                var signedTx = Rlp.Decode<Transaction>(data.ToArray(),
+                var legacyTx = Rlp.Decode<Transaction>(data.ToArray(),
                     RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
 
-                if (signedTx.Type >= (TxType)ArbitrumTxType.ArbitrumDeposit || signedTx.Type == TxType.Blob)
+                if (legacyTx.Type >= (TxType)ArbitrumTxType.ArbitrumDeposit || legacyTx.Type == TxType.Blob)
                 {
-                     throw new ArgumentException($"Unsupported transaction type {signedTx.Type} encountered in L2MessageKind_SignedTx.");
+                     throw new ArgumentException($"Unsupported transaction type {legacyTx.Type} encountered in L2MessageKind_SignedTx.");
                 }
 
-                return [signedTx];
+                return [legacyTx];
 
             case ArbitrumL2MessageKind.Heartbeat:
                 if (timestamp >= ArbitrumConstants.HeartbeatsDisabledAt)
@@ -289,8 +288,10 @@ public static class L2MessageParser
         return [ConvertParsedDataToTransaction(retryableData)];
     }
 
-    private static List<Transaction> ParseBatchPostingReport(ref ReadOnlySpan<byte> data, ulong chainId, ulong batchGasCostFromMsg)
+    private static List<Transaction> ParseBatchPostingReport(ref ReadOnlySpan<byte> data, ulong chainId, ulong? batchGasCostFromMsg)
     {
+        ArgumentNullException.ThrowIfNull(batchGasCostFromMsg, "Cannot process BatchPostingReport message without Gas cost.");
+
         var batchTimestamp = ArbitrumBinaryReader.ReadUInt256OrFail(ref data);
         var batchPosterAddr = ArbitrumBinaryReader.ReadAddressOrFail(ref data);
         _ = ArbitrumBinaryReader.ReadHash256OrFail(ref data); // dataHash is not used directly in tx, but parsed
@@ -313,14 +314,9 @@ public static class L2MessageParser
         }
 
         // Calculate total gas cost (matches Go logic) following SaturatingAdd go implementation
-        var batchDataGas = batchGasCostFromMsg > ulong.MaxValue - extraGas ? ulong.MaxValue : batchGasCostFromMsg + extraGas;
+        var batchDataGas = batchGasCostFromMsg > ulong.MaxValue - extraGas ? ulong.MaxValue : batchGasCostFromMsg.Value + extraGas;
 
-        // Build the internal transaction data payload based on ABI encoding (implementation skipped)
-        // inputs:
-        _ = (batchTimestamp, batchPosterAddr, batchNum, batchDataGas, l1BaseFee);
-        byte[] internalTxData = [];
-
-        var internalTxParsed = new ArbitrumInternalTx(chainId, internalTxData);
+        var internalTxParsed = new ArbitrumInternalTx(chainId, batchTimestamp, batchPosterAddr, batchNum, batchDataGas, l1BaseFee);
 
         return [ConvertParsedDataToTransaction(internalTxParsed)];
     }
@@ -358,7 +354,7 @@ public static class L2MessageParser
                 Data = d.Data.ToArray(),
                 IsOPSystemTransaction = true, // Contract transactions are system transactions
             },
-            ArbitrumDepositTx d => new Transaction
+            ArbitrumDepositTx d => new ArbitrumTransaction<ArbitrumDepositTx>(d)
             {
                 Type = (TxType)ArbitrumTxType.ArbitrumDeposit,
                 ChainId = d.ChainId,
@@ -373,7 +369,7 @@ public static class L2MessageParser
                 IsOPSystemTransaction = true, // Deposits are system transactions
                 Mint = d.Value, // Mint the deposited value on L2
             },
-            ArbitrumSubmitRetryableTx d => new Transaction
+            ArbitrumSubmitRetryableTx d => new ArbitrumTransaction<ArbitrumSubmitRetryableTx>(d)
             {
                 Type = (TxType)ArbitrumTxType.ArbitrumSubmitRetryable,
                 ChainId = d.ChainId,
@@ -390,7 +386,7 @@ public static class L2MessageParser
                 // Mint represents the ETH deposited with the retryable (DepositValue)
                 Mint = d.DepositValue,
             },
-            ArbitrumInternalTx d => new Transaction
+            ArbitrumInternalTx d => new ArbitrumTransaction<ArbitrumInternalTx>(d)
             {
                 Type = (TxType)ArbitrumTxType.ArbitrumInternal,
                 ChainId = d.ChainId,
@@ -401,7 +397,7 @@ public static class L2MessageParser
                 GasLimit = 0,
                 To = ArbitrumConstants.ArbosAddress, // Target is Arbos precompile
                 Value = UInt256.Zero,
-                Data = d.Data.ToArray(),
+                Data = Array.Empty<byte>(),
                 IsOPSystemTransaction = true, // Internal transactions are system transactions
             },
             _ => throw new ArgumentException($"Unsupported parsed data type: {parsedData.GetType().Name}")

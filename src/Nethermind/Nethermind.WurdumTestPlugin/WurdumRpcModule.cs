@@ -46,7 +46,7 @@ public record MessageWithMetadata(
 public record L1IncomingMessage(
     [property: JsonPropertyName("header")] L1IncomingMessageHeader Header,
     [property: JsonPropertyName("l2Msg")] string L2Msg,
-    [property: JsonPropertyName("batchGasCost")] ulong BatchGasCost
+    [property: JsonPropertyName("batchGasCost")] ulong? BatchGasCost
 );
 
 public record L1IncomingMessageHeader(

@@ -107,7 +107,7 @@ public static class ArbitrumBinaryReader
             return false;
         }
 
-        value = new UInt256(span[..Hash256.Size]);
+        value = new UInt256(span[..Hash256.Size], isBigEndian: true);
         span = span[Hash256.Size..];
         return true;
     }

@@ -16,13 +16,13 @@ public enum ArbitrumTxType : byte
     EthBlob = TxType.Blob,
     EthSetCode = TxType.SetCode,
 
-    ArbitrumDeposit = 0x7E,
     ArbitrumUnsigned = 0x65,
     ArbitrumContract = 0x66,
     ArbitrumRetry = 0x68,
     ArbitrumSubmitRetryable = 0x69,
     ArbitrumInternal = 0x6A,
-    ArbitrumLegacy = 0x78
+    ArbitrumLegacy = 0x78,
+    ArbitrumDeposit = 0x7E
 }
 
 public enum ArbitrumL1MessageKind : byte
@@ -112,44 +112,16 @@ public record ArbitrumSubmitRetryableTx(
     ReadOnlyMemory<byte> RetryData
 );
 
+public class ArbitrumTransaction<T>(T inner) : Transaction
+{
+    public T Inner { get; } = inner;
+}
+
 public record ArbitrumInternalTx(
     ulong ChainId,
-    ReadOnlyMemory<byte> Data // This will contain the ABI-encoded call to the Arbos precompile
-)
-{
-    public const string DataAbi = """
-                                  {
-                                      "inputs": [
-                                          {
-                                              "internalType": "uint256",
-                                              "name": "batchTimestamp",
-                                              "type": "uint256"
-                                          },
-                                          {
-                                              "internalType": "address",
-                                              "name": "batchPosterAddress",
-                                              "type": "address"
-                                          },
-                                          {
-                                              "internalType": "uint64",
-                                              "name": "batchNumber",
-                                              "type": "uint64"
-                                          },
-                                          {
-                                              "internalType": "uint64",
-                                              "name": "batchDataGas",
-                                              "type": "uint64"
-                                          },
-                                          {
-                                              "internalType": "uint256",
-                                              "name": "l1BaseFeeWei",
-                                              "type": "uint256"
-                                          }
-                                      ],
-                                      "name": "batchPostingReport",
-                                      "outputs": [],
-                                      "stateMutability": "nonpayable",
-                                      "type": "function"
-                                  }
-                                  """;
-}
+    UInt256 BatchTimestamp,
+    Address BatchPosterAddress,
+    ulong BatchNumber,
+    ulong BatchDataGas,
+    UInt256 L1BaseFee
+);
