@@ -380,13 +380,7 @@ public class MergePluginModule : Module
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
-            .AddModule(new BaseMergePluginModule())
-
-            // Protocols
-            .OnActivate<IProtocolsManager>((p, _) =>
-            {
-                p.AddSupportedCapability(new(Protocol.Eth, 69));
-            });
+            .AddModule(new BaseMergePluginModule());
     }
 }
 

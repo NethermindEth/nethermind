@@ -44,7 +44,7 @@ namespace Nethermind.Network
             new(Protocol.Eth, 66),
             new(Protocol.Eth, 67),
             new(Protocol.Eth, 68),
-            // eth/69 is added as part of merge plugin, as it's not supported by PoW chains
+            new(Protocol.Eth, 69),
             new(Protocol.NodeData, 1)
         };
 
