@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Consensus.Validators;
@@ -57,6 +58,49 @@ public class OptimismBlockValidatorTests
             .WithHeader(Build.A.BlockHeader
                 .WithTimestamp(timestamp)
                 .WithWithdrawalsRoot(withdrawalsRoot)
+                .TestObject)
+            .TestObject;
+
+        var validator = new OptimismBlockValidator(
+            Always.Valid,
+            Always.Valid,
+            Always.Valid,
+            specProvider,
+            specHelper,
+            TestLogManager.Instance);
+
+        var result = validator.ValidateSuggestedBlock(block, out string? error);
+
+        result.Should().Be(isValid);
+        if (!isValid)
+        {
+            error.Should().NotBeNull();
+        }
+    }
+
+    private static IEnumerable<TestCaseData> WithdrawalsListTestCases()
+    {
+        yield return new TestCaseData(Array.Empty<Withdrawal>(), true)
+            .SetName("Valid empty withdrawals list");
+        yield return new TestCaseData(null, false)
+            .SetName("Invalid null withdrawals list");
+        yield return new TestCaseData(new[] { TestItem.WithdrawalA_1Eth }, false)
+            .SetName("Invalid non-empty withdrawals list");
+    }
+
+    [TestCaseSource(nameof(WithdrawalsListTestCases))]
+    public void ValidateSuggestedBlock_ValidateWithdrawalsList_PostIsthmus(Withdrawal[]? withdrawals, bool isValid)
+    {
+        var specProvider = Substitute.For<ISpecProvider>();
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+        specHelper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
+        specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(true);
+
+        var block = Build.A.Block
+            .WithWithdrawals(withdrawals)
+            .WithHeader(Build.A.BlockHeader
+                .WithTimestamp(Spec.IsthmusTimeStamp)
+                .WithWithdrawalsRoot(TestWithdrawalsRoot)
                 .TestObject)
             .TestObject;
 
