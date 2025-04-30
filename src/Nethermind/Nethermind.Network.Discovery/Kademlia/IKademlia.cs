@@ -58,4 +58,10 @@ public interface IKademlia<TKey, TNode>
     /// Called when a TNode is added to the routing table.
     /// </summary>
     event EventHandler<TNode> OnNodeAdded;
+
+    /// <summary>
+    /// Iterate all nodes with no ordering
+    /// </summary>
+    /// <returns></returns>
+    IEnumerable<TNode> IterateNodes();
 }

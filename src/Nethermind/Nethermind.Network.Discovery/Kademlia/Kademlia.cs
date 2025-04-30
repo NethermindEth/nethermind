@@ -22,6 +22,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
     private readonly TimeSpan _refreshInterval;
+    private readonly IReadOnlyList<TNode> _bootNodes;
 
     public Kademlia(
         INodeHashProvider<TNode> nodeHashProvider,
@@ -46,6 +47,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
+        _bootNodes = config.BootNodes;
 
         AddOrRefresh(_currentNodeId);
     }
@@ -92,8 +94,6 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public async Task Run(CancellationToken token)
     {
-        await LookupNodesClosest(_currentNodeIdAsKey, token);
-
         while (true)
         {
             await Bootstrap(token);
@@ -106,6 +106,26 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     public async Task Bootstrap(CancellationToken token)
     {
         Stopwatch sw = Stopwatch.StartNew();
+
+        int onlineBootNodes = 0;
+
+        // Check bootnodes is online
+        await Parallel.ForEachAsync(_bootNodes, token, async (node, token) =>
+        {
+            try
+            {
+                // Should be added on Pong.
+                await _kademliaMessageSender.Ping(node, token);
+                onlineBootNodes++;
+            }
+            catch (OperationCanceledException)
+            {
+                // Unreachable
+            }
+        });
+
+        if (_logger.IsInfo) _logger.Info($"Online bootnodes: {onlineBootNodes}");
+
         await LookupNodesClosest(_currentNodeIdAsKey, token);
 
         token.ThrowIfCancellationRequested();
@@ -137,5 +157,16 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     {
         add => _routingTable.OnNodeAdded += value;
         remove => _routingTable.OnNodeAdded -= value;
+    }
+
+    public IEnumerable<TNode> IterateNodes()
+    {
+        foreach ((ValueHash256 _, int _, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
+        {
+            foreach (var node in Bucket.GetAll())
+            {
+                yield return node;
+            }
+        }
     }
 }

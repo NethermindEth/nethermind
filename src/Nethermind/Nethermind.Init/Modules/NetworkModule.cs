@@ -7,7 +7,9 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 
 namespace Nethermind.Init.Modules;
@@ -25,6 +27,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<INetworkConfig>()
                     .MaxCandidatePeerCount)) // The INetworkConfig is not referable in NodeStatsManager.
+
+            .AddSingleton<ForkInfo>()
 
             ;
     }

@@ -50,4 +50,9 @@ public class KademliaConfig<TNode>
     /// How many time a request for a node failed before we remove it from the routing table.
     /// </summary>
     public int NodeRequestFailureThreshold { get; set; } = 5;
+
+    /// <summary>
+    /// Starting boot nodes.
+    /// </summary>
+    public IReadOnlyList<TNode> BootNodes { get; set; } = [];
 }
