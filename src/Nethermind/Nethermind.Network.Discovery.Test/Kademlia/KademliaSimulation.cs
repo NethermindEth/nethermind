@@ -18,17 +18,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-[TestFixture(true, true, 3, 0)]
-[TestFixture(false, true, 3, 0)]
-[TestFixture(true, false, 3, 0)]
-[TestFixture(true, true, 3, 4)]
-[TestFixture(true, true, 1, 0)]
-[TestFixture(true, true, 1, 4)]
+[TestFixture(false, 3, 0)]
+[TestFixture(true, 1, 0)]
+[TestFixture(true, 1, 4)]
+[TestFixture(true,  3, 0)]
+[TestFixture(true, 3, 4)]
 public class KademliaSimulation
 {
     private readonly KademliaConfig<ValueHash256> _config;
 
-    public KademliaSimulation(bool useNewLookup, bool useTreeBasedTable, int alpha, int beta)
+    public KademliaSimulation(bool useNewLookup, int alpha, int beta)
     {
         _config = new KademliaConfig<ValueHash256>()
         {
@@ -36,7 +35,6 @@ public class KademliaSimulation
             Alpha = alpha,
             Beta = beta,
             UseNewLookup = useNewLookup,
-            UseTreeBasedRoutingTable = useTreeBasedTable
         };
     }
 
@@ -284,7 +282,7 @@ public class KademliaSimulation
         }
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, TestNode>, IContentHashProvider<ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode>, IContentHashProvider<ValueHash256>, IKeyOperator<ValueHash256, TestNode>
     {
         public ValueHash256 GetHash(TestNode node)
         {
@@ -363,7 +361,8 @@ public class KademliaSimulation
                 .ConfigureKademliaComponents<ValueHash256, TestNode>()
                 .ConfigureKademliaContentComponents<TestNode, ValueHash256, ValueHash256>()
                 .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error))
-                .AddSingleton<INodeHashProvider<ValueHash256, TestNode>>(_nodeHashProvider)
+                .AddSingleton<INodeHashProvider<TestNode>>(_nodeHashProvider)
+                .AddSingleton<IKeyOperator<ValueHash256, TestNode>>(_nodeHashProvider)
                 .AddSingleton<IContentHashProvider<ValueHash256>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>()
                 {
@@ -372,7 +371,6 @@ public class KademliaSimulation
                     Alpha = config.Alpha,
                     Beta = config.Beta,
                     RefreshInterval = TimeSpan.FromHours(1),
-                    UseTreeBasedRoutingTable = config.UseTreeBasedRoutingTable,
                     UseNewLookup = config.UseNewLookup
                 })
                 .AddSingleton<IKademliaContentStore<ValueHash256, ValueHash256>>(new OnlySelfIKademliaContentStore(nodeID))

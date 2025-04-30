@@ -609,7 +609,7 @@ public class DiscoveryApp : IDiscoveryApp
             ValueHash256 targetHash = target.Hash;
             Func<Node, CancellationToken, Task<Node[]>> lookupOp = (nextNode, token) =>
                 _discv4Adapter.FindNeighbours(nextNode, target, token);
-            await foreach (var node in _lookup2.Lookup(targetHash, lookupOp!, token))
+            await foreach (var node in _lookup2.Lookup(targetHash, 128, lookupOp!, token))
             {
                 anyFound = true;
                 count++;

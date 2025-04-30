@@ -15,26 +15,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-[TestFixture(true)]
-[TestFixture(false)]
 public class KademliaTests
 {
     private readonly IKademliaMessageSender<ValueHash256, ValueHash256> _kademliaMessageSender = Substitute.For<IKademliaMessageSender<ValueHash256, ValueHash256>>();
-    private readonly bool _useTreeBasedBucket;
-
-    public KademliaTests(bool useTreeBasedBucket)
-    {
-        _useTreeBasedBucket = useTreeBasedBucket;
-    }
 
     private Kademlia<ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
     {
-        config.UseTreeBasedRoutingTable = _useTreeBasedBucket;
-
         return new ServiceCollection()
             .ConfigureKademliaComponents<ValueHash256, ValueHash256>()
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
-            .AddSingleton<INodeHashProvider<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
             .AddSingleton<Kademlia<ValueHash256, ValueHash256>>()
@@ -132,12 +123,6 @@ public class KademliaTests
     [Test]
     public async Task TestTooManyNodeWithAcceleratedLookup()
     {
-        if (!_useTreeBasedBucket)
-        {
-            // Accelerated lookup only supported with tree based bucket
-            return;
-        }
-
         _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
@@ -175,7 +160,7 @@ public class KademliaTests
         kad.GetAllAtDistance(250).ToHashSet().Should().BeEquivalentTo(testHashes[10..].ToHashSet());
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>, IKeyOperator<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {
