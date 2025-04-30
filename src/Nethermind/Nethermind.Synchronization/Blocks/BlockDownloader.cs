@@ -285,6 +285,7 @@ namespace Nethermind.Synchronization.Blocks
                 satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
                 foreach (var blockHeader in headers.Skip(1))
                 {
+                    if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
                     if (blockEntry.Block is null) break;
                     if (shouldDownloadReceipt && !blockEntry.HasReceipt) break;
