@@ -273,6 +273,7 @@ function hexStringToUint8Array(hex: string): Uint8Array {
 const networks = {
   "Mainnet": "Ethereum mainnet",
   "1": "Ethereum mainnet",
+  "100": "Gnosis Mainnet",
   "480": "World Mainnet",
   "8453": "Base mainnet",
   "7032118028": "Ethereum Perfnet"
@@ -280,6 +281,7 @@ const networks = {
 const logos = {
   "Mainnet": "ethereum-logo.svg",
   "1": "ethereum-logo.svg",
+  "100": "gnosis.png",
   "480": "world-logo.svg",
   "8453": "base-logo.svg",
   "7032118028": "perfnet.png"
