@@ -27,11 +27,6 @@ public class KademliaConfig<TNode>
     public int Beta { get; set; } = 2;
 
     /// <summary>
-    /// Use tree based routing table. False to use fixed array table.
-    /// </summary>
-    public bool UseTreeBasedRoutingTable { get; set; } = true;
-
-    /// <summary>
     /// The interval on which a table refresh is initiated.
     /// </summary>
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(30);

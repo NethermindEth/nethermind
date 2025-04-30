@@ -43,17 +43,7 @@ public static class IServiceCollectionExtensions
                 return provider.GetRequiredService<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
             .AddSingleton<KBucketTree<TKey, TNode>>()
-            .AddSingleton<BucketListRoutingTable<TKey, TNode>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>()
-            .AddSingleton<IRoutingTable<TNode>>(provider =>
-            {
-                KademliaConfig<TNode> config = provider.GetRequiredService<KademliaConfig<TNode>>();
-                if (config.UseTreeBasedRoutingTable)
-                {
-                    return provider.GetRequiredService<KBucketTree<TKey, TNode>>();
-                }
-
-                return provider.GetRequiredService<BucketListRoutingTable<TKey, TNode>>();
-            });
+            .AddSingleton<IRoutingTable<TNode>, KBucketTree<TKey, TNode>>();
     }
 }

@@ -28,18 +28,7 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
                 return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
             .AddSingleton<ILookupAlgo2<TKey, TNode>, NewaTrackingLookupKNearestNeighbour<TKey, TNode>>()
-            .AddSingleton<KBucketTree<TKey, TNode>>()
-            .AddSingleton<BucketListRoutingTable<TKey, TNode>>()
-            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>()
-            .AddSingleton<IRoutingTable<TNode>>(provider =>
-            {
-                KademliaConfig<TNode> config = provider.Resolve<KademliaConfig<TNode>>();
-                if (config.UseTreeBasedRoutingTable)
-                {
-                    return provider.Resolve<KBucketTree<TKey, TNode>>();
-                }
-
-                return provider.Resolve<BucketListRoutingTable<TKey, TNode>>();
-            });
+            .AddSingleton<IRoutingTable<TNode>, KBucketTree<TKey, TNode>>()
+            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
     }
 }
