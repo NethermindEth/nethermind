@@ -44,4 +44,5 @@ public class DiscoveryConfig : IDiscoveryConfig
     public string Bootnodes { get; set; } = string.Empty;
 
     public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.V4;
+    public int ConcurrentDiscoveryJob { get; set; } = 10;
 }

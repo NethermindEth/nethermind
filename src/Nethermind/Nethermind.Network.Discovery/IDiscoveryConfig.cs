@@ -117,4 +117,7 @@ public interface IDiscoveryConfig : IConfig
 
     [ConfigItem(Description = "Discovery version(s) to enable", DefaultValue = "All", HiddenFromDocs = true)]
     DiscoveryVersion DiscoveryVersion { get; set; }
+
+    [ConfigItem(Description = "Concurrent discovery job", DefaultValue = "10", HiddenFromDocs = true)]
+    int ConcurrentDiscoveryJob { get; set; }
 }

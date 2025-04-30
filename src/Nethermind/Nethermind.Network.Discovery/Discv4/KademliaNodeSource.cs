@@ -17,6 +17,7 @@ public class KademliaNodeSource(
     IKademlia<PublicKey, Node> kademlia,
     IITeratorAlgo<Node> _lookup2,
     KademliaDiscv4Adapter discv4Adapter,
+    IDiscoveryConfig discoveryConfig,
     ILogManager logManager
 )
 {
@@ -73,7 +74,6 @@ public class KademliaNodeSource(
                 await ch.Writer.WriteAsync(node, token);
             }
 
-            _logger.Warn($"Round found {count} nodes. Total is {total}");
             if (!anyFound)
             {
                 if (_logger.IsDebug) _logger.Debug($"No node found for {target}");
@@ -84,19 +84,13 @@ public class KademliaNodeSource(
             }
         }
 
-        Task discoverTask = Task.WhenAll(Enumerable.Range(0, 6).Select((_) => Task.Run(async () =>
+        Task discoverTask = Task.WhenAll(Enumerable.Range(0, discoveryConfig.ConcurrentDiscoveryJob).Select((_) => Task.Run(async () =>
         {
             Random random = new();
             byte[] randomBytes = new byte[64];
-            int iterationCount = 0;
             while (!token.IsCancellationRequested)
             {
                 Stopwatch iterationTime = Stopwatch.StartNew();
-                if (iterationCount % 10 == 0)
-                {
-                    // Probably shnould be done once or in a few interval
-                    // await EnsureBootNodes(token);
-                }
 
                 try
                 {

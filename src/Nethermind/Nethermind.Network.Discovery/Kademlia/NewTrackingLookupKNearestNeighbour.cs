@@ -95,7 +95,6 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
 
                     // No node to query and running query.
                     if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
-                    _logger.Warn("Stopping lookup. No node to query.");
                     break;
                 }
 
@@ -142,12 +141,12 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                         // This causes `ShouldStopDueToNoBetterResult` to return false.
                         if (closestNodeRound < currentRound && foundBetter)
                         {
-                            _logger.Warn($"Found better neighbour {neighbour} at round {currentRound}.");
+                            if (_logger.IsTrace) _logger.Trace($"Found better neighbour {neighbour} at round {currentRound}.");
                             bestNodeId = neighbourHash;
                             closestNodeRound = currentRound;
                         }
                     }
-                    _logger.Warn($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
+                    if (_logger.IsTrace) _logger.Trace($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
 
                     if (ShouldStopDueToNoBetterResult())
                     {
@@ -175,7 +174,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         await Task.WhenAny(worker);
         finished = true;
 
-        _logger.Warn("Lookup operation finished.");
+        if (_logger.IsTrace) _logger.Trace("Lookup operation finished.");
         yield break;
 
         async Task<TNode[]?> WrappedFindNeighbourOp(TNode node)
