@@ -9,7 +9,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
-using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -17,9 +17,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Enr;
 using Nethermind.Stats;
@@ -52,6 +50,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private IDiscoveryApp? _v5;
     private INodeSource _compositeNodeSource = null!;
     private readonly ILifetimeScope _rootLiffetimeScope;
+    private IProcessExitSource _processExitSource;
 
     public CompositeDiscoveryApp(
         [KeyFilter(IProtectedPrivateKey.NodeKey)]
@@ -60,7 +59,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IChannelFactory? channelFactory = null
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IProcessExitSource processExitSource, IChannelFactory? channelFactory = null
     )
     {
         _rootLiffetimeScope = rootLifetimeScope;
@@ -76,6 +75,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
+        _processExitSource = processExitSource;
         _channelFactory = channelFactory;
 
         Initialize(nodeKey.PublicKey);
@@ -174,6 +174,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             _networkConfig,
             discoveryConfig,
             _timestamper,
+            _processExitSource,
             _logManager);
 
         _v4.Initialize(_nodeKey.PublicKey);

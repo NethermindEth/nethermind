@@ -103,6 +103,10 @@ public class KademliaNodeSource(
                     random.NextBytes(randomBytes);
                     await DiscoverAsync(new PublicKey(randomBytes));
                 }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);

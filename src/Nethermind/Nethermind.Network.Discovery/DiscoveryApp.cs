@@ -42,6 +42,7 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly ILifetimeScope _rootLifetimeScope;
     private KademliaNodeSource _kademliaNodeSource = null!;
     private Task? _runningTask;
+    private readonly IProcessExitSource _processExitSouce;
 
     public DiscoveryApp(
         NodeRecord selfNodeRecord,
@@ -52,6 +53,7 @@ public class DiscoveryApp : IDiscoveryApp
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,
+        IProcessExitSource processExitSource,
         ILogManager? logManager)
     {
         _selfNodeRecorrd = selfNodeRecord;
@@ -60,15 +62,15 @@ public class DiscoveryApp : IDiscoveryApp
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = _logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _messageSerializationService =
             msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        _processExitSouce = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
 
         _bootNodes = new List<Node>();
         NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
-        // NetworkNode[] bootnodes = NetworkNode.ParseNodes("enode://8cd847302089d4906c5eb3125770b067fbcb7dc6bd62dfd3517483cc2e6acae6141a5fb4061f76825ea9f585d157b625f84f976fb6aa1582dc87b0d0b652f51f@127.0.0.1:40404", _logger);
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -97,8 +99,6 @@ public class DiscoveryApp : IDiscoveryApp
         _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
         _discv4Adapter = _kademliaServices.Resolve<KademliaDiscv4Adapter>();
         _kademliaNodeSource = _kademliaServices.Resolve<KademliaNodeSource>();
-
-        // TODO: Setup kademlia here
     }
 
     public Task StartAsync()
@@ -144,7 +144,6 @@ public class DiscoveryApp : IDiscoveryApp
             _logger.Error("Error during discovery cleanup", e);
         }
 
-        _appShutdownSource.Cancel();
         if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
         _kademliaServices?.DisposeAsync();
     }
@@ -174,8 +173,6 @@ public class DiscoveryApp : IDiscoveryApp
             .AddLast(_discoveryHandler);
     }
 
-    private readonly CancellationTokenSource _appShutdownSource = new();
-
     private void OnChannelActivated(object? sender, EventArgs e)
     {
         if (_logger.IsDebug) _logger.Debug("Activated discovery channel.");
@@ -184,7 +181,7 @@ public class DiscoveryApp : IDiscoveryApp
         // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
         // not working sometimes.
         _runningTask = Task.Factory
-            .StartNew(() => OnChannelActivated(_appShutdownSource.Token), _appShutdownSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+            .StartNew(() => OnChannelActivated(_processExitSouce.Token), _processExitSouce.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
             .ContinueWith
             (
                 t =>
@@ -197,7 +194,7 @@ public class DiscoveryApp : IDiscoveryApp
                               (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
                     }
 
-                    if (t.IsCompleted && !_appShutdownSource.IsCancellationRequested)
+                    if (t.IsCompleted && !_processExitSouce.Token.IsCancellationRequested)
                     {
                         _logger.Debug("Discovery App initialized.");
                     }
