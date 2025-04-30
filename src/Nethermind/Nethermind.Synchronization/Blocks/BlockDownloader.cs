@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 if (!currentHeaderHashes.Contains(kv.Key))
                 {
-                    toRemove.Add(kv.Key);
+                    _downloadRequests.Remove(kv.Key, out _);
                 }
             }
 
