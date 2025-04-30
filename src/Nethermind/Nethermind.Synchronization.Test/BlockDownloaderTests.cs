@@ -929,15 +929,27 @@ public partial class BlockDownloaderTests
         {
             IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
 
+            AutoResetEvent autoResetEvent = new(true);
+
             peerAllocationStrategy
                 .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
                 .Returns(peerInfo);
             SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
+
+            // Set the current here
             peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), BlockTree);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult(peerAllocation));
+                .Returns((c) =>
+                {
+                    if (!autoResetEvent.WaitOne(100)) return Task.FromResult<SyncPeerAllocation?>(null)!;
+                    return Task.FromResult(peerAllocation);
+                });
+
+            PeerPool
+                .When((p) => p.Free(peerAllocation))
+                .Do((c) => autoResetEvent.Set());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
@@ -980,6 +992,7 @@ public partial class BlockDownloaderTests
                 e => BlockTree.NewBestSuggestedBlock -= e,
                 (arg) => arg.Block.Number == untilBestSuggestedHeaderIs);
 
+            if (BlockTree.BestSuggestedHeader?.Number == untilBestSuggestedHeaderIs) return;
             Task dLoop = FullSyncFeedComponent.Dispatcher.Start(cts.Token);
             FullSyncFeedComponent.Feed.Activate();
 
