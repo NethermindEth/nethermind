@@ -8,32 +8,26 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FullSyncFeed(IForwardSyncController forwardSyncController) : ActivatedSyncFeed<BlocksRequest?>
+    public class FullSyncFeed : ActivatedSyncFeed<BlocksRequest?>
     {
+        private readonly BlocksRequest _blocksRequest = new(BuildOptions());
+
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full;
 
         private static DownloaderOptions BuildOptions() => DownloaderOptions.Process;
 
         // ReSharper disable once RedundantTypeArgumentsOfMethod
-        public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default)
-        {
-            return forwardSyncController.PrepareRequest(BuildOptions(), 0, token);
-        }
+        public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => Task.FromResult<BlocksRequest?>(_blocksRequest);
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null)
         {
-            return forwardSyncController.HandleResponse(response, peer);
+            FallAsleep();
+            return SyncResponseHandlingResult.OK;
         }
 
-        public override bool IsMultiFeed => true;
+        public override bool IsMultiFeed => false;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
         public override bool IsFinished => false; // Check MultiSyncModeSelector
-
-        public override void FallAsleep()
-        {
-            base.FallAsleep();
-            forwardSyncController.PruneDownloadBuffer();
-        }
     }
 }
