@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -143,21 +144,23 @@ namespace Nethermind.State
         [SkipLocalsInit]
         public void SetValue(in UInt256 index, in StorageValue value)
         {
+            var capped = value.IsZero ? CappedArray<byte>.Empty : Rlp.EncodeToArray(value.BytesWithNoLeadingZeroes);
+
             if (index < LookupSize)
             {
-                SetInternal(Lookup[index], value.BytesWithNoLeadingZeroes);
+                Set(Lookup[index], capped);
             }
             else
             {
-                SetWithKeyGenerate(in index, value.BytesWithNoLeadingZeroes);
+                SetWithKeyGenerate(in index, capped);
             }
 
             [SkipLocalsInit]
-            void SetWithKeyGenerate(in UInt256 index, ReadOnlySpan<byte> value)
+            void SetWithKeyGenerate(in UInt256 index, in CappedArray<byte> value)
             {
                 Span<byte> key = stackalloc byte[32];
                 ComputeKey(index, key);
-                SetInternal(key, value);
+                Set(key, value);
             }
         }
 
@@ -166,7 +169,7 @@ namespace Nethermind.State
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(ReadOnlySpan<byte> rawKey, ReadOnlySpan<byte> value, bool rlpEncode = true)
+        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {
@@ -174,7 +177,7 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value.ToArray());
+                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
                 Set(rawKey, rlpEncoded);
             }
         }

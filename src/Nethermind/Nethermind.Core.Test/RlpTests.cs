@@ -38,7 +38,8 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        [Explicit("That was a regression test but now it is failing again and cannot find the reason we needed this behaviour in the first place. Sync works all fine. Leaving it here as it may resurface - make sure to add more explanation to it in such case.")]
+        [Explicit(
+            "That was a regression test but now it is failing again and cannot find the reason we needed this behaviour in the first place. Sync works all fine. Leaving it here as it may resurface - make sure to add more explanation to it in such case.")]
         public void Serializing_object_int_regression()
         {
             Rlp output = Rlp.Encode(new[] { Rlp.Encode(1) });
@@ -99,11 +100,9 @@ namespace Nethermind.Core.Test
         public void Empty_byte_array()
         {
             byte[] bytes = [];
-            Rlp rlp = Rlp.Encode(bytes);
-            Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new byte[] { 128 });
-            Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
-            Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+
+            AssertAllEncodings(expectedResult, bytes);
         }
 
         [TestCase(0)]
@@ -112,11 +111,9 @@ namespace Nethermind.Core.Test
         public void Byte_array_of_length_1_and_first_byte_value_less_than_128(byte value)
         {
             byte[] bytes = { value };
-            Rlp rlp = Rlp.Encode(bytes);
-            Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new[] { value });
-            Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
-            Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+
+            AssertAllEncodings(expectedResult, bytes);
         }
 
         [TestCase(128)]
@@ -124,11 +121,9 @@ namespace Nethermind.Core.Test
         public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128(byte value)
         {
             byte[] bytes = { value };
-            Rlp rlp = Rlp.Encode(bytes);
-            Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new[] { (byte)129, value });
-            Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
-            Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+
+            AssertAllEncodings(expectedResult, bytes);
         }
 
         [Test]
@@ -147,8 +142,7 @@ namespace Nethermind.Core.Test
 
             Rlp expectedResult = new(expectedResultBytes);
 
-            Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
-            Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            AssertAllEncodings(expectedResult, input);
         }
 
         [Test]
@@ -168,8 +162,7 @@ namespace Nethermind.Core.Test
 
             Rlp expectedResult = new(expectedResultBytes);
 
-            Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
-            Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            AssertAllEncodings(expectedResult, input);
         }
 
         [Test]
@@ -190,8 +183,7 @@ namespace Nethermind.Core.Test
 
             Rlp expectedResult = new(expectedResultBytes);
 
-            Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
-            Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            AssertAllEncodings(expectedResult, input);
         }
 
         [TestCase(new byte[] { 127, 1, 2, 2 }, false)]
@@ -199,13 +191,14 @@ namespace Nethermind.Core.Test
         [TestCase(new byte[] { 130, 0, 2, 2 }, false)]
         [TestCase(new byte[] { 130, 0, 2, 2 }, false)]
         [TestCase(new byte[]
-        {184, 56,
-            1,0,0,0,0,0,0,0,
-            1,0,0,0,0,0,0,0,
-            1,0,0,0,0,0,0,0,
-            1,0,0,0,0,0,0,0,
-            1,0,0,0,0,0,0,0,
-            1,0,0,0,0,0,0,0
+        {
+            184, 56,
+            1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 0, 0, 0, 0
         }, true)]
         public void Strange_bool(byte[] rlp, bool expectedBool)
         {
@@ -271,6 +264,13 @@ namespace Nethermind.Core.Test
                 bool isACopy = (segment.Offset == 0 && segment.Count == slice.Value.Length);
                 isACopy.Should().NotBe(sliceValue);
             }
+        }
+
+        private static void AssertAllEncodings(Rlp expected, byte[] bytes)
+        {
+            Assert.That(Rlp.Encode(bytes), Is.EqualTo(expected), "byte array");
+            Assert.That(Rlp.Encode(bytes.AsSpan()), Is.EqualTo(expected), "span");
+            Rlp.EncodeToArray(bytes).Should().BeEquivalentTo(expected.Bytes, "to array");
         }
     }
 }

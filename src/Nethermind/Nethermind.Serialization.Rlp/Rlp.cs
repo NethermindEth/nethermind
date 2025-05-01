@@ -7,6 +7,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -40,6 +41,12 @@ namespace Nethermind.Serialization.Rlp
         internal const int LengthOfNull = 1;
 
         public static readonly Rlp OfEmptyByteArray = new(EmptyArrayByte);
+
+        private const int MaxSingle = 128;
+
+        private static readonly byte[][] SingleRlpBytes = Enumerable.Range(0, MaxSingle)
+            .Select(i => new[] { (byte)i })
+            .ToArray();
 
         public static readonly Rlp OfEmptySequence = new(NullObjectByte);
 
@@ -476,6 +483,48 @@ namespace Nethermind.Serialization.Rlp
                 // Finally copy the actual input
                 input.CopyTo(rlpResult.AsSpan(1 + lengthOfLength));
                 return new Rlp(rlpResult);
+            }
+        }
+
+        [SkipLocalsInit]
+        public static byte[] EncodeToArray(ReadOnlySpan<byte> input)
+        {
+            // Handle special cases first
+            int length = input.Length;
+            if (length == 0)
+            {
+                return OfEmptyByteArray.Bytes;
+            }
+
+            // If it's a single byte less than 128, it encodes to itself.
+            if (length == 1 && input[0] < MaxSingle)
+            {
+                return SingleRlpBytes[input[0]];
+            }
+
+            // For lengths < 56, the encoding is one byte of prefix + the data
+            if (length < 56)
+            {
+                // Allocate exactly what we need: 1 prefix byte + input length
+                byte[] rlpResult = GC.AllocateUninitializedArray<byte>(1 + length);
+                // First byte is 0x80 + length
+                rlpResult[0] = (byte)(0x80 + length);
+                // Copy input after the prefix
+                input.CopyTo(rlpResult.AsSpan(1));
+                return rlpResult;
+            }
+            else
+            {
+                int lengthOfLength = LengthOfLength(length);
+                // Total size = 1 prefix byte + lengthOfLength + data length
+                int totalSize = 1 + lengthOfLength + length;
+                byte[] rlpResult = GC.AllocateUninitializedArray<byte>(totalSize);
+                // Prefix: 0xb7 (183) + number of bytes in length
+                rlpResult[0] = (byte)(0xb7 + lengthOfLength);
+                SerializeLength(length, rlpResult.AsSpan(1, lengthOfLength));
+                // Finally copy the actual input
+                input.CopyTo(rlpResult.AsSpan(1 + lengthOfLength));
+                return rlpResult;
             }
         }
 

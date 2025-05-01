@@ -91,7 +91,8 @@ public readonly struct StorageValue : IEquatable<StorageValue>
 
         ulong fourth = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 3));
         uint hash0 = BitOperations.Crc32C(unchecked((uint)(fourth >> 32)), Unsafe.ReadUnaligned<ulong>(ref b));
-        uint hash1 = BitOperations.Crc32C(unchecked((uint)fourth), Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
+        uint hash1 = BitOperations.Crc32C(unchecked((uint)fourth),
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
         uint hash2 = BitOperations.Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
 
         return unchecked((int)BitOperations.Crc32C(hash1, ((ulong)hash0 << (sizeof(uint) * 8)) | hash2));
@@ -118,11 +119,8 @@ public readonly struct StorageValue : IEquatable<StorageValue>
 
                 // At least one byte is set.
                 // To get the number of leading zeroes, check which are equal to zero and negate.
-
-                var setBytes =
-                    ~
-                        Vector256.Equals(Vector256<byte>.Zero, _bytes)
-                            .ExtractMostSignificantBits();
+                var setBytes = ~Vector256.Equals(Vector256<byte>.Zero, _bytes)
+                    .ExtractMostSignificantBits();
 
                 // It's one bit per byte, count trailing zero bits then.
                 var offset = BitOperations.TrailingZeroCount(setBytes);
@@ -131,7 +129,6 @@ public readonly struct StorageValue : IEquatable<StorageValue>
                     ref Unsafe.Add(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)), offset),
                     MemorySize - offset);
             }
-
 
             return Bytes.WithoutLeadingZeros();
         }
