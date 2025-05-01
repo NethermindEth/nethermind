@@ -101,7 +101,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void SetOperationStack(TraceStack stack)
     {
-        _traceEntry.Stack = new List<string>();
+        _traceEntry.Stack = [];
         foreach (string s in stack.ToHexWordList())
         {
             ReadOnlySpan<char> inProgress = s.AsSpan();
