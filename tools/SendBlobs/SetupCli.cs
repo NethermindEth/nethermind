@@ -1,17 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Cli;
-using Nethermind.Cli.Console;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using System.CommandLine;
 using Ethereum.Test.Base;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
+using Nethereum.JsonRpc.Client;
 
 namespace SendBlobs;
 internal static class SetupCli
@@ -197,10 +195,9 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(
-                parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            RpcClient nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!);
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await nodeManager.SendRequestAsync<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
@@ -258,9 +255,9 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            RpcClient nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!);
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await nodeManager.SendRequestAsync<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             FundsDistributor distributor = new(nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
@@ -273,16 +270,7 @@ internal static class SetupCli
         root.Add(command);
     }
 
-    public static INodeManager InitNodeManager(string rpcUrl, ILogger logger)
-    {
-        ICliConsole cliConsole = new CliConsole();
-        IJsonSerializer serializer = new EthereumJsonSerializer();
-        OneLoggerLogManager logManager = new OneLoggerLogManager(logger);
-        ICliEngine engine = new CliEngine(cliConsole);
-        INodeManager nodeManager = new NodeManager(engine, serializer, cliConsole, logManager);
-        nodeManager.SwitchUri(new Uri(rpcUrl));
-        return nodeManager;
-    }
+    public static RpcClient InitNodeManager(string rpcUrl) => new(new Uri(rpcUrl));
 
     public static void SetupSendFileCommand(CliCommand root)
     {
