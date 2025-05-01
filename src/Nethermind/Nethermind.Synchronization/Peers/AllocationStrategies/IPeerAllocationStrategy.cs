@@ -15,7 +15,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     /// </summary>
     public interface IPeerAllocationStrategy
     {
-        bool CanBeReplaced { get; }
         PeerInfo? Allocate(
             PeerInfo? currentPeer,
             IEnumerable<PeerInfo> peers,

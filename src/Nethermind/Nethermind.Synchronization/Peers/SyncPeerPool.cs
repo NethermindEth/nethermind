@@ -44,7 +44,6 @@ namespace Nethermind.Synchronization.Peers
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
 
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
-        private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations = new();
 
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
@@ -214,14 +213,6 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        internal IEnumerable<SyncPeerAllocation> ReplaceableAllocations
-        {
-            get
-            {
-                foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations) yield return allocation;
-            }
-        }
-
         public int PeerCount => _peers.Count;
         public int PriorityPeerCount = 0;
         public int InitializedPeersCount => InitializedPeers.Count();
@@ -306,15 +297,6 @@ namespace Nethermind.Synchronization.Peers
             }
             if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
 
-            foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
-            {
-                if (allocation.Current?.SyncPeer.Node.Id == id)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with {syncPeer.Node:c} on {allocation}");
-                    allocation.Cancel();
-                }
-            }
-
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
             {
                 initCancelTokenSource?.Cancel();
@@ -344,7 +326,7 @@ namespace Nethermind.Synchronization.Peers
             SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts, _isAllocatedChecks);
             while (true)
             {
-                if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
+                if (TryAllocateOnce(allocationContexts, allocation))
                 {
                     return allocation;
                 }
@@ -367,23 +349,13 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
+        private bool TryAllocateOnce(AllocationContexts allocationContexts, SyncPeerAllocation allocation)
         {
             lock (_isAllocatedChecks)
             {
                 allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
-                if (allocation.HasPeer)
-                {
-                    if (peerAllocationStrategy.CanBeReplaced)
-                    {
-                        _replaceableAllocations.TryAdd(allocation, null);
-                    }
-
-                    return true;
-                }
+                return allocation.HasPeer;
             }
-
-            return false;
         }
 
         /// <summary>
@@ -394,10 +366,7 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsTrace) _logger.Trace($"Returning {syncPeerAllocation}");
 
-            _replaceableAllocations.TryRemove(syncPeerAllocation, out _);
             syncPeerAllocation.Cancel();
-
-            if (_replaceableAllocations.Count > 1024 * 16) _logger.Warn($"Peer allocations leakage - {_replaceableAllocations.Count}");
 
             SignalPeersChanged();
         }
@@ -632,15 +601,6 @@ namespace Nethermind.Synchronization.Peers
         {
             DropUselessPeers();
             WakeUpPeerThatSleptEnough();
-            foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
-            {
-                INodeStatsManager stats = _stats;
-                lock (_isAllocatedChecks)
-                {
-                    IEnumerable<PeerInfo> unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
-                    allocation.AllocateBestPeer(unallocatedPeers, stats, _blockTree);
-                }
-            }
         }
 
         private void WakeUpPeerThatSleptEnough()

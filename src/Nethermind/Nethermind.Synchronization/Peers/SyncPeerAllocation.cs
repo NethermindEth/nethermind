@@ -52,20 +52,13 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            AllocationChangeEventArgs? replacedArgs = null;
             lock (_allocationLock)
             {
                 if (selected is not null && selected.TryAllocate(Contexts))
                 {
                     Current = selected;
-                    replacedArgs = new(current, selected);
                     current?.Free(Contexts);
                 }
-            }
-
-            if (replacedArgs is not null)
-            {
-                Replaced?.Invoke(this, replacedArgs);
             }
         }
 
@@ -82,14 +75,7 @@ namespace Nethermind.Synchronization.Peers
                 current.Free(Contexts);
                 Current = null;
             }
-
-            AllocationChangeEventArgs args = new(current, null);
-            Cancelled?.Invoke(this, args);
         }
-
-        public event EventHandler<AllocationChangeEventArgs>? Replaced;
-
-        public event EventHandler<AllocationChangeEventArgs>? Cancelled;
 
         public override string ToString()
         {
