@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
 
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                info.EnsureInitialized();
                 peersCount++;
 
                 if (_minBlocksAhead is not null)

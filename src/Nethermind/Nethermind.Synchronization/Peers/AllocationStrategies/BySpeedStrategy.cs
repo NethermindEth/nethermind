@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             long peerLeft = peerCount;
             foreach (PeerInfo info in peersAsList)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                info.EnsureInitialized();
 
                 long? speed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType);
                 long averageTransferSpeed = speed ?? 0;
