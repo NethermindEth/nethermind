@@ -94,6 +94,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "fjordTimestamp": hex(lookup(config, ["hardforks", "fjord_time"])),
                     "graniteTimestamp": hex(lookup(config, ["hardforks", "granite_time"])),
                     "holoceneTimestamp": hex(lookup(config, ["hardforks", "holocene_time"])),
+                    "isthmusTimestamp": hex(lookup(config, ["hardforks", "isthmus_time"])),
                     "canyonBaseFeeChangeDenominator": str(lookup(config, ["optimism", "eip1559_denominator_canyon"])),
                     "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
                     "l1BlockAddress": "0x4200000000000000000000000000000000000015",
