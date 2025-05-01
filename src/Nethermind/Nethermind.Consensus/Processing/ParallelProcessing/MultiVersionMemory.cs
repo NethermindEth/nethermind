@@ -162,32 +162,33 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
     {
         long id = parallelTrace.ReserveId();
         // start from previous transaction and go back through all the previous transactions
-        for (int prevTx = txIndex - 1; prevTx > 0; prevTx--)
+        for (int prevTx = txIndex - 1; prevTx >= 0; prevTx--)
         {
             DataDictionary<TLocation, Value> prevTransactionData = _data[prevTx];
             prevTransactionData.Lock.EnterReadLock();
-            // if we find the location written by previous transaction
-            if (prevTransactionData.Dictionary.TryGetValue(location, out Value v))
+            try
             {
-                prevTransactionData.Lock.ExitReadLock();
-                version = new Version(prevTx, v.Incarnation); // return version info
-
-                if (v.IsEstimate)
+                // if we find the location written by previous transaction
+                if (prevTransactionData.Dictionary.TryGetValue(location, out Value v))
                 {
-                    // if estimate (prevTx needs re-execution) return ReadError.
-                    value = null;
-                    if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.ReadError} with blocking {version}.");
-                    return Status.ReadError;
-                }
-                else
-                {
-                    // else we can return the value
-                    value = v.Bytes;
-                    if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {value.ToHexString()} from {version}.");
-                    return Status.Ok;
+                    version = new Version(prevTx, v.Incarnation); // return version info
+                    if (v.IsEstimate)
+                    {
+                        // if estimate (prevTx needs re-execution) return ReadError.
+                        value = null;
+                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.ReadError} with blocking {version}.");
+                        return Status.ReadError;
+                    }
+                    else
+                    {
+                        // else we can return the value
+                        value = v.Bytes;
+                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {value.ToHexString()} from {version}.");
+                        return Status.Ok;
+                    }
                 }
             }
-            else
+            finally
             {
                 prevTransactionData.Lock.ExitReadLock();
             }
