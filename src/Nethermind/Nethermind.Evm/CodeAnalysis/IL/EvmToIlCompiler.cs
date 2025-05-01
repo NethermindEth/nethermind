@@ -46,17 +46,14 @@ public static class Precompiler
 
     private static string GenerateAssemblyName() => Guid.NewGuid().ToByteArray().ToHexString();
 
-    private static void CompileContractInternal(
-    ModuleBuilder moduleBuilder,
-    string identifier,
-    CodeInfo codeinfo,
-    ContractCompilerMetadata metadata,
-    IVMConfig config,
-    bool runtimeTarget,
-    out ILExecutionStep? contracIL)
+    private static ILExecutionStep? CompileContractInternal(
+        ModuleBuilder moduleBuilder,
+        string identifier,
+        CodeInfo codeinfo,
+        ContractCompilerMetadata metadata,
+        IVMConfig config,
+        bool runtimeTarget)
     {
-        contracIL = null;
-
         try
         {
             if (!runtimeTarget)
@@ -75,27 +72,35 @@ public static class Precompiler
 
             var finalizedType = typeBuilder.CreateType();
 
-            if (runtimeTarget)
+            if (!runtimeTarget)
             {
-                var method = finalizedType.GetMethod("MoveNext", BindingFlags.Static | BindingFlags.Public);
-                contracIL = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+                return null;
             }
+
+            var method = finalizedType.GetMethod("MoveNext", BindingFlags.Static | BindingFlags.Public);
+            return (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+
         }
-        catch
+        catch(Exception e)
         {
+            Console.WriteLine($"Failed to compile contract {identifier} : {e}");
+
             if (!runtimeTarget)
             {
                 Interlocked.Decrement(ref _currentBundleSize);
             }
+
+            return null;
         }
     }
 
-    public static ILExecutionStep CompileContract(
+    public static bool TryCompileContract(
         string contractName,
         CodeInfo codeInfo,
         ContractCompilerMetadata metadata,
         IVMConfig config,
-        ILogger logger)
+        ILogger logger,
+        out ILExecutionStep? iledCode)
     {
 
         // Runtime contract
@@ -105,13 +110,15 @@ public static class Precompiler
             _currentDynamicModBuilder = runtimeAsm.DefineDynamicModule("MainModule");
         }
 
-        CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{contractName}", codeInfo, metadata, config, true, out var result);
+        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{contractName}", codeInfo, metadata, config, true)) is null) {
+            return false;
+        }
 
         // Persisted contract
         if (config.IlEvmPersistPrecompiledContractsOnDisk)
         {
             _currentPersistentModBuilder = _currentPersistentModBuilder ?? _currentPersistentAsmBuilder.Value.DefineDynamicModule("MainModule");
-            CompileContractInternal(_currentPersistentModBuilder, contractName, codeInfo, metadata, config, false, out _);
+            CompileContractInternal(_currentPersistentModBuilder, contractName, codeInfo, metadata, config, false);
 
             if (Interlocked.CompareExchange(ref _currentBundleSize, 0, config.IlEvmContractsPerDllCount) == config.IlEvmContractsPerDllCount)
             {
@@ -129,33 +136,8 @@ public static class Precompiler
                 }
             }
         }
-        return result!;
+        return true;
     }
-
-    public static void SaveAssembly(PersistedAssemblyBuilder ab, string assemblyPath)
-    {
-        MetadataBuilder metadataBuilder = ab.GenerateMetadata(
-            out BlobBuilder ilStream,
-            out BlobBuilder fieldData
-        );
-
-        PEHeaderBuilder peHeaderBuilder = new PEHeaderBuilder(
-                        imageCharacteristics: Characteristics.ExecutableImage);
-
-        ManagedPEBuilder peBuilder = new ManagedPEBuilder(
-                        header: peHeaderBuilder,
-                        metadataRootBuilder: new MetadataRootBuilder(metadataBuilder),
-                        ilStream: ilStream,
-                        mappedFieldData: fieldData
-                        );
-
-        BlobBuilder peBlob = new BlobBuilder();
-        peBuilder.Serialize(peBlob);
-
-        using var fileStream = new FileStream("MyAssembly.exe", FileMode.Create, FileAccess.Write);
-        peBlob.WriteContentTo(fileStream);
-    }
-
 
     public static void FlushToDisk(IVMConfig config)
     {
@@ -164,9 +146,17 @@ public static class Precompiler
         var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(_currentPersistentAsmBuilder.Value));
 
         ((PersistedAssemblyBuilder)_currentPersistentAsmBuilder.Value).Save(assemblyPath);  // or pass filename to save into a file
+        ResetEnvironment(false);
+    }
 
+    public static void ResetEnvironment(bool resetDynamic)
+    {
         _currentPersistentAsmBuilder = new Lazy<PersistedAssemblyBuilder>(() => new PersistedAssemblyBuilder(new AssemblyName(GenerateAssemblyName()), typeof(object).Assembly));
         _currentPersistentModBuilder = null;
+        if (resetDynamic)
+        {
+            _currentDynamicModBuilder = null;
+        }
     }
 
     public static Emit<ILExecutionStep> EmitMoveNext(Emit<ILExecutionStep> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)

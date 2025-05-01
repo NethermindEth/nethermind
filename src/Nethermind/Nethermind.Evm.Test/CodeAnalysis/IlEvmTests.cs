@@ -57,6 +57,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             base.Setup();
 
             AotContractsRepository.ClearCache();
+            Precompiler.ResetEnvironment(true);
 
             IlAnalyzer.StartPrecompilerBackgroundThread(config, NullLogger.Instance);
 

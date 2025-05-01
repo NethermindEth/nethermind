@@ -155,6 +155,7 @@ public static class IlAnalyzer
             case ILMode.FULL_AOT_MODE:
                 if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILExecutionStep? contractDelegate))
                 {
+                    Console.WriteLine($"ILVM: {codeInfo.Codehash} found in AOT cache");
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
                     return;
@@ -162,10 +163,17 @@ public static class IlAnalyzer
                 {
                     if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
                     {
+                        Console.WriteLine($"ILVM: {codeInfo.Codehash} failed to analyze");
                         Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Skipped);
-                        break;
+                        return;
                     }
-                    CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
+
+                    if(!TryCompileContract(codeInfo, compilerMetadata.Value, vmConfig))
+                    {
+                        Console.WriteLine($"ILVM: {codeInfo.Codehash} failed to compile");
+                        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+                        return;
+                    }
                     Metrics.IncrementIlvmContractsAnalyzed();
                 }
                 break;
@@ -173,14 +181,17 @@ public static class IlAnalyzer
         Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
     }
 
-    internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
+    internal static bool TryCompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"));
+        if(Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILExecutionStep? contractDelegate))
+        {
+            AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);
+            codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+            return true;
+        }
         Metrics.DecrementIlvmCurrentlyCompiling();
-
-        AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);
-        codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+        return false;
     }
 
     internal static bool AnalyseContract(CodeInfo codeInfo,  IVMConfig config, out ContractCompilerMetadata? compilerMetadata)

@@ -684,20 +684,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                if(vmState.Env.CodeInfo.Codehash is not null)
-                {
-                    try
-                    {
-                        Console.WriteLine("Analyse Site entred");
-                        IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
-                        Console.WriteLine("Analyse Site exited");
-                    } catch(Exception e)
-                    {
-                        Console.WriteLine("Analyse Site failed with excetion {0}", e);
-                        throw;
-                    }
-                }
-                //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
         }
 
@@ -733,11 +720,9 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if(typeof(IsPrecompiling) == typeof(TOptimizing))
         {
-            if (env.CodeInfo.IlInfo.IsProcessed)
+            if (env.CodeInfo.IlInfo.IsPrecompiled)
             {
                 Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
-                Console.WriteLine("Call Site entered");
-
 
                 int programCounter = vmState.ProgramCounter;
 
