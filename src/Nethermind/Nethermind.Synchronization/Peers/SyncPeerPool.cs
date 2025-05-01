@@ -21,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -323,10 +322,10 @@ namespace Nethermind.Synchronization.Peers
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
-            SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts, _isAllocatedChecks);
+            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks);
             while (true)
             {
-                if (TryAllocateOnce(allocationContexts, allocation))
+                if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
                 {
                     return allocation;
                 }
@@ -349,11 +348,16 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private bool TryAllocateOnce(AllocationContexts allocationContexts, SyncPeerAllocation allocation)
+        private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
         {
             lock (_isAllocatedChecks)
             {
-                allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
+                PeerInfo? selected = peerAllocationStrategy
+                    .Allocate(allocation.Current, InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)),
+                    _stats,
+                    _blockTree);
+
+                allocation.AllocatePeer(selected);
                 return allocation.HasPeer;
             }
         }

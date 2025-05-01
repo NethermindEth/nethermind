@@ -691,7 +691,6 @@ public partial class EngineModuleTests
 
         SyncPeerMock chainAPeer = new SyncPeerMock(chainA.BlockTree);
         SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(chainAPeer), AllocationContexts.All);
-        alloc.AllocateBestPeer(new[] { new PeerInfo(chainAPeer) }, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chainC.SyncPeerPool!.Allocate(
             Arg.Any<IPeerAllocationStrategy>(),
             Arg.Any<AllocationContexts>(),

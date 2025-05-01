@@ -507,18 +507,6 @@ public class SyncPeerPoolTests
     }
 
     [Test]
-    public async Task Can_remove_borrowed_peer()
-    {
-        await using Context ctx = new();
-        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
-
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BlocksSyncPeerAllocationStrategy(null));
-        ctx.Pool.RemovePeer(peers[0]);
-
-        Assert.That(allocation.Current, Is.Null);
-    }
-
-    [Test]
     public async Task Will_remove_peer_if_times_out_on_init()
     {
         await using Context ctx = new();
