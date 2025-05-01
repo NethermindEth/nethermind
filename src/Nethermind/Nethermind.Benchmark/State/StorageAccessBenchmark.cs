@@ -39,7 +39,7 @@ public class StorageAccessBenchmark
     {
         var preCache = new PreBlockCaches();
         var code = new MemDb();
-        _map = new StorageValueMap();
+        _map = new StorageValueMap(code);
 
         _preCached = new WorldState(new TrieStore(new MemDb("storage"), NullLogManager.Instance), code,
             LimboLogs.Instance, preCache, false);
