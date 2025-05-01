@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -221,14 +221,43 @@ namespace Nethermind.Blockchain.Test
                     // as the packing rules should win
                     higherPriorityTransactionsSelected.Transactions.Shuffle(rnd);
                 }
+            }
+        }
 
-                static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
-                {
-                    return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(1)
-                        .WithMaxFeePerGas(maxFee).WithMaxFeePerBlobGas(1).WithGasLimit(20)
-                        .WithBlobVersionedHashes([.. Enumerable.Range(0, blobCount).Select(i => new byte[1] { 0 })])
-                        .SignedAndResolved(key).TestObject;
-                }
+        private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
+        {
+            return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(1)
+                .WithMaxFeePerGas(maxFee).WithMaxFeePerBlobGas(1).WithGasLimit(20)
+                .WithBlobVersionedHashes([.. Enumerable.Range(0, blobCount).Select(i => new byte[1] { 0 })])
+                .SignedAndResolved(key).TestObject;
+        }
+
+        public static IEnumerable NoNonceGapWhenShardBlobTransactionsSelectedTestCases
+        {
+            get
+            {
+                ProperTransactionsSelectedTestCase higherPriorityTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
+                var accounts = higherPriorityTransactionsSelected.AccountStates;
+                accounts[TestItem.AddressA] = (1000000, 0);
+                higherPriorityTransactionsSelected.ReleaseSpec = Cancun.Instance;
+                higherPriorityTransactionsSelected.BaseFee = 1;
+                higherPriorityTransactionsSelected.Transactions =
+                [
+                    // This tx should be rejected in preference for the other 5 even though its fee is much higher
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 5),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 5),
+                    // As total of other 5 below is higher
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
+                ];
+
+                higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
+                    higherPriorityTransactionsSelected.Transactions.Take(1));
+
+                yield return higherPriorityTransactionsSelected;
             }
         }
 
@@ -236,6 +265,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(Eip1559LegacyTransactionTestCases))]
         [TestCaseSource(nameof(Eip1559TestCases))]
         [TestCaseSource(nameof(EnoughShardBlobTransactionsSelectedTestCases))]
+        [TestCaseSource(nameof(NoNonceGapWhenShardBlobTransactionsSelectedTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb stateDb = new();
