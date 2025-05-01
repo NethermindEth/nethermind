@@ -6,4 +6,4 @@ namespace Nethermind.State;
 internal interface IStorageValueMapOwner
 {
     StorageValueMap StorageValueMap { get; }
-}   
+}

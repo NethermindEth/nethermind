@@ -437,7 +437,7 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null)
         {
-            StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches, true, null);
             StateProvider.CreateAccount(Address1, 0);
             StateProvider.CreateAccount(Address2, 0);
             StateProvider.Commit(Frontier.Instance);

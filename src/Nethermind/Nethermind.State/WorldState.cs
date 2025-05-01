@@ -48,15 +48,14 @@ namespace Nethermind.State
         {
         }
 
-        internal WorldState(
-            ITrieStore trieStore,
+        internal WorldState(ITrieStore trieStore,
             IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
             PreBlockCaches? preBlockCaches = null,
-            StorageValueMap? storageValueMap = null,
-            bool populatePreBlockCache = true)
+            bool populatePreBlockCache = true,
+            StorageValueMap? storageValueMap = null)
         {
             PreBlockCaches = preBlockCaches;
             _trieStore = trieStore;
