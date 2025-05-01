@@ -31,12 +31,14 @@ internal sealed class StorageValueMap : IDisposable
     private const int ReservedEpoch = int.MaxValue;
     private int _epoch = 1;
 
+    private readonly object _owner;
     private readonly uint _size;
 
-    public unsafe StorageValueMap(uint size = DefaultSize)
+    public unsafe StorageValueMap(object owner, uint size = DefaultSize)
     {
         Debug.Assert(BitOperations.IsPow2(size));
 
+        _owner = owner;
         _size = size;
 
         _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
@@ -44,6 +46,8 @@ internal sealed class StorageValueMap : IDisposable
 
         _epochs = new int[size];
     }
+
+    public bool IsOwnedBy(object owner) => ReferenceEquals(_owner, owner);
 
     [SkipLocalsInit]
     public unsafe StorageValuePtr Map(in StorageValue value)

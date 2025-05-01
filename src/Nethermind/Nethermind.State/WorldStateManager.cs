@@ -55,7 +55,8 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldState GlobalWorldState => _worldState;
 
-    public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
+    public IReadOnlyKeyValueStore? HashServer =>
+        _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
@@ -73,7 +74,10 @@ public class WorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
+    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash
+        ? null
+        : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager,
+            _lastNStateRootTracker);
 
     public IWorldState CreateResettableWorldState()
     {
@@ -86,13 +90,17 @@ public class WorldStateManager : IWorldStateManager
     public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
-                _readaOnlyCodeCb,
-                _logManager,
-                preBlockCaches)
-            : CreateResettableWorldState();
+        StorageValueMap? storageValueMap = (forWarmup as IStorageValueMapOwner)?.StorageValueMap;
+
+        ITrieStore store = preBlockCaches is not null
+            ? new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache)
+            : _readOnlyTrieStore;
+
+        return new WorldState(store, _readaOnlyCodeCb,
+            _logManager,
+            preBlockCaches,
+            true,
+            storageValueMap);
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()
@@ -100,7 +108,8 @@ public class WorldStateManager : IWorldStateManager
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
     }
 
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
+    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState,
+        IKeyValueStoreWithBatching overlayCode)
     {
         OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);
