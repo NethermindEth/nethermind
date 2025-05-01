@@ -45,7 +45,6 @@ public static class IlAnalyzer
 
         Metrics.IncrementIlvmAotQueueSize();
         _channel.Writer.TryWrite(codeInfo);
-        logger.Debug($"IlAnalyzer: {codeInfo.Codehash} queued for analysis");
     }
     public static void StartPrecompilerBackgroundThread(IVMConfig config, ILogger logger)
     {
@@ -61,29 +60,19 @@ public static class IlAnalyzer
             return;
         }
 
-        _workerTask = Task.Factory.StartNew(async () =>
-        {
-            int taskCount = Math.Max(1, (int)(config.IlEvmAnalysisCoreUsage * Environment.ProcessorCount));
-
-            try
-            {
-                await WorkerLoop(taskCount, config, logger);
-            }
-            catch (Exception e)
-            {
-                logger.Error($"IlAnalyzer: {e.Message}");
-            }
-        }, _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        _workerTask = Task.Factory.StartNew(async () => await WorkerLoop(Math.Max(1, (int)(config.IlEvmAnalysisCoreUsage * Environment.ProcessorCount)), config, logger), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     }
 
-    public static async Task StopPrecompilerBackgroundThread()
+    public static async Task StopPrecompilerBackgroundThread(IVMConfig vMConfig)
     {
         _channel.Writer.Complete(); // signal end of data
         _cts.Cancel();              // in case of forced shutdown
 
         if (_workerTask is not null)
             await _workerTask.ConfigureAwait(false);
+
+        Precompiler.FlushToDisk(vMConfig!);
     }
 
     private static async Task WorkerLoop(int taskLimit, IVMConfig config, ILogger logger)
@@ -101,17 +90,9 @@ public static class IlAnalyzer
                 taskPool[index] = Task.Run(() => ProcessCodeInfoAsync(config, logger, codeInfo));
             }
         }
-        catch (OperationCanceledException)
-        {
-            logger.Debug("ILVM background processing cancelled.");
-        }
         catch (Exception ex)
         {
             logger.Error("Unhandled exception in ILVM background worker: " + ex);
-        }
-        finally
-        {
-            logger.Debug("ILVM precompiler background worker stopped.");
         }
     }
 
@@ -121,13 +102,12 @@ public static class IlAnalyzer
         try
         {
             Analyse(worklet, config.IlEvmEnabledMode, config, logger);
-            Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
         }
         catch(Exception e)
         {
-            logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze");
-            logger.Info($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
+            logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
             Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+            throw;
         }
         finally
         {
@@ -166,23 +146,33 @@ public static class IlAnalyzer
                 {
                     if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
                     {
+                        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Skipped);
                         return;
                     }
-                    CompileContract(codeInfo, compilerMetadata.Value, vmConfig);
+
+                    if(!TryCompileContract(codeInfo, compilerMetadata.Value, vmConfig))
+                    {
+                        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+                        return;
+                    }
                     Metrics.IncrementIlvmContractsAnalyzed();
                 }
                 break;
         }
+        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
     }
 
-    internal static void CompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
+    internal static bool TryCompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        var contractDelegate = Precompiler.CompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig);
+        if(Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILExecutionStep? contractDelegate))
+        {
+            AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);
+            codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+            return true;
+        }
         Metrics.DecrementIlvmCurrentlyCompiling();
-
-        AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);
-        codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+        return false;
     }
 
     internal static bool AnalyseContract(CodeInfo codeInfo,  IVMConfig config, out ContractCompilerMetadata? compilerMetadata)

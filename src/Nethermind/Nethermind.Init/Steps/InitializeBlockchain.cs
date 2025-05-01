@@ -271,7 +271,7 @@ namespace Nethermind.Init.Steps
                         foreach (var type in assembly!.GetTypes())
                         {
                             ValueHash256 codeHash = new ValueHash256(type.Name);
-                            var method = type.GetMethod("MoveNext", BindingFlags.Public | BindingFlags.Static);
+                            var method = type.GetMethod(nameof(ILExecutionStep), BindingFlags.Public | BindingFlags.Static);
                             ILExecutionStep? precompiledContract = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
                             AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
                         }
@@ -286,7 +286,7 @@ namespace Nethermind.Init.Steps
             if (vMConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
 
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => Precompiler.FlushToDisk(vMConfig!);
+            AppDomain.CurrentDomain.ProcessExit += async (_, _) => await IlAnalyzer.StopPrecompilerBackgroundThread(vMConfig!);
 
         }
 

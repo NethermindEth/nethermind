@@ -20,7 +20,7 @@ public static class ILMode
 
 public enum AnalysisPhase
 {
-    NotStarted, Queued, Processing, Completed, Failed
+    NotStarted, Queued, Processing, Completed, Failed, Skipped
 }
 
 /// <summary>
@@ -35,7 +35,7 @@ internal class IlInfo
     public static IlInfo Empty() => new();
 
     public bool IsNotProcessed => AnalysisPhase is AnalysisPhase.NotStarted;
-    public bool IsProcessed => AnalysisPhase is AnalysisPhase.Completed;
+    public bool IsPrecompiled => AnalysisPhase is AnalysisPhase.Completed;
 
 
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;

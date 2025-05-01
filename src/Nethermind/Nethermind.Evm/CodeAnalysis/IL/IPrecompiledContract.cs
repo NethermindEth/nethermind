@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -11,6 +12,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -30,3 +32,4 @@ public unsafe delegate bool ILExecutionStep(
         ITxTracer tracer,
         ILogger logger,
         ref ILChunkExecutionState result);
+

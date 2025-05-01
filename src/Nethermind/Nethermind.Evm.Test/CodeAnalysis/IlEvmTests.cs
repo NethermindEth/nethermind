@@ -57,6 +57,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             base.Setup();
 
             AotContractsRepository.ClearCache();
+            Precompiler.ResetEnvironment(true);
 
             IlAnalyzer.StartPrecompilerBackgroundThread(config, NullLogger.Instance);
 
@@ -2045,7 +2046,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(Precompiler._currentPersistentAsmBuilder));
+            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(Precompiler._currentPersistentAsmBuilder.Value));
 
             Assembly assembly = Assembly.LoadFile(assemblyPath);
             MethodInfo method = assembly

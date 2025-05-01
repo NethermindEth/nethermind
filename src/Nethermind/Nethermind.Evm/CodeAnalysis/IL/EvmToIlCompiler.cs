@@ -32,117 +32,118 @@ using System.Xml.Linq;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using static Org.BouncyCastle.Math.EC.ECCurve;
 using Label = Sigil.Label;
+using Microsoft.Extensions.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public static class Precompiler
 {
-    internal static PersistedAssemblyBuilder? _currentPersistentAsmBuilder = null;
+    internal static Lazy<PersistedAssemblyBuilder> _currentPersistentAsmBuilder = new Lazy<PersistedAssemblyBuilder>(() => new PersistedAssemblyBuilder(new AssemblyName(GenerateAssemblyName()), typeof(object).Assembly));
     internal static ModuleBuilder? _currentPersistentModBuilder = null;
     internal static ModuleBuilder? _currentDynamicModBuilder = null;
     internal static int _currentBundleSize = 0;
 
-    private static void CompileContractInternal(
-    ModuleBuilder moduleBuilder,
-    string identifier,
-    CodeInfo codeinfo,
-    ContractCompilerMetadata metadata,
-    IVMConfig config,
-    bool runtimeTarget,
-    out ILExecutionStep? contracIL)
+    private static string GenerateAssemblyName() => Guid.NewGuid().ToByteArray().ToHexString();
+
+    private static ILExecutionStep? CompileContractInternal(
+        ModuleBuilder moduleBuilder,
+        string identifier,
+        CodeInfo codeinfo,
+        ContractCompilerMetadata metadata,
+        IVMConfig config,
+        bool runtimeTarget)
     {
-        contracIL = null;
-
-        if(!runtimeTarget)
+        try
         {
-            Interlocked.Increment(ref _currentBundleSize);
+            if (!runtimeTarget)
+            {
+                Interlocked.Increment(ref _currentBundleSize);
+            }
+
+            var typeBuilder = moduleBuilder.DefineType(identifier,
+                TypeAttributes.Public | TypeAttributes.Class);
+
+            EmitMoveNext(Emit<ILExecutionStep>.BuildMethod(
+                typeBuilder, nameof(ILExecutionStep), MethodAttributes.Public | MethodAttributes.Static,
+                CallingConventions.Standard,
+                allowUnverifiableCode: true, doVerify: false),
+                codeinfo, metadata, config).CreateMethod(out string ilCode, OptimizationOptions.None);
+
+            var finalizedType = typeBuilder.CreateType();
+
+            if (!runtimeTarget)
+            {
+                return null;
+            }
+
+            var method = finalizedType.GetMethod(nameof(ILExecutionStep), BindingFlags.Static | BindingFlags.Public);
+            return (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+
         }
-
-        var typeBuilder = moduleBuilder.DefineType(identifier,
-            TypeAttributes.Public | TypeAttributes.Class);
-
-        EmitMoveNext(Emit<ILExecutionStep>.BuildMethod(
-            typeBuilder, "MoveNext", MethodAttributes.Public | MethodAttributes.Static,
-            CallingConventions.Standard,
-            allowUnverifiableCode: true, doVerify: false),
-            codeinfo, metadata, config).CreateMethod(out string ilCode, OptimizationOptions.None);
-
-        var finalizedType = typeBuilder.CreateType();
-
-        if (runtimeTarget)
+        catch
         {
-            var method = finalizedType.GetMethod("MoveNext", BindingFlags.Static | BindingFlags.Public);
-            contracIL = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+            if (!runtimeTarget)
+            {
+                Interlocked.Decrement(ref _currentBundleSize);
+            }
+
+            return null;
         }
     }
 
-    public static ILExecutionStep CompileContract(
+    public static bool TryCompileContract(
         string contractName,
         CodeInfo codeInfo,
         ContractCompilerMetadata metadata,
-        IVMConfig config)
+        IVMConfig config,
+        ILogger logger,
+        out ILExecutionStep? iledCode)
     {
-        string assemblyName = Guid.NewGuid().ToByteArray().ToHexString();
 
         // Runtime contract
         if(_currentDynamicModBuilder is null)
         {
-            var runtimeAsm = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName($"_{assemblyName}"), AssemblyBuilderAccess.Run);
+            var runtimeAsm = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("_dynamicAssembly"), AssemblyBuilderAccess.Run);
             _currentDynamicModBuilder = runtimeAsm.DefineDynamicModule("MainModule");
         }
 
-        CompileContractInternal(_currentDynamicModBuilder, $"{assemblyName}{contractName}", codeInfo, metadata, config, true, out var result);
+        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{contractName}", codeInfo, metadata, config, true)) is null) {
+            return false;
+        }
 
         // Persisted contract
         if (config.IlEvmPersistPrecompiledContractsOnDisk)
         {
-            if(_currentBundleSize == 0)
-            {
-                _currentPersistentAsmBuilder = new PersistedAssemblyBuilder(new AssemblyName(assemblyName), typeof(object).Assembly);
-                _currentPersistentModBuilder = _currentPersistentAsmBuilder.DefineDynamicModule("MainModule");
-            }
-
-            CompileContractInternal(_currentPersistentModBuilder, contractName, codeInfo, metadata, config, false, out _);
+            _currentPersistentModBuilder = _currentPersistentModBuilder ?? _currentPersistentAsmBuilder.Value.DefineDynamicModule("MainModule");
+            CompileContractInternal(_currentPersistentModBuilder, contractName, codeInfo, metadata, config, false);
 
             if (Interlocked.CompareExchange(ref _currentBundleSize, 0, config.IlEvmContractsPerDllCount) == config.IlEvmContractsPerDllCount)
             {
                 FlushToDisk(config);
             }
         }
-        return result!;
+        return true;
     }
-
-    public static void SaveAssembly(PersistedAssemblyBuilder ab, string assemblyPath)
-    {
-        MetadataBuilder metadataBuilder = ab.GenerateMetadata(
-            out BlobBuilder ilStream,
-            out BlobBuilder fieldData
-            );
-        PEHeaderBuilder peHeaderBuilder = new PEHeaderBuilder(
-                        imageCharacteristics: Characteristics.ExecutableImage);
-
-        ManagedPEBuilder peBuilder = new ManagedPEBuilder(
-                        header: peHeaderBuilder,
-                        metadataRootBuilder: new MetadataRootBuilder(metadataBuilder),
-                        ilStream: ilStream,
-                        mappedFieldData: fieldData
-                        );
-
-        BlobBuilder peBlob = new BlobBuilder();
-        peBuilder.Serialize(peBlob);
-
-        using var fileStream = new FileStream("MyAssembly.exe", FileMode.Create, FileAccess.Write);
-        peBlob.WriteContentTo(fileStream);
-    }
-
 
     public static void FlushToDisk(IVMConfig config)
     {
         if (_currentPersistentAsmBuilder is null) return;
 
-        var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(_currentPersistentAsmBuilder));
+        var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(_currentPersistentAsmBuilder.Value));
 
-        ((PersistedAssemblyBuilder)_currentPersistentAsmBuilder).Save(assemblyPath);  // or pass filename to save into a file
+        ((PersistedAssemblyBuilder)_currentPersistentAsmBuilder.Value).Save(assemblyPath);  // or pass filename to save into a file
+        ResetEnvironment(false);
+    }
+
+    public static void ResetEnvironment(bool resetDynamic)
+    {
+        _currentPersistentAsmBuilder = new Lazy<PersistedAssemblyBuilder>(() => new PersistedAssemblyBuilder(new AssemblyName(GenerateAssemblyName()), typeof(object).Assembly));
+        _currentPersistentModBuilder = null;
+        if (resetDynamic)
+        {
+            _currentDynamicModBuilder = null;
+        }
     }
 
     public static Emit<ILExecutionStep> EmitMoveNext(Emit<ILExecutionStep> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
@@ -307,29 +308,7 @@ public static class Precompiler
                 method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
             }
 
-            /*
-            using Local depth = method.DeclareLocal<int>();
-
-            FullAotEnvLoader.LoadEnv(method, locals, true);
-            method.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.CallDepth)));
-            method.StoreLocal(depth);
-
-            using Local pc = method.DeclareLocal<int>();
-            method.LoadConstant(i);
-            method.StoreLocal(pc);
-
-            using Local stackOffset = method.DeclareLocal<short>();
-            method.LoadConstant((short)contractMetadata.StackOffsets.GetValueOrDefault(i, (short)0));
-            method.StoreLocal(stackOffset);
-
-            using Local instructionName = method.DeclareLocal<string>();
-            method.LoadConstant(opcodeInfo.Instruction.ToString());
-            method.StoreLocal(instructionName);
-
-            // method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
-            */
-
-            method.GetOpcodeILEmitter(opcodeInfo.Instruction, codeInfo, config, contractMetadata, currentSubsegment, i, opcodeInfo.Metadata, locals, evmExceptionLabels, (ret, jumpTable, exit));
+            method.GetOpcodeILEmitter(codeInfo, opcodeInfo.Instruction, config, contractMetadata, currentSubsegment, i, opcodeInfo.Metadata, locals, evmExceptionLabels, (ret, jumpTable, exit));
 
             i += opcodeInfo.Metadata.AdditionalBytes;
             if (!opcodeInfo.Instruction.IsTerminating())

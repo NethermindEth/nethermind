@@ -211,6 +211,16 @@ public class Metrics
     }
 
 
+    public static long _IlvmAotDllSaved;
+    [Description("Number of Ilemv precompile contract currently being retrieved from cache.")]
+    public static long IlvmAotDllSaved => _IlvmAotCacheTouched;
+    public static void IncrementIlvmAotDllSaved()
+    {
+        Interlocked.Increment(ref _IlvmAotCacheTouched);
+    }
+
+
+
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _emptyCalls.GetTotalValue();
