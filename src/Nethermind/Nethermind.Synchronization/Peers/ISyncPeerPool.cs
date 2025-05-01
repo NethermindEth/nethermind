@@ -106,8 +106,6 @@ namespace Nethermind.Synchronization.Peers
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-
-        event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
     }
 
     public static class SyncPeerPoolExtensions

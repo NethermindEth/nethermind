@@ -173,7 +173,6 @@ public class RecoveryTests
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
             var alloc = new SyncPeerAllocation(peers[0], allocationContexts);
-            alloc.AllocateBestPeer(peers, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
             return alloc;
         });
         return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);

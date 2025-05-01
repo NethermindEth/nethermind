@@ -24,8 +24,6 @@ namespace Nethermind.Synchronization.Blocks
             _minBlocksAhead = minBlocksAhead;
         }
 
-        public bool CanBeReplaced => true;
-
         private static long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
         {
             long? headersSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers);
@@ -56,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
 
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                info.EnsureInitialized();
                 peersCount++;
 
                 if (_minBlocksAhead is not null)
