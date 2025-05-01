@@ -32,6 +32,7 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly Address _batchSubmitter;
     private readonly Address _batcherInboxAddress;
     private readonly ulong _l1BeaconGenesisSlotTime;
+    private readonly L1DataCache _cache;
 
     public EthereumL1Bridge(
         IEthApi ethL1Rpc,
@@ -49,6 +50,7 @@ public class EthereumL1Bridge : IL1Bridge
         _config = config;
         _ethL1Api = ethL1Rpc;
         _beaconApi = beaconApi;
+        _cache = new L1DataCache(1024);
 
         _batchSubmitter = engineParameters.BatchSubmitter;
         _batcherInboxAddress = engineParameters.BatcherInboxAddress;
@@ -79,6 +81,7 @@ public class EthereumL1Bridge : IL1Bridge
 
     private async Task ProcessBlock(L1Block block, CancellationToken token)
     {
+        _cache.CacheData(block, await GetReceiptsByBlockHash(block.Hash, token));
         try
         {
             if (_logger.IsInfo) _logger.Info($"New L1 Block. Number {block.Number}");
@@ -195,15 +198,21 @@ public class EthereumL1Bridge : IL1Bridge
         }
     }
 
-    public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token) =>
-        await RetryGetBlock(async () => await _ethL1Api.GetBlockByNumber(blockNumber, true), token);
+    public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token)
+    {
+        return _cache.GetBlockByNumber(blockNumber) ??
+               await RetryGetBlock(() => _ethL1Api.GetBlockByNumber(blockNumber, true), token);
+    }
 
-    public async Task<L1Block> GetBlockByHash(Hash256 blockHash, CancellationToken token) =>
-        await RetryGetBlock(async () => await _ethL1Api.GetBlockByHash(blockHash, true), token);
+    public async Task<L1Block> GetBlockByHash(Hash256 blockHash, CancellationToken token)
+    {
+        return _cache.GetBlockByHash(blockHash) ??
+               await RetryGetBlock(() => _ethL1Api.GetBlockByHash(blockHash, true), token);
+    }
 
     public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash, CancellationToken token)
     {
-        ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
+        ReceiptForRpc[]? result = _cache.GetReceipts(blockHash) ?? await _ethL1Api.GetReceiptsByHash(blockHash);
         while (result is null)
         {
             token.ThrowIfCancellationRequested();
