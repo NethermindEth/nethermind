@@ -7,7 +7,6 @@ import logging
 import os
 import os.path as path
 import sha3
-import sys
 import tempfile
 import tomllib
 import zstandard as zstd
