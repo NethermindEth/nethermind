@@ -9,10 +9,7 @@ import os.path as path
 import sha3
 import sys
 import tempfile
-try:
-    import tomllib      # Python 3.11+
-except ImportError:
-    import tomli as tomllib  # older Pythons, backport
+import tomllib
 import zstandard as zstd
 from functools import reduce
 from io import BytesIO
