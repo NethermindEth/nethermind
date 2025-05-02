@@ -172,10 +172,11 @@ namespace Ethereum.Test.Base
                 TestContext.Out.WriteLine();
                 TestContext.Out.WriteLine("Differences from expected");
                 TestContext.Out.WriteLine();
-            }
-            foreach (string difference in differences)
-            {
-                TestContext.Out.WriteLine(difference);
+
+                foreach (string difference in differences)
+                {
+                    TestContext.Out.WriteLine(difference);
+                }
             }
 
             //            Assert.Zero(differences.Count, "differences");
