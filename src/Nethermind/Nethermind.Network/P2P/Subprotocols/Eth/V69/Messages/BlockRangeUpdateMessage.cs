@@ -14,4 +14,6 @@ public class BlockRangeUpdateMessage : P2PMessage
     public long EarliestBlock { get; set; }
     public long LatestBlock { get; set; }
     public required Hash256 LatestBlockHash { get; set; }
+
+    public override string ToString() => $"{nameof(BlockRangeUpdateMessage)}({EarliestBlock},{LatestBlock},{LatestBlockHash})";
 }
