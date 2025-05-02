@@ -7,6 +7,7 @@ import logging
 import os
 import os.path as path
 import sha3
+import sys
 import tempfile
 import tomllib
 import zstandard as zstd
@@ -79,7 +80,18 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "sepolia": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
         },
     }
+
     config = merge_all(superchain, chain)
+
+    # We need to post process configs to ensure that the Hardfork activation inheritance behavior is satisfied
+    # https://github.com/ethereum-optimism/superchain-registry/blob/main/docs/hardfork-activation-inheritance.md
+    # To derive, "It must not set a non-nil value for this activation time in its individual configuration file"
+    chain_hf = chain["hardforks"]
+    hf = config.get("hardforks", {})
+
+    for key in list(hf.keys()):
+        if key not in chain_hf:
+            del hf[key]
 
     nethermind = {
         "name": lookup(config, ["name"]),
