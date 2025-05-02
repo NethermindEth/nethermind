@@ -87,17 +87,13 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
         },
     }
 
+    # Preprocessing
     config = merge_all(superchain, chain)
 
-    # We need to post process configs to ensure that the Hardfork activation inheritance behavior is satisfied
+    # We need to ensure that the Hardfork activation inheritance behavior is satisfied
     # https://github.com/ethereum-optimism/superchain-registry/blob/main/docs/hardfork-activation-inheritance.md
     # To derive, "It must not set a non-nil value for this activation time in its individual configuration file"
-    chain_hf = chain["hardforks"]
-    hf = config.get("hardforks", {})
-
-    for key in list(hf.keys()):
-        if key not in chain_hf:
-            hf[key] = sys.maxsize
+    config["hardforks"] = {k: v for k, v in config["hardforks"].items() if k in chain["hardforks"]}
 
     nethermind = {
         "name": lookup(config, ["name"]),
