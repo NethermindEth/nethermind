@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -66,8 +66,7 @@ namespace Nethermind.Core.Test
 
         private static void Log(string text, Exception? ex = null)
         {
-            Console.WriteLine(text);
-            // TestContext.Out.WriteLine(text);
+            Console.Error.WriteLine(text);
 
             if (ex is not null)
             {
