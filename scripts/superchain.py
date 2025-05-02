@@ -59,6 +59,12 @@ def one_of(*args):
     return None
 
 
+def fmap(f, optional):
+    if optional is None:
+        return None
+    return f(optional)
+
+
 def to_nethermind_accounts(genesis):
     alloc = lookup(genesis, ["alloc"])
 
