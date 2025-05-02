@@ -247,7 +247,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                     !string.IsNullOrEmpty(trackedParentBeaconBlockRoot))
                 {
                     parentBeaconBlockRoot = trackedParentBeaconBlockRoot;
-                    _logger.Info($"Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {parentHash}");
+                    _logger.Info($"ProcessWithLHValidation: Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {parentHash}");
                 }
                 
                 try

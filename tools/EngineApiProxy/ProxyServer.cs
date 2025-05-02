@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -57,18 +58,39 @@ namespace Nethermind.EngineApiProxy
                 throw new ArgumentException("Execution client endpoint must be provided", nameof(config));
             }
             
-            _httpClient = new HttpClient
+            // Configure a socket handler with enhanced keep-alive settings
+            var executionClientHandler = new System.Net.Http.SocketsHttpHandler
             {
-                BaseAddress = new Uri(_config.ExecutionClientEndpoint)
+                KeepAlivePingPolicy = System.Net.Http.HttpKeepAlivePingPolicy.Always,
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(180),
+                PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                EnableMultipleHttp2Connections = true
+            };
+            
+            _httpClient = new HttpClient(executionClientHandler)
+            {
+                BaseAddress = new Uri(_config.ExecutionClientEndpoint),
+                Timeout = TimeSpan.FromSeconds(_config.RequestTimeoutSeconds)
             };
 
             // Initialize consensus client HttpClient if endpoint is configured
             if (!string.IsNullOrWhiteSpace(_config.ConsensusClientEndpoint))
             {
                 _logger.Info($"Configuring consensus client with endpoint: {_config.ConsensusClientEndpoint}");
-                _consensusClient = new HttpClient
+                
+                // Use similar settings for consensus client
+                var consensusClientHandler = new System.Net.Http.SocketsHttpHandler
                 {
-                    BaseAddress = new Uri(_config.ConsensusClientEndpoint)
+                    KeepAlivePingPolicy = System.Net.Http.HttpKeepAlivePingPolicy.Always,
+                    KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                    EnableMultipleHttp2Connections = true
+                };
+                
+                _consensusClient = new HttpClient(consensusClientHandler)
+                {
+                    BaseAddress = new Uri(_config.ConsensusClientEndpoint),
+                    Timeout = TimeSpan.FromSeconds(_config.RequestTimeoutSeconds)
                 };
             }
             else

@@ -92,7 +92,29 @@ namespace Nethermind.EngineApiProxy.Utilities
                     }
                 }
                 
-                var response = await _httpClient.SendAsync(requestMessage);
+                HttpResponseMessage response;
+                try
+                {
+                    _logger.Debug($"Sending request to EL: {request.Method}");
+                    response = await _httpClient.SendAsync(requestMessage);
+                    _logger.Debug($"Received response from EL: {response.StatusCode}");
+                }
+                catch (HttpRequestException ex) when (ex.InnerException is HttpIOException ioEx)
+                {
+                    _logger.Error($"Network IO error communicating with EL: {ioEx.Message}. This could indicate connection issues or server premature disconnect.");
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Network IO error with EL: {ioEx.Message}");
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.Error($"HTTP request error communicating with EL: {ex.Message}", ex);
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: HTTP error with EL: {ex.Message}");
+                }
+                catch (TaskCanceledException ex)
+                {
+                    _logger.Error($"Request timed out after {_config.RequestTimeoutSeconds}s: {ex.Message}", ex);
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Request to EL timed out after {_config.RequestTimeoutSeconds}s");
+                }
+                
                 string responseBody = await response.Content.ReadAsStringAsync();
                 _logger.Debug($"Received response from EL at: {targetHost}");
                 if (logResponse)

@@ -56,14 +56,13 @@ namespace Nethermind.EngineApiProxy.Handlers
             else if (_config.ValidationMode == ValidationMode.Merged)
             {
                 // Log the request
-                _logger.Info("---------------(Merged flow)-----------------");
                 _logger.Debug($"Processing engine_forkchoiceUpdated (Merged flow): {request}");
                 
                 try
                 {
                     // Check if we should validate this block
                     bool shouldValidate = ShouldValidateBlock(request);
-                    _logger.Info($"ShouldValidateBlock for FCU: {shouldValidate} for Merged mode");
+                    _logger.Info($"---------------(Merged flow - FCU processing - Validation: {shouldValidate})-----------------");
                     
                     // For Merged mode:
                     // 1. Send FCU with payload attributes to EL
@@ -80,14 +79,15 @@ namespace Nethermind.EngineApiProxy.Handlers
             else if (_config.ValidationMode == ValidationMode.LH)
             {
                 // Log the request
-                _logger.Info("---------------(LH flow)-----------------");
+                
                 _logger.Debug($"Processing engine_forkchoiceUpdated (LH flow): {request}");
                 
                 try
                 {
                     // Check if we should validate this block
+                    // TODO: Fix ShouldValidateBlock for LH mode
                     bool shouldValidate = ShouldValidateBlock(request);
-                    _logger.Info($"ShouldValidateBlock for FCU: {shouldValidate} for LH mode");
+                    _logger.Info($"---------------(LH flow - FCU processing - Validation: {!shouldValidate})-----------------");
                     
                     // For LH mode:
                     // 1. Intercept existing PayloadAttributes from FCU request (if present)
@@ -104,14 +104,14 @@ namespace Nethermind.EngineApiProxy.Handlers
             }
 
             // Log the forkChoiceUpdated request
-            _logger.Info("---------------(FCU flow)-----------------");
+           
             _logger.Debug($"Processing engine_forkchoiceUpdated (FCU flow): {request}");
             
             try
             {
                 // Check if we should validate this block
                 bool shouldValidate = ShouldValidateBlock(request);
-                _logger.Info($"ShouldValidateBlock for FCU: {shouldValidate}");
+                 _logger.Info($"---------------(FCU flow - FCU processing - Validation: {shouldValidate})-----------------");
                 
                 if (shouldValidate)
                 {
@@ -147,7 +147,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 
                 if (request.Params?.Count > 1 && request.Params[1] is JObject)
                 {
-                    _logger.Info($"Skipping validation because request already contains payload attributes. shouldValidate: {shouldValidate}");
+                    _logger.Debug($"Skipping validation because request already contains payload attributes. shouldValidate: {shouldValidate}");
                 }
             }
             
@@ -334,6 +334,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 // For requests with payload attributes, implement deduplication
                 if (hasPayloadAttributes)
                 {
+                    _logger.Info("LH mode: got FCU request with payload attributes, processing validation flow");
                     // Create a fingerprint of the request to identify duplicates
                     string requestFingerprint = ComputeRequestFingerprint(request);
                     
@@ -344,7 +345,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                         {
                             if (DateTime.UtcNow - timestamp < _lhCacheExpiryTime)
                             {
-                                _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...), returning cached response");
+                                _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...), returning cached response to CL");
                                 
                                 // Update ID to match the current request
                                 var clonedResponse = CloneResponseWithNewId(cachedResponse, request.Id);
@@ -372,6 +373,24 @@ namespace Nethermind.EngineApiProxy.Handlers
                         headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
                     }
                     
+                    // Extract parent beacon block root if available
+                    string? extractedParentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
+                    
+                    // Store parentBeaconBlockRoot for this head block hash even before we have a payloadId
+                    if (!string.IsNullOrEmpty(headBlockHashStr) && !string.IsNullOrEmpty(extractedParentBeaconBlockRoot))
+                    {
+                        try
+                        {
+                            var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                            _payloadTracker.AssociateParentBeaconBlockRoot(headBlockHash, extractedParentBeaconBlockRoot);
+                            _logger.Debug($"Pre-emptively stored parentBeaconBlockRoot {extractedParentBeaconBlockRoot} for head block {headBlockHash}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"Failed to pre-emptively store parentBeaconBlockRoot: {ex.Message}");
+                        }
+                    }
+                    
                     // Forward the original request to EL
                     var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
                     
@@ -383,7 +402,6 @@ namespace Nethermind.EngineApiProxy.Handlers
                         
                         if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
                         {
-                            _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
                             // Track this payload ID with the hash so it can be found later
                             var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
                             
@@ -391,7 +409,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                             string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
                             if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
                             {
-                                _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId}");
+                                _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId} for head block {headBlockHashStr}");
                                 _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
                             }
                             else
@@ -426,7 +444,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 else
                 {
                     // For requests without payload attributes, just forward as usual
-                    _logger.Debug("LH mode: FCU request without payload attributes, forwarding normally");
+                    _logger.Info("LH mode: FCU request without payload attributes, forwarding normally. This usually means the node is not synced yet.");
                     
                     // Forward the original request to EL
                     var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
@@ -444,7 +462,6 @@ namespace Nethermind.EngineApiProxy.Handlers
                         
                         if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
                         {
-                            _logger.Info($"LH validation flow got payloadId {payloadId} for head block {headBlockHashStr}");
                             // Track this payload ID with the hash so it can be found later
                             var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
                             
@@ -452,7 +469,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                             string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
                             if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
                             {
-                                _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId}");
+                                _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId} for head block {headBlockHashStr}");
                                 _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
                             }
                             else
@@ -521,7 +538,7 @@ namespace Nethermind.EngineApiProxy.Handlers
         }
         
         /// <summary>
-        /// Extracts the parent beacon block root from FCU request if available
+        /// Extracts the parent beacon block root from the FCU request if available
         /// </summary>
         private static string? ExtractParentBeaconBlockRoot(JsonRpcRequest request)
         {
@@ -530,7 +547,8 @@ namespace Nethermind.EngineApiProxy.Handlers
                 request.Params[1] is JObject payloadAttributes && 
                 payloadAttributes["parentBeaconBlockRoot"] != null)
             {
-                return payloadAttributes["parentBeaconBlockRoot"]?.ToString();
+                string? parentBeaconBlockRoot = payloadAttributes["parentBeaconBlockRoot"]?.ToString();
+                return !string.IsNullOrEmpty(parentBeaconBlockRoot) ? parentBeaconBlockRoot : null;
             }
             
             return null;

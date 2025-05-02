@@ -66,6 +66,11 @@ namespace Nethermind.EngineApiProxy
                 description: "Mode for block validation (Fcu, NewPayload, Merged, or LH)",
                 getDefaultValue: () => ValidationMode.Merged);
             
+            var requestTimeoutOption = new Option<int>(
+                name: "--request-timeout",
+                description: "Timeout in seconds for HTTP requests to EL/CL clients",
+                getDefaultValue: () => 180);
+            
             // Create root command with options
             var rootCommand = new RootCommand("Nethermind Engine API Proxy");
             rootCommand.AddOption(executionClientOption);
@@ -76,11 +81,22 @@ namespace Nethermind.EngineApiProxy
             rootCommand.AddOption(validateAllBlocksOption);
             rootCommand.AddOption(feeRecipientOption);
             rootCommand.AddOption(validationModeOption);
+            rootCommand.AddOption(requestTimeoutOption);
             
-            rootCommand.SetHandler(async (ecEndpoint, clEndpoint, port, logLevel, logFile, validateAllBlocks, feeRecipient, validationMode) =>
+            rootCommand.SetHandler(async (context) =>
             {
                 try
                 {
+                    var ecEndpoint = context.ParseResult.GetValueForOption(executionClientOption);
+                    var clEndpoint = context.ParseResult.GetValueForOption(consensusClientOption);
+                    var port = context.ParseResult.GetValueForOption(portOption);
+                    var logLevel = context.ParseResult.GetValueForOption(logLevelOption) ?? "Info";
+                    var logFile = context.ParseResult.GetValueForOption(logFileOption);
+                    var validateAllBlocks = context.ParseResult.GetValueForOption(validateAllBlocksOption);
+                    var feeRecipient = context.ParseResult.GetValueForOption(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
+                    var validationMode = context.ParseResult.GetValueForOption(validationModeOption);
+                    var requestTimeout = context.ParseResult.GetValueForOption(requestTimeoutOption);
+                    
                     // Configure logging
                     var logManager = new NLogManager();
                     
@@ -129,7 +145,8 @@ namespace Nethermind.EngineApiProxy
                         LogFile = logFile,
                         ValidateAllBlocks = validateAllBlocks,
                         DefaultFeeRecipient = feeRecipient,
-                        ValidationMode = validationMode
+                        ValidationMode = validationMode,
+                        RequestTimeoutSeconds = requestTimeout
                     };
                     
                     logger.Info($"Starting Engine API Proxy with configuration: {config}");
@@ -163,7 +180,7 @@ namespace Nethermind.EngineApiProxy
                     Console.Error.WriteLine($"Error: {ex.Message}");
                     Environment.Exit(1);
                 }
-            }, executionClientOption, consensusClientOption, portOption, logLevelOption, logFileOption, validateAllBlocksOption, feeRecipientOption, validationModeOption);
+            });
             
             return await rootCommand.InvokeAsync(args);
         }
@@ -231,6 +248,10 @@ namespace Nethermind.EngineApiProxy
             Console.WriteLine("  -p, --listen-port <port>    Port to listen on (default: 8551)");
             Console.WriteLine("  -l, --log-level <level>     Logging level (default: Info)");
             Console.WriteLine("  -f, --log-file <path>       Log file path (default: console only)");
+            Console.WriteLine("  --validate-all-blocks       Validate all blocks, even without CL request");
+            Console.WriteLine("  --fee-recipient <address>   Default fee recipient address");
+            Console.WriteLine("  --validation-mode <mode>    Validation mode (Fcu, NewPayload, Merged, LH)");
+            Console.WriteLine("  --request-timeout <seconds> HTTP request timeout in seconds (default: 100)");
             Console.WriteLine("  -h, --help                  Display this help message");
             return 0;
         }

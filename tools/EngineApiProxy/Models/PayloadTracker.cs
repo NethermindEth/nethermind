@@ -123,6 +123,10 @@ namespace Nethermind.EngineApiProxy.Models
             if (_headBlockToPayloadId.TryRemove(headBlockHash, out var payloadId))
             {
                 _payloadIdToHeadBlock.TryRemove(payloadId, out _);
+                
+                // Also remove from parent beacon block root mapping
+                _headBlockToParentBeaconBlockRoot.TryRemove(headBlockHash, out _);
+                
                 _logger.Debug($"Removed tracking for head block {headBlockHash}");
             }
         }
@@ -134,6 +138,7 @@ namespace Nethermind.EngineApiProxy.Models
         {
             _headBlockToPayloadId.Clear();
             _payloadIdToHeadBlock.Clear();
+            _headBlockToParentBeaconBlockRoot.Clear();
             _logger.Debug("Cleared all payload tracking");
         }
         
@@ -183,6 +188,25 @@ namespace Nethermind.EngineApiProxy.Models
             }
             
             return null;
+        }
+        
+        /// <summary>
+        /// Associates a parent beacon block root with a head block hash
+        /// </summary>
+        /// <param name="headBlockHash">The hash of the head block</param>
+        /// <param name="parentBeaconBlockRoot">The parent beacon block root to associate</param>
+        /// <returns>True if the association was successful, false otherwise</returns>
+        public bool AssociateParentBeaconBlockRoot(Hash256 headBlockHash, string parentBeaconBlockRoot)
+        {
+            if (headBlockHash == null || string.IsNullOrEmpty(parentBeaconBlockRoot))
+            {
+                _logger.Error($"Cannot associate null/empty values. Hash: {headBlockHash}, ParentBeaconBlockRoot: {parentBeaconBlockRoot}");
+                return false;
+            }
+            
+            _headBlockToParentBeaconBlockRoot[headBlockHash] = parentBeaconBlockRoot;
+            _logger.Debug($"Associated parentBeaconBlockRoot {parentBeaconBlockRoot} with head block {headBlockHash}");
+            return true;
         }
         
         /// <summary>

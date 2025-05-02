@@ -52,6 +52,11 @@ namespace Nethermind.EngineApiProxy.Config
         public int TimestampOffsetSeconds { get; set; } = 1;
 
         /// <summary>
+        /// Timeout in seconds for HTTP requests to EL/CL clients
+        /// </summary>
+        public int RequestTimeoutSeconds { get; set; } = 100;
+
+        /// <summary>
         /// Mode for block validation:
         /// - Fcu: Validation happens at FCU time
         /// - NewPayload: Validation happens at new payload time
@@ -62,7 +67,7 @@ namespace Nethermind.EngineApiProxy.Config
 
         public override string ToString()
         {
-            return $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}";
+            return $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, RequestTimeout: {RequestTimeoutSeconds}s";
         }
     }
 } 

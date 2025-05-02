@@ -219,7 +219,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// <returns>True if validation succeeded</returns>
         public async Task<bool> DoValidationForFCU(string payloadId, string parentBeaconBlockRoot, bool isApproval = false)
         {
-            _logger.Info($"Starting validation process for payloadId {payloadId}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            _logger.Debug($"Starting validation process for payloadId {payloadId}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
             
             try
             {
@@ -269,7 +269,7 @@ namespace Nethermind.EngineApiProxy.Services
         /// <returns>The get payload response</returns>
         private async Task<JsonRpcResponse> GetAndProcessPayload(string payloadId, Hash256 headBlock, string? parentBeaconBlockRoot = null)
         {
-            _logger.Info($"Getting and processing payload for payloadId {payloadId}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            _logger.Info($"Getting payload for payloadId {payloadId}");
             
             try
             {
@@ -307,7 +307,6 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 
                 // Send request to get the payload
-                _logger.Debug($"Getting payload for payloadId: {payloadId}");
                 var payloadResponse = await SendJsonRpcRequest(getPayloadRequest);
                 
                 // Check for error in response
@@ -328,7 +327,7 @@ namespace Nethermind.EngineApiProxy.Services
                     try
                     {
                         // Create newPayload request from the payload
-                        _logger.Debug($"Creating newPayload request from payload with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+                        _logger.Info($"Creating newPayload request from payload with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
                         var newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot);
                         
                         // Copy auth headers to new request too
@@ -404,34 +403,37 @@ namespace Nethermind.EngineApiProxy.Services
                 if (string.IsNullOrEmpty(parentBeaconBlockRoot))
                 {
                     // Try to get the parentBeaconBlockRoot from the PayloadTracker
-                    // First get the block hash from the payload
                     string? blockHash = executionPayload["parentHash"]?.ToString();
+                    
                     if (!string.IsNullOrEmpty(blockHash))
                     {
                         try
                         {
+                            // Try to get the parentBeaconBlockRoot from the PayloadTracker
                             var hash = new Hash256(Bytes.FromHexString(blockHash));
-                            parentBeaconBlockRoot = _payloadTracker.GetParentBeaconBlockRoot(hash);
                             
-                            if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+                            // First try the fast-path TryGet method to avoid multiple lookups
+                            if (_payloadTracker.TryGetParentBeaconBlockRoot(hash, out var trackedParentBeaconBlockRoot) && 
+                                !string.IsNullOrEmpty(trackedParentBeaconBlockRoot))
                             {
-                                _logger.Info($"Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {blockHash}");
+                                parentBeaconBlockRoot = trackedParentBeaconBlockRoot;
+                                _logger.Info($"CreateNewPayloadRequest: Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {blockHash}");
                             }
                             else
                             {
-                                _logger.Warn("No parentBeaconBlockRoot found in tracker for this block. This could lead to validation issues.");
+                                _logger.Warn($"No parentBeaconBlockRoot found in tracker for block with hash {blockHash}. This could lead to validation issues.");
                                 parentBeaconBlockRoot = null;
                             }
                         }
                         catch (Exception ex)
                         {
-                            _logger.Error($"Error converting block hash for parentBeaconBlockRoot lookup: {ex.Message}");
+                            _logger.Error($"Error retrieving parentBeaconBlockRoot for block hash {blockHash}: {ex.Message}");
                             parentBeaconBlockRoot = null;
                         }
                     }
                     else
                     {
-                        _logger.Warn("No parentHash found in payload to lookup parentBeaconBlockRoot. This could lead to validation issues.");
+                        _logger.Warn("Missing parentHash in payload. Cannot retrieve parentBeaconBlockRoot from tracker.");
                         parentBeaconBlockRoot = null;
                     }
                 }
