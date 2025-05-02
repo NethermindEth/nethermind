@@ -9,7 +9,10 @@ import os.path as path
 import sha3
 import sys
 import tempfile
-import tomllib
+try:
+    import tomllib      # Python 3.11+
+except ImportError:
+    import tomli as tomllib  # older Pythons, backport
 import zstandard as zstd
 from functools import reduce
 from io import BytesIO
@@ -91,7 +94,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
 
     for key in list(hf.keys()):
         if key not in chain_hf:
-            del hf[key]
+            hf[key] = sys.maxsize
 
     nethermind = {
         "name": lookup(config, ["name"]),
