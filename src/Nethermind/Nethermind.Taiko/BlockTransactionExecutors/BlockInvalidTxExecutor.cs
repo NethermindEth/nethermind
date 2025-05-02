@@ -76,7 +76,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         return [.. receiptsTracer.TxReceipts];
     }
 
-	// todo: change?
-	public bool IsTransactionInBlock(Transaction tx)
-		=> false;
+    // todo: change?
+    public bool IsTransactionInBlock(Transaction tx)
+        => false;
 }

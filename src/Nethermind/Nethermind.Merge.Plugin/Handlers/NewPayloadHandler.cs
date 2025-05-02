@@ -232,26 +232,26 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         switch (result)
         {
             case ValidationResult.Syncing:
-            {
-                if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
-                return NewPayloadV1Result.Syncing;
-            }
+                {
+                    if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
+                    return NewPayloadV1Result.Syncing;
+                }
             case ValidationResult.Invalid:
-            {
-                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
-                _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
-                return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
-            }
+                {
+                    if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
+                    _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+                }
             case ValidationResult.InvalidInclusionList:
-            {
-                if (_logger.IsInfo) _logger.Info($"Invalid inclusion list. Result of {requestStr}.");
-                return NewPayloadV1Result.InvalidInclusionList(block.Hash);
-            }
+                {
+                    if (_logger.IsInfo) _logger.Info($"Invalid inclusion list. Result of {requestStr}.");
+                    return NewPayloadV1Result.InvalidInclusionList(block.Hash);
+                }
             case ValidationResult.Valid:
-            {
-                if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
-                return NewPayloadV1Result.Valid(block.Hash);
-            }
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
             default:
                 return ThrowUnknownValidationResult(result);
         }

@@ -498,7 +498,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
 
         public override int GetHashCode() => Id.GetHashCode();
-	}
+    }
 
     public void Dispose()
     {

@@ -216,7 +216,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _invalidChainTracker,
                 beaconSync,
                 _api.LogManager,
-				_api.SpecProvider.ChainId,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts);
 

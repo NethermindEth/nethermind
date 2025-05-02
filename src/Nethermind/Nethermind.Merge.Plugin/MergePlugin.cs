@@ -311,7 +311,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _invalidChainTracker,
                     beaconSync,
                     _api.LogManager,
-					_api.SpecProvider.ChainId,
+                    _api.SpecProvider.ChainId,
                     TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
                     _api.Config<IReceiptConfig>().StoreReceipts);
 

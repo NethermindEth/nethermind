@@ -144,9 +144,9 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
-						_transactionsInBlock.Add(currentTx);
-						_transactionProcessed?.Invoke(this,
-							new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                        _transactionsInBlock.Add(currentTx);
+                        _transactionProcessed?.Invoke(this,
+                            new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                     }
                     else
                     {
@@ -155,13 +155,13 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 return args.Action;
-				
 
-            // protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
 
-            // protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)
-            //     => block.TrySetTransactions([.. transactionsInBlock]);
-			
+                // protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
+
+                // protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)
+                //     => block.TrySetTransactions([.. transactionsInBlock]);
+
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
