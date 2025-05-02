@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -25,45 +24,38 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             return ResultWrapper<IEnumerable<BlobAndProofV2>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        Metrics.ExecutionGetBlobsRequestedFromCLTotal += request.Length;
+        Metrics.GetBlobsRequestsTotal += request.Length;
 
         var count = txPool.GetBlobCounts(request);
-        Metrics.ExecutionGetBlobsRequestedFromCLHit += count;
+        Metrics.GetBlobsRequestsInBlobpoolTotal += count;
 
-        long startTime = Stopwatch.GetTimestamp();
-        try
+        // quick fail if we don't have some blob
+        if (count != request.Length)
         {
-            // quick fail if we don't have some blob
-            if (count != request.Length)
+            return ReturnEmptyArray();
+        }
+
+        using ArrayPoolList<BlobAndProofV2> response = new(request.Length);
+        foreach (byte[] requestedBlobVersionedHash in request)
+        {
+            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
             {
+                response.Add(new BlobAndProofV2(blob, cellProofs));
+            }
+            else
+            {
+                // fail if we were not able to collect full blob data
                 return ReturnEmptyArray();
             }
-
-            using ArrayPoolList<BlobAndProofV2> response = new(request.Length);
-            foreach (byte[] requestedBlobVersionedHash in request)
-            {
-                if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
-                {
-                    response.Add(new BlobAndProofV2(blob, cellProofs));
-                }
-                else
-                {
-                    // fail if we were not able to collect full blob data
-                    return ReturnEmptyArray();
-                }
-            }
-
-            return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response.ToList());
         }
-        finally
-        {
-            Metrics.ExecutionGetBlobsRequestDurationSeconds = (long)Stopwatch.GetElapsedTime(startTime).TotalSeconds;
-        }
+
+        Metrics.GetBlobsRequestsSuccessTotal++;
+        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response.ToList());
     }
 
     private ResultWrapper<IEnumerable<BlobAndProofV2>> ReturnEmptyArray()
     {
-        Metrics.NumberOfGetBlobsFailures++;
+        Metrics.GetBlobsRequestsFailureTotal++;
         return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success([]);
     }
 }
