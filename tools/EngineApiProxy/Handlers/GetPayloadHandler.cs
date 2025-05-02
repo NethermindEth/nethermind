@@ -26,32 +26,7 @@ namespace Nethermind.EngineApiProxy.Handlers
             {
                 // Forward the request to EC
                 var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
-                
-                // If a payload was returned and the response was successful, handle it
-                if (response.Result is JObject payloadObj && 
-                    request.Params != null && 
-                    request.Params.Count > 0)
-                {
-                    string payloadId = request.Params[0]?.ToString() ?? string.Empty;
-                    if (!string.IsNullOrEmpty(payloadId))
-                    {
-                        _logger.Debug($"Retrieved payload for payloadId {payloadId}");
-                        
-                        // For merged validation mode, track additional information about the payload
-                        if (_config.ValidationMode == ValidationMode.Merged || _config.ValidationMode == ValidationMode.LH)
-                        {
-                            _logger.Debug($"{_config.ValidationMode} validation mode: Processing payload for payloadId {payloadId}");
-                            
-                            // Extract block hash from the payload if available
-                            if (payloadObj["blockHash"] != null)
-                            {
-                                string blockHash = payloadObj["blockHash"]?.ToString() ?? string.Empty;
-                                _logger.Debug($"{_config.ValidationMode} validation: Retrieved blockHash {blockHash} for payloadId {payloadId}");
-                            }
-                        }
-                    }
-                }
-                
+                 
                 return response;
             }
             catch (Exception ex)

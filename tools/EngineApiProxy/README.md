@@ -15,7 +15,7 @@ The proxy is built with a modular, maintainable architecture:
 
 ### Request Handlers
 
-1. **ForkChoiceUpdatedHandler**: Processes engine_forkChoiceUpdated* requests
+1. **ForkChoiceUpdatedHandler**: Processes engine_forkchoiceUpdated* requests
 2. **NewPayloadHandler**: Processes engine_newPayload* requests  
 3. **GetPayloadHandler**: Processes engine_getPayload* requests
 4. **DefaultRequestHandler**: Processes all other request types
@@ -60,7 +60,7 @@ dotnet run --project tools/EngineApiProxy -- --ec.url=http://localhost:8545 --li
 
 ## Overview
 
-The Engine API Proxy sits between the Consensus Client (CC) and Execution Client (EC), intercepting Engine API calls. It implements a specific workflow for `engine_forkChoiceUpdated`, `engine_newPayload`, and `engine_getPayload` messages to ensure optimized processing sequence.
+The Engine API Proxy sits between the Consensus Client (CC) and Execution Client (EC), intercepting Engine API calls. It implements a specific workflow for `engine_forkchoiceUpdated`, `engine_newPayload`, and `engine_getPayload` messages to ensure optimized processing sequence.
 
 ## Building
 
@@ -87,6 +87,7 @@ docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-prox
 ### Command-Line Options
 
 - `--ec-endpoint` or `-e`: The URL of the execution client API endpoint (required)
+- `--cl-endpoint` or `-c`: The URL of the consensus client API endpoint (optional)
 - `--port` or `-p`: The port to listen for consensus client requests (default: 8551)
 - `--log-level` or `-l`: Log level (Trace, Debug, Info, Warn, Error) (default: Info)
 - `--validate-all-blocks`: Enable validation for all blocks, even those where CL doesn't request validation
@@ -101,8 +102,11 @@ docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-prox
 # Run with basic settings
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 -l Debug
 
+# With Consensus Client endpoint for direct CL data access
+dotnet run -c Release -- -e http://localhost:8551 -c http://localhost:4000 -p 9551
+
 # With full option names
-dotnet run -c Release -- --ec-endpoint http://localhost:8551 --port 9551 --log-level Debug
+dotnet run -c Release -- --ec-endpoint http://localhost:8551 --port 9551 --log-level Debug --cl-endpoint http://localhost:4000
 
 # With auto-validation of all blocks enabled
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks
@@ -123,6 +127,19 @@ docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://executio
 # Using Fcu validation mode
 docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
 ```
+
+## Consensus Client Integration
+
+When a consensus client endpoint is configured using the `--cl-endpoint` or `-c` parameter, the proxy can directly fetch data from the consensus client. This enables additional features and provides access to beacon chain data.
+
+### Data Retrieval
+
+The BlockDataFetcher service uses the following Beacon API endpoints to communicate with the consensus client:
+
+- `/eth/v1/beacon/headers/head`: Used to get the current head beacon block header
+- `/eth/v1/beacon/blocks/{block_id}`: Used to fetch full block data for a specific block
+
+This is useful for internal processing within the proxy, such as tracking beacon chain state or building enhanced functionality.
 
 ## Configuration with Clients
 
@@ -204,8 +221,8 @@ sequenceDiagram
     Note over P: Append PayloadAttributes to FCU
     
     %% Step 2: PR sends generated request (1.1) to EL
-    P->>EC: (2) engine_forkChoiceUpdated (forkchoiceState + PayloadAttributes)
-    EC->>P: (2) engine_forkChoiceUpdated response (PayloadID)
+    P->>EC: (2) engine_forkchoiceUpdated (forkchoiceState + PayloadAttributes)
+    EC->>P: (2) engine_forkchoiceUpdated response (PayloadID)
        
     %% Step 3: getting PayloadID from EL (2), sending engine_getPayload with it
     Note over P: Validation start
@@ -222,19 +239,19 @@ sequenceDiagram
     %% Step 5: Resuming original engine_newPayload
     P->>EC: (1) engine_newPayload response (RESUME)
     P->>CL: (1) engine_newPayload response (Original response)
-    Note over P: Process any new engine_forkChoiceUpdated messages
+    Note over P: Process any new engine_forkchoiceUpdated messages
 
     %% Step 6: CL sends engine_forkChoiceUpdated based on original engine_newPayload response
-    CL->>P: (5) engine_forkChoiceUpdated (with PayloadAttributes null)
-    P->>EC: (5) engine_forkChoiceUpdated
-    EC->>P: (5) engine_forkChoiceUpdated response
-    P->>CL: (5) engine_forkChoiceUpdated response 
+    CL->>P: (5) engine_forkchoiceUpdated (with PayloadAttributes null)
+    P->>EC: (5) engine_forkchoiceUpdated
+    EC->>P: (5) engine_forkchoiceUpdated response
+    P->>CL: (5) engine_forkchoiceUpdated response 
 
 ```
 
-2.Validation of payloads based on `engine_forkChoiceUpdated` request (`--validation-mode=Fcu`)
+2.Validation of payloads based on `engine_forkchoiceUpdated` request (`--validation-mode=Fcu`)
 
-The difference between this flow is that we are not waiting for `engine_newPayload` request from CL, but only for `engine_forkChoiceUpdated` with null payload attributes. The validation payload should be very close to the original one (since we are using the same `forkchoiceState`), but with different `blockHash` and `blockNumber`.
+The difference between this flow is that we are not waiting for `engine_newPayload` request from CL, but only for `engine_forkchoiceUpdated` with null payload attributes. The validation payload should be very close to the original one (since we are using the same `forkchoiceState`), but with different `blockHash` and `blockNumber`.
 
 The flow may be safely used with both validator and non-validator nodes, since we are ignoring FCU requests when payload attributes are not null.
 
@@ -246,9 +263,9 @@ sequenceDiagram
     participant P as Proxy
     participant EC as Execution Client
 
-    %% Step 1: CL sends engine_forkChoiceUpdated
-    CL->>P: (1) engine_forkChoiceUpdated (with PayloadAttributes null)
-    Note over P: Intercept & delay engine_forkChoiceUpdated
+    %% Step 1: CL sends engine_forkchoiceUpdated
+    CL->>P: (1) engine_forkchoiceUpdated (with PayloadAttributes null)
+    Note over P: Intercept & delay engine_forkchoiceUpdated
     
     %% Step 1.1: based on request (1) PR generates PayloadAttributes
     alt Validation enabled && PayloadAttributes null
@@ -257,8 +274,8 @@ sequenceDiagram
     Note over P: Append PayloadAttributes to FCU
     
     %% Step 2: PR sends generated request (1.1) to EL
-    P->>EC: (2) engine_forkChoiceUpdated (forkchoiceState + PayloadAttributes)
-    EC->>P: (2) engine_forkChoiceUpdated response (PayloadID)
+    P->>EC: (2) engine_forkchoiceUpdated (forkchoiceState + PayloadAttributes)
+    EC->>P: (2) engine_forkchoiceUpdated response (PayloadID)
        
     %% Step 3: getting PayloadID from EL (2), sending engine_getPayload with it
     Note over P: Validation start
@@ -274,9 +291,9 @@ sequenceDiagram
     end
     %% Step 5: Release blocked original FCU request (1)
     Note over P: Release FCU
-    P->>EC: (1) engine_forkChoiceUpdated (resuming)
-    EC->>P: (1) engine_forkChoiceUpdated response
-    P->>CL: (1) engine_forkChoiceUpdated response 
+    P->>EC: (1) engine_forkchoiceUpdated (resuming)
+    EC->>P: (1) engine_forkchoiceUpdated response
+    P->>CL: (1) engine_forkchoiceUpdated response 
     
     %% Step 6: Proceed a valid engine_newPayload (if any)
     CL->>P: (5) engine_newPayload (next block payload)
@@ -284,7 +301,7 @@ sequenceDiagram
     EC->>P: (5) engine_newPayload response
     P->>CL: (5) engine_newPayload response 
    
-    Note over P: Process any new engine_forkChoiceUpdated messages
+    Note over P: Process any new engine_forkchoiceUpdated messages
 
 
 ```

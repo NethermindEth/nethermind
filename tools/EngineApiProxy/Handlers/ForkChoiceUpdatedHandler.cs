@@ -282,32 +282,6 @@ namespace Nethermind.EngineApiProxy.Handlers
                     }
                 };
                 
-                // We do this in the DefaultRequestHandler 
-
-                // // Store info for validation that will happen after response
-                // string storedPayloadId = payloadId;
-                
-                // // 3. Trigger validation AFTER returning response to CL
-                // _ = Task.Run(async () => 
-                // {
-                //     try 
-                //     {
-                //         if (!string.IsNullOrEmpty(storedPayloadId))
-                //         {
-                //             // Wait a moment to ensure response is sent
-                //             await Task.Delay(200);
-                            
-                //             _logger.Info($"Starting post-response validation for payloadId {storedPayloadId}");
-                //             bool success = await _requestOrchestrator.DoValidationForFCU(storedPayloadId);
-                //             _logger.Info($"Post-response validation for payloadId {storedPayloadId} completed: {success}");
-                //         }
-                //     }
-                //     catch (Exception ex) 
-                //     {
-                //         _logger.Error($"Error in post-response validation: {ex.Message}", ex);
-                //     }
-                // });
-                
                 return response;
             }
             catch (Exception ex)
