@@ -29,6 +29,15 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
+        public BlockToProduce(BlockHeader header) : base(
+        header,
+        new(
+            null,
+            null,
+            header.WithdrawalsRoot is null ? null : [])
+        )
+        { }
+
         public BlockToProduce(BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
@@ -36,6 +45,8 @@ namespace Nethermind.Consensus.Producers
             : base(blockHeader, transactions, uncles, withdrawals, null)
         {
         }
+
+        public long TxByteLength { get; internal set; }
 
         public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
     }

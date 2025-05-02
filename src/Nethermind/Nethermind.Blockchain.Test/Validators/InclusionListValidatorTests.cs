@@ -51,7 +51,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, _ => false);
         Assert.That(isValid, Is.True);
     }
 
@@ -65,7 +65,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, tx => tx == _validTx);
         Assert.That(isValid, Is.True);
     }
 
@@ -81,7 +81,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, _ => false);
         Assert.That(isValid, Is.False);
     }
 
@@ -93,7 +93,7 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, _ => false);
         Assert.That(isValid, Is.False);
     }
 }

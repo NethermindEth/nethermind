@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -62,7 +61,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     public byte[][] Transactions
     {
-        get { return _encodedTransactions; }
+        get => _encodedTransactions;
         set
         {
             _encodedTransactions = value;
@@ -144,45 +143,40 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
+    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
     {
-        try
+        TransactionDecodingResult transactions = TryGetTransactions();
+        if (transactions.Error is not null)
         {
-            Transaction[] transactions = GetTransactions();
-            BlockHeader header = new(
-                ParentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                FeeRecipient,
-                UInt256.Zero,
-                BlockNumber,
-                GasLimit,
-                Timestamp,
-                ExtraData)
-            {
-                Hash = BlockHash,
-                ReceiptsRoot = ReceiptsRoot,
-                StateRoot = StateRoot,
-                Bloom = LogsBloom,
-                GasUsed = GasUsed,
-                BaseFeePerGas = BaseFeePerGas,
-                Nonce = 0,
-                MixHash = PrevRandao,
-                Author = FeeRecipient,
-                IsPostMerge = true,
-                TotalDifficulty = totalDifficulty,
-                TxRoot = TxTrie.CalculateRoot(transactions),
-                WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
-            };
-
-            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
-
-            return true;
+            return new BlockDecodingResult(transactions.Error);
         }
-        catch (Exception)
+
+        BlockHeader header = new(
+            ParentHash,
+            Keccak.OfAnEmptySequenceRlp,
+            FeeRecipient,
+            UInt256.Zero,
+            BlockNumber,
+            GasLimit,
+            Timestamp,
+            ExtraData)
         {
-            block = null;
-            return false;
-        }
+            Hash = BlockHash,
+            ReceiptsRoot = ReceiptsRoot,
+            StateRoot = StateRoot,
+            Bloom = LogsBloom,
+            GasUsed = GasUsed,
+            BaseFeePerGas = BaseFeePerGas,
+            Nonce = 0,
+            MixHash = PrevRandao,
+            Author = FeeRecipient,
+            IsPostMerge = true,
+            TotalDifficulty = totalDifficulty,
+            TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
+            WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+        };
+
+        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
     }
 
     protected Transaction[]? _transactions = null;
@@ -191,12 +185,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public Transaction[] GetTransactions()
+    public TransactionDecodingResult TryGetTransactions()
     {
-        if (_transactions is not null) return _transactions;
+        if (_transactions is not null) return new TransactionDecodingResult(_transactions);
 
-        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>() ??
-            throw new RlpException($"{nameof(Transaction)} decoder is not registered");
+        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
+        if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
         int i = 0;
         try
@@ -209,11 +203,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
                 transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
             }
 
-            return (_transactions = transactions);
+            return new TransactionDecodingResult(_transactions = transactions);
         }
         catch (RlpException e)
         {
-            throw new RlpException($"Transaction {i} is not valid", e);
+            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+        }
+        catch (ArgumentException)
+        {
+            return new TransactionDecodingResult($"Transaction {i} is not valid");
         }
     }
 
@@ -263,4 +261,36 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+}
+
+public struct TransactionDecodingResult
+{
+    public readonly string? Error;
+    public readonly Transaction[] Transactions = [];
+
+    public TransactionDecodingResult(Transaction[] transactions)
+    {
+        Transactions = transactions;
+    }
+
+    public TransactionDecodingResult(string error)
+    {
+        Error = error;
+    }
+}
+
+public struct BlockDecodingResult
+{
+    public readonly string? Error;
+    public readonly Block? Block;
+
+    public BlockDecodingResult(Block block)
+    {
+        Block = block;
+    }
+
+    public BlockDecodingResult(string error)
+    {
+        Error = error;
+    }
 }

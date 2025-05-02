@@ -16,5 +16,5 @@ public interface IBlockImprovementContextFactory
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationToken cancellationToken = default);
+        CancellationTokenSource cts);
 }

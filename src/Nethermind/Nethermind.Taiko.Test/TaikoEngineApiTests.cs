@@ -48,7 +48,6 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             Substitute.For<ILogManager>(),
-            12UL, // secondsPerSlot
             false // simulateBlockProduction
         );
 

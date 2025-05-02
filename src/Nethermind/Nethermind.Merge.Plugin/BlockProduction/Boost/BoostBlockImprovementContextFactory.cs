@@ -32,6 +32,6 @@ public class BoostBlockImprovementContextFactory : IBlockImprovementContextFacto
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationToken cancellationToken = default) =>
-        new BoostBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime, cancellationToken);
+        CancellationTokenSource cts) =>
+        new BoostBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime, cts);
 }

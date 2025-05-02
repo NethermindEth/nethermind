@@ -58,11 +58,11 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     {
         if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
         if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-        if (_api.LogFinder is null) throw new ArgumentNullException(nameof(_api.LogFinder));
-        if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-        if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
-        if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
-        if (_api.IpResolver is null) throw new ArgumentNullException(nameof(_api.IpResolver));
+        ArgumentNullException.ThrowIfNull(_api.LogFinder);
+        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+        ArgumentNullException.ThrowIfNull(_api.ReceiptFinder);
+        ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
+        ArgumentNullException.ThrowIfNull(_api.IpResolver);
 
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 

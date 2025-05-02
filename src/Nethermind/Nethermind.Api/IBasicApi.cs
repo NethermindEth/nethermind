@@ -40,6 +40,7 @@ namespace Nethermind.Api
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
         ILogManager LogManager { get; }
+        [SkipServiceCollection]
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
@@ -60,8 +61,5 @@ namespace Nethermind.Api
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
-
-        public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
-            Plugins.OfType<ISynchronizationPlugin>();
     }
 }

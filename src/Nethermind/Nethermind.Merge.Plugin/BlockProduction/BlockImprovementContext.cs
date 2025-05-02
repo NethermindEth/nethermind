@@ -15,7 +15,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class BlockImprovementContext : IBlockImprovementContext
 {
-    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly CancellationTokenSource _improvementCancellation;
+    private CancellationTokenSource? _timeOutCancellation;
+    private CancellationTokenSource? _linkedCancellation;
     private readonly FeesTracer _feesTracer = new();
 
     public BlockImprovementContext(Block currentBestBlock,
@@ -25,19 +27,20 @@ public class BlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationToken cancellationToken = default)
+        CancellationTokenSource cts)
     {
-        using var timeoutTokenSource = new CancellationTokenSource((int)timeout.TotalMilliseconds);
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutTokenSource.Token);
+        _improvementCancellation = cts;
+        _timeOutCancellation = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
         BlockFees = currentBlockFees;
         StartDateTime = startDateTime;
 
-        CancellationToken ct = _cancellationTokenSource.Token;
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
+        CancellationToken ct = _linkedCancellation.Token;
         // Task.Run so doesn't block FCU response while first block is being produced
         ImprovementTask = Task.Run(() => blockProducer
             .BuildBlock(parentHeader, _feesTracer, payloadAttributes, ct)
-            .ContinueWith(SetCurrentBestBlock, ct), ct);
+            .ContinueWith(SetCurrentBestBlock));
     }
 
     public Task<Block?> ImprovementTask { get; }
@@ -70,9 +73,12 @@ public class BlockImprovementContext : IBlockImprovementContext
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 
+    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
 }

@@ -26,10 +26,9 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
-    //TODO correct this timestamp!
-    public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
-    public const ulong Fork7805BlockTimestamp = ulong.MaxValue - 1;
-    // public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
+    public const ulong PragueBlockTimestamp = 0x681b3057;
+    public const ulong Fork7805BlockTimestamp = ulong.MaxValue - 2;
+    public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
@@ -74,8 +73,8 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
-    // public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
     public static ForkActivation Fork7805Activation { get; } = (ParisBlockNumber + 4, Fork7805BlockTimestamp);
+    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 5, OsakaBlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
@@ -93,8 +92,8 @@ public class MainnetSpecProvider : ISpecProvider
         ShanghaiActivation,
         CancunActivation,
         PragueActivation,
-        Fork7805Activation
-        //OsakaActivation
+        Fork7805Activation,
+        OsakaActivation
     };
 
     public static MainnetSpecProvider Instance { get; } = new();

@@ -86,7 +86,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "[]")]
     string[] AdditionalRpcUrls { get; set; }
 
-    [ConfigItem(Description = "The gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
+    [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
     long? GasCap { get; set; }
 
     [ConfigItem(

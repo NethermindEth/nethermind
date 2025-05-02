@@ -23,7 +23,6 @@ public class BuiltInStepsModule : Module
         typeof(InitializeBlockProducer),
         typeof(InitializeBlockTree),
         typeof(InitializeNetwork),
-        typeof(InitializeNodeStats),
         typeof(InitializePlugins),
         typeof(InitializePrecompiles),
         typeof(InitTxTypesAndRlp),
@@ -39,7 +38,6 @@ public class BuiltInStepsModule : Module
         typeof(StartBlockProducer),
         typeof(StartLogProducer),
         typeof(StartMonitoring),
-        typeof(UpdateDiscoveryConfig),
     ];
 
     protected override void Load(ContainerBuilder builder)

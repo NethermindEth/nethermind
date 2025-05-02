@@ -12,7 +12,7 @@ public class InclusionListTxSource(ulong chainId) : ITxSource
 {
     private IEnumerable<Transaction> _inclusionListTransactions = [];
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         => _inclusionListTransactions;
 
     public void Set(byte[][] inclusionListTransactions)

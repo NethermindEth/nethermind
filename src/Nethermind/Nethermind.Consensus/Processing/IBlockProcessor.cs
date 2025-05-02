@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -24,7 +25,8 @@ namespace Nethermind.Consensus.Processing
             Hash256 newBranchStateRoot,
             IReadOnlyList<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+            IBlockTracer blockTracer,
+            CancellationToken token = default);
 
         bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options);
 
@@ -50,8 +52,8 @@ namespace Nethermind.Consensus.Processing
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
             bool IsTransactionInBlock(Transaction tx);
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         }
     }
