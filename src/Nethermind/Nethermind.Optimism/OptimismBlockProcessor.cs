@@ -25,7 +25,8 @@ public class OptimismBlockProcessor : BlockProcessor
     private readonly IOptimismSpecHelper _specHelper;
     private readonly Create2DeployerContractRewriter? _contractRewriter;
 
-    public OptimismBlockProcessor(ISpecProvider? specProvider,
+    public OptimismBlockProcessor(
+        ISpecProvider? specProvider,
         IOptimismSpecHelper specHelper,
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,

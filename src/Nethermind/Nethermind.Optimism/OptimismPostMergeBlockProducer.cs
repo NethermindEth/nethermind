@@ -24,7 +24,8 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
     private readonly ITxSource _payloadAttrsTxSource;
     private readonly IOptimismSpecHelper _specHelper;
 
-    public OptimismPostMergeBlockProducer(ITxSource payloadAttrsTxSource,
+    public OptimismPostMergeBlockProducer(
+        ITxSource payloadAttrsTxSource,
         ITxSource txPoolTxSource,
         IBlockchainProcessor processor,
         IBlockTree blockTree,

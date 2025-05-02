@@ -76,12 +76,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     public Withdrawal[]? Withdrawals { get; set; }
 
+
     /// <summary>
     /// Gets or sets a collection of <see cref="ExecutionRequest"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     [JsonIgnore]
     public virtual byte[][]? ExecutionRequests { get; set; }
+
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in

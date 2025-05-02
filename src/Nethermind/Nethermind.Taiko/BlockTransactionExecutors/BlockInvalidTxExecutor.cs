@@ -16,6 +16,9 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private readonly IWorldState _worldState = worldState;
+    private readonly ITransactionProcessorAdapter _txProcessor = txProcessor;
+
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
     public TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
@@ -34,7 +37,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            Snapshot snap = worldState.TakeSnapshot();
+            Snapshot snap = _worldState.TakeSnapshot();
             Transaction tx = block.Transactions[i];
 
             if (tx.Type == TxType.Blob)
@@ -47,10 +50,10 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
             try
             {
-                if (!txProcessor.Execute(tx, in blkCtx, receiptsTracer))
+                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue
-                    worldState.Restore(snap);
+                    _worldState.Restore(snap);
                     continue;
                 }
             }
@@ -58,7 +61,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             {
                 // sometimes invalid transactions can throw exceptions because
                 // they are detected later in the processing pipeline
-                worldState.Restore(snap);
+                _worldState.Restore(snap);
                 continue;
             }
             // only end the trace if the transaction was successful

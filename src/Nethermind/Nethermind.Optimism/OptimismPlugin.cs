@@ -26,7 +26,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
@@ -322,7 +321,6 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
         builder
             .AddSingleton<NethermindApi, OptimismNethermindApi>()
-
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
@@ -335,6 +333,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             // Validators
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
-            .AddSingleton<IUnclesValidator>(Always.Valid);
+            .AddSingleton<IUnclesValidator>(Always.Valid)
+            ;
+
     }
 }

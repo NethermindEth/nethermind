@@ -55,11 +55,8 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             const int baseFeeFieldsStart = 16;
             const int fieldSize = sizeof(uint);
 
-            int l1BaseFeeScalarStart =
-                scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
-            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart
-                ? fieldSize
-                : fieldSize - baseFeeFieldsStart + scalarData.Length);
+            int l1BaseFeeScalarStart = scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
+            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart ? fieldSize : fieldSize - baseFeeFieldsStart + scalarData.Length);
             UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
             UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
 
@@ -82,11 +79,8 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             const int baseFeeFieldsStart = 16;
             const int fieldSize = sizeof(uint);
 
-            int l1BaseFeeScalarStart =
-                scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
-            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart
-                ? fieldSize
-                : fieldSize - baseFeeFieldsStart + scalarData.Length);
+            int l1BaseFeeScalarStart = scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
+            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart ? fieldSize : fieldSize - baseFeeFieldsStart + scalarData.Length);
             UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
             UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
 
@@ -160,8 +154,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // l1FeeScaled = baseFeeScalar * l1BaseFee * 16 + blobFeeScalar * l1BlobBaseFee
     // estimatedSize = max(minTransactionSize, intercept + fastlzCoef * fastlzSize)
     // l1Cost = estimatedSize * l1FeeScaled / 1e12
-    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee,
-        UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar, out UInt256 estimatedSize)
+    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar, out UInt256 estimatedSize)
     {
         UInt256 l1FeeScaled = l1BaseFeeScalar * l1BaseFee * PrecisionMultiplier + l1BlobBaseFeeScalar * blobBaseFee;
         UInt256 fastLzCost = L1CostFastlzCoef * fastLzSize;
@@ -180,11 +173,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
-    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee,
-        UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
+    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
     {
-        return dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) /
-               PrecisionDivisor;
+        return dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
     }
 
     // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
@@ -207,7 +198,6 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             Span<uint> ht = stackalloc uint[8192];
 
             uint u24(uint i) => data[i] | ((uint)data[i + 1] << 8) | ((uint)data[i + 2] << 16);
-
             uint cmp(uint p, uint q, uint e)
             {
                 uint l = 0;
@@ -218,10 +208,8 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                         e = 0;
                     }
                 }
-
                 return l;
             }
-
             void literals(uint r)
             {
                 n += 0x21 * (r / 0x20);
@@ -231,7 +219,6 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                     n += r + 1;
                 }
             }
-
             void match(uint l)
             {
                 l--;
@@ -245,22 +232,18 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                     n += 2;
                 }
             }
-
             uint hash(uint v) => ((2654435769 * v) >> 19) & 0x1fff;
-
             uint setNextHash(uint ip, ref Span<uint> ht)
             {
                 ht[(int)hash(u24(ip))] = ip;
                 return ip + 1;
             }
-
             uint a = 0;
             uint ipLimit = (uint)data.Length - 13;
             if (data.Length < 13)
             {
                 ipLimit = 0;
             }
-
             for (uint ip = a + 2; ip < ipLimit;)
             {
                 uint d;
@@ -276,38 +259,31 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                     {
                         break;
                     }
-
                     ip++;
                     if (d <= 0x1fff && s == u24(r))
                     {
                         break;
                     }
                 }
-
                 if (ip >= ipLimit)
                 {
                     break;
                 }
-
                 ip--;
                 if (ip > a)
                 {
                     literals(ip - a);
                 }
-
                 uint l = cmp(r + 3, ip + 3, ipLimit + 9);
                 match(l);
                 ip = setNextHash(setNextHash(ip + l, ref ht), ref ht);
                 a = ip;
             }
-
             literals((uint)data.Length - a);
             return n;
         }
-
         return FlzCompressLen(encoded);
     }
 
-    internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) =>
-        estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
+    internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
 }

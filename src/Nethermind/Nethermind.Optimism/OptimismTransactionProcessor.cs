@@ -34,7 +34,6 @@ public class OptimismTransactionProcessor(
 
         IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
         _currentTxL1Cost = null;
-
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
