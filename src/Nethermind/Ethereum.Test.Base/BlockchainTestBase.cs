@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -39,8 +39,8 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static InterfaceLogger _logger = new NUnitLogger(LogLevel.Info);
-    private static ILogManager _logManager = LimboLogs.Instance;
+    private static ILogger _logger;
+    private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -48,6 +48,9 @@ public abstract class BlockchainTestBase
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
         Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
+
+        _logManager ??= LimboLogs.Instance;
+        _logger = _logManager.GetClassLogger();
     }
 
     [SetUp]
