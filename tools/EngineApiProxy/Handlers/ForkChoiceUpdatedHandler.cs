@@ -188,10 +188,7 @@ namespace Nethermind.EngineApiProxy.Handlers
                 catch (Exception ex)
                 {
                     // If the validation flow fails due to unsupported methods, log and fall back to normal flow
-                    if (ex.ToString().Contains("engine_getPayloadV4 is not supported") ||
-                        ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
-                        ex.ToString().Contains("engine_getPayloadV3 is not supported") ||
-                        ex.ToString().Contains("The method 'engine_getPayloadV3' is not supported"))
+                    if (ex.ToString().Contains("is not supported") || ex.ToString().Contains("is not implemented"))
                     {
                         _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
                         _logger.Info("Falling back to direct forwarding of request to execution client");

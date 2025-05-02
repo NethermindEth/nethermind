@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 namespace Nethermind.EngineApiProxy.Services
 {
     /// <summary>
-    /// Fetches block data from the execution client using JSON-RPC
+    /// Fetches block data from the execution and consensus clients using JSON-RPC
     /// </summary>
     /// <remarks>
     /// Initializes a new instance of BlockDataFetcher

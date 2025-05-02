@@ -6,7 +6,7 @@ using Nethermind.Logging;
 namespace Nethermind.EngineApiProxy.Models
 {
     /// <summary>
-    /// Tracks PayloadIDs and their associated block hashes to manage engine_getPayloadV3 requests
+    /// Tracks PayloadIDs and their associated block hashes to manage engine_getPayload requests
     /// </summary>
     public class PayloadTracker(ILogManager logManager)
     {

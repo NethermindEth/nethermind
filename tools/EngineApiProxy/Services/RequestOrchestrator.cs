@@ -555,13 +555,6 @@ namespace Nethermind.EngineApiProxy.Services
                     {
                         _logger.Error($"Failed to deserialize JSON-RPC response: {responseJson}");
                         
-                        // Create a default response for testing scenarios
-                        if (string.IsNullOrWhiteSpace(responseJson))
-                        {
-                            // Generate mock response based on request method
-                            return GenerateDefaultResponse(request);
-                        }
-                        
                         return JsonRpcResponse.CreateErrorResponse(request.Id, -32700, "Proxy error: Invalid JSON response");
                     }
                     
@@ -577,8 +570,7 @@ namespace Nethermind.EngineApiProxy.Services
                 {
                     _logger.Error($"Failed to deserialize JSON-RPC response: {ex.Message}", ex);
                     
-                    // Generate mock response for testing
-                    return GenerateDefaultResponse(request);
+                    return JsonRpcResponse.CreateErrorResponse(request.Id, -32700, "Proxy error: Invalid JSON response");
                 }
             }
             catch (Exception ex)
@@ -589,52 +581,7 @@ namespace Nethermind.EngineApiProxy.Services
                 return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Sending JSON-RPC request: {ex.Message}");
             }
         }
-        
-        /// <summary>
-        /// Generates a default response for testing scenarios
-        /// </summary>
-        private JsonRpcResponse GenerateDefaultResponse(JsonRpcRequest request)
-        {
-            _logger.Warn($"Generating default response for method {request.Method}");
-
-            // Create default responses based on method
-            return request.Method switch
-            {
-                "engine_forkchoiceUpdatedV3" => new JsonRpcResponse(request.Id, new JObject
-                {
-                    ["payloadStatus"] = new JObject
-                    {
-                        ["status"] = "VALID",
-                        ["latestValidHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                        ["validationError"] = null
-                    },
-                    ["payloadId"] = "0x0123456789abcdef"
-                }),
-                "engine_getPayloadV4" => new JsonRpcResponse(request.Id, new JObject
-                {
-                    ["executionPayload"] = new JObject
-                    {
-                        ["blockHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                        ["parentHash"] = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-                    }
-                }),
-                "engine_newPayloadV4" => new JsonRpcResponse(request.Id, new JObject
-                {
-                    ["status"] = "VALID",
-                    ["latestValidHash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                    ["validationError"] = null
-                }),
-                "eth_getBlockByHash" => new JsonRpcResponse(request.Id, new JObject
-                {
-                    ["hash"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                    ["number"] = "0x1",
-                    ["timestamp"] = "0x64",
-                    ["transactions"] = new JArray()
-                }),
-                _ => new JsonRpcResponse(request.Id, new JObject()),
-            };
-        }
-        
+                
         /// <summary>
         /// Clones a JSON-RPC request
         /// </summary>

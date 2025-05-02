@@ -1,11 +1,7 @@
-# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-# SPDX-License-Identifier: LGPL-3.0-only
-
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble AS build
 
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
-ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 

@@ -64,12 +64,12 @@ namespace Nethermind.EngineApiProxy
             var validationModeOption = new Option<ValidationMode>(
                 name: "--validation-mode",
                 description: "Mode for block validation (Fcu, NewPayload, Merged, or LH)",
-                getDefaultValue: () => ValidationMode.Merged);
+                getDefaultValue: () => ValidationMode.LH);
             
             var requestTimeoutOption = new Option<int>(
                 name: "--request-timeout",
                 description: "Timeout in seconds for HTTP requests to EL/CL clients",
-                getDefaultValue: () => 180);
+                getDefaultValue: () => 60);
             
             // Create root command with options
             var rootCommand = new RootCommand("Nethermind Engine API Proxy");

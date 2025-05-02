@@ -12,7 +12,6 @@ namespace Nethermind.EngineApiProxy.Services
     {
         private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly Random _random = new();
 
         /// <summary>
         /// Generates payload attributes based on the block data

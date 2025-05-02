@@ -46,7 +46,7 @@ namespace Nethermind.EngineApiProxy.Config
         public string DefaultFeeRecipient { get; set; } = "0x1268ad189526ac0b386faf06effc46779c340ee6";
 
         /// <summary>
-        /// Time offset in seconds for block timestamp calculation (default: 12s)
+        /// Time offset in seconds for block timestamp calculation
         /// Should be more than 0 second to avoid conflicts with CL timestamp
         /// </summary>
         public int TimestampOffsetSeconds { get; set; } = 1;
@@ -58,12 +58,12 @@ namespace Nethermind.EngineApiProxy.Config
 
         /// <summary>
         /// Mode for block validation:
-        /// - Fcu: Validation happens at FCU time
-        /// - NewPayload: Validation happens at new payload time
+        /// - Fcu: Validation happens at FCU request
+        /// - NewPayload: Validation happens at new payload request
         /// - Merged: FCU stores PayloadID without validation, and validation happens at next new_payload request
         /// - LH: Similar to Merged, but intercepts PayloadAttributes from existing FCU requests instead of generating them
         /// </summary>
-        public ValidationMode ValidationMode { get; set; } = ValidationMode.NewPayload;
+        public ValidationMode ValidationMode { get; set; } = ValidationMode.LH;
 
         public override string ToString()
         {
