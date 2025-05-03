@@ -44,6 +44,9 @@ public class OptimismCLP2P : IDisposable
     private PubsubRouter? _router;
     private ILocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
+    private PeerStore? _peerStore;
+
+    private ulong? _headNumber = null;
 
     public OptimismCLP2P(
         ulong chainId,
@@ -62,9 +65,12 @@ public class OptimismCLP2P : IDisposable
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
 
+        // Jagger
+
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
-            .AddLibp2p(builder => builder.WithPubsub())
+            .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, _logger))
+            .AddLibp2p(builder => builder.WithPubsub().AddAppLayerProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
@@ -90,6 +96,10 @@ public class OptimismCLP2P : IDisposable
             if (TryValidateAndDecodePayload(msg, out var payload))
             {
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
+                if ((ulong)payload.BlockNumber <= _headNumber)
+                {
+                    return;
+                }
                 await _blocksP2PMessageChannel.Writer.WriteAsync(payload, token);
             }
             else
@@ -111,18 +121,56 @@ public class OptimismCLP2P : IDisposable
             {
                 ExecutionPayloadV3 payload = await _blocksP2PMessageChannel.Reader.ReadAsync(token);
 
+                if ((ulong)payload.BlockNumber <= _headNumber)
+                {
+                    return;
+                }
+
+                ExecutionPayloadV3? requestedPayload = await RequestPayload((ulong)payload.BlockNumber, token);
+                _logger.Error($"Requested payload: {requestedPayload?.BlockHash}");
+
+                // ulong numberOfMissingBlocks = _headNumber!.Value - (ulong)payload.BlockNumber;
+
+                // if (numberOfMissingBlocks > 0)
+                // {
+                //
+                // }
+
                 if (_blockValidator.IsBlockNumberPerHeightLimitReached(payload) is not ValidityStatus.Valid)
                 {
                     return;
                 }
 
-                await _executionEngineManager.ProcessNewP2PExecutionPayload(payload);
+                if (await _executionEngineManager.ProcessNewP2PExecutionPayload(payload))
+                {
+                    _headNumber = (ulong)payload.BlockNumber;
+                }
             }
             catch (Exception e)
             {
                 if (_logger.IsError && e is not OperationCanceledException and not ChannelClosedException)
                     _logger.Error("Unhandled exception in Optimism CL P2P:", e);
             }
+        }
+    }
+
+    private async Task<ExecutionPayloadV3?> RequestPayload(ulong payloadNumber, CancellationToken token)
+    {
+        _logger.Error($"Calling peer {_staticPeerList[13]}");
+        ISession? remotePeer = null;
+        try
+        {
+            remotePeer = await _localPeer!.DialAsync(_staticPeerList[13], token);
+            _logger.Error(
+                $"Done {string.Join(" ", _peerStore!.GetPeerInfo(remotePeer.RemoteAddress.GetPeerId()!).SupportedProtocols ?? [])}");
+            ExecutionPayloadV3? response =
+                await remotePeer.DialAsync<PayloadByNumberProtocol, ulong, ExecutionPayloadV3?>(payloadNumber, token);
+            _logger.Error($"Response: {response?.BlockHash}");
+            return response;
+        }
+        finally
+        {
+            if (remotePeer is not null) await remotePeer.DisconnectAsync();
         }
     }
 
@@ -178,17 +226,26 @@ public class OptimismCLP2P : IDisposable
         _localPeer = peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
-
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
         _blocksV2Topic.OnMessage += msg => OnMessage(msg, token);
+        try
+        {
+            await _localPeer.StartListenAsync([address], token);
+            await _router.StartAsync(_localPeer, token);
 
-        await _localPeer.StartListenAsync([address], token);
-        await _router.StartAsync(_localPeer, token);
+            _peerStore = _serviceProvider.GetService<PeerStore>()!;
+            foreach (var multiaddress in _staticPeerList)
+            {
+                _peerStore.Discover([multiaddress]);
+                var supportedProtocols = _peerStore.GetPeerInfo(multiaddress.GetPeerId()!).SupportedProtocols;
+                _logger.Error($"Supported protocols: {string.Join(" ", supportedProtocols ?? [])}");
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"{e}");
+        }
 
-        PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
-        peerStore.Discover(_staticPeerList);
-        PubsubPeerDiscoveryProtocol disc = new(_router, peerStore, new PubsubPeerDiscoverySettings(), _localPeer);
-        await disc.StartDiscoveryAsync([Multiaddress.Decode(address)], token);
 
         if (_logger.IsInfo) _logger.Info($"Started P2P: {address}");
         await MainLoop(token);
