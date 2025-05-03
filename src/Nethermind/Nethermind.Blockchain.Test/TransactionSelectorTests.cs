@@ -225,14 +225,17 @@ namespace Nethermind.Blockchain.Test
         }
 
         private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
+            => CreateBlobTransaction(address, key, maxFee, blobCount, nonce: 1);
+
+        private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce)
         {
-            return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(1)
+            return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(nonce)
                 .WithMaxFeePerGas(maxFee).WithMaxFeePerBlobGas(1).WithGasLimit(20)
                 .WithBlobVersionedHashes([.. Enumerable.Range(0, blobCount).Select(i => new byte[1] { 0 })])
                 .SignedAndResolved(key).TestObject;
         }
 
-        public static IEnumerable NoNonceGapWhenShardBlobTransactionsSelectedTestCases
+        public static IEnumerable BlobTransactionOrderingTestCases
         {
             get
             {
@@ -241,23 +244,27 @@ namespace Nethermind.Blockchain.Test
                 accounts[TestItem.AddressA] = (1000000, 0);
                 higherPriorityTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 higherPriorityTransactionsSelected.BaseFee = 1;
-                higherPriorityTransactionsSelected.Transactions =
-                [
-                    // This tx should be rejected in preference for the other 5 even though its fee is much higher
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 5),
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 5),
-                    // As total of other 5 below is higher
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
-                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1),
-                ];
+
+                var txs = new List<Transaction>();
+
+                UInt256 nonce = 1;
+                for (int i = 0; i < 5; i++)
+                {
+                    txs.Add(CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 5, nonce));
+                    nonce++;
+                }
+                for (int i = 0; i < 7; i++)
+                {
+                    txs.Add(CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 1000, blobCount: 1, nonce));
+                    nonce++;
+                }
+
+                higherPriorityTransactionsSelected.Transactions = txs;
 
                 higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     higherPriorityTransactionsSelected.Transactions.Take(1));
 
-                yield return higherPriorityTransactionsSelected;
+                yield return new TestCaseData(higherPriorityTransactionsSelected).SetName("Blob Transaction Ordering, Single Address");
             }
         }
 
@@ -265,7 +272,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(Eip1559LegacyTransactionTestCases))]
         [TestCaseSource(nameof(Eip1559TestCases))]
         [TestCaseSource(nameof(EnoughShardBlobTransactionsSelectedTestCases))]
-        [TestCaseSource(nameof(NoNonceGapWhenShardBlobTransactionsSelectedTestCases))]
+        [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb stateDb = new();

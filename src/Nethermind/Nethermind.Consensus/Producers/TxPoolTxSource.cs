@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.Producers
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
-            IEnumerable<Transaction> blobTransactions = GetOrderedTransactions(pendingBlobTransactionsEquivalences, comparer);
+            IEnumerable<Transaction> blobTransactions = GetOrderedTransactions(pendingBlobTransactionsEquivalences, comparer, (int)spec.MaxBlobCount);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -301,13 +301,13 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer) =>
-            Order(pendingTransactions, comparer);
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, int maxBlobs = 0) =>
+            Order(pendingTransactions, comparer, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
+        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, int maxBlobs = 0)
         {
             IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
                 .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
@@ -320,14 +320,15 @@ namespace Nethermind.Consensus.Producers
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                DictionarySortedSet<Transaction, IEnumerator<Transaction>> transactions = new(comparerWithIdentity);
+                DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, int blobCount)> transactions = new(comparerWithIdentity);
 
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
                     IEnumerator<Transaction> enumerator = bySenderEnumerators[i];
                     if (enumerator.MoveNext())
                     {
-                        transactions.Add(enumerator.Current!, enumerator);
+                        Transaction current = enumerator.Current!;
+                        transactions.Add(current, (enumerator, 0));
                     }
                 }
 
@@ -335,13 +336,18 @@ namespace Nethermind.Consensus.Producers
                 while (transactions.Count > 0)
                 {
                     // we take first transaction from sorting order, on first call: N4_P4 from B
-                    (Transaction tx, IEnumerator<Transaction> enumerator) = transactions.Min;
+                    (Transaction tx, (IEnumerator<Transaction> enumerator, int blobCount)) = transactions.Min;
 
                     // we replace it by next transaction from same sender, on first call N5_P3 from B
                     transactions.Remove(tx);
                     if (enumerator.MoveNext())
                     {
-                        transactions.Add(enumerator.Current!, enumerator);
+                        int sumBlobs = blobCount + tx.GetBlobCount();
+                        // Only add next tx if chain of blobs still fit
+                        if (sumBlobs <= maxBlobs)
+                        {
+                            transactions.Add(enumerator.Current!, (enumerator, sumBlobs));
+                        }
                     }
 
                     // we return transactions in lazy manner, no need to sort more than will be taken into block
