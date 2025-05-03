@@ -46,16 +46,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";
 
-        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, int maxBlobs = 0)
+        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool>? filter = null, int maxBlobs = 0)
         {
             if (_logger.IsTrace)
             {
-                var transactions = base.GetOrderedTransactions(pendingTransactions, comparer, gasLimit, maxBlobs).ToArray();
+                var transactions = base.GetOrderedTransactions(pendingTransactions, comparer, gasLimit, filter, maxBlobs).ToArray();
                 string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.ToShortString()}, PoolIndex {t.PoolIndex}, Whitelisted: {_comparer.IsWhiteListed(t)}, Priority: {_comparer.GetPriority(t)}"));
                 _logger.Trace($"Ordered transactions with comparer {comparer} : {Environment.NewLine}{txString}");
                 return transactions;
             }
-            return base.GetOrderedTransactions(pendingTransactions, comparer, gasLimit, maxBlobs);
+            return base.GetOrderedTransactions(pendingTransactions, comparer, gasLimit, filter, maxBlobs);
         }
     }
 }
