@@ -341,7 +341,7 @@ namespace Nethermind.Consensus.Producers
                     (Transaction addedTx, (IEnumerator<Transaction> enumerator, long gasUsed, int blobCount)) = transactions.Min;
 
                     transactions.Remove(addedTx);
-                    if (!(filter?.Invoke(addedTx) ?? true))
+                    if (filter is not null && !filter.Invoke(addedTx))
                     {
                         // Cannot be added, so stop adding more txs from this sender
                         continue;
@@ -357,7 +357,7 @@ namespace Nethermind.Consensus.Producers
                         // Only add next tx from sender if chain of blobs or tx still fit in gas
                         if (sumGasUsed + nextTx.SpentGas <= gasLimit &&
                             sumBlobs + nextTx.GetBlobCount() <= maxBlobs &&
-                            (filter?.Invoke(nextTx) ?? true))
+                            (filter is null || filter.Invoke(nextTx)))
                         {
                             transactions.Add(nextTx, (enumerator, sumGasUsed, sumBlobs));
                         }
