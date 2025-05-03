@@ -29,7 +29,12 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
-    private static Channel<CodeInfo> _channel;
+    private static Channel<CodeInfo> _channel = Channel.CreateUnbounded<CodeInfo>(new UnboundedChannelOptions
+    {
+        SingleReader = true,
+        SingleWriter = false,
+        AllowSynchronousContinuations = true,
+    });
 
     private static Task? _workerTask;
     private static CancellationTokenSource _cts = new();
@@ -49,13 +54,6 @@ public static class IlAnalyzer
     }
     public static void StartPrecompilerBackgroundThread(IVMConfig config, ILogger logger)
     {
-        _channel ??= Channel.CreateUnbounded<CodeInfo>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            SingleWriter = false,
-            AllowSynchronousContinuations = true,
-        });
-
         if (_workerTask is not null && !_workerTask.IsCompleted)
         {
             return;
