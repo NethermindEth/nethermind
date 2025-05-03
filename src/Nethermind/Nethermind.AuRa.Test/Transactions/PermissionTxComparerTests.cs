@@ -276,7 +276,7 @@ namespace Nethermind.AuRa.Test.Transactions
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
 
 
-            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, 36_000_000).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }
 
