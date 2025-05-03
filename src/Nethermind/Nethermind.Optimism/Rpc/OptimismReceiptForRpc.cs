@@ -35,7 +35,6 @@ public class OptimismReceiptForRpc : ReceiptForRpc
             L1BlobBaseFee = l1GasInfo.L1BlobBaseFee;
             L1BlobBaseFeeScalar = l1GasInfo.L1BlobBaseFeeScalar;
 
-            // https://github.com/ethereum-optimism/op-geth/pull/388/files#diff-4b16f7fb21c263f620aaacd67ecfed1ce1f962b105a83c9f1955f84ed1c8b984R95-R96
             OperatorFeeScalar = l1GasInfo.OperatorFeeScalar;
             OperatorFeeConstant = l1GasInfo.OperatorFeeConstant;
         }

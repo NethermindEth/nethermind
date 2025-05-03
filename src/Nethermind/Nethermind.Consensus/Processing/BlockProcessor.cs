@@ -326,7 +326,7 @@ public partial class BlockProcessor(
         _blockhashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        var blkCtx = BuildBlockContext(block, spec);
+        var blkCtx = new BlockExecutionContext(block.Header, spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, blkCtx, options, ReceiptsTracer, spec, token);
 

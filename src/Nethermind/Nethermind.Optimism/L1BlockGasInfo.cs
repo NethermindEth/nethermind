@@ -28,7 +28,6 @@ public readonly struct L1TxGasInfo(
     public UInt256? L1BlobBaseFee { get; } = l1BlobBaseFee;
     public UInt256? L1BlobBaseFeeScalar { get; } = l1BlobBaseFeeScalar;
 
-    // https://github.com/ethereum-optimism/op-geth/pull/388/files#diff-4b16f7fb21c263f620aaacd67ecfed1ce1f962b105a83c9f1955f84ed1c8b984R95-R96
     public UInt32? OperatorFeeScalar { get; } = operatorFeeScalar;
     public UInt64? OperatorFeeConstant { get; } = operatorFeeConstant;
 }

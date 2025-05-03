@@ -14,9 +14,6 @@ namespace Nethermind.Optimism.Test;
 public static class Spec
 {
     public const ulong GenesisTimestamp = 1_000;
-
-    //private const ulong BedrockBlockNumber = 1_100;
-    //private const ulong RegolithTimestamp = 1_200;
     public const ulong CanyonTimestamp = 1_300;
     public const ulong HoloceneTimeStamp = 2_000;
     public const ulong IsthmusTimeStamp = 2_100;

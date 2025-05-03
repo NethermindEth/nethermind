@@ -75,7 +75,6 @@ public class OptimismHeaderValidator(
 
     private static class ErrorMessages
     {
-        public static readonly string RequestHashShouldBeNull = $"{nameof(BlockHeader.RequestsHash)} should be null for pre-Isthmus blocks";
         public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
     }
 }

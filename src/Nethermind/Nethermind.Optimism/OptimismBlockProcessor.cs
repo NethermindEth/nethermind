@@ -22,12 +22,10 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
-    private readonly IOptimismSpecHelper _specHelper;
     private readonly Create2DeployerContractRewriter? _contractRewriter;
 
     public OptimismBlockProcessor(
         ISpecProvider? specProvider,
-        IOptimismSpecHelper specHelper,
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
@@ -57,7 +55,6 @@ public class OptimismBlockProcessor : BlockProcessor
             preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
-        _specHelper = specHelper;
         _contractRewriter = contractRewriter;
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }

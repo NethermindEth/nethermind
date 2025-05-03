@@ -82,7 +82,6 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig)
     {
         return new OptimismBlockProcessor(specProvider,
-            _specHelper,
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),

@@ -26,7 +26,7 @@ public class OptimismWithdrawalTests
     private static readonly Hash256 ActualStorageRoot = new("0xf38f9f63c760d088d7dd04f743619b6291f63beebd8bdf530628f90e9cfa52d7");
 
     [TestCaseSource(nameof(WithdrawalsRootData))]
-    public void Withdrawals_Processing(ulong timestamp, Hash256? withdrawalHash)
+    public void WithdrawalsRoots_Should_Be_Set_According_To_Block_Timestamp(ulong timestamp, Hash256? withdrawalHash)
     {
         using var db = new MemDb();
         using var store = new TrieStore(db, TestLogManager.Instance);
