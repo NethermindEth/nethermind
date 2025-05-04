@@ -313,13 +313,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
             // The direct implementation is decorated by merge plugin (not the interface)
             // so its  declared on its own and other use is binded.
-            .AddSingleton<BlockDownloader>()
-            .Bind<IForwardSyncController, BlockDownloader>()
-
+            .AddScoped<BlockDownloader>()
             .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
-            .AddScoped<ISyncDownloader<BlocksRequest>, MultiBlockDownloader>()
+            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
 
-            .Add<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
+            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
             // For headers. There are two header scope, Fast and Beacon

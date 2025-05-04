@@ -68,8 +68,14 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                UInt256 remoteTotalDiff = info.TotalDifficulty;
-                if (remoteTotalDiff >= localTotalDiff && remoteTotalDiff - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
+                // TODO: this is not needed -> always wtapped
+                // if (info.TotalDifficulty <= localTotalDiff)
+                // {
+                //     // if we require higher difficulty then we need to discard peers with same diff as ours
+                //     continue;
+                // }
+
+                if (info.TotalDifficulty - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here
@@ -86,7 +92,7 @@ namespace Nethermind.Synchronization.Blocks
                     fastestPeer = (info, averageTransferSpeed);
                 }
 
-                if (remoteTotalDiff >= (bestDiffPeer.Info?.TotalDifficulty ?? UInt256.Zero))
+                if (info.TotalDifficulty >= (bestDiffPeer.Info?.TotalDifficulty ?? UInt256.Zero))
                 {
                     bestDiffPeer = (info, averageTransferSpeed);
                 }
@@ -103,9 +109,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             averageSpeed /= peersCount;
-            UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty > localTotalDiff
-                ? bestDiffPeer.Info.TotalDifficulty - localTotalDiff
-                : UInt256.Zero;
+            UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty - localTotalDiff;
 
             // at least 1 diff times 16 blocks of diff
             if (difficultyDifference > 0
