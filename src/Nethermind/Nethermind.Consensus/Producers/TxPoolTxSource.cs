@@ -214,12 +214,12 @@ namespace Nethermind.Consensus.Producers
             in UInt256 baseFee,
             ArrayPoolList<Transaction> selectedBlobTxs)
         {
-            int maxSize = leftoverCapacity + 1;
+            int maxCapacity = leftoverCapacity + 1;
             // The maximum total fee achievable with capacity
-            using ArrayPoolList<ulong> dpFeesPooled = new(capacity: maxSize, count: maxSize);
+            using ArrayPoolList<ulong> dpFeesPooled = new(capacity: maxCapacity, count: maxCapacity);
             Span<ulong> dpFees = dpFeesPooled.AsSpan();
 
-            using ArrayPoolBitMap isChosen = new(candidateTxs.Count * maxSize);
+            using ArrayPoolBitMap isChosen = new(candidateTxs.Count * maxCapacity);
 
             // Build up the DP table to find the maximum total fee for each capacity.
             // Outer loop: go through each transaction (1-based index).
@@ -290,10 +290,10 @@ namespace Nethermind.Consensus.Producers
                     {
                         dpFees[capacity] = candidateFee;
 
-                        isChosen[i * maxSize + capacity] = dependencyIndex < 0 ||
+                        isChosen[i * maxCapacity + capacity] = dependencyIndex < 0 ||
                             // with a dependency: only mark this tx as chosen
                             // if *its* predecessor was also marked in the smaller capacity.
-                            isChosen[dependencyIndex * maxSize + (capacity - blobCount)];
+                            isChosen[dependencyIndex * maxCapacity + (capacity - blobCount)];
                     }
                 }
             }
@@ -303,7 +303,7 @@ namespace Nethermind.Consensus.Producers
             int remainingCapacity = leftoverCapacity;
             for (int i = candidateTxs.Count - 1; i >= 0; i--)
             {
-                if (isChosen[i * maxSize + remainingCapacity])
+                if (isChosen[i * maxCapacity + remainingCapacity])
                 {
                     Transaction tx = candidateTxs[i];
                     int blobCount = tx.GetBlobCount();
