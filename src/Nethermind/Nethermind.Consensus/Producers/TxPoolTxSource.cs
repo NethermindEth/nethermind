@@ -242,7 +242,7 @@ namespace Nethermind.Consensus.Producers
                 // If this tx has explicit dependencies (i.e. it requires k prior blobs
                 // from the *same address* to be in the block before it), include them here.
                 // We'll need a capacity of blobDependenciesCount slots *plus* its own blobCount.
-                int blobCapacityNeeded = tx.blobDependenciesCount + blobCount;
+                int blobCapacityNeeded = tx.BlobDependenciesCount + blobCount;
                 // Compute the total fee this tx contributes (premium * gas used).
                 // Use actual gas used (SpentGas) when available as the tx may be using over-estimated gaslimit
                 ulong feeValue = (ulong)premiumPerGas * (ulong)tx.SpentGas;
@@ -396,7 +396,7 @@ namespace Nethermind.Consensus.Producers
                         continue;
                     }
 
-                    addedTx.blobDependenciesCount = blobCount;
+                    addedTx.BlobDependenciesCount = blobCount;
                     // we replace it by next transaction from same sender, on first call N5_P3 from B
                     if (enumerator.MoveNext())
                     {

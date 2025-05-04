@@ -198,7 +198,7 @@ namespace Nethermind.Core
 
         protected int? _size = null;
         [JsonIgnore]
-        internal int blobDependenciesCount;
+        internal int BlobDependenciesCount;
 
         /// <summary>
         /// Encoded transaction length

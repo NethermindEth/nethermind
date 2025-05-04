@@ -275,8 +275,9 @@ namespace Nethermind.AuRa.Test.Transactions
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
 
+            const int DefaultGasLimit = 36_000_000;
 
-            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, 36_000_000).ToArray();
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, DefaultGasLimit).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }
 
