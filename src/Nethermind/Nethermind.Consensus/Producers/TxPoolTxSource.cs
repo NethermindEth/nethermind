@@ -79,9 +79,6 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                bool success = filter.Invoke(tx);
-                if (!success) continue;
-
                 foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
                 {
                     yield return blobTx;
@@ -352,13 +349,13 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool>? filter = null, int maxBlobs = 0) =>
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool> filter, int maxBlobs = 0) =>
             Order(pendingTransactions, comparer, gasLimit, filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, long gasLimit, Func<Transaction, bool>? filter = null, int maxBlobs = 0)
+        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, long gasLimit, Func<Transaction, bool> filter, int maxBlobs = 0)
         {
             IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
                 .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
@@ -387,34 +384,33 @@ namespace Nethermind.Consensus.Producers
                 while (transactions.Count > 0)
                 {
                     // we take first transaction from sorting order, on first call: N4_P4 from B
-                    (Transaction addedTx, (IEnumerator<Transaction> enumerator, long gasUsed, int blobCount)) = transactions.Min;
+                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long gasUsed, int blobCount)) = transactions.Min;
 
-                    transactions.Remove(addedTx);
-                    if (filter is not null && !filter.Invoke(addedTx))
+                    transactions.Remove(candidateTx);
+
+                    long sumGasUsed = gasUsed + candidateTx.SpentGas;
+                    int sumBlobs = blobCount + candidateTx.GetBlobCount();
+                    if (sumGasUsed > gasLimit || sumBlobs > maxBlobs)
+                    {
+                        // Only add tx from sender if chain of blobs or tx still fit in gas
+                        continue;
+                    }
+
+                    if (!filter.Invoke(candidateTx))
                     {
                         // Cannot be added, so stop adding more txs from this sender
                         continue;
                     }
 
-                    addedTx.BlobDependenciesCount = blobCount;
+                    candidateTx.BlobDependenciesCount = blobCount;
                     // we replace it by next transaction from same sender, on first call N5_P3 from B
                     if (enumerator.MoveNext())
                     {
-                        long sumGasUsed = gasUsed + addedTx.SpentGas;
-                        int sumBlobs = blobCount + addedTx.GetBlobCount();
-
-                        Transaction nextTx = enumerator.Current!;
-                        // Only add next tx from sender if chain of blobs or tx still fit in gas
-                        if (sumGasUsed + nextTx.SpentGas <= gasLimit &&
-                            sumBlobs + nextTx.GetBlobCount() <= maxBlobs &&
-                            (filter is null || filter.Invoke(nextTx)))
-                        {
-                            transactions.Add(nextTx, (enumerator, sumGasUsed, sumBlobs));
-                        }
+                        transactions.Add(enumerator.Current!, (enumerator, sumGasUsed, sumBlobs));
                     }
 
                     // we return transactions in lazy manner, no need to sort more than will be taken into block
-                    yield return addedTx;
+                    yield return candidateTx;
                 }
             }
             finally
