@@ -50,6 +50,8 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
     public override byte ProtocolVersion => EthVersions.Eth69;
 
+    public override int MessageIdSpaceSize => 18;
+
     // For BlockRangeUpdate message
     // TODO: check if CanGossip can be used instead
     public override bool AlwaysNotifyOfNewBlock => true;
