@@ -455,7 +455,7 @@ namespace Nethermind.Consensus.Producers
                 DisposeEnumerators(bySenderEnumerators);
             }
         }
-        
+
         private static IEnumerator<Transaction>[] GetEnumerators(IDictionary<AddressAsKey, Transaction[]> pendingTransactions)
         {
             return pendingTransactions
