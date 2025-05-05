@@ -149,14 +149,15 @@ public static class Modexp
         offset += 32;
 
         // base
+        long initialBaseOffset = offset;
         for (int i = 0; i < baseSize / 32; i++)                                             // full words
         {
-            byte[] offsetInternal = offset.ToBigEndianByteArrayWithoutLeadingZeros();
-            codeToDeploy.Add((byte)Instruction.PUSH32);                                 // base
-            codeToDeploy.AddRange(Keccak.Compute(i.ToByteArray()).Bytes);            // kind of random value
-            codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
-            codeToDeploy.AddRange(offsetInternal);
-            codeToDeploy.Add((byte)Instruction.MSTORE);
+            // byte[] offsetInternal = offset.ToBigEndianByteArrayWithoutLeadingZeros();
+            // codeToDeploy.Add((byte)Instruction.PUSH32);                                 // base
+            // codeToDeploy.AddRange(Keccak.Compute(i.ToByteArray()).Bytes);            // kind of random value
+            // codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
+            // codeToDeploy.AddRange(offsetInternal);
+            // codeToDeploy.Add((byte)Instruction.MSTORE);
             offset += 32;
         }
         for (int i = 0; i < baseSize % 32; i++)                                             // single bytes
@@ -214,15 +215,24 @@ public static class Modexp
             offset += 1;
         }
 
-        long jumpDestPosition = codeToDeploy.Count;
-        byte[] jumpDestBytes = jumpDestPosition.ToBigEndianByteArrayWithoutLeadingZeros();
-        codeToDeploy.Add((byte)Instruction.JUMPDEST);
-        Console.WriteLine($"jumpdest: {jumpDestPosition}");
+        // long jumpDestPosition = codeToDeploy.Count;
+        // byte[] jumpDestBytes = jumpDestPosition.ToBigEndianByteArrayWithoutLeadingZeros();
+        // codeToDeploy.Add((byte)Instruction.JUMPDEST);
+        // Console.WriteLine($"jumpdest: {jumpDestPosition}");
 
         byte[] argsSize = ((long)(32 + 32 + 32 + baseSize + exponentAsBytes.Length + baseSize)).ToBigEndianByteArrayWithoutLeadingZeros();
 
         for (int i = 0; i < 1000; i++)
         {
+            // override base (one byte)
+            byte[] offsetInternal = (initialBaseOffset + i / 256).ToBigEndianByteArrayWithoutLeadingZeros();
+            codeToDeploy.Add((byte)Instruction.PUSH1);                                  // base
+            codeToDeploy.Add((byte)(i % 256));
+            codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
+            codeToDeploy.AddRange(offsetInternal);
+            codeToDeploy.Add((byte)Instruction.MSTORE8);
+
+
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)byteSizeOfBase.Length - 1));      // return size
             codeToDeploy.AddRange(byteSizeOfBase);
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)argsSize.Length - 1));            // return offset
@@ -238,11 +248,12 @@ public static class Modexp
             codeToDeploy.Add((byte)Instruction.POP);
         }
 
-        codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)jumpDestBytes.Length - 1));
-        codeToDeploy.AddRange(jumpDestBytes);
-        codeToDeploy.Add((byte)Instruction.JUMP);
+        // codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)jumpDestBytes.Length - 1));
+        // codeToDeploy.AddRange(jumpDestBytes);
+        // codeToDeploy.Add((byte)Instruction.JUMP);
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
+        string code = byteCode.ToArray().ToHexString();
         return byteCode.ToArray();
     }
 }
