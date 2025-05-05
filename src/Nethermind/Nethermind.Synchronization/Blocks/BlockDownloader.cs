@@ -336,7 +336,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (!_blockValidator.ValidateSuggestedBlock(block, out string? errorMessage))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block from {peer}, {errorMessage}");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
