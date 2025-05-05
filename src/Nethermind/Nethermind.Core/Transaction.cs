@@ -197,8 +197,6 @@ namespace Nethermind.Core
         public ulong PoolIndex { get; set; }
 
         protected int? _size = null;
-        [JsonIgnore]
-        internal int BlobDependenciesCount;
 
         /// <summary>
         /// Encoded transaction length

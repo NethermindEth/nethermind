@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Producers
             Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent);
 
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, gasLimit, filter);
-            IEnumerable<Transaction> blobTransactions = GetOrderedTransactions(pendingBlobTransactionsEquivalences, comparer, gasLimit, filter, (int)spec.MaxBlobCount);
+            IEnumerable<(Transaction tx, int blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -118,13 +118,13 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<(Transaction tx, int blobChain)> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int maxBlobsPerBlock = (int)spec.MaxBlobCount;
             int countOfRemainingBlobs = 0;
 
-            ArrayPoolList<Transaction>? candidates = null;
-            foreach (Transaction blobTx in blobTransactions)
+            ArrayPoolList<(Transaction tx, int blobChain)>? candidates = null;
+            foreach ((Transaction blobTx, int blobChain) in blobTransactions)
             {
                 int txBlobCount = blobTx.GetBlobCount();
                 if (txBlobCount > maxBlobsPerBlock)
@@ -168,7 +168,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     candidates ??= new(16);
 
-                    candidates.Add(fullBlobTx);
+                    candidates.Add((fullBlobTx, blobChain));
                     countOfRemainingBlobs += txBlobCount;
                 }
             }
@@ -185,7 +185,7 @@ namespace Nethermind.Consensus.Producers
                     // We can take all, no optimal picking needed.
                     foreach (var tx in candidates.AsSpan())
                     {
-                        selectedBlobTxs.Add(tx);
+                        selectedBlobTxs.Add(tx.tx);
                     }
                 }
                 else
@@ -209,7 +209,7 @@ namespace Nethermind.Consensus.Producers
         /// Existing entries remain untouched; chosen ones are appended at the end.
         /// </param>
         private static void ChooseBestBlobTransactions(
-            ArrayPoolList<Transaction> candidateTxs,
+            ArrayPoolList<(Transaction tx, int blobChain)> candidateTxs,
             int leftoverCapacity,
             in UInt256 baseFee,
             ArrayPoolList<Transaction> selectedBlobTxs)
@@ -226,7 +226,7 @@ namespace Nethermind.Consensus.Producers
             // Inner loop: iterate capacity in descending order to avoid overwriting data needed for the calculation.
             for (int i = 0; i < candidateTxs.Count; i++)
             {
-                Transaction tx = candidateTxs[i];
+                (Transaction tx, int blobChain) = candidateTxs[i];
 
                 if (!tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
                 {
@@ -239,7 +239,7 @@ namespace Nethermind.Consensus.Producers
                 // If this tx has explicit dependencies (i.e. it requires k prior blobs
                 // from the *same address* to be in the block before it), include them here.
                 // We'll need a capacity of blobDependenciesCount slots *plus* its own blobCount.
-                int blobCapacityNeeded = tx.BlobDependenciesCount + blobCount;
+                int blobCapacityNeeded = blobChain + blobCount;
                 // Compute the total fee this tx contributes (premium * gas used).
                 // Use actual gas used (SpentGas) when available as the tx may be using over-estimated gaslimit
                 ulong feeValue = (ulong)premiumPerGas * (ulong)tx.SpentGas;
@@ -255,7 +255,7 @@ namespace Nethermind.Consensus.Producers
                     // this ensures we only link to the immediate prior-nonce.
                     for (int j = i - 1; j >= 0; j--)
                     {
-                        Transaction required = candidateTxs[j];
+                        Transaction required = candidateTxs[j].tx;
                         if (required.SenderAddress == tx.SenderAddress)
                         {
                             if (required.Nonce + 1 == tx.Nonce)
@@ -305,7 +305,7 @@ namespace Nethermind.Consensus.Producers
             {
                 if (isChosen[i * maxCapacity + remainingCapacity])
                 {
-                    Transaction tx = candidateTxs[i];
+                    Transaction tx = candidateTxs[i].tx;
                     int blobCount = tx.GetBlobCount();
                     selectedBlobTxs.Add(tx);
                     remainingCapacity -= blobCount;
@@ -349,18 +349,18 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool> filter, int maxBlobs = 0) =>
-            Order(pendingTransactions, comparer, gasLimit, filter, maxBlobs);
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool> filter) =>
+            Order(pendingTransactions, comparer, gasLimit, filter);
+
+        protected IEnumerable<(Transaction tx, int blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
+            OrderBlobs(pendingTransactions, comparer, filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, long gasLimit, Func<Transaction, bool> filter, int maxBlobs = 0)
         {
-            IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
-                .Select(static g => g.GetEnumerator())
-                .ToArray();
+            IEnumerator<Transaction>[] bySenderEnumerators = GetEnumerators(pendingTransactions);
 
             try
             {
@@ -368,29 +368,67 @@ namespace Nethermind.Consensus.Producers
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long gasUsed, int blobCount)> transactions = new(comparerWithIdentity);
-
-                for (int i = 0; i < bySenderEnumerators.Length; i++)
-                {
-                    IEnumerator<Transaction> enumerator = bySenderEnumerators[i];
-                    if (enumerator.MoveNext())
-                    {
-                        Transaction current = enumerator.Current!;
-                        transactions.Add(current, (enumerator, 0, 0));
-                    }
-                }
+                DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long gasChain)> transactions = SortEnumerators(bySenderEnumerators, comparerWithIdentity);
 
                 // while there are still unreturned transactions
                 while (transactions.Count > 0)
                 {
                     // we take first transaction from sorting order, on first call: N4_P4 from B
-                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long gasUsed, int blobCount)) = transactions.Min;
+                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long gasChain)) = transactions.Min;
 
                     transactions.Remove(candidateTx);
 
-                    long sumGasUsed = gasUsed + candidateTx.SpentGas;
-                    int sumBlobs = blobCount + candidateTx.GetBlobCount();
-                    if (sumGasUsed > gasLimit || sumBlobs > maxBlobs)
+                    long sumGasUsed = gasChain + candidateTx.SpentGas;
+                    if (sumGasUsed > gasLimit)
+                    {
+                        // Only add tx from sender if chain of tx still fit in gas
+                        continue;
+                    }
+
+                    if (!filter.Invoke(candidateTx))
+                    {
+                        // Cannot be added, so stop adding more txs from this sender
+                        continue;
+                    }
+
+                    // we replace it by next transaction from same sender, on first call N5_P3 from B
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, (enumerator, sumGasUsed));
+                    }
+
+                    // we return transactions in lazy manner, no need to sort more than will be taken into block
+                    yield return candidateTx;
+                }
+            }
+            finally
+            {
+                DisposeEnumerators(bySenderEnumerators);
+            }
+        }
+
+        internal static IEnumerable<(Transaction tx, int blobChain)> OrderBlobs(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, Func<Transaction, bool> filter, int maxBlobs)
+        {
+            IEnumerator<Transaction>[] bySenderEnumerators = GetEnumerators(pendingTransactions);
+
+            try
+            {
+                // we create a sorted list of head of each group of transactions. From:
+                // A -> N0_P3, N1_P1, N1_P0, N3_P5...
+                // B -> N4_P4, N5_P3, N6_P3...
+                // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
+                DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long blobChain)> transactions = SortEnumerators(bySenderEnumerators, comparerWithIdentity);
+
+                // while there are still unreturned transactions
+                while (transactions.Count > 0)
+                {
+                    // we take first transaction from sorting order, on first call: N4_P4 from B
+                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long blobChain)) = transactions.Min;
+
+                    transactions.Remove(candidateTx);
+
+                    long sumBlobs = blobChain + candidateTx.GetBlobCount();
+                    if (sumBlobs > maxBlobs)
                     {
                         // Only add tx from sender if chain of blobs or tx still fit in gas
                         continue;
@@ -402,24 +440,53 @@ namespace Nethermind.Consensus.Producers
                         continue;
                     }
 
-                    candidateTx.BlobDependenciesCount = blobCount;
                     // we replace it by next transaction from same sender, on first call N5_P3 from B
                     if (enumerator.MoveNext())
                     {
-                        transactions.Add(enumerator.Current!, (enumerator, sumGasUsed, sumBlobs));
+                        transactions.Add(enumerator.Current!, (enumerator, sumBlobs));
                     }
 
                     // we return transactions in lazy manner, no need to sort more than will be taken into block
-                    yield return candidateTx;
+                    yield return (candidateTx, (int)blobChain);
                 }
             }
             finally
             {
-                // disposing enumerators
-                for (int i = 0; i < bySenderEnumerators.Length; i++)
+                DisposeEnumerators(bySenderEnumerators);
+            }
+        }
+        
+        private static IEnumerator<Transaction>[] GetEnumerators(IDictionary<AddressAsKey, Transaction[]> pendingTransactions)
+        {
+            return pendingTransactions
+                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
+                .Select(static g => g.GetEnumerator())
+                .ToArray();
+        }
+
+        private static DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long)> SortEnumerators(IEnumerator<Transaction>[] bySenderEnumerators, IComparer<Transaction> comparerWithIdentity)
+        {
+            DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long)> transactions
+                = new(comparerWithIdentity);
+
+            for (int i = 0; i < bySenderEnumerators.Length; i++)
+            {
+                IEnumerator<Transaction> enumerator = bySenderEnumerators[i];
+                if (enumerator.MoveNext())
                 {
-                    bySenderEnumerators[i].Dispose();
+                    Transaction current = enumerator.Current!;
+                    transactions.Add(current, (enumerator, 0));
                 }
+            }
+
+            return transactions;
+        }
+
+        private static void DisposeEnumerators(IEnumerator<Transaction>[] bySenderEnumerators)
+        {
+            for (int i = 0; i < bySenderEnumerators.Length; i++)
+            {
+                bySenderEnumerators[i].Dispose();
             }
         }
 
