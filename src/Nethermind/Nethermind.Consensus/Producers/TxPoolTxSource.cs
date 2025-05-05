@@ -139,9 +139,6 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                bool success = _txFilterPipeline.Execute(blobTx, parent);
-                if (!success) continue;
-
                 if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
@@ -354,13 +351,13 @@ namespace Nethermind.Consensus.Producers
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, long blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
-            OrderCore(pendingTransactions, comparer, tx => tx.GetBlobCount(), filter, maxBlobs);
+            OrderCore(pendingTransactions, comparer, static tx => tx.GetBlobCount(), filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
-            OrderCore(pendingTransactions, comparer, tx => tx.SpentGas, filter, gasLimit).Select(static tx => tx.tx);
+            OrderCore(pendingTransactions, comparer, static tx => tx.SpentGas, filter, gasLimit).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, long resource)> OrderCore(
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions,
