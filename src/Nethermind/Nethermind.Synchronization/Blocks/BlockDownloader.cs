@@ -207,11 +207,6 @@ namespace Nethermind.Synchronization.Blocks
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
-                if (!shouldProcess)
-                {
-                    _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                }
-
                 if (downloadReceipts)
                 {
                     if (receipts is not null)
@@ -232,7 +227,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                _blockTree.UpdateMainChain([currentBlock], false);
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);

@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
@@ -25,10 +26,12 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -46,7 +49,6 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Taiko;
@@ -54,6 +56,7 @@ using Nethermind.Taiko.TaikoSpec;
 using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;
+using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Runner.Test;
 
@@ -182,11 +185,23 @@ public class EthereumRunnerTests
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
+
+        // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
+        Build.MockOutNethermindApi((NethermindApi)api);
+
+        api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
+        api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
+        var ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
+        api.IpResolver = ipResolver;
+
+        api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.DbProvider = Substitute.For<IDbProvider>();
-        api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
+        api.ReceiptFinder = Substitute.For<IReceiptFinder>();
+        api.DbProvider = await TestMemDbProvider.InitAsync();
+        api.EthereumEcdsa = new EthereumEcdsa(runner.LifetimeScope.Resolve<ISpecProvider>());
 
         try
         {
@@ -197,10 +212,6 @@ public class EthereumRunnerTests
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-
-            // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
-            Build.MockOutNethermindApi((NethermindApi)api);
-
             foreach (var propertyInfo in api.GetType().Properties())
             {
                 // Property with `SkipServiceCollection` make property from container.
