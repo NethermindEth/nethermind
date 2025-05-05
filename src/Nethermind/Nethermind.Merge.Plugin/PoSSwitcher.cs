@@ -52,6 +52,8 @@ namespace Nethermind.Merge.Plugin
         private bool _terminalBlockExplicitSpecified;
         private UInt256? _finalTotalDifficulty;
 
+        private bool _transitionFired = false;
+
         public PoSSwitcher(
             IMergeConfig mergeConfig,
             ISyncConfig syncConfig,
@@ -117,8 +119,9 @@ namespace Nethermind.Merge.Plugin
 
         private void CheckTransitioned()
         {
-            if (TransitionFinished)
+            if (!_transitionFired && TransitionFinished)
             {
+                _transitionFired = true;
                 Transitioned?.Invoke(this, EventArgs.Empty);
             }
         }
