@@ -186,7 +186,7 @@ public class OptimismCLP2P : IDisposable
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Unable to request payload. Exception: {e}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to request payload {payloadNumber} ({expectedHash}). Exception: {e}");
             return null;
         }
     }
@@ -282,7 +282,7 @@ public class OptimismCLP2P : IDisposable
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Error($"Unable to Dial peer {remotePeer}. Exception: {e.Message}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to Dial peer {remotePeer}. Exception: {e.Message}");
             return null;
         }
     }

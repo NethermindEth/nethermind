@@ -15,11 +15,7 @@ public class PeerManager(ILogger logger) : IPeerManager
 
     public IEnumerable<Multiaddress> GetPeers()
     {
-        foreach (var peer in _peers)
-        {
-            logger.Error($"Rating {peer.Item1}, Peer {peer.Item2}");
-        }
-        return _peers.ToList().Select(p => p.Item2);
+        return _peers.ToList().Select(p => p.Item2).Reverse();
     }
 
     public void AddActivePeer(Multiaddress peer)
@@ -37,7 +33,7 @@ public class PeerManager(ILogger logger) : IPeerManager
 
     public void IncreaseRating(Multiaddress peer)
     {
-        if (logger.IsWarn) logger.Warn($"Increasing rating from {_ratings[peer]} for peer {peer}");
+        if (logger.IsTrace) logger.Trace($"Increasing rating from {_ratings[peer]} for peer {peer}");
         _peers.Remove((_ratings[peer], peer));
         _ratings[peer]++;
         _peers.Add((_ratings[peer], peer));
@@ -45,7 +41,7 @@ public class PeerManager(ILogger logger) : IPeerManager
 
     public void DecreaseRating(Multiaddress peer)
     {
-        if (logger.IsWarn) logger.Warn($"Decreasing rating from {_ratings[peer]} for peer {peer}");
+        if (logger.IsTrace) logger.Trace($"Decreasing rating from {_ratings[peer]} for peer {peer}");
         _peers.Remove((_ratings[peer], peer));
         _ratings[peer]--;
         _peers.Add((_ratings[peer], peer));
