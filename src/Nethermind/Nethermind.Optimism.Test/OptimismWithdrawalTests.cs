@@ -59,7 +59,7 @@ public class OptimismWithdrawalTests
         // This will make the storage root of ActualStorageRoot
         state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [1]);
 
-        var processor = new OptimismWithdrawals.Processor(state, TestLogManager.Instance, Spec.Instance);
+        var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
         processor.ProcessWithdrawals(block, releaseSpec);
 
         if (withdrawalHash == null)
@@ -86,7 +86,7 @@ public class OptimismWithdrawalTests
         using var store = new TrieStore(db, TestLogManager.Instance);
 
         var state = new WorldState(store, NullDb.Instance, TestLogManager.Instance);
-        var processor = new OptimismWithdrawals.Processor(state, TestLogManager.Instance, Spec.Instance);
+        var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
         var releaseSpec = Substitute.For<IReleaseSpec>();
 
         // Initialize the storage root

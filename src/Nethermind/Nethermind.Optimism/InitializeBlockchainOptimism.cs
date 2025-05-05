@@ -83,7 +83,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
-            new OptimismWithdrawals.Processor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
+            new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
             preWarmer: preWarmer);
     }
 

@@ -11,46 +11,43 @@ using Nethermind.State;
 namespace Nethermind.Optimism;
 
 /// <summary>
-/// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#l2tol1messagepasser-storage-root-in-header
+/// The withdrawal processor for optimism.
 /// </summary>
-public static class OptimismWithdrawals
+/// <remarks>
+/// Constructed over the world state so that it can construct the proper withdrawals hash just before commitment.
+/// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#l2tol1messagepasser-storage-root-in-header
+/// </remarks>
+public class OptimismWithdrawalProcessor : IWithdrawalProcessor
 {
-    /// <summary>
-    /// The withdrawals processor for optimism.
-    /// </summary>
-    /// <remarks>Constructed over the world state so that it can construct the proper withdrawals hash just before committment.</remarks>
-    public class Processor : IWithdrawalProcessor
+    private readonly IWorldState _state;
+    private readonly IOptimismSpecHelper _specHelper;
+    private readonly ILogger _logger;
+
+    public OptimismWithdrawalProcessor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper)
     {
-        private readonly IWorldState _state;
-        private readonly IOptimismSpecHelper _specHelper;
-        private readonly ILogger _logger;
+        _state = state;
+        _specHelper = specHelper;
+        _logger = logManager.GetClassLogger();
+    }
 
-        public Processor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    {
+        var header = block.Header;
+
+        if (_specHelper.IsIsthmus(header))
         {
-            _state = state;
-            _specHelper = specHelper;
-            _logger = logManager.GetClassLogger();
-        }
+            _state.Commit(spec, commitRoots: true);
 
-        public void ProcessWithdrawals(Block block, IReleaseSpec spec)
-        {
-            var header = block.Header;
-
-            if (_specHelper.IsIsthmus(header))
+            if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
             {
-                _state.Commit(spec, commitRoots: true);
+                if (_logger.IsDebug)
+                    _logger.Debug($"Setting {nameof(BlockHeader.WithdrawalsRoot)} to {account.StorageRoot}");
 
-                if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
-                {
-                    if (_logger.IsDebug)
-                        _logger.Debug($"Setting {nameof(BlockHeader.WithdrawalsRoot)} to {account.StorageRoot}");
-
-                    header.WithdrawalsRoot = new Hash256(account.StorageRoot);
-                }
-                else
-                {
-                    header.WithdrawalsRoot = Keccak.EmptyTreeHash;
-                }
+                header.WithdrawalsRoot = new Hash256(account.StorageRoot);
+            }
+            else
+            {
+                header.WithdrawalsRoot = Keccak.EmptyTreeHash;
             }
         }
     }
