@@ -273,9 +273,10 @@ public partial class BlockDownloaderTests
         await using IContainer node = mergeDownloader ? CreateMergeNode() : CreateNode();
         Context ctx = node.Resolve<Context>();
 
+        Response responseOptions = Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown | Response.Consistent;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown));
+            .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), responseOptions));
 
         List<Hash256> requestedHashes = new();
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
@@ -295,7 +296,7 @@ public partial class BlockDownloaderTests
                 }
 
                 BlockBody?[] response = ctx.ResponseBuilder
-                    .BuildBlocksResponse(blockHashes, Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown)
+                    .BuildBlocksResponse(blockHashes, responseOptions)
                     .Result
                     .Bodies!;
 
@@ -410,12 +411,13 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(Always.Invalid));
         Context ctx = node.Resolve<Context>();
 
+        Response options = Response.AllCorrect | Response.Consistent;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), options));
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.JustFirst));
+            .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), options | Response.JustFirst));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000);
@@ -424,6 +426,7 @@ public partial class BlockDownloaderTests
         BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
         await ctx.FullSyncFeedComponent.Downloader.Dispatch(peerInfo, blockRequest, default);
         ctx.Feed.HandleResponse(blockRequest, peerInfo);
+        _ = await ctx.Feed.PrepareRequest(default); // The block is validated here.
 
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
@@ -1249,11 +1252,17 @@ public partial class BlockDownloaderTests
                         blockHeaderBuilder.WithReceiptsRoot(Keccak.Compute("something"));
                     }
 
-                    headers[i] = blockHeaderBuilder.TestObject;
+                    BlockHeader header = blockHeaderBuilder.TestObject;
+                    if (consistent && !_bodies.ContainsKey(header.Hash!))
+                    {
+                        Block block = BuildBlockForHeader(header, i, withTransaction);
+                        _bodies[header.Hash!] = block.Body;
+                    }
+                    headers[i] = header;
 
                     if (allKnown)
                     {
-                        _blockTree.SuggestHeader(headers[i]);
+                        _blockTree.SuggestHeader(header);
                     }
 
                     _testHeaderMapping[startNumber + i] = headers[i].Hash!;
@@ -1295,20 +1304,7 @@ public partial class BlockDownloaderTests
             BlockHeader[] blockHeaders = new BlockHeader[blockHashes.Count];
             BlockBody[] blockBodies = new BlockBody[blockHashes.Count];
 
-            Block BuildBlockForHeader(BlockHeader header, int txSeed)
-            {
-                BlockBuilder blockBuilder = Build.A.Block.WithHeader(header);
-
-                if (withTransactions && header.TxRoot != Keccak.EmptyTreeHash)
-                {
-                    blockBuilder.WithTransactions(Build.A.Transaction.WithValue(txSeed * 2).SignedAndResolved().TestObject,
-                        Build.A.Transaction.WithValue(txSeed * 2 + 1).SignedAndResolved().TestObject);
-                }
-
-                return blockBuilder.TestObject;
-            }
-
-            blockBodies[0] = BuildBlockForHeader(startHeader, 0).Body;
+            blockBodies[0] = BuildBlockForHeader(startHeader, 0, withTransactions).Body;
             blockHeaders[0] = startHeader;
 
             _bodies[startHeader.Hash!] = blockBodies[0];
@@ -1327,13 +1323,16 @@ public partial class BlockDownloaderTests
                         ? blockHeaders[i]
                         : blockHeaders[i - 1];
 
-                    Block block = BuildBlockForHeader(header, i);
-                    blockBodies[i] = block.Body;
+                    BlockBody body = consistent
+                        ? _bodies[blockHashes[i]]
+                        : BuildBlockForHeader(header, i, withTransactions).Body;
+
+                    blockBodies[i] = body;
                     _bodies[blockHashes[i]] = blockBodies[i];
 
                     if (allKnown)
                     {
-                        _blockTree.SuggestBlock(block);
+                        _blockTree.SuggestBlock(new Block(header, body));
                     }
                 }
             }
@@ -1341,6 +1340,21 @@ public partial class BlockDownloaderTests
             using BlockBodiesMessage message = new(blockBodies);
             byte[] messageSerialized = _bodiesSerializer.Serialize(message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
+        }
+
+        private Block BuildBlockForHeader(BlockHeader header, int txSeed, bool withTransactions)
+        {
+            BlockBuilder blockBuilder = Build.A.Block.WithHeader(header);
+
+            if (withTransactions && header.TxRoot != Keccak.EmptyTreeHash)
+            {
+                blockBuilder.WithTransactions(
+                    Build.A.Transaction.WithValue(txSeed * 2).SignedAndResolved().TestObject,
+                    Build.A.Transaction.WithValue(txSeed * 2 + 1).SignedAndResolved().TestObject);
+            }
+
+            Block block = blockBuilder.TestObject;
+            return block;
         }
 
         public async Task<IOwnedReadOnlyList<TxReceipt[]?>> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)

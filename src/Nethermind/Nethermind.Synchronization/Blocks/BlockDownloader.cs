@@ -162,7 +162,10 @@ namespace Nethermind.Synchronization.Blocks
 
                         if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
                         entry.RetryBlockRequest();
-                        break;
+
+                        // At this point, the chain is somehow invalid. `IForwardHeaderProvider` returned a chain whose block
+                        // is interpreted as invalid. `IForwardHeaderProvider` need to provide a different chain later on.
+                        return null;
                     }
 
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
@@ -340,11 +343,11 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if (!BlockValidator.ValidateBodyAgainstHeader(entry.Header, body))
+                if (!BlockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, Header hash mismatch");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
 
-                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid body received: Header hash mismatch. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryBlockRequest();
                     continue;
