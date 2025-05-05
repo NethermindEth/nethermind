@@ -25,7 +25,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
 
-    public ArrayPoolList(int capacity, ReadOnlySpan<T> span) : this(capacity) => AddRange(span);
+    public ArrayPoolList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
 
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
     {
