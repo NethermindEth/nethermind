@@ -11,6 +11,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -22,27 +23,19 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class TxPoolTxSource : ITxSource
+    public class TxPoolTxSource(
+        ITxPool? transactionPool,
+        ISpecProvider? specProvider,
+        ITransactionComparerProvider? transactionComparerProvider,
+        ILogManager? logManager,
+        ITxFilterPipeline? txFilterPipeline)
+        : ITxSource
     {
-        private readonly ITxPool _transactionPool;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly ITxFilterPipeline _txFilterPipeline;
-        private readonly ISpecProvider _specProvider;
-        protected readonly ILogger _logger;
-
-        public TxPoolTxSource(
-            ITxPool? transactionPool,
-            ISpecProvider? specProvider,
-            ITransactionComparerProvider? transactionComparerProvider,
-            ILogManager? logManager,
-            ITxFilterPipeline? txFilterPipeline)
-        {
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
-            _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+        private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
+        private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
@@ -58,7 +51,7 @@ namespace Nethermind.Consensus.Producers
 
             Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent);
 
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, gasLimit, filter);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
             IEnumerable<(Transaction tx, int blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
@@ -349,129 +342,71 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool> filter) =>
-            Order(pendingTransactions, comparer, gasLimit, filter);
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
+            Order(pendingTransactions, comparer, filter, gasLimit);
 
-        protected static IEnumerable<(Transaction tx, int blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
-            OrderBlobs(pendingTransactions, comparer, filter, maxBlobs);
+        private static IEnumerable<(Transaction tx, int blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
+            OrderCore(pendingTransactions, comparer, tx => tx.GetBlobCount(), static (tx, chain) => (tx, (int)chain), filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, long gasLimit, Func<Transaction, bool> filter, int maxBlobs = 0)
+        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
+            OrderCore(pendingTransactions, comparer, tx => tx.SpentGas, static (tx, _) => tx, filter, gasLimit);
+
+        private static IEnumerable<TResult> OrderCore<TResult>(
+            IDictionary<AddressAsKey, Transaction[]> pendingTransactions,
+            IComparer<Transaction> comparer,
+            Func<Transaction, long> resourceSelector,
+            Func<Transaction, long, TResult> resultSelector,
+            Func<Transaction, bool> filter,
+            long resourceLimit)
         {
-            IEnumerator<Transaction>[] bySenderEnumerators = GetEnumerators(pendingTransactions);
-
-            try
-            {
-                // we create a sorted list of head of each group of transactions. From:
-                // A -> N0_P3, N1_P1, N1_P0, N3_P5...
-                // B -> N4_P4, N5_P3, N6_P3...
-                // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long gasChain)> transactions = SortEnumerators(bySenderEnumerators, comparerWithIdentity);
-
-                // while there are still unreturned transactions
-                while (transactions.Count > 0)
-                {
-                    // we take first transaction from sorting order, on first call: N4_P4 from B
-                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long gasChain)) = transactions.Min;
-
-                    transactions.Remove(candidateTx);
-
-                    long sumGasUsed = gasChain + candidateTx.SpentGas;
-                    if (sumGasUsed > gasLimit)
-                    {
-                        // Only add tx from sender if chain of tx still fit in gas
-                        continue;
-                    }
-
-                    if (!filter.Invoke(candidateTx))
-                    {
-                        // Cannot be added, so stop adding more txs from this sender
-                        continue;
-                    }
-
-                    // we replace it by next transaction from same sender, on first call N5_P3 from B
-                    if (enumerator.MoveNext())
-                    {
-                        transactions.Add(enumerator.Current!, (enumerator, sumGasUsed));
-                    }
-
-                    // we return transactions in lazy manner, no need to sort more than will be taken into block
-                    yield return candidateTx;
-                }
-            }
-            finally
-            {
-                DisposeEnumerators(bySenderEnumerators);
-            }
-        }
-
-        internal static IEnumerable<(Transaction tx, int blobChain)> OrderBlobs(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity, Func<Transaction, bool> filter, int maxBlobs)
-        {
-            IEnumerator<Transaction>[] bySenderEnumerators = GetEnumerators(pendingTransactions);
-
-            try
-            {
-                // we create a sorted list of head of each group of transactions. From:
-                // A -> N0_P3, N1_P1, N1_P0, N3_P5...
-                // B -> N4_P4, N5_P3, N6_P3...
-                // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long blobChain)> transactions = SortEnumerators(bySenderEnumerators, comparerWithIdentity);
-
-                // while there are still unreturned transactions
-                while (transactions.Count > 0)
-                {
-                    // we take first transaction from sorting order, on first call: N4_P4 from B
-                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long blobChain)) = transactions.Min;
-
-                    transactions.Remove(candidateTx);
-
-                    long sumBlobs = blobChain + candidateTx.GetBlobCount();
-                    if (sumBlobs > maxBlobs)
-                    {
-                        // Only add tx from sender if chain of blobs or tx still fit in gas
-                        continue;
-                    }
-
-                    if (!filter.Invoke(candidateTx))
-                    {
-                        // Cannot be added, so stop adding more txs from this sender
-                        continue;
-                    }
-
-                    // we replace it by next transaction from same sender, on first call N5_P3 from B
-                    if (enumerator.MoveNext())
-                    {
-                        transactions.Add(enumerator.Current!, (enumerator, sumBlobs));
-                    }
-
-                    // we return transactions in lazy manner, no need to sort more than will be taken into block
-                    yield return (candidateTx, (int)blobChain);
-                }
-            }
-            finally
-            {
-                DisposeEnumerators(bySenderEnumerators);
-            }
-        }
-
-        private static IEnumerator<Transaction>[] GetEnumerators(IDictionary<AddressAsKey, Transaction[]> pendingTransactions)
-        {
-            return pendingTransactions
+            using ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators = pendingTransactions
                 .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
                 .Select(static g => g.GetEnumerator())
-                .ToArray();
+                .ToPooledList(pendingTransactions.Count);
+
+            try
+            {
+                DictionarySortedSet<Transaction, (IEnumerator<Transaction>, long)> transactions = SortEnumerators(bySenderEnumerators, comparer);
+
+                while (transactions.Count > 0)
+                {
+                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, long resourceChain)) = transactions.Min;
+
+                    transactions.Remove(candidateTx);
+
+                    long totalResource = resourceChain + resourceSelector(candidateTx);
+                    if (totalResource > resourceLimit)
+                        continue;
+
+                    if (!filter(candidateTx))
+                        continue;
+
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, (enumerator, totalResource));
+                    }
+
+                    yield return resultSelector(candidateTx, resourceChain);
+                }
+            }
+            finally
+            {
+                foreach (IEnumerator<Transaction> t in bySenderEnumerators.AsSpan())
+                {
+                    t.Dispose();
+                }
+            }
         }
 
-        private static DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long)> SortEnumerators(IEnumerator<Transaction>[] bySenderEnumerators, IComparer<Transaction> comparerWithIdentity)
+        private static DictionarySortedSet<Transaction, (IEnumerator<Transaction>, long)> SortEnumerators(ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators, IComparer<Transaction> comparerWithIdentity)
         {
-            DictionarySortedSet<Transaction, (IEnumerator<Transaction> enumerator, long)> transactions
-                = new(comparerWithIdentity);
+            DictionarySortedSet<Transaction, (IEnumerator<Transaction>, long)> transactions = new(comparerWithIdentity);
 
-            for (int i = 0; i < bySenderEnumerators.Length; i++)
+            foreach (IEnumerator<Transaction> enumerator in bySenderEnumerators.AsSpan())
             {
-                IEnumerator<Transaction> enumerator = bySenderEnumerators[i];
                 if (enumerator.MoveNext())
                 {
                     Transaction current = enumerator.Current!;
@@ -480,14 +415,6 @@ namespace Nethermind.Consensus.Producers
             }
 
             return transactions;
-        }
-
-        private static void DisposeEnumerators(IEnumerator<Transaction>[] bySenderEnumerators)
-        {
-            for (int i = 0; i < bySenderEnumerators.Length; i++)
-            {
-                bySenderEnumerators[i].Dispose();
-            }
         }
 
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;
