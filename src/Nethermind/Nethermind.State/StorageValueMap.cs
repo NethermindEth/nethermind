@@ -34,11 +34,11 @@ internal sealed class StorageValueMap : IDisposable
     private readonly object _owner;
     private readonly uint _size;
 
-    public unsafe StorageValueMap(object owner, uint size = DefaultSize)
+    public unsafe StorageValueMap(uint size = DefaultSize, object? owner = null)
     {
         Debug.Assert(BitOperations.IsPow2(size));
 
-        _owner = owner;
+        _owner = owner ?? this;
         _size = size;
 
         _values = (StorageValue*)NativeMemory.AlignedAlloc(StorageValuesSize, StorageValue.MemorySize);
