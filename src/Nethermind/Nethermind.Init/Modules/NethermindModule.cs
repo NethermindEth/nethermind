@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -13,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
@@ -34,6 +36,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         builder
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
+            .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
+            .AddModule(new WorldStateModule())
             .AddModule(new BuiltInStepsModule())
             .AddModule(new RpcModules())
             .AddModule(new EraModule())
@@ -50,6 +54,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
+
+            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
             ;
     }
 
