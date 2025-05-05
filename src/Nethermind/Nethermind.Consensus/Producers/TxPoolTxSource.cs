@@ -117,6 +117,12 @@ namespace Nethermind.Consensus.Producers
             int maxBlobsToConsider = maxBlobsPerBlock * 5;
             int countOfRemainingBlobs = 0;
 
+            if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining blobs, failed to calculate gas price.");
+                return;
+            }
+
             ArrayPoolList<(Transaction tx, long blobChain)>? candidates = null;
             foreach ((Transaction blobTx, long blobChain) in blobTransactions)
             {
@@ -124,12 +130,6 @@ namespace Nethermind.Consensus.Producers
                 if (txBlobCount > maxBlobsPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
-                    continue;
-                }
-
-                if (!TryUpdateFeePerBlobGas(blobTx, parent, spec, out UInt256 feePerBlobGas))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     continue;
                 }
 
@@ -327,19 +327,19 @@ namespace Nethermind.Consensus.Producers
             return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
 
-        private bool TryUpdateFeePerBlobGas(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
+        private bool TryUpdateFeePerBlobGas(BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
         {
             ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             if (excessDataGas is null)
             {
-                if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
+                if (_logger.IsTrace) _logger.Trace($"Declining blobs, the specification is not configured to handle shard blob transactions.");
                 feePerBlobGas = UInt256.Zero;
                 return false;
             }
 
             if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas))
             {
-                if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
+                if (_logger.IsTrace) _logger.Trace($"Declining blobs, failed to calculate data gas price.");
                 feePerBlobGas = UInt256.Zero;
                 return false;
             }
