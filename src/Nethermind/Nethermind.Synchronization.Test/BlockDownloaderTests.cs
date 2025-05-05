@@ -1253,7 +1253,7 @@ public partial class BlockDownloaderTests
                     Hash256 receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Hash256("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                     if (headers[i - 1] == null)
                     {
-                        Console.Error.WriteLine($"No header found for number {i-1}. Looking for {i} {consistent}");
+                        Console.Error.WriteLine($"No header found for number {i - 1}. Looking for {i} {consistent}");
                     }
                     BlockHeaderBuilder blockHeaderBuilder = consistent
                         ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
