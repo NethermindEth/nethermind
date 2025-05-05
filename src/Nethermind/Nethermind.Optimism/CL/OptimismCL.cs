@@ -93,6 +93,7 @@ public class OptimismCL : IDisposable
                     .ContinueWith(async _ =>
                     {
                         if (_logger.IsInfo) _logger.Info("EL sync completed. Starting Derivation Process");
+                        _driver.Reset((await _l2Api.GetHeadBlock()).Number);
                         await _l1Bridge.Initialize(_cancellationTokenSource.Token);
                         await Task.WhenAll(
                             p2pTask,

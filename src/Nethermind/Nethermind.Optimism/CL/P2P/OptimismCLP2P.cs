@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Libp2p.Core;
-using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using System;
@@ -17,13 +16,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Snappier;
 using Nethermind.Libp2p;
-using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
+using Nethermind.Libp2p.Core.Discovery;
 using Channel = System.Threading.Channels.Channel;
 
 namespace Nethermind.Optimism.CL.P2P;
@@ -40,6 +40,7 @@ public class OptimismCLP2P : IDisposable
     private readonly ICLConfig _config;
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
+    private readonly IPeerManager _peerManager;
 
     private PubsubRouter? _router;
     private ILocalPeer? _localPeer;
@@ -62,10 +63,9 @@ public class OptimismCLP2P : IDisposable
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
+        _peerManager = new PeerManager(_logger);
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
-
-        // Jagger
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
@@ -126,15 +126,32 @@ public class OptimismCLP2P : IDisposable
                     return;
                 }
 
-                ExecutionPayloadV3? requestedPayload = await RequestPayload((ulong)payload.BlockNumber, token);
-                _logger.Error($"Requested payload: {requestedPayload?.BlockHash}");
+                if (_headNumber is not null)
+                {
+                    ulong numberOfMissingPayloads = (ulong)payload.BlockNumber - _headNumber.Value - 1;
+                    ExecutionPayloadV3?[] missingPayloads = new ExecutionPayloadV3[numberOfMissingPayloads];
+                    Hash256 previousParentHash = payload.ParentHash;
+                    // Rollback missing payloads
+                    for (ulong i = numberOfMissingPayloads; i > 0; i--)
+                    {
+                        ulong payloadNumber = _headNumber.Value + i;
+                        ExecutionPayloadV3? missingPayload = await RequestPayload(payloadNumber, previousParentHash, token);
+                        if (missingPayload is null)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {payloadNumber}");
+                            break;
+                        }
+                        missingPayloads[i - 1] = missingPayload;
+                    }
 
-                // ulong numberOfMissingBlocks = _headNumber!.Value - (ulong)payload.BlockNumber;
-
-                // if (numberOfMissingBlocks > 0)
-                // {
-                //
-                // }
+                    foreach (var missingPayload in missingPayloads)
+                    {
+                        if (missingPayload is not null && await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
+                        {
+                            _headNumber = (ulong)missingPayload.BlockNumber;
+                        }
+                    }
+                }
 
                 if (_blockValidator.IsBlockNumberPerHeightLimitReached(payload) is not ValidityStatus.Valid)
                 {
@@ -154,24 +171,62 @@ public class OptimismCLP2P : IDisposable
         }
     }
 
-    private async Task<ExecutionPayloadV3?> RequestPayload(ulong payloadNumber, CancellationToken token)
+    private async Task<ExecutionPayloadV3?> TryRequestPayload
+        (ISession? session, ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
     {
-        _logger.Error($"Calling peer {_staticPeerList[13]}");
-        ISession? remotePeer = null;
         try
         {
-            remotePeer = await _localPeer!.DialAsync(_staticPeerList[13], token);
-            _logger.Error(
-                $"Done {string.Join(" ", _peerStore!.GetPeerInfo(remotePeer.RemoteAddress.GetPeerId()!).SupportedProtocols ?? [])}");
-            ExecutionPayloadV3? response =
-                await remotePeer.DialAsync<PayloadByNumberProtocol, ulong, ExecutionPayloadV3?>(payloadNumber, token);
-            _logger.Error($"Response: {response?.BlockHash}");
+            CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
+            if (session is null) return null;
+            ExecutionPayloadV3? payload =
+                await session.DialAsync<PayloadByNumberProtocol, ulong, ExecutionPayloadV3?>(payloadNumber, cancellationTokenSource.Token);
+            if (payload is null || payload.BlockHash != expectedHash) return null;
+            return payload;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Unable to request payload. Exception: {e}");
+            return null;
+        }
+    }
+
+    private async Task<ExecutionPayloadV3?> RequestPayload(ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
+    {
+        if (_logger.IsInfo) _logger.Info($"Requesting missing payload. Number: {payloadNumber}, Expected hash: {expectedHash}");
+        try
+        {
+            ExecutionPayloadV3? response = null;
+            foreach (Multiaddress peer in _peerManager.GetPeers())
+            {
+                ISession? remotePeer = await TryDialPeer(peer, token);
+                response = await TryRequestPayload(remotePeer, payloadNumber, expectedHash, token);
+                if (response is not null)
+                {
+                    _peerManager.IncreaseRating(peer);
+                    await remotePeer!.DisconnectAsync();
+                    break;
+                }
+
+                if (remotePeer is not null) await remotePeer.DisconnectAsync();
+                _peerManager.DecreaseRating(peer);
+            }
+
+            if (response is null)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Unable to request payload. Number: {payloadNumber}, Expected hash: {expectedHash}");
+                return null;
+            }
+
             return response;
         }
-        finally
+        catch (Exception e)
         {
-            if (remotePeer is not null) await remotePeer.DisconnectAsync();
+            if (_logger.IsWarn) _logger.Warn($"Unable to request payload. Number: {payloadNumber}, Expected hash: {expectedHash}. Exception: {e}");
         }
+
+        return null;
     }
 
     private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out ExecutionPayloadV3 payload)
@@ -217,6 +272,21 @@ public class OptimismCLP2P : IDisposable
         return true;
     }
 
+    private async Task<ISession?> TryDialPeer(Multiaddress remotePeer, CancellationToken token)
+    {
+        try
+        {
+            CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
+            return await _localPeer!.DialAsync(remotePeer, cancellationTokenSource.Token);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Error($"Unable to Dial peer {remotePeer}. Exception: {e.Message}");
+            return null;
+        }
+    }
+
     public async Task Run(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
@@ -237,8 +307,19 @@ public class OptimismCLP2P : IDisposable
             foreach (var multiaddress in _staticPeerList)
             {
                 _peerStore.Discover([multiaddress]);
-                var supportedProtocols = _peerStore.GetPeerInfo(multiaddress.GetPeerId()!).SupportedProtocols;
-                _logger.Error($"Supported protocols: {string.Join(" ", supportedProtocols ?? [])}");
+
+                ISession? session = await TryDialPeer(multiaddress, token);
+                if (session is not null)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Adding active peer {multiaddress}");
+                    _peerManager.AddActivePeer(multiaddress);
+                }
+                else
+                {
+                    _peerManager.AddInactivePeer(multiaddress);
+                }
+
+                if (session is not null) await session.DisconnectAsync();
             }
         }
         catch (Exception e)

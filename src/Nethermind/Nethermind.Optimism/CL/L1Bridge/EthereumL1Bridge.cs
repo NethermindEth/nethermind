@@ -18,7 +18,6 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 public class EthereumL1Bridge : IL1Bridge
 {
     private const int L1SlotTimeMilliseconds = 12000;
-    private const int L1BlocksUntilFinalization = 64;
 
     private readonly ICLConfig _config;
     private readonly IEthApi _ethL1Api;
@@ -71,7 +70,7 @@ public class EthereumL1Bridge : IL1Bridge
 
             _currentHead = BlockId.FromL1Block(newHead);
 
-            await Task.Delay(L1BlocksUntilFinalization * L1SlotTimeMilliseconds, token);
+            await Task.Delay(32 * L1SlotTimeMilliseconds, token);
         }
     }
 
