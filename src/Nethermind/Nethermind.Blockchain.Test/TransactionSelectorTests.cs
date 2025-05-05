@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -226,17 +226,245 @@ namespace Nethermind.Blockchain.Test
                     // as the packing rules should win
                     higherPriorityTransactionsSelected.Transactions.Shuffle(rnd);
                 }
+            }
+        }
 
-                static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
+        private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
+            => CreateBlobTransaction(address, key, maxFee, blobCount, nonce: 1);
+
+        private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1)
+        {
+            return Build.A.Transaction
+                .WithSenderAddress(address)
+                .WithShardBlobTxTypeAndFields(blobCount)
+                .WithNonce(nonce)
+                .WithMaxFeePerGas(maxFee)
+                .WithMaxFeePerBlobGas(2)
+                .WithMaxPriorityFeePerGas(priority)
+                .WithGasLimit(20)
+                .SignedAndResolved(key).TestObject;
+        }
+
+        public static IEnumerable BlobTransactionOrderingTestCases
+        {
+            get
+            {
+                (Address address, PrivateKey key)[] Accounts =
                 {
-                    return Build.A.Transaction
-                        .WithSenderAddress(address)
-                        .WithShardBlobTxTypeAndFields(blobCount)
-                        .WithNonce(1)
-                        .WithMaxFeePerGas(maxFee)
-                        .WithMaxFeePerBlobGas(1)
-                        .WithGasLimit(20)
-                        .SignedAndResolved(key).TestObject;
+                    (TestItem.AddressA, TestItem.PrivateKeyA),
+                    (TestItem.AddressB, TestItem.PrivateKeyB)
+                };
+
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce = 1;
+                    AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
+                    AddTxs(txCount: 7, blobsPerTx: 1, account: 0, txs, ref nonce);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Take(1));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Single Account, Single Blob");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce = 1;
+                    AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
+                    AddTxs(txCount: 1, blobsPerTx: 2, account: 0, txs, ref nonce);
+                    AddTxs(txCount: 5, blobsPerTx: 1, account: 0, txs, ref nonce);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Take(1));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Single Account, Dual Blob");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce = 1;
+                    AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
+                    nonce = 1;
+                    AddTxs(txCount: 5, blobsPerTx: 1, account: 1, txs, ref nonce);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Take(1));
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(5).Take(1));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce0);
+                    UInt256 nonce1 = 2;
+                    AddTxs(txCount: 5, blobsPerTx: 3, account: 1, txs, ref nonce1);
+                    AddTxs(txCount: 5, blobsPerTx: 1, account: 0, txs, ref nonce0);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(5).Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 1");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 5, blobsPerTx: 4, account: 1, txs, ref nonce1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Take(1));
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(6).Take(1));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 2");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 2, blobsPerTx: 2, account: 1, txs, ref nonce1, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 2, account: 0, txs, ref nonce0, priority: 1);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(1).Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 3");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 2, blobsPerTx: 2, account: 1, txs, ref nonce1, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(1).Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 4");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 2, blobsPerTx: 2, account: 1, txs, ref nonce1, priority: 1);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(4).Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 5a");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 2, blobsPerTx: 2, account: 0, txs, ref nonce0, priority: 1);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 1, txs, ref nonce1, priority: 1);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 5b");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
+
+                    blobTxs.Transactions = txs;
+
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Take(1));
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(2).Take(1));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 6");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 1, txs, ref nonce1, priority: 1);
+
+                    blobTxs.Transactions = txs;
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(1).Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 7a");
+                }
+                {
+                    var blobTxs = CreateTestCase();
+                    var txs = new List<Transaction>();
+
+                    UInt256 nonce1 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
+                    UInt256 nonce0 = 1;
+                    AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
+                    AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
+
+                    blobTxs.Transactions = txs;
+                    blobTxs.ExpectedSelectedTransactions.AddRange(blobTxs.Transactions.Skip(1).Take(2));
+
+                    yield return new TestCaseData(blobTxs).SetName("Blob Transaction Ordering, Multiple Accounts, Nonce Order 7b");
+                }
+
+                static ProperTransactionsSelectedTestCase CreateTestCase()
+                {
+                    var higherPriorityTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
+                    var accounts = higherPriorityTransactionsSelected.AccountStates;
+                    accounts[TestItem.AddressA] = (1000000, 0);
+                    accounts[TestItem.AddressB] = (1000000, 0);
+                    higherPriorityTransactionsSelected.ReleaseSpec = Cancun.Instance;
+                    higherPriorityTransactionsSelected.BaseFee = 1;
+                    return higherPriorityTransactionsSelected;
+                }
+
+                void AddTxs(int txCount, int blobsPerTx, int account, List<Transaction> txs, ref UInt256 nonce, int priority = -1)
+                {
+                    var eoa = Accounts[account];
+                    for (int i = 0; i < txCount; i++)
+                    {
+                        txs.Add(CreateBlobTransaction(eoa.address, eoa.key, maxFee: 1000, blobsPerTx, nonce,
+                            priority: priority < 0 ? (uint)(blobsPerTx * 2) : (uint)priority));
+                        nonce++;
+                    }
                 }
             }
         }
@@ -245,6 +473,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(Eip1559LegacyTransactionTestCases))]
         [TestCaseSource(nameof(Eip1559TestCases))]
         [TestCaseSource(nameof(EnoughShardBlobTransactionsSelectedTestCases))]
+        [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb stateDb = new();
