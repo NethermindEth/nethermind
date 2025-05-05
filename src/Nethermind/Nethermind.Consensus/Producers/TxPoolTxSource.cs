@@ -352,7 +352,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, long gasLimit, Func<Transaction, bool> filter) =>
             Order(pendingTransactions, comparer, gasLimit, filter);
 
-        protected IEnumerable<(Transaction tx, int blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
+        protected static IEnumerable<(Transaction tx, int blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
             OrderBlobs(pendingTransactions, comparer, filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
