@@ -162,6 +162,41 @@ public class ArbitrumTransactionParserTests
             148376,
             8));
     }
+
+    [Test]
+    public void Parse_L2FundedByL1_Contract_ParsesCorrectly()
+    {
+        var message = new L1IncomingMessage(
+            new(
+                ArbitrumL1MessageKind.L2FundedByL1,
+                new Address("0x502fae7d46d88f08fc2f8ed27fcb2ab183eb3e1f"),
+                194,
+                1746443431,
+                new Hash256("0x000000000000000000000000000000000000000000000000000000000000000b"),
+                8),
+            "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABMLAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACPDRgAAAAAAAAAAAAAAAAARtX/jSFhPBC5DbGv3w8Pe8XHeSQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0J3gig==",
+            null);
+
+        var transactions = L2MessageParser.ParseL2Transactions(message, ChainId, new());
+        var deposit = (ArbitrumTransaction<ArbitrumDepositTx>)transactions[0];
+        var contract = (ArbitrumTransaction<ArbitrumContractTx>)transactions[1];
+
+        deposit.Inner.Should().BeEquivalentTo(new ArbitrumDepositTx(
+            ChainId,
+            new("0x9115655cbcdb654012cf1b2f7e5dbf11c9ef14e152a19d5f8ea75a329092d5a6"),
+            new("0x0000000000000000000000000000000000000000"),
+            new("0x502fae7d46d88F08Fc2F8ed27fCB2Ab183Eb3e1F"),
+            UInt256.Zero));
+        contract.Inner.Should().BeEquivalentTo(new ArbitrumContractTx(
+            ChainId,
+            new("0xfc80cd5fe514767bc6e66ec558e68a5429ea70b50fa6caa3b53fc9278e918632"),
+            new("0x502fae7d46d88F08Fc2F8ed27fCB2Ab183Eb3e1F"),
+            600000000,
+            312000,
+            new("0x11B57FE348584f042E436c6Bf7c3c3deF171de49"),
+            UInt256.Zero,
+            Convert.FromHexString("d09de08a")), o => o.ForArbitrumContractTx());
+    }
 }
 
 public static class AssertionExtensions
@@ -171,5 +206,12 @@ public static class AssertionExtensions
         return options
             .Using<Memory<byte>>(context => context.Subject.ToArray().Should().BeEquivalentTo(context.Expectation.ToArray())).WhenTypeIs<Memory<byte>>()
             .Excluding(t => t.Hash);
+    }
+
+    public static EquivalencyAssertionOptions<ArbitrumContractTx> ForArbitrumContractTx(this EquivalencyAssertionOptions<ArbitrumContractTx> options)
+    {
+        return options
+            .Using<ReadOnlyMemory<byte>>(context => context.Subject.ToArray().Should().BeEquivalentTo(context.Expectation.ToArray()))
+            .WhenTypeIs<ReadOnlyMemory<byte>>();
     }
 }

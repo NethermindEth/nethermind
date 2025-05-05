@@ -149,7 +149,7 @@ public static class L2MessageParser
         }
     }
 
-    private static object ParseUnsignedTx(ref ReadOnlySpan<byte> data, Address poster, Hash256? l1RequestId, ulong chainId, ArbitrumL2MessageKind kind)
+    private static Transaction ParseUnsignedTx(ref ReadOnlySpan<byte> data, Address poster, Hash256? l1RequestId, ulong chainId, ArbitrumL2MessageKind kind)
     {
         var gasLimit = (ulong)ArbitrumBinaryReader.ReadUInt256OrFail(ref data);
         var maxFeePerGas = ArbitrumBinaryReader.ReadUInt256OrFail(ref data);
@@ -165,15 +165,17 @@ public static class L2MessageParser
         // The rest of the data is the calldata
         ReadOnlyMemory<byte> calldata = data.ToArray();
 
-        return kind switch
+        var arbitrumTransaction = kind switch
         {
             ArbitrumL2MessageKind.UnsignedUserTx =>
-                new ArbitrumUnsignedTx(chainId, poster, nonce, maxFeePerGas, gasLimit, destination, value, calldata),
+                (object)new ArbitrumUnsignedTx(chainId, poster, nonce, maxFeePerGas, gasLimit, destination, value, calldata),
             ArbitrumL2MessageKind.ContractTx => l1RequestId != null
                 ? new ArbitrumContractTx(chainId, l1RequestId, poster, maxFeePerGas, gasLimit, destination, value, calldata)
                 : throw new ArgumentException("Cannot create ArbitrumContractTx without L1 request ID."),
             _ => throw new ArgumentException($"Invalid txKind '{kind}' passed to ParseUnsignedTx.")
         };
+
+        return ConvertParsedDataToTransaction(arbitrumTransaction);
     }
 
     private static List<Transaction> ParseL2FundedByL1(ref ReadOnlySpan<byte> data, L1IncomingMessageHeader header, ulong chainId)
@@ -202,8 +204,7 @@ public static class L2MessageParser
         var unsignedRequestId = Keccak.Compute(unsignedRequestBytes);
 
         // Parse the unsigned transaction part using the remaining data
-        var parsedUnsignedTx = ParseUnsignedTx(ref data, header.Sender, unsignedRequestId, chainId, kind);
-        var unsignedTx = ConvertParsedDataToTransaction(parsedUnsignedTx);
+        var unsignedTx = ParseUnsignedTx(ref data, header.Sender, unsignedRequestId, chainId, kind);
 
         // Create the deposit transaction
         var depositData = new ArbitrumDepositTx(
@@ -339,7 +340,7 @@ public static class L2MessageParser
                 Value = d.Value,
                 Data = d.Data.ToArray()
             },
-            ArbitrumContractTx d => new Transaction
+            ArbitrumContractTx d => new ArbitrumTransaction<ArbitrumContractTx>(d)
             {
                 Type = (TxType)ArbitrumTxType.ArbitrumContract,
                 ChainId = d.ChainId,
