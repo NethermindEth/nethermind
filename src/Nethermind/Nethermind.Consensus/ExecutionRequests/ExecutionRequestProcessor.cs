@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
@@ -17,6 +15,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
+using System;
+using System.Linq;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
@@ -64,8 +64,11 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         using ArrayPoolList<byte[]> requests = new(3);
 
         ProcessDeposits(receipts, spec, requests);
-        ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
-        ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
+        if (spec.WithdrawalRequestsEnabled) ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests,
+            _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest, BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
+        if (spec.ConsolidationRequestsEnabled) ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests,
+            _consolidationTransaction, ExecutionRequestType.ConsolidationRequest, BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+
         block.ExecutionRequests = requests.ToArray();
         block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
@@ -127,29 +130,21 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests)
+    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests,
+        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
-        bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
-
-        int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
-
-        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
-        {
-            return;
-        }
-
         if (!state.HasCode(contractAddress))
         {
-            throw new InvalidBlockException(block, isWithdrawalRequests ? BlockErrorMessages.WithdrawalsContractEmpty : BlockErrorMessages.ConsolidationsContractEmpty);
+            throw new InvalidBlockException(block, contractEmptyError);
         }
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header, spec), tracer);
+        _transactionProcessor.Execute(systemTx, new BlockExecutionContext(block.Header, spec), tracer);
 
         if (tracer.StatusCode == StatusCode.Failure)
         {
-            throw new InvalidBlockException(block, isWithdrawalRequests ? BlockErrorMessages.WithdrawalsContractFailed : BlockErrorMessages.ConsolidationsContractFailed);
+            throw new InvalidBlockException(block, contractFailedError);
         }
 
         if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
@@ -162,7 +157,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (validLength == 0) return;
 
         byte[] buffer = new byte[validLength + 1];
-        buffer[0] = isWithdrawalRequests ? (byte)ExecutionRequestType.WithdrawalRequest : (byte)ExecutionRequestType.ConsolidationRequest;
+        buffer[0] = (byte)type;
         tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.AsSpan(1));
         requests.Add(buffer);
     }
