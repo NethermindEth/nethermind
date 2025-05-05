@@ -170,7 +170,4 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
-
-    [ConfigItem(Description = "_Technical._ Max tx in forward sync buffer.", DefaultValue = "200000", HiddenFromDocs = true)]
-    int MaxTxInForwardSyncBuffer { get; set; }
 }
