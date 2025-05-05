@@ -2038,6 +2038,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmPrecompiledContractsPath = Directory.GetCurrentDirectory(),
             }, Prague.Instance);
 
+            string fileName = Precompiler.GetTargetFileName();
+
             var bytecode = testcase.bytecode;
 
             var hashCode = Keccak.Compute(bytecode);
@@ -2046,7 +2048,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), IVMConfig.DllName(Precompiler._currentPersistentAsmBuilder.Value));
+            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
 
             Assembly assembly = Assembly.LoadFile(assemblyPath);
             MethodInfo method = assembly
