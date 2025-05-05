@@ -79,7 +79,7 @@ internal class BlobSender
 
         foreach (PrivateKey privateKey in privateKeys)
         {
-            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", null, privateKey.Address, "latest");
+            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
             if (nonceString is null)
             {
                 _logger.Error("Unable to get nonce");
@@ -143,7 +143,7 @@ internal class BlobSender
                 (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
 
 
-                BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", null, "latest", false);
+                BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
                 if (blockResult is null)
                 {
@@ -218,7 +218,7 @@ internal class BlobSender
         ulong chainId = HexConvert.ToUInt64(chainIdString);
 
 
-        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", null, privateKey.Address, "latest");
+        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
         if (nonceString is null)
         {
             _logger.Error("Unable to get nonce");
@@ -241,7 +241,7 @@ internal class BlobSender
 
         (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
 
-        BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", null, "latest", false);
+        BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
         if (blockResult is null)
         {
@@ -352,7 +352,7 @@ internal class BlobSender
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
-        string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", null, $"0x{txRlp}");
+        string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
 
         Console.WriteLine("Sending tx result:" + result);
 
@@ -368,14 +368,14 @@ internal class BlobSender
 
         while (true)
         {
-            var blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", null, lastBlockNumber.ToString() ?? "latest", false);
+            var blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber.ToString() ?? "latest", false);
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
 
                 if (txHash is not null && blockResult.Transactions.Contains(txHash))
                 {
-                    string? receipt = await rpcClient.Post<string>("eth_getTransactionByHash", null, txHash.ToString(), true);
+                    string? receipt = await rpcClient.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
 
                     Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                     return;

@@ -39,10 +39,10 @@ internal class FundsDistributor
     /// <exception cref="AccountException"></exception>
     public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
-        string? balanceString = await _rpcClient.Post<string>("eth_getBalance", null, distributeFrom.Address, "latest");
+        string? balanceString = await _rpcClient.Post<string>("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
             throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
-        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", null, distributeFrom.Address, "latest");
+        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
         if (nonceString is null)
             throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
 
@@ -117,7 +117,7 @@ internal class FundsDistributor
                 string txRlp = Hex.ToHexString(txDecoder
                     .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-                string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", null, $"0x{txRlp}");
+                string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
                 if (result is not null)
                     txHash.Add(result);
 
@@ -150,10 +150,10 @@ internal class FundsDistributor
 
         foreach (var signer in privateSigners)
         {
-            string? balanceString = await _rpcClient.Post<string>("eth_getBalance", null, signer.Address, "latest");
+            string? balanceString = await _rpcClient.Post<string>("eth_getBalance", signer.Address, "latest");
             if (balanceString is null)
                 continue;
-            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", null, signer.Address, "latest");
+            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", signer.Address, "latest");
             if (nonceString is null)
                 continue;
 
@@ -192,7 +192,7 @@ internal class FundsDistributor
             string txRlp = Hex.ToHexString(txDecoder
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-            string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", null, $"0x{txRlp}");
+            string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
             if (result is not null)
                 txHashes.Add(result);
         }
