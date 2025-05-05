@@ -262,12 +262,12 @@ public partial class BlockDownloaderTests
 
     [TestCase(32, 32, 0, true)]
     [TestCase(32, 16, 0, true)]
-    [TestCase(500, 250, 0, true)]
     [TestCase(32, 32, 0, false)]
     [TestCase(32, 16, 0, false)]
-    [TestCase(500, 250, 0, false)]
     [TestCase(32, 16, 100, true)]
     [TestCase(32, 16, 100, false)]
+    [TestCase(500, 250, 0, true)]
+    [TestCase(500, 250, 0, false)]
     public async Task Can_sync_partially_when_only_some_bodies_is_available(int blockCount, int availableBlock, int minResponseLength, bool mergeDownloader)
     {
         await using IContainer node = mergeDownloader ? CreateMergeNode() : CreateNode();
@@ -285,13 +285,18 @@ public partial class BlockDownloaderTests
                 IList<Hash256> blockHashes = ci.ArgAt<IList<Hash256>>(0);
                 lock (requestedHashes)
                 {
-                    int toTake = availableBlock - requestedHashes.Count;
-                    blockHashes = blockHashes.Take(toTake).ToList();
+                    blockHashes = blockHashes.Where((hash) =>
+                    {
+                        BlockHeader? header = ctx.ResponseBuilder.GetHeader(hash);
+                        if (header == null) return false;
+                        return header.Number <= availableBlock;
+                    }).ToList();
                     requestedHashes.AddRange(blockHashes);
                 }
 
                 if (blockHashes.Count == 0)
                 {
+                    Console.Error.WriteLine("No blocks at all");
                     return new OwnedBlockBodies([]);
                 }
 
@@ -299,6 +304,7 @@ public partial class BlockDownloaderTests
                     .BuildBlocksResponse(blockHashes, responseOptions)
                     .Result
                     .Bodies!;
+                Console.Error.WriteLine($"Satisfied {blockHashes.Count} hashes with {response.Length}");
 
                 if (response.Length < minResponseLength)
                 {
@@ -320,7 +326,7 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0);
-        await ctx.FullDispatcherSync(availableBlock);
+        await ctx.FullDispatcherSync(availableBlock, 10000);
         ctx.BlockTree.BestSuggestedBody.Number.Should().Be(availableBlock);
     }
 
@@ -985,9 +991,8 @@ public partial class BlockDownloaderTests
             _wasSuggested.TryGetValue(blockHash, out _).Should().BeTrue();
         }
 
-        public async Task FullDispatcherSync(long untilBestSuggestedHeaderIs)
+        public async Task FullDispatcherSync(long untilBestSuggestedHeaderIs, long timeoutMs = 10000)
         {
-            long timeoutMs = 10000;
             using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(timeoutMs.Milliseconds());
 
             Task waitTask = Wait.ForEventCondition<BlockEventArgs>(cts.Token,
@@ -1000,6 +1005,7 @@ public partial class BlockDownloaderTests
             FullSyncFeedComponent.Feed.Activate();
 
             await waitTask;
+            FullSyncFeedComponent.Feed.Finish();
             await dLoop;
         }
 
@@ -1234,6 +1240,10 @@ public partial class BlockDownloaderTests
             }
 
             BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)!;
+            if (startBlock is null)
+            {
+                throw new Exception($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
+            }
             BlockHeader[] headers = new BlockHeader[number];
             headers[0] = startBlock;
             if (!justFirst)
@@ -1241,6 +1251,10 @@ public partial class BlockDownloaderTests
                 for (int i = 1; i < number; i++)
                 {
                     Hash256 receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Hash256("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
+                    if (headers[i - 1] == null)
+                    {
+                        Console.Error.WriteLine($"No header found for number {i-1}. Looking for {i} {consistent}");
+                    }
                     BlockHeaderBuilder blockHeaderBuilder = consistent
                         ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
                         : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
@@ -1298,43 +1312,37 @@ public partial class BlockDownloaderTests
                 throw new TimeoutException();
             }
 
-            BlockHeader? startHeader = _blockTree.FindHeader(blockHashes[0], BlockTreeLookupOptions.None);
-            startHeader ??= _headers[blockHashes[0]];
-
             BlockHeader[] blockHeaders = new BlockHeader[blockHashes.Count];
             BlockBody[] blockBodies = new BlockBody[blockHashes.Count];
 
-            blockBodies[0] = BuildBlockForHeader(startHeader, 0, withTransactions).Body;
-            blockHeaders[0] = startHeader;
-
-            _bodies[startHeader.Hash!] = blockBodies[0];
-            _headers[startHeader.Hash!] = blockHeaders[0];
-            if (!justFirst)
+            for (int i = 0; i < blockHashes.Count; i++)
             {
-                for (int i = 0; i < blockHashes.Count; i++)
+                if (consistent && _headers.TryGetValue(blockHashes[i], out var value))
                 {
-                    blockHeaders[i] = consistent
-                        ? _headers[blockHashes[i]]
-                        : Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
-
-                    _testHeaderMapping[startHeader.Number + i] = blockHeaders[i].Hash!;
-
-                    BlockHeader header = consistent
-                        ? blockHeaders[i]
-                        : blockHeaders[i - 1];
-
-                    BlockBody body = consistent
-                        ? _bodies[blockHashes[i]]
-                        : BuildBlockForHeader(header, i, withTransactions).Body;
-
-                    blockBodies[i] = body;
-                    _bodies[blockHashes[i]] = blockBodies[i];
-
-                    if (allKnown)
-                    {
-                        _blockTree.SuggestBlock(new Block(header, body));
-                    }
+                    blockHeaders[i] = value;
                 }
+                else
+                {
+                    blockHeaders[i] = Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
+                }
+                _headers[blockHashes[i]] = blockHeaders[i];
+                var header = blockHeaders[i];
+
+                BlockBody body = consistent
+                    ? _bodies[blockHashes[i]]
+                    : BuildBlockForHeader(header, i, withTransactions).Body;
+
+                _testHeaderMapping[header.Number] = header.Hash!;
+
+                blockBodies[i] = body;
+                _bodies[blockHashes[i]] = blockBodies[i];
+
+                if (allKnown)
+                {
+                    _blockTree.SuggestBlock(new Block(header, body));
+                }
+
+                if (justFirst) break;
             }
 
             using BlockBodiesMessage message = new(blockBodies);
@@ -1380,6 +1388,11 @@ public partial class BlockDownloaderTests
             using ReceiptsMessage message = new(receipts.ToPooledList());
             byte[] messageSerialized = _receiptsSerializer.Serialize(message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
+        }
+
+        public BlockHeader? GetHeader(Hash256 hash)
+        {
+            return _headers.TryGetValue(hash, out var header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
         }
     }
 }
