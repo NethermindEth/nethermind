@@ -9,7 +9,8 @@ using System.CommandLine;
 using Ethereum.Test.Base;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
-using Nethereum.JsonRpc.Client;
+using Nethermind.JsonRpc.Client;
+using Nethermind.Serialization.Json;
 
 namespace SendBlobs;
 internal static class SetupCli
@@ -195,16 +196,18 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            RpcClient nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!);
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.SendRequestAsync<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
 
-            FundsDistributor distributor = new FundsDistributor(
-                nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(
+                rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.DitributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
@@ -255,22 +258,28 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            RpcClient nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!);
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.SendRequestAsync<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
-            FundsDistributor distributor = new(nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
         });
-
         root.Add(command);
     }
 
-    public static RpcClient InitNodeManager(string rpcUrl) => new(new Uri(rpcUrl));
+    public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>
+        new BasicJsonRpcClient(
+            new Uri(rpcUrl),
+            new EthereumJsonSerializer(),
+            new OneLoggerLogManager(logger)
+        );
 
     public static void SetupSendFileCommand(CliCommand root)
     {
