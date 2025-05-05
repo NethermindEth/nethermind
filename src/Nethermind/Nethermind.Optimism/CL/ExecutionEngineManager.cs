@@ -69,57 +69,57 @@ public class ExecutionEngineManager(
         PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
         switch (npResult.Status)
         {
-            case PayloadStatus.Invalid:
-            {
-                if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
-                return false;
-            }
+                case PayloadStatus.Invalid:
+                {
+                    if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
+                    return false;
+                }
             case PayloadStatus.Valid:
-            {
-                if (logger.IsTrace) logger.Trace($"NewPayload Valid P2P payload. {executionPayload}");
-                break;
-            }
+                {
+                    if (logger.IsTrace) logger.Trace($"NewPayload Valid P2P payload. {executionPayload}");
+                    break;
+                }
             case PayloadStatus.Accepted:
-            {
-                if (logger.IsTrace) logger.Trace($"Accepted P2P payload. {executionPayload}");
-                break;
-            }
+                {
+                    if (logger.IsTrace) logger.Trace($"Accepted P2P payload. {executionPayload}");
+                    break;
+                }
             case PayloadStatus.Syncing:
-            {
-                if (logger.IsTrace) logger.Trace($"Syncing P2P payload. {executionPayload}");
-                break;
-            }
+                {
+                    if (logger.IsTrace) logger.Trace($"Syncing P2P payload. {executionPayload}");
+                    break;
+                }
         }
 
         var fcuResult = await l2Api.ForkChoiceUpdatedV3(executionPayload.BlockHash, _currentFinalizedHead.Hash, _currentSafeHead.Hash);
         switch (fcuResult.PayloadStatus.Status)
         {
             case PayloadStatus.Invalid:
-            {
-                if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
-                return false;
-            }
-            case PayloadStatus.Valid:
-            {
-                if (logger.IsInfo) logger.Info($"FCU Valid P2P payload. {executionPayload}");
-                if (_isInSyncMode)
                 {
-                    if (logger.IsTrace) logger.Trace("EL sync completed");
-                    _isInSyncMode = false;
-                    _elSyncedTaskCompletionSource.SetResult();
+                    if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
+                    return false;
                 }
-                break;
-            }
+            case PayloadStatus.Valid:
+                {
+                    if (logger.IsInfo) logger.Info($"FCU Valid P2P payload. {executionPayload}");
+                    if (_isInSyncMode)
+                    {
+                        if (logger.IsTrace) logger.Trace("EL sync completed");
+                        _isInSyncMode = false;
+                        _elSyncedTaskCompletionSource.SetResult();
+                    }
+                    break;
+                }
             case PayloadStatus.Accepted:
-            {
-                if (logger.IsError) logger.Error($"FCU Accepted P2P payload. {executionPayload}");
-                break;
-            }
+                {
+                    if (logger.IsError) logger.Error($"FCU Accepted P2P payload. {executionPayload}");
+                    break;
+                }
             case PayloadStatus.Syncing:
-            {
-                if (logger.IsInfo) logger.Info($"FCU Syncing P2P payload. {executionPayload}");
-                break;
-            }
+                {
+                    if (logger.IsInfo) logger.Info($"FCU Syncing P2P payload. {executionPayload}");
+                    break;
+                }
         }
 
         _currentHead = BlockId.FromExecutionPayload(executionPayload);
