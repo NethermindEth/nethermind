@@ -24,10 +24,13 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             return ResultWrapper<IEnumerable<BlobAndProofV2>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        Metrics.NumberOfRequestedBlobs += request.Length;
+        Metrics.GetBlobsRequestsTotal += request.Length;
+
+        var count = txPool.GetBlobCounts(request);
+        Metrics.GetBlobsRequestsInBlobpoolTotal += count;
 
         // quick fail if we don't have some blob
-        if (!txPool.AreBlobsAvailable(request))
+        if (count != request.Length)
         {
             return ReturnEmptyArray();
         }
@@ -46,14 +49,13 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             }
         }
 
-        Metrics.NumberOfSentBlobs += request.Length;
-        Metrics.NumberOfGetBlobsSuccesses++;
+        Metrics.GetBlobsRequestsSuccessTotal++;
         return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response.ToList());
     }
 
     private ResultWrapper<IEnumerable<BlobAndProofV2>> ReturnEmptyArray()
     {
-        Metrics.NumberOfGetBlobsFailures++;
+        Metrics.GetBlobsRequestsFailureTotal++;
         return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success([]);
     }
 }
