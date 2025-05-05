@@ -155,6 +155,16 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
+                    {
+                        PeerInfo peer = entry.PeerInfo;
+                        if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+
+                        if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
+                        entry.RetryBlockRequest();
+                        break;
+                    }
+
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
                     {
                         if (shouldProcess)
@@ -330,19 +340,19 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                // Note: For some magical reason, the `header` is not the same as `entry.Header`.
-                // This is important as `entry.Header.MaybeParent` need to be kept alive.
-                Block block = new Block(entry.Header, body);
-
-                if (!_blockValidator.ValidateSuggestedBlock(block, out string? errorMessage))
+                if (!BlockValidator.ValidateBodyAgainstHeader(entry.Header, body))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, Header hash mismatch");
 
-                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid body received: Header hash mismatch. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryBlockRequest();
                     continue;
                 }
+
+                // Note: For some magical reason, the `header` is not the same as `entry.Header`.
+                // This is important as `entry.Header.MaybeParent` need to be kept alive.
+                Block block = new Block(entry.Header, body);
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
                 entry.Block = block;
