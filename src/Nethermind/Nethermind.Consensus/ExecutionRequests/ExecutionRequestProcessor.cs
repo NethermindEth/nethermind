@@ -1,10 +1,12 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
 using System;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -131,25 +133,37 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
 
-        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled) || !state.AccountExists(contractAddress))
+        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
+        {
             return;
+        }
+
+        if (!state.HasCode(contractAddress))
+        {
+            throw new InvalidBlockException(block, isWithdrawalRequests ? BlockErrorMessages.WithdrawalsContractEmpty : BlockErrorMessages.ConsolidationsContractEmpty);
+        }
 
         CallOutputTracer tracer = new();
 
         _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header, spec), tracer);
+
+        if (tracer.StatusCode == StatusCode.Failure)
+        {
+            throw new InvalidBlockException(block, isWithdrawalRequests ? BlockErrorMessages.WithdrawalsContractFailed : BlockErrorMessages.ConsolidationsContractFailed);
+        }
 
         if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
         {
             return;
         }
 
-        int validLength = tracer.ReturnValue.Length - (tracer.ReturnValue.Length % requestsByteSize);
+        int validLength = tracer.ReturnValue.Length;
 
         if (validLength == 0) return;
 
-        Span<byte> buffer = stackalloc byte[validLength + 1];
+        byte[] buffer = new byte[validLength + 1];
         buffer[0] = isWithdrawalRequests ? (byte)ExecutionRequestType.WithdrawalRequest : (byte)ExecutionRequestType.ConsolidationRequest;
-        tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.Slice(1));
-        requests.Add(buffer.ToArray());
+        tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.AsSpan(1));
+        requests.Add(buffer);
     }
 }
