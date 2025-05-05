@@ -193,7 +193,7 @@ namespace Nethermind.Consensus.Producers
         /// Selects a subset of candidate transactions
         /// that maximizes the total fee without exceeding the available blob capacity.
         /// Uses a 1D knapsack dynamic programming approach to find the optimal selection.
-        /// The chosen transactions are appended to <paramref name="finalSelectedBlobTxs"/>.
+        /// The chosen transactions are appended to <paramref name="selectedBlobTxs"/>.
         /// </summary>
         /// <param name="candidateTxs">A list of candidate blob transactions.</param>
         /// <param name="leftoverCapacity">The maximum remaining blob capacity available.</param>
@@ -224,7 +224,7 @@ namespace Nethermind.Consensus.Producers
 
                 if (!tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
                 {
-                    // Skip any tx where where tx can't cover the premium per gas.
+                    // Skip any tx where tx can't cover the premium per gas.
                     continue;
                 }
 
@@ -421,7 +421,7 @@ namespace Nethermind.Consensus.Producers
 
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
 
-        private class ArrayPoolBitMap : IDisposable
+        private readonly ref struct ArrayPoolBitMap : IDisposable
         {
             private const int BitShiftPerInt64 = 6;
             private static int GetLengthOfBitLength(int n) => (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
