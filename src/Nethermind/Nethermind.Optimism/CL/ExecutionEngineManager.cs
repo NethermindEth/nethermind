@@ -69,7 +69,7 @@ public class ExecutionEngineManager(
         PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
         switch (npResult.Status)
         {
-                case PayloadStatus.Invalid:
+            case PayloadStatus.Invalid:
                 {
                     if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
                     return false;
