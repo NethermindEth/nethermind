@@ -288,8 +288,7 @@ public partial class BlockDownloaderTests
                     blockHashes = blockHashes.Where((hash) =>
                     {
                         BlockHeader? header = ctx.ResponseBuilder.GetHeader(hash);
-                        if (header == null) return false;
-                        return header.Number <= availableBlock;
+                        return header is not null && header.Number <= availableBlock;
                     }).ToList();
                     requestedHashes.AddRange(blockHashes);
                 }
