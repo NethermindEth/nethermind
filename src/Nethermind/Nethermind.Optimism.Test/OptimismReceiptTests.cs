@@ -54,6 +54,48 @@ public class OptimismReceiptTests
     }
 
     [Test]
+    public void NoOperatorFeeParameters_DirectlyPostIsthmus_FromExtraData()
+    {
+        // Ecotone style l1 attributes, directly post Isthmus with:
+        // - baseFeeScalar = 2
+        // - blobBaseFeeScalar = 3
+        // - baseFee = 1000*1e6
+        // - blobBaseFee = 10*1e6
+        var l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2");
+
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.TestObject)
+            .WithTransactions(
+                Build.A.Transaction
+                    .WithType(TxType.DepositTx)
+                    .WithData(l1Attributes)
+                    .TestObject
+                )
+            .TestObject;
+        Transaction tx = Build.A.Transaction.TestObject;
+
+        var specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
+        var helper = Substitute.For<IOptimismSpecHelper>();
+        helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
+
+        var blockGasInfo = new L1BlockGasInfo(block, helper);
+        var receipt = new OptimismReceiptForRpc(
+            tx.Hash!,
+            new OptimismTxReceipt(),
+            tx.GetGasInfo(specProvider.GetSpec(block.Header), block.Header),
+            blockGasInfo.GetTxGasInfo(tx)
+        );
+
+        receipt.L1BaseFeeScalar.Should().Be((UInt256)2);
+        receipt.L1BlobBaseFeeScalar.Should().Be((UInt256)3);
+        receipt.L1GasPrice.Should().Be((UInt256)(1000 * 1e6));
+        receipt.L1BlobBaseFee.Should().Be((UInt256)(10 * 1e6));
+        receipt.OperatorFeeScalar.Should().Be((UInt256)0);
+        receipt.OperatorFeeConstant.Should().Be((UInt256)0);
+    }
+
+    [Test]
     public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData()
     {
         // Isthmus style l1 attributes with:
