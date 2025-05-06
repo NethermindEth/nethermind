@@ -21,10 +21,8 @@ public class WithdrawalTrie : PatriciaTrie<Withdrawal>
     public WithdrawalTrie(ReadOnlySpan<Withdrawal> withdrawals, bool canBuildProof = false)
         : base(withdrawals, canBuildProof) { }
 
-    public static Hash256? CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals)
-    {
-        return new WithdrawalTrie(withdrawals).RootHash;
-    }
+    public static Hash256? CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals) =>
+        new WithdrawalTrie(withdrawals).RootHash;
 
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
