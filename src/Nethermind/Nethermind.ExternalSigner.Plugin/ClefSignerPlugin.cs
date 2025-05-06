@@ -9,6 +9,7 @@ using Nethermind.Network;
 using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;
 using System.Configuration;
+using Nethermind.Wallet;
 
 namespace Nethermind.ExternalSigner.Plugin;
 
@@ -23,7 +24,7 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
     public string Author => "Nethermind";
 
     public bool MustInitialize => true;
-    public bool Enabled => miningConfig.Enabled;
+    public bool Enabled => !string.IsNullOrEmpty(miningConfig.Signer);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
@@ -39,6 +40,9 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
 
             string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
             _nethermindApi.EngineSigner = await SetupExternalSigner(uri, blockAuthorAccount);
+
+            _nethermindApi.Wallet = new ProtectedKeyStoreWallet(
+                );
         }
     }
 
