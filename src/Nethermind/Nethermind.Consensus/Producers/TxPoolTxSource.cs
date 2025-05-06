@@ -74,13 +74,9 @@ namespace Nethermind.Consensus.Producers
 
                 foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
                 {
-                    if (TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
+                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
                     {
                         yield return fullBlobTx;
-                    }
-                    else if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     }
                 }
 
@@ -94,11 +90,28 @@ namespace Nethermind.Consensus.Producers
             {
                 foreach (Transaction blobTx in selectedBlobTxs)
                 {
-                    yield return blobTx;
+                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    {
+                        yield return fullBlobTx;
+                    }
                 }
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
+
+            bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
+            {
+                if (TryGetFullBlobTx(blobTx, out fullBlobTx))
+                {
+                    return true;
+                }
+                else if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                }
+
+                return false;
+            }
         }
 
         private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
