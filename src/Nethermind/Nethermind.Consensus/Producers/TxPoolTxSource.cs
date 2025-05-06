@@ -103,13 +103,17 @@ namespace Nethermind.Consensus.Producers
             {
                 if (TryGetFullBlobTx(blobTx, out fullBlobTx))
                 {
+                    ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
+                    if (spec.BlobProofVersion != proofVersion)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
+                        return false;
+                    }
+
                     return true;
                 }
-                else if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                }
 
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                 return false;
             }
         }
@@ -158,14 +162,6 @@ namespace Nethermind.Consensus.Producers
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
                     continue;
                 }
-
-                // TODO: fix it
-                // ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
-                // if (spec.BlobProofVersion != proofVersion)
-                // {
-                //     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
-                //     continue;
-                // }
 
                 if (txBlobCount == 1 && candidates is null)
                 {
