@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using BouncyCastle::Org.BouncyCastle.Utilities.Encoders;
 using Nethermind.JsonRpc.Client;
+using CkzgLib;
 
 namespace SendBlobs;
 internal class BlobSender
@@ -126,9 +127,9 @@ internal class BlobSender
 
                 for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
                 {
-                    blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    blobs[blobIndex] = new byte[Ckzg.BytesPerBlob];
                     random.NextBytes(blobs[blobIndex]);
-                    for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
+                    for (int i = 0; i < Ckzg.BytesPerBlob; i += 32)
                     {
                         blobs[blobIndex][i] = 0;
                     }
@@ -229,14 +230,14 @@ internal class BlobSender
         Signer signer = new(chainId, privateKey, _logManager);
 
 
-        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.Ckzg.BytesPerBlob);
+        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.BytesPerBlob);
 
         byte[][] blobs = new byte[blobCount][];
 
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
-            blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
-            Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+            blobs[blobIndex] = new byte[Ckzg.BytesPerBlob];
+            Array.Copy(data, blobIndex * Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
         }
 
         (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
@@ -314,8 +315,8 @@ internal class BlobSender
         int blobIndex = 0;
         foreach (var blob in blobs)
         {
-            commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-            proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
+            commitments[blobIndex] = new byte[Ckzg.BytesPerCommitment];
+            proofs[blobIndex] = new byte[Ckzg.BytesPerProof];
             blobhashes[blobIndex] = new byte[32];
 
             KzgPolynomialCommitments.KzgifyBlob(
