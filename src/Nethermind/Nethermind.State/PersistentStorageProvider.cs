@@ -350,7 +350,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 // Force the update if the change is to zero. This means a removal.
                 if (after.IsZero || !kvp.Value.Ref.Before.Equals(after))
                 {
-                    dict[kvp.Key] = new(after, after);
+                    kvp.Value.Ref = new(after, after);
                     storageTree.SetValue(kvp.Key, after);
                     writes++;
                 }
@@ -633,11 +633,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public ref ChangeTrace GetValueRefOrNullRef(UInt256 storageCellIndex)
             => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex).Ref;
-
-        public ChangeTrace this[UInt256 key]
-        {
-            set => _dictionary[key] = value;
-        }
 
         public Dictionary<UInt256, ChangeTracePtr>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 

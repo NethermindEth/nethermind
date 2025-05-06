@@ -101,7 +101,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             return UInt256.Zero;
 
         var span = worldState.Get(_operatorFeeParamsSlot);
-        if (span.IsEmpty)
+        if (span.IsZero)
             return UInt256.Zero;
 
         const int scalarSize = 4;
@@ -110,17 +110,19 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
         (uint scalar, ulong constant) operatorFee;
 
-        switch (span.Length)
+        var s = span.BytesWithNoLeadingZeroes;
+
+        switch (s.Length)
         {
             case size:
-                operatorFee = Parse(span);
+                operatorFee = Parse(s);
                 break;
             case > size:
-                operatorFee = Parse(span.Slice(span.Length - size));
+                operatorFee = Parse(s.Slice(s.Length - size));
                 break;
             case < size:
                 Span<byte> aligned = stackalloc byte[size];
-                span.CopyTo(aligned.Slice(size - span.Length));
+                s.CopyTo(aligned.Slice(size - s.Length));
                 operatorFee = Parse(aligned);
                 break;
         }
