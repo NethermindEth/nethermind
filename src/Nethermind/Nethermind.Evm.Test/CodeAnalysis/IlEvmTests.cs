@@ -56,12 +56,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             base.Setup();
 
-            AotContractsRepository.ClearCache();
-            Precompiler.ResetEnvironment(true);
-
             IlAnalyzer.StartPrecompilerBackgroundThread(config, NullLogger.Instance);
-
-            Metrics.IlvmAotPrecompiledCalls = 0;
 
             ILogManager logManager = GetLogManager();
 
@@ -131,6 +126,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [NonParallelizable]
     internal class IlEvmTests
     {
+        [SetUp]
+        public void Setup()
+        {
+            AotContractsRepository.ClearCache();
+            Precompiler.ResetEnvironment(true);
+
+            Metrics.IlvmAotPrecompiledCalls = 0;
+        }
+
         private const string PatternField = "_patterns";
         private const int RepeatCount = 256;
         public static IEnumerable<(string, Instruction[], byte[], EvmExceptionType, bool, IReleaseSpec)> GetJitBytecodesSamples()
@@ -2040,11 +2044,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string fileName = Precompiler.GetTargetFileName();
 
-            var bytecode = testcase.bytecode;
-
-            var hashCode = Keccak.Compute(bytecode);
-
-            var address = enhancedChain.InsertCode(bytecode);
+            var address = enhancedChain.InsertCode(testcase.bytecode);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 

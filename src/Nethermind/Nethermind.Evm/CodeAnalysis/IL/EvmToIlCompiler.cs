@@ -160,6 +160,7 @@ public static class Precompiler
         {
             _currentDynamicModBuilder = null;
         }
+        _currentBundleSize = 0;
     }
 
     public static Emit<ILExecutionStep> EmitMoveNext(Emit<ILExecutionStep> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
