@@ -48,7 +48,7 @@ public class ContractBytecodeSearchVisitor(
     byte[][] searchBytecodes,
     List<ContractSearchResult> results,
     IStateReader stateReader,
-    ILogger logger) : ITreeVisitor
+    ILogger logger) : ITreeVisitor<OldStyleTrieVisitContext>
 {
     private readonly byte[][] _searchBytecodes = searchBytecodes;
     private readonly List<ContractSearchResult> _results = results;
@@ -58,25 +58,25 @@ public class ContractBytecodeSearchVisitor(
 
     public bool IsFullDbScan => true;
 
-    public bool ShouldVisit(Hash256 nodeHash) => true;
+    public bool ShouldVisit(in OldStyleTrieVisitContext trieVisitContext, in ValueHash256 nodeHash) => true;
 
-    public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+    public void VisitTree(in OldStyleTrieVisitContext trieVisitContext, in ValueHash256 rootHash)
     {
     }
 
-    public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+    public void VisitMissingNode(in OldStyleTrieVisitContext trieVisitContext, in ValueHash256 nodeHash)
     {
     }
 
-    public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitBranch(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
     {
     }
 
-    public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitExtension(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
     {
     }
 
-    public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+    public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
     {
         if (node.Key is null || node.Key.Length < 20)
         {
@@ -88,11 +88,15 @@ public class ContractBytecodeSearchVisitor(
         _currentAddress = new Address(key[(key.Length - 20)..]);
     }
 
-    public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+    public void VisitAccount(in OldStyleTrieVisitContext nodeContext, TrieNode node, in AccountStruct account)
     {
+
         if (_logger.IsInfo) _logger.Info($"Searching contract at {_currentAddress}");
 
-        ReadOnlySpan<byte> code = _stateReader.GetCode(codeHash)!;
+        if (!account.HasCode) return;
+        ValueHash256 key = account.CodeHash;
+
+        ReadOnlySpan<byte> code = _stateReader.GetCode(key);
 
         List<int> matchIndices = [];
         int count = 0;
@@ -117,4 +121,5 @@ public class ContractBytecodeSearchVisitor(
             });
         }
     }
+
 }
