@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     if (TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
                     {
-                        yield return blobTx;
+                        yield return fullBlobTx;
                     }
                     else if (_logger.IsTrace)
                     {
