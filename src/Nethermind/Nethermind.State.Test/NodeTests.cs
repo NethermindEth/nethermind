@@ -137,7 +137,7 @@ namespace Nethermind.Store.Test
             memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlp.ToArray();
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return new TrieStore(memDb, NullLogManager.Instance).GetTrieStore(null);
+            return TrieStore.ForTest(memDb, NullLogManager.Instance).GetTrieStore(null);
         }
     }
 }

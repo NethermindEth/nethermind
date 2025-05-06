@@ -38,7 +38,7 @@ public class ReorgTests
     public void Setup()
     {
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+        TrieStore trieStore = TrieStore.ForTest(new MemDb(), LimboLogs.Instance);
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;

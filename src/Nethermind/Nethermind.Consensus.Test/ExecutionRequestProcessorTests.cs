@@ -66,7 +66,7 @@ public class ExecutionProcessorTests
     {
         _specProvider = MainnetSpecProvider.Instance;
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TrieStore.ForTest(stateDb, LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);

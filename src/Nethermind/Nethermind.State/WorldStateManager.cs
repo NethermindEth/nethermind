@@ -47,7 +47,7 @@ public class WorldStateManager : IWorldStateManager
 
     public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
     {
-        IPruningTrieStore trieStore = new TrieStore(dbProvider.StateDb, logManager);
+        IPruningTrieStore trieStore = TrieStore.ForTest(dbProvider.StateDb, logManager);
         IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);

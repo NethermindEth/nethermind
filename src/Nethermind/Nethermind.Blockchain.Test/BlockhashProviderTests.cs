@@ -23,7 +23,7 @@ public class BlockhashProviderTests
 {
     private static IWorldState CreateWorldState()
     {
-        var trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
+        var trieStore = TrieStore.ForTest(new MemDb(), LimboLogs.Instance);
         var worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);

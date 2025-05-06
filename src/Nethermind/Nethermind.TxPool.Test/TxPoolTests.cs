@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-            var trieStore = new TrieStore(new MemDb(), _logManager);
+            var trieStore = TrieStore.ForTest(new MemDb(), _logManager);
             var codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();

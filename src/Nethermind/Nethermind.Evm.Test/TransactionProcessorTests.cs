@@ -52,7 +52,7 @@ public class TransactionProcessorTests
     public void Setup()
     {
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TrieStore.ForTest(stateDb, LimboLogs.Instance);
         PreBlockCaches preBlockCaches = new();
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);

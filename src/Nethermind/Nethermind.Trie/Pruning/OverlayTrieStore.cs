@@ -8,7 +8,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
 
-public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(keyValueStore, logManager)
+public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(
+    keyValueStore,
+    No.Pruning,
+    Persist.EveryBlock,
+    logManager)
 {
     public override bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
         base.IsPersisted(address, in path, in keccak) || store.IsPersisted(address, in path, in keccak);

@@ -63,7 +63,7 @@ public class VirtualMachineTestsBase
 
         IDb codeDb = new MemDb();
         _stateDb = new MemDb();
-        ITrieStore trieStore = new TrieStore(_stateDb, logManager);
+        ITrieStore trieStore = TrieStore.ForTest(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);

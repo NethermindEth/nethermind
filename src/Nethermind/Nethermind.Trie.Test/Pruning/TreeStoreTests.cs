@@ -606,7 +606,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {
-            using TrieStore trieStore = new(new BadDb(), _logManager);
+            using TrieStore trieStore = TrieStore.ForTest(new BadDb(), _logManager);
             StateTree tree = new(trieStore, _logManager);
             tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
             tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
@@ -901,7 +901,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void After_commit_should_have_has_root()
         {
             MemDb db = new();
-            TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
+            TrieStore trieStore = TrieStore.ForTest(db, LimboLogs.Instance);
             trieStore.HasRoot(Keccak.EmptyTreeHash).Should().BeTrue();
 
             Account account = new(1);
@@ -1088,7 +1088,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             (Hash256, ValueHash256) SetupStartingState()
             {
-                WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
+                WorldState worldState = new WorldState(TrieStore.ForTest(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 worldState.StateRoot = Keccak.EmptyTreeHash;
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());

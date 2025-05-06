@@ -148,9 +148,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long gas = 34218;
         ulong ts = 123456;
         MemDb stateDb = new();
-        TrieStore trieStore = new(
-                stateDb,
-                LimboLogs.Instance);
+        TrieStore trieStore = TrieStore.ForTest(stateDb,
+            LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(
                 trieStore,
                 new MemDb(),

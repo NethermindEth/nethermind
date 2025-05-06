@@ -45,7 +45,7 @@ public class CensorshipDetectorTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        TrieStore trieStore = new(new MemDb(), _logManager);
+        TrieStore trieStore = TrieStore.ForTest(new MemDb(), _logManager);
         MemDb codeDb = new();
         _stateProvider = new WorldState(trieStore, codeDb, _logManager);
         _blockProcessor = Substitute.For<IBlockProcessor>();

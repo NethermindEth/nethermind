@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Test
             if (!Inited)
             {
                 // this setup is just for finding the storage root
-                StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
+                StorageTree remoteStorageTree = SetStorage(TrieStore.ForTest(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
                 Hash256 storageRoot = remoteStorageTree.RootHash;
 
                 Empty = Build.An.Account.WithBalance(0).TestObject;
