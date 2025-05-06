@@ -52,7 +52,6 @@ jobs:
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
           - Nethermind.Blockchain.Test
-          - Nethermind.Cli.Test
           - Nethermind.Clique.Test
           - Nethermind.Config.Test
           - Nethermind.Consensus.Test

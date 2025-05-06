@@ -238,7 +238,7 @@ public class BlockValidator(
     public bool ValidateWithdrawals(Block block, out string? error) =>
         ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out error);
 
-    private bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
+    protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
     {
         if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
