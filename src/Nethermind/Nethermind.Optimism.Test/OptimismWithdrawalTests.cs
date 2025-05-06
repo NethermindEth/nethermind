@@ -29,7 +29,7 @@ public class OptimismWithdrawalTests
     public void WithdrawalsRoots_Should_Be_Set_According_To_Block_Timestamp(ulong timestamp, Hash256? withdrawalHash)
     {
         using var db = new MemDb();
-        using var store = new TrieStore(db, TestLogManager.Instance);
+        using var store = TestTrieStoreFactory.Build(db, TestLogManager.Instance);
 
         var state = new WorldState(store, NullDb.Instance, TestLogManager.Instance);
 
@@ -83,7 +83,7 @@ public class OptimismWithdrawalTests
     public void WithdrawalsRoot_IsAlwaysUpToDate_PostIsthmus()
     {
         using var db = new MemDb();
-        using var store = new TrieStore(db, TestLogManager.Instance);
+        using var store = TestTrieStoreFactory.Build(db, TestLogManager.Instance);
 
         var state = new WorldState(store, NullDb.Instance, TestLogManager.Instance);
         var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
