@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 extern alias BouncyCastle;
 
-using Nethermind.Cli;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
@@ -14,15 +13,18 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using BouncyCastle::Org.BouncyCastle.Utilities.Encoders;
+using Nethermind.JsonRpc.Client;
+using CkzgLib;
 
 namespace SendBlobs;
 internal class BlobSender
 {
     private static readonly TxDecoder txDecoder = TxDecoder.Instance;
 
-    private INodeManager _nodeManager;
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
+    private readonly string _rpcUrl;
+    private readonly IJsonRpcClient _rpcClient;
 
     public BlobSender(string rpcUrl, ILogManager logManager)
     {
@@ -31,7 +33,8 @@ internal class BlobSender
 
         _logManager = logManager;
         _logger = logManager.GetClassLogger();
-        _nodeManager = SetupCli.InitNodeManager(rpcUrl, _logger);
+        _rpcClient = SetupCli.InitRpcClient(rpcUrl, _logger);
+        _rpcUrl = rpcUrl;
 
         KzgPolynomialCommitments.InitializeAsync().Wait();
     }
@@ -64,20 +67,20 @@ internal class BlobSender
 
         if (waitForInclusion)
         {
-            bool isNodeSynced = await _nodeManager.Post<dynamic>("eth_syncing") is bool;
+            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
             if (!isNodeSynced)
             {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_nodeManager.CurrentUri} is still syncing");
+                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
                 waitForInclusion = false;
             }
         }
 
-        string? chainIdString = await _nodeManager.Post<string>("eth_chainId") ?? "1";
+        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
         ulong chainId = HexConvert.ToUInt64(chainIdString);
 
         foreach (PrivateKey privateKey in privateKeys)
         {
-            string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
+            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
             if (nonceString is null)
             {
                 _logger.Error("Unable to get nonce");
@@ -124,9 +127,9 @@ internal class BlobSender
 
                 for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
                 {
-                    blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    blobs[blobIndex] = new byte[Ckzg.BytesPerBlob];
                     random.NextBytes(blobs[blobIndex]);
-                    for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
+                    for (int i = 0; i < Ckzg.BytesPerBlob; i += 32)
                     {
                         blobs[blobIndex][i] = 0;
                     }
@@ -141,7 +144,7 @@ internal class BlobSender
                 (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
 
 
-                BlockModel<Hash256>? blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
+                BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
                 if (blockResult is null)
                 {
@@ -179,7 +182,7 @@ internal class BlobSender
                     signers[signerIndex] = new(signer, nonce + 1);
 
                 if (waitForInclusion)
-                    await WaitForBlobInclusion(_nodeManager, result, blockResult.Number);
+                    await WaitForBlobInclusion(_rpcClient, result, blockResult.Number);
             }
         }
     }
@@ -204,19 +207,19 @@ internal class BlobSender
 
         if (waitForInclusion)
         {
-            bool isNodeSynced = await _nodeManager.Post<dynamic>("eth_syncing") is bool;
+            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
             if (!isNodeSynced)
             {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_nodeManager.CurrentUri} is still syncing");
+                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
                 waitForInclusion = false;
             }
         }
 
-        string? chainIdString = await _nodeManager.Post<string>("eth_chainId") ?? "1";
+        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
         ulong chainId = HexConvert.ToUInt64(chainIdString);
 
 
-        string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
+        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
         if (nonceString is null)
         {
             _logger.Error("Unable to get nonce");
@@ -227,19 +230,19 @@ internal class BlobSender
         Signer signer = new(chainId, privateKey, _logManager);
 
 
-        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.Ckzg.BytesPerBlob);
+        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.BytesPerBlob);
 
         byte[][] blobs = new byte[blobCount][];
 
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
-            blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
-            Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+            blobs[blobIndex] = new byte[Ckzg.BytesPerBlob];
+            Array.Copy(data, blobIndex * Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
         }
 
         (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
 
-        BlockModel<Hash256>? blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
+        BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
         if (blockResult is null)
         {
@@ -256,7 +259,7 @@ internal class BlobSender
         Hash256? hash = await SendTransaction(chainId, nonce, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
 
         if (waitForInclusion)
-            await WaitForBlobInclusion(_nodeManager, hash, blockResult.Number);
+            await WaitForBlobInclusion(_rpcClient, hash, blockResult.Number);
     }
 
     private async Task<(UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas)> GetGasPrices
@@ -266,7 +269,7 @@ internal class BlobSender
 
         if (defaultMaxPriorityFeePerGas is null)
         {
-            string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+            string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
             result.maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
         }
         else
@@ -312,8 +315,8 @@ internal class BlobSender
         int blobIndex = 0;
         foreach (var blob in blobs)
         {
-            commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-            proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
+            commitments[blobIndex] = new byte[Ckzg.BytesPerCommitment];
+            proofs[blobIndex] = new byte[Ckzg.BytesPerProof];
             blobhashes[blobIndex] = new byte[32];
 
             KzgPolynomialCommitments.KzgifyBlob(
@@ -350,14 +353,14 @@ internal class BlobSender
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
-        string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+        string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
 
         Console.WriteLine("Sending tx result:" + result);
 
         return result is not null ? tx.CalculateHash() : null;
     }
 
-    private async static Task WaitForBlobInclusion(INodeManager nodeManager, Hash256? txHash, UInt256 lastBlockNumber)
+    private async static Task WaitForBlobInclusion(IJsonRpcClient rpcClient, Hash256? txHash, UInt256 lastBlockNumber)
     {
         Console.WriteLine("Waiting for blob transaction to be included in a block");
         int waitInMs = 2000;
@@ -366,14 +369,14 @@ internal class BlobSender
 
         while (true)
         {
-            var blockResult = await nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber.ToString() ?? "latest", false);
+            var blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber.ToString() ?? "latest", false);
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
 
                 if (txHash is not null && blockResult.Transactions.Contains(txHash))
                 {
-                    string? receipt = await nodeManager.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
+                    string? receipt = await rpcClient.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
 
                     Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                     return;

@@ -267,7 +267,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             callFrame.Logs = null;
         }
 
-        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls)
+        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls.AsSpan())
         {
             ClearFailedLogs(childCallFrame, failed);
         }

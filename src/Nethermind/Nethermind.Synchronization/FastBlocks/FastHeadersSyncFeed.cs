@@ -24,7 +24,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -655,7 +655,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             UInt256? totalDifficulty = nextHeaderTotalDifficulty;
-            foreach (var blockHeader in headersToAdd)
+            foreach (var blockHeader in headersToAdd.AsSpan())
             {
                 blockHeader.TotalDifficulty = totalDifficulty;
                 totalDifficulty = DetermineParentTotalDifficulty(blockHeader);

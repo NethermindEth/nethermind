@@ -74,7 +74,10 @@ namespace Nethermind.Consensus.Producers
 
                 foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
                 {
-                    yield return blobTx;
+                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    {
+                        yield return fullBlobTx;
+                    }
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
@@ -87,11 +90,28 @@ namespace Nethermind.Consensus.Producers
             {
                 foreach (Transaction blobTx in selectedBlobTxs)
                 {
-                    yield return blobTx;
+                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    {
+                        yield return fullBlobTx;
+                    }
                 }
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
+
+            bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
+            {
+                if (TryGetFullBlobTx(blobTx, out fullBlobTx))
+                {
+                    return true;
+                }
+                else if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                }
+
+                return false;
+            }
         }
 
         private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
@@ -139,15 +159,9 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                    continue;
-                }
-
                 if (txBlobCount == 1 && candidates is null)
                 {
-                    selectedBlobTxs.Add(fullBlobTx);
+                    selectedBlobTxs.Add(blobTx);
                     if (selectedBlobTxs.Count == maxBlobsPerBlock)
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees
@@ -159,7 +173,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     candidates ??= new(16);
 
-                    candidates.Add((fullBlobTx, blobChain));
+                    candidates.Add((blobTx, blobChain));
                     countOfRemainingBlobs += txBlobCount;
                 }
 
