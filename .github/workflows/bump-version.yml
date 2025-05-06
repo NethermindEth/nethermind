@@ -1,0 +1,59 @@
+name: Bump up version
+
+on:
+  create:
+    branches:
+      - 'release/*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/heads/release/') && endsWith(github.ref, '.0')
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Bump up the version
+        id: version
+        run: |
+          chmod +x ./scripts/bump-version.sh
+          ./scripts/bump-version.sh "${{ github.ref }}" "src/Nethermind/Directory.Build.props" > version_output.txt
+          
+          # Read the output and set step outputs
+          while IFS= read -r line; do
+            if [[ $line =~ ^(needs_update|current_version|new_version)= ]]; then
+              echo "$line" >> $GITHUB_OUTPUT
+            fi
+          done < version_output.txt
+
+      - name: Create GitHub app token
+        if: steps.version.outputs.needs_update == 'true'
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create pull request
+        if: steps.version.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          timestamp=$(date +%s)
+          head_branch="chore/bump-version-${{ steps.version.outputs.new_version }}-$timestamp"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add src/Nethermind/Directory.Build.props
+          git commit -m "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable"
+          git push origin $head_branch
+          gh pr create -B master -H $head_branch \
+            -t "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable" \
+            -b "Automated version bump-up from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}-unstable" \
+            -l "version bump"

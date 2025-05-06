@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -53,7 +54,7 @@ public class StartMonitoring : IStep
 
         if (_metricsConfig.Enabled)
         {
-            IMonitoringService monitoringService = _api.MonitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
+            IMonitoringService monitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
 
             SetupMetrics(monitoringService);
 

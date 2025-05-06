@@ -10,12 +10,14 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -23,11 +25,12 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -37,7 +40,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 20000;
+        public const int TimeoutLength = 20000;
 
         private static IBlockTree? _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
@@ -72,8 +75,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
         {
-            StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
-            for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
+            StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, [(byte)j, i]);
 
             remoteStorageTree.Commit();
             return remoteStorageTree;
@@ -111,11 +114,15 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
-                .AddModule(new TestSynchronizerModule(new TestSyncConfig()
+                .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
                 {
-                    SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
                     FastSync = true
-                }))
+                })))
+                .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
+                {
+                    syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
+                    return syncConfig;
+                })
                 .AddSingleton<ILogManager>(_logManager)
                 .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
                 .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
@@ -130,7 +137,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             containerBuilder.RegisterBuildCallback((ctx) =>
             {
-                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
                 ctx.Resolve<ISyncPeerPool>().Start();
             });
 
@@ -151,18 +157,31 @@ namespace Nethermind.Synchronization.Test.FastSync
             };
 
             safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+            safeContext.StartDispatcher(safeContext.CancellationToken);
 
             await Task.WhenAny(
                 dormantAgainSource.Task,
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree, StateSyncPivot stateSyncPivot)
+        protected class SafeContext(
+            Lazy<SyncPeerMock[]> syncPeerMocks,
+            Lazy<ISyncPeerPool> syncPeerPool,
+            Lazy<TreeSync> treeSync,
+            Lazy<StateSyncFeed> stateSyncFeed,
+            Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+            IBlockTree blockTree
+        ) : IDisposable
         {
-            public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
-            public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
-            public TreeSync TreeFeed => container.Resolve<TreeSync>();
-            public StateSyncFeed Feed => container.Resolve<StateSyncFeed>();
+            public SyncPeerMock[] SyncPeerMocks => syncPeerMocks.Value;
+            public ISyncPeerPool Pool => syncPeerPool.Value;
+            public TreeSync TreeFeed => treeSync.Value;
+            public StateSyncFeed Feed => stateSyncFeed.Value;
+
+            private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
+            public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
+
+            private bool _isDisposed;
 
             public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
             {
@@ -173,8 +192,18 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
                 blockTree.UpdateMainChain([newBlock], false, true);
+            }
 
-                stateSyncPivot.UpdateHeaderForcefully();
+            public void StartDispatcher(CancellationToken cancellationToken)
+            {
+                Task _ = syncDispatcher.Value.Start(cancellationToken);
+            }
+
+            public void Dispose()
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+                _autoCancelTokenSource.Dispose();
             }
         }
 
@@ -227,7 +256,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (stage == "END")
                 {
-                    Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
+                    Assert.That(local, Is.EqualTo(remote), $"{stage}{Environment.NewLine}{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
                     LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
@@ -242,9 +271,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
         }
 
-        protected class SyncPeerMock : ISyncPeer, ISnapSyncPeer
+        protected class SyncPeerMock : BaseSyncPeerMock
         {
-            public string Name => "Mock";
+            public override string Name => "Mock";
 
             private readonly IDb _codeDb;
             private readonly IReadOnlyKeyValueStore _stateDb;
@@ -268,8 +297,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
                 _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
-                ILastNStateRootTracker alwaysAvailableRootTracker = Substitute.For<ILastNStateRootTracker>();
-                alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
+                IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
+                alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
                 IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
                 _stateDb = trieStore.TrieNodeRlpStore;
@@ -281,19 +310,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
-            public Hash256 HeadHash { get; set; } = null!;
-            public string ProtocolCode { get; } = null!;
-            public byte ProtocolVersion { get; } = 67;
-            public string ClientId => "executorMock";
-            public Node Node { get; }
-            public long HeadNumber { get; set; }
-            public UInt256 TotalDifficulty { get; set; }
-            public bool IsInitialized { get; set; }
-            public bool IsPriority { get; set; }
+            public override byte ProtocolVersion { get; } = 67;
+            public override string ClientId => "executorMock";
+            public override PublicKey Id => Node.Id;
 
-            public PublicKey Id => Node.Id;
-
-            public async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public override async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -325,7 +346,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _filter = availableHashes;
             }
 
-            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+            public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
                 if (protocol == Protocol.Snap)
                 {
@@ -336,66 +357,17 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return false;
             }
 
-            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-            {
-                throw new NotImplementedException();
-            }
-
-            public void Disconnect(DisconnectReason reason, string details)
-            {
-            }
-
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
+            public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
             {
                 return Task.FromResult(BlockTree.Head?.Header);
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+            public override Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
             {
                 return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
             }
 
-            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+            public override Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
             {
                 IOwnedReadOnlyList<PathGroup> groups = SnapProtocolHandler.GetPathGroups(request);
                 return GetTrieNodes(new GetTrieNodesRequest()
@@ -405,7 +377,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }, token);
             }
 
-            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+            public override Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
             {
                 var nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
                 return Task.FromResult(nodes!);

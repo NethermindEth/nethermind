@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/op-mainnet.json",
+    "ChainSpecPath": "chainspec/op-mainnet.json.zst",
     "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
-    "BaseDbPath": "nethermind_db/op-mainnet-archive",
-    "LogFileName": "op-mainnet-archive.logs.txt",
+    "BaseDbPath": "nethermind_db/op-mainnet_archive",
+    "LogFileName": "op-mainnet_archive.log",
     "MemoryHint": 2048000000,
     "DisableGcOnNewPayload": false
   },
@@ -18,6 +18,9 @@
   "Discovery": {
     "DiscoveryVersion": "V5"
   },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
   "Pruning": {
     "Mode": "None"
   },
@@ -25,6 +28,12 @@
     "Enabled": true,
     "Port": 8545,
     "EnginePort": 8551
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
   },
   "Snapshot": {
     "Enabled": true,

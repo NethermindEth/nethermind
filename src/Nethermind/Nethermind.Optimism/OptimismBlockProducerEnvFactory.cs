@@ -23,8 +23,8 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 {
-    private readonly OptimismSpecHelper _specHelper;
-    private readonly OPL1CostHelper _l1CostHelper;
+    private readonly IOptimismSpecHelper _specHelper;
+    private readonly OptimismCostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
         IWorldStateManager worldStateManager,
@@ -37,8 +37,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        OptimismSpecHelper specHelper,
-        OPL1CostHelper l1CostHelper,
+        IOptimismSpecHelper specHelper,
+        OptimismCostHelper l1CostHelper,
         ILogManager logManager) : base(
             worldStateManager,
             blockTree,
@@ -54,7 +54,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     {
         _specHelper = specHelper;
         _l1CostHelper = l1CostHelper;
-        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
+        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
@@ -93,6 +93,6 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
-            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
+            withdrawalProcessor: new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
 }

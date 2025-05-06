@@ -16,9 +16,13 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 
@@ -32,30 +36,29 @@ namespace Nethermind.JsonRpc.Modules.Trace
     /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
     /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
     /// </summary>
-    public class TraceRpcModule : ITraceRpcModule
+    public class TraceRpcModule(
+        IReceiptFinder? receiptFinder,
+        ITracer? tracer,
+        IBlockFinder? blockFinder,
+        IJsonRpcConfig? jsonRpcConfig,
+        IStateReader? stateReader,
+        IOverridableTxProcessorSource? env,
+        IBlockchainBridge? blockchainBridge,
+        ulong? secondsPerSlot)
+        : ITraceRpcModule
     {
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly ITracer _tracer;
-        private readonly IBlockFinder _blockFinder;
+        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+        private readonly ITracer _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly TimeSpan _cancellationTokenTimeout;
-        private readonly IStateReader _stateReader;
-        private readonly IOverridableTxProcessorSource _env;
+        private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        private readonly IOverridableTxProcessorSource _env = env ?? throw new ArgumentNullException(nameof(env));
+        private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        private readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader? stateReader, IOverridableTxProcessorSource? env)
-        {
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _env = env ?? throw new ArgumentNullException(nameof(env));
-            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
-        }
-
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env)
-            : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env) { }
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot)
+            : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env, blockchainBridge, secondsPerSlot) { }
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
@@ -130,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
 
-            using IOverridableTxProcessingScope? scope = stateOverride != null ? _env.BuildAndOverride(header, stateOverride) : null;
+            using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(header, stateOverride);
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1));
@@ -298,21 +301,34 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            CancellationToken cancellationToken = timeout.Token;
             _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            CancellationToken cancellationToken = timeout.Token;
             _tracer.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+
+        private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
+            _jsonRpcConfig.BuildTimeoutCancellationToken();
+
+        /// <summary>
+        /// Trace simulated blocks transactions (eth_simulateV1)
+        /// </summary>
+        public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
+            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null)
+        {
+            return new SimulateTxExecutor<ParityLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
+                .Execute(payload, blockParameter);
+        }
     }
 }

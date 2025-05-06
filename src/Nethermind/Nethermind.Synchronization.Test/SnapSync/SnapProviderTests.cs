@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -16,8 +15,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
@@ -25,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
@@ -200,8 +198,8 @@ public class SnapProviderTests
         }
         st.Commit();
 
-        ILastNStateRootTracker stateRootTracker = Substitute.For<ILastNStateRootTracker>();
-        stateRootTracker.HasStateRoot(st.RootHash).Returns(true);
+        IStateReader stateRootTracker = Substitute.For<IStateReader>();
+        stateRootTracker.HasStateForRoot(st.RootHash).Returns(true);
         var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), stateRootTracker, LimboLogs.Instance);
         return (ss, st.RootHash);
     }

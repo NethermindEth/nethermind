@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
+using Nethermind.Specs;
 
 namespace Nethermind.Test.Runner;
 
@@ -24,6 +25,8 @@ internal class Program
         public static CliOption<bool> BlockTest { get; } =
             new("--blockTest", "-b") { Description = "Set test as blockTest. if not, it will be by default assumed a state test." };
 
+        public static CliOption<bool> EofTest { get; } =
+            new("--eofTest", "-e") { Description = "Set test as eofTest. if not, it will be by default assumed a state test." };
         public static CliOption<bool> TraceAlways { get; } =
             new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]" };
 
@@ -41,6 +44,12 @@ internal class Program
 
         public static CliOption<bool> Stdin { get; } =
             new("--stdin", "-x") { Description = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
+
+        public static CliOption<bool> GnosisTest { get; } =
+            new("--gnosisTest", "-g") { Description = "Set test as gnosisTest. if not, it will be by default assumed a mainnet test." };
+
+        public static CliOption<bool> EnableWarmup { get; } =
+            new("--warmup", "-wu") { Description = "Enable warmup for benchmarking purposes." };
     }
 
     public static async Task<int> Main(params string[] args)
@@ -50,12 +59,15 @@ internal class Program
             Options.Input,
             Options.Filter,
             Options.BlockTest,
+            Options.EofTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
             Options.ExcludeStack,
             Options.Wait,
-            Options.Stdin
+            Options.Stdin,
+            Options.GnosisTest,
+            Options.EnableWarmup,
         ];
         rootCommand.SetAction(Run);
 
@@ -78,16 +90,23 @@ internal class Program
 
         if (parseResult.GetValue(Options.Stdin))
             input = Console.ReadLine();
+        ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
+
 
         while (!string.IsNullOrWhiteSpace(input))
         {
             if (parseResult.GetValue(Options.BlockTest))
-                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter)));
+                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter), chainId));
+            else if (parseResult.GetValue(Options.EofTest))
+                RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
             else
                 RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
                     !parseResult.GetValue(Options.ExcludeStack),
-                    parseResult.GetValue(Options.Filter)));
+                    chainId,
+                    parseResult.GetValue(Options.Filter),
+                    parseResult.GetValue(Options.EnableWarmup)));
+
 
             if (!parseResult.GetValue(Options.Stdin))
                 break;
@@ -107,6 +126,14 @@ internal class Program
             ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
             : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
         await testRunnerBuilder(source).RunTestsAsync();
+    }
+
+    private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
+    {
+        ITestSourceLoader source = Path.HasExtension(path)
+            ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
+            : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
+        testRunnerBuilder(source).RunTests();
     }
 
     private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)

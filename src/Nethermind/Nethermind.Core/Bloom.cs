@@ -39,11 +39,6 @@ namespace Nethermind.Core
             Add(logEntries, blockBloom);
         }
 
-        public Bloom(byte[] bytes)
-        {
-            bytes.CopyTo(Bytes);
-        }
-
         public Bloom(ReadOnlySpan<byte> bytes)
         {
             bytes.CopyTo(Bytes);

@@ -12,7 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -60,8 +60,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+
         _resultConstructed = true;
+
         return result;
     }
 
@@ -100,14 +104,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
             : new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
-        _log.pc = pc;
+        _log.pc = pc + env.CodeInfo.PcOffset();
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();
         _log.error = null;
         _log.gasCost = null;
+        // skip codeSection
+        // skip functionDepth
     }
 
     public override void ReportOperationRemainingGas(long gas)

@@ -4,10 +4,13 @@
     "ChainSpecPath": "chainspec/linea-mainnet.json",
     "GenesisHash": "0xb6762a65689107b2326364aefc18f94cda413209fab35c00d4af51eaa20ffbc6",
     "BaseDbPath": "nethermind_db/linea-mainnet_archive",
-    "LogFileName": "linea-mainnet_archive.logs.txt"
+    "LogFileName": "linea-mainnet_archive.log"
   },
   "Merge": {
     "Enabled": false
+  },
+  "Receipt": {
+    "TxLookupLimit": 0
   },
   "Pruning": {
     "Mode": "None"

@@ -16,6 +16,8 @@ namespace Nethermind.Consensus.Transactions
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
 
+        public bool SupportsBlobs => _innerSource.SupportsBlobs;
+
         public FilteredTxSource(ITxSource innerSource, ITxFilter txFilter, ILogManager logManager)
         {
             _innerSource = innerSource;
@@ -23,9 +25,9 @@ namespace Nethermind.Consensus.Transactions
             _logger = logManager?.GetClassLogger<FilteredTxSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
-            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit, payloadAttributes))
+            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {
                 if (tx is T)
                 {

@@ -12,8 +12,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsG2AddPrecompileTests
+public class BlsG2AddPrecompileTests : PrecompileTests<BlsG2AddPrecompileTests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/add_G2_bls.json";
+        yield return "Bls/fail-add_G2_bls.json";
+    }
+
+    public static IPrecompile Precompile() => G2AddPrecompile.Instance;
+
     [Test]
     public void Test()
     {
@@ -24,6 +32,25 @@ public class BlsG2AddPrecompileTests
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }
+    }
+
+    // regression test for consensus issue
+    // precompile cache modified input causing add to zero to return wrong value
+    [Test]
+    public void Modifying_input_should_not_affect_output()
+    {
+        byte[] input = new byte[512];
+
+        G2AddPrecompile precompile = G2AddPrecompile.Instance;
+        (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
+
+        input[511] = 0xFF;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(output.ToArray(), Is.All.EqualTo(0));
+            Assert.That(success, Is.True);
+        });
     }
 
     /// <summary>

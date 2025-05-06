@@ -36,7 +36,7 @@ public class TransactionProcessorEip7623Tests
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
@@ -65,7 +65,7 @@ public class TransactionProcessorEip7623Tests
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
 
-        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         Assert.That(result.Fail, Is.EqualTo(isFail));
     }
 
@@ -91,7 +91,7 @@ public class TransactionProcessorEip7623Tests
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
 
-        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         UInt256 balance = _stateProvider.GetBalance(TestItem.AddressA);
         Assert.That(balance, Is.EqualTo(1.Ether() - 100.GWei() - 21010));

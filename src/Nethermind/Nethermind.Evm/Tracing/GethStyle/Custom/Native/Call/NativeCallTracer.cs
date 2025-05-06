@@ -26,6 +26,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public const string CallTracer = "callTracer";
 
     private readonly long _gasLimit;
+    private readonly Hash256? _txHash;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = new();
@@ -40,6 +41,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         IsTracingActions = true;
         _gasLimit = tx!.GasLimit;
+        _txHash = tx.Hash;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -55,11 +57,17 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
+
         Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
+
         _callStack.RemoveAt(0);
         _disposables.Add(firstCallFrame);
+
+        result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+
         _resultBuilt = true;
+
         return result;
     }
 
@@ -166,7 +174,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
-        firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
+        firstCallFrame.Output = new ArrayPoolList<byte>(output);
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
@@ -175,7 +183,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)
-            firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
+            firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
@@ -259,7 +267,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             callFrame.Logs = null;
         }
 
-        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls)
+        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls.AsSpan())
         {
             ClearFailedLogs(childCallFrame, failed);
         }

@@ -17,14 +17,17 @@ public class ContractRewriter
         _contractOverrides = contractOverrides;
     }
 
-    public void RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
+    public bool RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
+        bool result = false;
         if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]> overrides))
         {
             foreach (KeyValuePair<Address, byte[]> contractOverride in overrides)
             {
                 stateProvider.InsertCode(contractOverride.Key, contractOverride.Value, spec);
+                result = true;
             }
         }
+        return result;
     }
 }

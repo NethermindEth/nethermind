@@ -9,11 +9,13 @@ namespace Nethermind.Trie;
 public class TrieNodeException : TrieException
 {
     public ValueHash256 NodeHash { get; private set; }
+    public TreePath Path { get; private set; }
     public string? EnhancedMessage { get; set; }
     public override string Message => EnhancedMessage is null ? base.Message : EnhancedMessage + Environment.NewLine + base.Message;
 
-    public TrieNodeException(string message, Hash256 keccak, Exception? inner = null) : base(message, inner)
+    public TrieNodeException(string message, TreePath path, Hash256 keccak, Exception? inner = null) : base(message, inner)
     {
         NodeHash = keccak;
+        Path = path;
     }
 }

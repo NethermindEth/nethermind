@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" />
     <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 
@@ -20,6 +21,17 @@
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <PackageReference Include="Snappier" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <Folder Include="Raw\" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <None Remove="Raw\Create2Deployer.data" />
+    <EmbeddedResource Include="Raw\Create2Deployer.data" />
   </ItemGroup>
 
 </Project>

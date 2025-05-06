@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
                     return false;
                 }
 
-                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 2);
+                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 16);
                 return isSyncing;
             }
         }
@@ -74,11 +74,12 @@ namespace Nethermind.Blockchain
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
+            IReleaseSpec spec = SpecProvider.GetSpec(e.Block.Header);
             HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
             CurrentFeePerBlobGas =
-                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, out UInt256 currentFeePerBlobGas)
+                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);

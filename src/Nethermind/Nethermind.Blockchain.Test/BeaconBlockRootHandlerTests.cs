@@ -95,11 +95,11 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
         (_, AccessList? accessList) = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance);
+            .BeaconRootsAccessList(block, Cancun.Instance, includeStorageCells: true);
 
         Assert.That(accessList, Is.Not.Null);
         Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
-        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(1));
+        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(2));
     }
 
     [Test]
@@ -149,6 +149,6 @@ public class BeaconBlockRootHandlerTests
 
         transaction.Hash = transaction.CalculateHash();
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
-            t.Hash == transaction.Hash), header, NullTxTracer.Instance);
+            t.Hash == transaction.Hash), new BlockExecutionContext(header, Cancun.Instance), NullTxTracer.Instance);
     }
 }

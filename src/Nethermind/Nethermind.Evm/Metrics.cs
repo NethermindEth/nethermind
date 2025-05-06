@@ -60,9 +60,6 @@ public class Metrics
     [Description("Number of EXP opcodes executed.")]
     public static long ExpOpcode { get; set; }
 
-    [Description("Number of BLOCKHASH opcodes executed.")]
-    public static long BlockhashOpcode { get; set; }
-
     [Description("Number of BN254_MUL precompile calls.")]
     public static long Bn254MulPrecompile { get; set; }
 
@@ -140,6 +137,10 @@ public class Metrics
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
+
+    [GaugeMetric]
+    [Description("The number of tasks scheduled in the background.")]
+    public static long NumberOfBackgroundTasksScheduled { get; set; }
 
     internal static long BlockTransactions { get; set; }
 

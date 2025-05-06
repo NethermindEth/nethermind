@@ -16,6 +16,6 @@ public class HomesteadBlockChainTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/homestead");
-        return loader.LoadTests().Cast<BlockchainTest>();
+        return loader.LoadTests<BlockchainTest>();
     }
 }

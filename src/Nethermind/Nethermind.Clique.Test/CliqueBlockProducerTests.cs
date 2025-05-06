@@ -50,7 +50,7 @@ public class CliqueBlockProducerTests
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
-        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
+        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
         private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
         private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -87,13 +87,13 @@ public class CliqueBlockProducerTests
             MemDb stateDb = new();
             MemDb codeDb = new();
 
-            ISpecProvider specProvider = GoerliSpecProvider.Instance;
+            ISpecProvider specProvider = SepoliaSpecProvider.Instance;
 
             var trieStore = new TrieStore(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-            GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
+            SepoliaSpecProvider goerliSpecProvider = SepoliaSpecProvider.Instance;
             stateProvider.Commit(goerliSpecProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
@@ -110,7 +110,7 @@ public class CliqueBlockProducerTests
             CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(goerliSpecProvider.ChainId),
                 _logManager,
@@ -122,14 +122,14 @@ public class CliqueBlockProducerTests
 
             SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
             _snapshotManager[privateKey] = snapshotManager;
-            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
             _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
             TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
+                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new(
@@ -150,7 +150,7 @@ public class CliqueBlockProducerTests
             IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
             WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
+            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
             BlockProcessor minerBlockProcessor = new(
@@ -564,6 +564,7 @@ public class CliqueBlockProducerTests
     private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
+    [Retry(3)]
     public async Task Can_produce_block_with_transactions()
     {
         await On.Goerli
@@ -797,6 +798,7 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task Can_reorganize_when_receiving_in_turn_blocks()
     {
         On goerli = On.FastGoerli;

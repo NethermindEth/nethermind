@@ -9,9 +9,12 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -24,6 +27,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Synchronization
 {
@@ -299,10 +303,20 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
+            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<IPivot, Pivot>() // Used by sync report
+            .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
-            .AddScoped<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+
+            // The direct implementation is decorated by merge plugin (not the interface)
+            // so its  declared on its own and other use is binded.
+            .AddScoped<BlockDownloader>()
+            .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
+            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
@@ -329,17 +343,35 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         builder
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
-            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync);
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-        builder
-            .RegisterType<SyncPeerPool>()
-            .As<ISyncPeerPool>()
-            .As<IPeerDifficultyRefreshPool>()
-            .SingleInstance();
+            .AddSingleton<SyncPeerPool>()
+                .Bind<ISyncPeerPool, SyncPeerPool>()
+                .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
+                .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
+                {
+                    ILogManager logManager = ctx.Resolve<ILogManager>();
+                    ctx.Resolve<IWorldStateManager>().InitializeNetwork(
+                        new PathNodeRecovery(
+                            new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
+                            new SnapRangeRecovery(peerPool!, logManager),
+                            logManager
+                        )
+                    );
+                })
 
-        builder
-            .Map<IReceiptStorage, IReceiptFinder>(static (storage) => storage)
             .AddSingleton<ISyncServer, SyncServer>();
+
+        builder
+            .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
+            {
+                // Move to clique plugin?
+                if (ctx.ResolveOptional<ChainSpec>()?.SealEngineType == SealEngineType.Clique)
+                    syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+
+                return syncConfig;
+            });
+
     }
 
     private void ConfigureFullSync(ContainerBuilder scopeConfig)
@@ -423,9 +455,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         if (syncConfig.FastSync && syncConfig.VerifyTrieOnStateSyncFinished)
         {
             serviceCollection
-                .RegisterType<VerifyStateOnStateSyncFinished>()
-                .WithAttributeFiltering()
-                .As<IStartable>();
+                .AddSingleton<VerifyStateOnStateSyncFinished>()
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
+                {
+                    ctx.Resolve<VerifyStateOnStateSyncFinished>();
+                });
         }
     }
 

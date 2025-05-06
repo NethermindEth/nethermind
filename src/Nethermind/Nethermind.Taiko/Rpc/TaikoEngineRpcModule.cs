@@ -158,7 +158,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             batch.Dispose();
         }
 
-        BlockExecutionContext blkCtx = new(blockHeader);
+        BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
         worldState.StateRoot = blockHeader.StateRoot;
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
@@ -275,7 +275,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 RlpStream rlpStream = new(data);
 
                 rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions)
+                foreach (Transaction tx in Transactions.AsSpan())
                 {
                     txDecoder.Encode(rlpStream, tx);
                 }

@@ -19,6 +19,11 @@ namespace Nethermind.Config
             return _provider.GetConfig<T>();
         }
 
+        public IConfig GetConfig(Type configType)
+        {
+            return _provider.GetConfig(configType);
+        }
+
         public object GetRawValue(string category, string name)
         {
             return _provider.GetRawValue(category, name);

@@ -13,10 +13,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStore : IDisposable, ITrieStoreInternal
     {
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
@@ -41,8 +37,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStoreInternal
     {
-        // Used by healing
-        void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
@@ -50,9 +44,14 @@ namespace Nethermind.Trie.Pruning
         bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
     }
 
-    public interface IPruningTrieStore
+    public interface IPruningTrieStore : ITrieStore
     {
         public void PersistCache(CancellationToken cancellationToken);
+
+        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
+
+        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Core.Extensions
@@ -29,6 +30,11 @@ namespace Nethermind.Core.Extensions
         public static IEip1559Spec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber)
         {
             return specProvider.GetSpec(blockNumber, null);
+        }
+
+        public static ulong GetFinalMaxBlobGasPerBlock(this ISpecProvider specProvider)
+        {
+            return Eip4844Constants.GasPerBlob * specProvider.GetFinalSpec().MaxBlobCount;
         }
     }
 }

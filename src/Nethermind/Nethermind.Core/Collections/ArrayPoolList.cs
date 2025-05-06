@@ -25,6 +25,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
 
+    public ArrayPoolList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
+
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
     {
         _arrayPool = arrayPool;
@@ -48,7 +50,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         return AsSpan();
     }
 
-    public IEnumerator<T> GetEnumerator()
+    public ArrayPoolListEnumerator GetEnumerator()
     {
         GuardDispose();
         return new ArrayPoolListEnumerator(_array, Count);
@@ -68,6 +70,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
         }
     }
+
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
@@ -338,7 +342,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public static ArrayPoolList<T> Empty() => new(0);
 
-    private struct ArrayPoolListEnumerator(T[] array, int count) : IEnumerator<T>
+    public struct ArrayPoolListEnumerator(T[] array, int count) : IEnumerator<T>
     {
         private int _index = -1;
 
@@ -389,7 +393,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 #endif
 
     public Span<T> AsSpan() => _array.AsSpan(0, Count);
-
     public Memory<T> AsMemory() => new(_array, 0, Count);
     public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, Count);
+    public T[] UnsafeGetInternalArray() => _array;
+    public void Reverse() => AsSpan().Reverse();
 }

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -21,25 +21,17 @@ public interface IExecutionPayloadParams
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadParams<TVersionedExecutionPayload>(
-    TVersionedExecutionPayload executionPayload,
-    byte[]?[] blobVersionedHashes,
-    Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
-    : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+public class ExecutionPayloadParams(byte[][]? executionRequests = null)
 {
-    public TVersionedExecutionPayload ExecutionPayload => executionPayload;
-
     /// <summary>
     /// Gets or sets <see cref="ExecutionRequets"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
-    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
-
-    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
     {
+        error = null;
         if (spec.RequestsEnabled)
         {
             if (ExecutionRequests is null)
@@ -48,22 +40,58 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
+            // verification of the requests
+            byte[][]? requests = ExecutionRequests;
+            int previousTypeId = -1;
+            for (int i = 0; i < requests.Length; i++)
             {
-                error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
-                return ValidationResult.Invalid;
-            }
+                byte[]? request = requests[i];
+                if (request is null || request.Length <= 1)
+                {
+                    error = "Execution request data must be longer than 1 byte";
+                    return ValidationResult.Fail;
+                }
 
+                int requestTypeId = request[0];
+                if (requestTypeId <= previousTypeId)
+                {
+                    error = "Execution requests must not contain duplicates and be ordered by request_type in ascending order";
+                    return ValidationResult.Fail;
+                }
+
+                previousTypeId = requestTypeId;
+            }
         }
-        Transaction[]? transactions;
-        try
+
+        return ValidationResult.Success;
+    }
+}
+
+public class ExecutionPayloadParams<TVersionedExecutionPayload>(
+    TVersionedExecutionPayload executionPayload,
+    byte[]?[] blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot,
+    byte[][]? executionRequests = null)
+    : ExecutionPayloadParams(executionRequests), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+{
+    public TVersionedExecutionPayload ExecutionPayload => executionPayload;
+
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
+
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    {
+        ValidationResult result = ValidateInitialParams(spec, out error);
+        if (result != ValidationResult.Success)
         {
-            transactions = executionPayload.GetTransactions();
+            return result;
         }
-        catch (RlpException rlpException)
+
+        TransactionDecodingResult transactionDecodingResult = executionPayload.TryGetTransactions();
+        if (transactionDecodingResult.Error is not null)
         {
-            error = rlpException.Message;
+            error = transactionDecodingResult.Error;
             return ValidationResult.Invalid;
+
         }
 
         static IEnumerable<byte[]?> FlattenHashesFromTransactions(Transaction[] transactions) =>
@@ -71,7 +99,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 .Where(t => t.BlobVersionedHashes is not null)
                 .SelectMany(t => t.BlobVersionedHashes!);
 
-        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
+        if (!FlattenHashesFromTransactions(transactionDecodingResult.Transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;

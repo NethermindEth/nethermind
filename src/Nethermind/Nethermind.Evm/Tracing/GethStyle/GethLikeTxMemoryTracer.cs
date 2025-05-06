@@ -13,7 +13,22 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
-    public GethLikeTxMemoryTracer(GethTraceOptions options) : base(options) => IsTracingMemory = IsTracingFullMemory;
+    private readonly Transaction? _transaction;
+
+    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
+    {
+        _transaction = transaction;
+        IsTracingMemory = IsTracingFullMemory;
+    }
+
+    public override GethLikeTxTrace BuildResult()
+    {
+        var trace = base.BuildResult();
+
+        trace.TxHash = _transaction?.Hash;
+
+        return trace;
+    }
 
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
@@ -35,12 +50,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             .ToHexString(false);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
-        var previousTraceEntry = CurrentTraceEntry;
+        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
         var previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
-        base.StartOperation(pc, opcode, gas, env);
+        base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
 
         if (CurrentTraceEntry.Depth > previousDepth)
         {

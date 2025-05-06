@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -30,13 +31,17 @@ using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using Nethermind.Facade;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
 [Parallelizable(ParallelScope.Self)]
 public class ParityStyleTracerTests
 {
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockchainProcessor? _processor;
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree? _blockTree;
     private Tracer? _tracer;
     private IPoSSwitcher? _poSSwitcher;
@@ -62,7 +67,7 @@ public class ParityStyleTracerTests
 
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
@@ -86,12 +91,12 @@ public class ParityStyleTracerTests
         _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
-        _tracer = new Tracer(stateProvider, _processor, _processor);
-        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource);
+        _tracer = new Tracer(new ReadOnlyTxProcessingScope(transactionProcessor, stateProvider, stateProvider.StateRoot), _processor, _processor);
+        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot);
     }
 
     [TearDown]
-    public void TearDown() => _processor?.Dispose();
+    public async Task TearDownAsync() => await (_processor?.DisposeAsync() ?? default);
 
     [Test]
     public void Can_trace_raw_parity_style()

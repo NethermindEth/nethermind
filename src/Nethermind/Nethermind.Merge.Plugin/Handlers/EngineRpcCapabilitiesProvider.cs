@@ -27,18 +27,18 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
 
             #region The Merge
             _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = (true, false);
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = (true, true);
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = (true, true);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = (true, true);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_getClientVersionV1)] = (true, false);
             #endregion
 
             #region Shanghai
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = (spec.WithdrawalsEnabled, spec.WithdrawalsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = (spec.WithdrawalsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = (spec.WithdrawalsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = (spec.WithdrawalsEnabled, false);
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = (spec.WithdrawalsEnabled, spec.WithdrawalsEnabled);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = (spec.WithdrawalsEnabled, spec.WithdrawalsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = (spec.WithdrawalsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = (spec.WithdrawalsEnabled, false);
             #endregion
 
             #region Cancun
@@ -49,8 +49,9 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             #endregion
 
             #region Prague
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
+            var v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4, v4);
             #endregion
         }
 
