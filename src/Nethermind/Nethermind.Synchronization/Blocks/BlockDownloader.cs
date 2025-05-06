@@ -44,6 +44,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly IFullStateFinder _fullStateFinder;
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
+        private readonly ISyncPeerPool _syncPeerPool;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -66,7 +67,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private readonly ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
-        private readonly ISyncPeerPool _syncPeerPool;
+        private SemaphoreSlim _requestLock = new(1);
 
         public BlockDownloader(
             IBlockTree? blockTree,
@@ -110,6 +111,19 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        {
+            await _requestLock.WaitAsync(cancellation);
+            try
+            {
+                return await DoPrepareRequest(options, fastSyncLag, cancellation);
+            }
+            finally
+            {
+                _requestLock.Release();
+            }
+        }
+
+        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
         {
             bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
@@ -234,11 +248,11 @@ namespace Nethermind.Synchronization.Blocks
             BlockHeader parentHeader = headers[0];
             foreach (var blockHeader in headers.Skip(1))
             {
-                if (!_downloadRequests.TryGetValue(blockHeader.Hash!, out BlockEntry? entry))
+                BlockEntry? entry;
+                while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
-                    entry = new BlockEntry(parentHeader, blockHeader, null, null, null);
-                    _downloadRequests.TryAdd(blockHeader.Hash, entry);
+                    blockHeader.MaybeParent ??= new WeakReference<BlockHeader>(parentHeader);
+                    _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
                 }
                 parentHeader = blockHeader;
 
