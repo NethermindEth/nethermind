@@ -78,6 +78,10 @@ namespace Nethermind.Consensus.Producers
                     {
                         yield return blobTx;
                     }
+                    else if (_logger.IsTrace)
+                    {
+                        _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                    }
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
