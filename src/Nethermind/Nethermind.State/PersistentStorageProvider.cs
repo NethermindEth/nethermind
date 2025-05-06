@@ -43,6 +43,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
     private readonly Dictionary<AddressAsKey, DefaultableDictionary> _blockChanges = new(4_096);
+    private readonly ChangeTracePool _changeTracePool = new();
     private readonly ConcurrentDictionary<StorageCell, StorageValue>? _preBlockCache;
     private readonly Func<StorageCell, StorageValue> _loadFromTree;
 
@@ -82,6 +83,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _blockChanges.Clear();
             _storages.Clear();
             _toUpdateRoots.Clear();
+            _changeTracePool.Clear();
         }
     }
 
@@ -344,9 +346,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int skipped = 0;
             foreach (var kvp in dict)
             {
-                StorageValue after = kvp.Value.After;
+                StorageValue after = kvp.Value.Ref.After;
                 // Force the update if the change is to zero. This means a removal.
-                if (after.IsZero || !kvp.Value.Before.Equals(after))
+                if (after.IsZero || !kvp.Value.Ref.Before.Equals(after))
                 {
                     dict[kvp.Key] = new(after, after);
                     storageTree.SetValue(kvp.Key, after);
@@ -399,7 +401,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             dict = new DefaultableDictionary();
         }
 
-        ref ChangeTrace valueChanges = ref dict.GetValueRefOrAddDefault(change.StorageCell.Index, out exists);
+        ref ChangeTrace valueChanges = ref dict.GetValueRefOrAddDefault(_changeTracePool, change.StorageCell.Index, out exists);
         if (!exists)
         {
             valueChanges = new ChangeTrace(change.Value);
@@ -481,7 +483,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             dict = new DefaultableDictionary();
         }
 
-        ref ChangeTrace valueChange = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
+        ref ChangeTrace valueChange = ref dict.GetValueRefOrAddDefault(_changeTracePool, storageCell.Index, out exists);
         if (!exists)
         {
             Unsafe.SkipInit(out StorageValue value);
@@ -602,7 +604,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private sealed class DefaultableDictionary
     {
         private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, ChangeTrace> _dictionary = new(Comparer.Instance);
+        private readonly Dictionary<UInt256, ChangeTracePtr> _dictionary = new(Comparer.Instance);
 
         public void ClearAndSetMissingAsDefault()
         {
@@ -610,31 +612,34 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _dictionary.Clear();
         }
 
-        public ref ChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
+        public ref ChangeTrace GetValueRefOrAddDefault(ChangeTracePool pool, UInt256 storageCellIndex,
+            out bool exists)
         {
-            ref ChangeTrace value =
+            ref ChangeTracePtr value =
                 ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
             if (!exists && _missingAreDefault)
             {
                 // Where we know the rest of the tree is empty
                 // we can say the value was found but is default
                 // rather than having to check the database
-                value = ChangeTrace.ZeroBytes;
+                var trace = pool.New();
+                trace.Ref = ChangeTrace.ZeroBytes;
+                value = trace;
                 exists = true;
             }
 
-            return ref value;
+            return ref value.Ref;
         }
 
         public ref ChangeTrace GetValueRefOrNullRef(UInt256 storageCellIndex)
-            => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
+            => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex).Ref;
 
         public ChangeTrace this[UInt256 key]
         {
             set => _dictionary[key] = value;
         }
 
-        public Dictionary<UInt256, ChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
+        public Dictionary<UInt256, ChangeTracePtr>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
         private sealed class Comparer : IEqualityComparer<UInt256>
         {

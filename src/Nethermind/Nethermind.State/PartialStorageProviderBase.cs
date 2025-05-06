@@ -21,7 +21,7 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase
+    internal abstract partial class PartialStorageProviderBase
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
         protected readonly ILogger _logger;
@@ -158,6 +158,7 @@ namespace Nethermind.State
             Commit(NullStateTracer.Instance, commitRoots);
         }
 
+        [StructLayout(LayoutKind.Sequential)]
         protected struct ChangeTrace
         {
             public static readonly ChangeTrace _zeroBytes = new(StorageValue.Zero, StorageValue.Zero);
@@ -177,6 +178,8 @@ namespace Nethermind.State
 
             public StorageValue Before;
             public StorageValue After;
+
+            public const int MemorySize = StorageValue.MemorySize * 2;
         }
 
         /// <summary>
