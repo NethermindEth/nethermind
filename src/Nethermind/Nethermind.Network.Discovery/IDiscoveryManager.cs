@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -19,4 +20,6 @@ public interface IDiscoveryManager : IDiscoveryMsgListener
 
     IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
     IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
+    NodeFilter NodesFilter { get; }
+    NodeRecord SelfNodeRecord { get; }
 }

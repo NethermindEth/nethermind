@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Find;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -28,11 +29,13 @@ public class BlockTreeModule : Autofac.Module
             .AddSingleton<IBlockStore, BlockStore>()
             .AddSingleton<IReceiptsRecovery, ReceiptsRecovery>()
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
+            .Bind<IReceiptFinder, IReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, IDbProvider, ITxPoolConfig>(CreateBlobTxStorage)
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
+            .AddSingleton<ILogFinder, LogFinder>()
             ;
     }
 

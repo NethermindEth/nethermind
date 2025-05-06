@@ -5,10 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Autofac;
+using Autofac.Core;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
@@ -16,6 +19,7 @@ using Nethermind.Merge.AuRa;
 using Nethermind.Merge.Plugin;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
@@ -32,7 +36,13 @@ public class EthereumStepsLoaderTests
         var steps = new HashSet<StepInfo>();
         steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
         steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
-        EthereumRunner.BuiltInSteps.ToHashSet().Should().BeEquivalentTo(steps);
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new BuiltInStepsModule())
+            .AddModule(new StartRpcStepsModule())
+            .Build();
+
+        container.Resolve<IEnumerable<StepInfo>>().ToHashSet().Should().BeEquivalentTo(steps);
     }
 
     [Test]
@@ -54,6 +64,8 @@ public class EthereumStepsLoaderTests
             .Should()
             .BeEquivalentTo([
                 new StepInfo(typeof(StepLong)),
+                new StepInfo(typeof(StepWithLogManagerInConstructor)),
+                new StepInfo(typeof(StepWithSameBaseStep)),
                 new StepInfo(typeof(StepForever)),
                 new StepInfo(typeof(StepA)),
                 new StepInfo(typeof(StepB)),

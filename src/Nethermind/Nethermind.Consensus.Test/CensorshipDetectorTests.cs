@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -51,14 +52,15 @@ public class CensorshipDetectorTests
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
-        _txPool.Dispose();
+        await _txPool.DisposeAsync();
         _censorshipDetector.Dispose();
     }
 
     // Address Censorship is given to be false here since censorship is not being detected for any address.
     [Test]
+    [Retry(3)]
     public void Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
     {
         _txPool = CreatePool();

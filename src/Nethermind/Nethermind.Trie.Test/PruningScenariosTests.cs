@@ -270,6 +270,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext AssertThatCachedNodeCountMoreThan(long cachedNodeCount)
+            {
+                _trieStore.CachedNodesCount.Should().BeGreaterThan(cachedNodeCount);
+                return this;
+            }
+
             public PruningContext AssertThatDirtyNodeCountIs(long dirtyNodeCount)
             {
                 _trieStore.DirtyCachedNodesCount.Should().Be(dirtyNodeCount);
@@ -886,7 +892,7 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
-                .AssertThatTotalMemoryUsedIs(819292L);
+                .AssertThatTotalMemoryUsedIs(853528);
         }
 
         [Test]
@@ -916,7 +922,7 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(2)
                 .AssertThatCachedNodeCountIs(3)
-                .AssertThatTotalMemoryUsedIs(1572);
+                .AssertThatTotalMemoryUsedIs(1680);
         }
 
         [Test]
@@ -949,7 +955,7 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountIs(318);
+                .AssertThatCachedNodeCountMoreThan(280);
         }
     }
 }

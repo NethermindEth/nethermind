@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -27,63 +25,42 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloader : ISyncDownloader<BlocksRequest>
     {
-        public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
-
         // This includes both body and receipt
         public static readonly TimeSpan SyncBatchDownloadTimeUpperBound = TimeSpan.FromMilliseconds(8000);
         public static readonly TimeSpan SyncBatchDownloadTimeLowerBound = TimeSpan.FromMilliseconds(5000);
 
-        private readonly ISyncFeed<BlocksRequest> _feed;
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
-        private readonly ISealValidator _sealValidator;
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly ISpecProvider _specProvider;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly IFullStateFinder _fullStateFinder;
-        private readonly IPosTransitionHook _posTransitionHook;
+        private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ILogger _logger;
-        private readonly ISyncPeerPool _syncPeerPool;
-        private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
-        private readonly Random _rnd = new();
-
-        private bool _cancelDueToBetterPeer;
-        protected AllocationWithCancellation _allocationWithCancellation = new(null, new CancellationTokenSource());
-        protected bool HasBetterPeer => _allocationWithCancellation.IsCancellationRequested;
-
         protected SyncBatchSize _syncBatchSize;
-        protected int _sinceLastTimeout;
-        private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
-        private int _ancestorLookupLevel;
 
         public BlockDownloader(
-            ISyncFeed<BlocksRequest?>? feed,
-            ISyncPeerPool? syncPeerPool,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
-            ISealValidator? sealValidator,
             ISyncReport? syncReport,
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IFullStateFinder fullStateFinder,
-            IPosTransitionHook posTransitionHook,
+            IForwardHeaderProvider forwardHeaderProvider,
             ILogManager? logManager,
             SyncBatchSize? syncBatchSize = null)
         {
-            _feed = feed;
-            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
-            _posTransitionHook = posTransitionHook;
+            _forwardHeaderProvider = forwardHeaderProvider;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
@@ -121,108 +98,15 @@ namespace Nethermind.Synchronization.Blocks
             }
             _previousBestPeer = bestPeer;
 
-            try
-            {
-                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Downloading bodies");
-                    await DownloadBlocks(bestPeer, blocksRequest, cancellation)
-                        .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
-                    if (_logger.IsDebug) _logger.Debug("Finished downloading bodies");
-                }
-                else
-                {
-                    if (_logger.IsDebug) _logger.Debug("Downloading headers");
-                    await DownloadHeaders(bestPeer, blocksRequest, cancellation)
-                        .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
-                    if (_logger.IsDebug) _logger.Debug("Finished downloading headers");
-                }
-            }
-            finally
-            {
-                _allocationWithCancellation.Dispose();
-            }
+            SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+
+            if (_logger.IsDebug) _logger.Debug("Downloading bodies");
+            await DownloadBlocks(bestPeer, blocksRequest, cancellation)
+                .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
+            if (_logger.IsDebug) _logger.Debug("Finished downloading bodies");
         }
 
-        public virtual async Task<long> DownloadHeaders(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
-        {
-            if (bestPeer is null)
-            {
-                string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
-                _logger.Error(message);
-                throw new ArgumentNullException(message);
-            }
-
-            int headersSynced = 0;
-
-            long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await GetBlockHeaders(bestPeer, currentNumber, blocksRequest, cancellation)) is not null)
-            {
-                if (HasBetterPeer) break;
-                int headersSyncedInPreviousRequests = headersSynced;
-                if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-                Hash256? startHeaderHash = headers[0]?.Hash;
-                if (!CheckAncestorJump(bestPeer, startHeaderHash, ref currentNumber)) continue;
-
-                for (int i = 1; i < headers.Count; i++)
-                {
-                    if (cancellation.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    BlockHeader? currentHeader = headers[i];
-                    if (currentHeader is null)
-                    {
-                        if (headersSynced - headersSyncedInPreviousRequests > 0)
-                        {
-                            break;
-                        }
-
-                        _syncPeerPool.ReportNoSyncProgress(bestPeer, AllocationContexts.Blocks);
-                        headers.Dispose();
-                        return 0;
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"Received {currentHeader} from {bestPeer:s}");
-                    bool isValid = i > 1 ? _blockValidator.Validate(currentHeader, headers[i - 1]) : _blockValidator.Validate(currentHeader);
-                    if (!isValid)
-                    {
-                        throw new EthSyncException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
-                    }
-
-                    // i == 0 is always false but leave it this was as it will be possible that we will change the
-                    // loop iterator to start with o
-                    if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
-                    {
-                        _posTransitionHook.TryUpdateTerminalBlock(currentHeader);
-                        headersSynced++;
-                    }
-
-                    currentNumber += 1;
-                }
-
-                if (headersSynced > 0)
-                {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
-                }
-                else
-                {
-                    break;
-                }
-
-                headers.Dispose();
-            }
-
-            headers?.Dispose();
-            return headersSynced;
-        }
-
-        public virtual async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        private async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (bestPeer is null)
             {
@@ -232,29 +116,27 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             DownloaderOptions options = blocksRequest.Options;
-            bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
-            bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
-            bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
+            bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
+            bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            _ancestorLookupLevel = 0;
-
-            long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             long bestProcessedBlock = 0;
 
-            IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await GetBlockHeaders(bestPeer, currentNumber, blocksRequest, cancellation)) is not null)
+            while (true)
             {
-                if (HasBetterPeer) break;
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation);
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                if (headers is null || headers.Count <= 1) return blocksSynced;
+
+                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[0].Number, originalShouldProcess, originalDownloadReceiptOpts);
 
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
                 long startTime = Stopwatch.GetTimestamp();
                 await RequestBodies(bestPeer, cancellation, context);
 
-                if (downloadReceipts)
+                if (context.DownloadReceipts)
                 {
                     if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                     await RequestReceipts(bestPeer, cancellation, context);
@@ -272,8 +154,6 @@ namespace Nethermind.Synchronization.Blocks
                     break;
                 }
 
-                if (!CheckAncestorJump(bestPeer, context, ref currentNumber)) continue;
-
                 for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -283,10 +163,8 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     Block currentBlock = blocks[blockIndex];
-                    long blockNumber = currentBlock.Number;
-                    (shouldProcess, receipts) = await ReceiptEdgeCase(bestPeer, cancellation, blockNumber, bestProcessedBlock, context, shouldProcess, receipts);
                     PreValidate(bestPeer, context, blockIndex);
-                    if (SuggestBlock(bestPeer, currentBlock, blockIndex, shouldProcess, context.DownloadReceipts, receipts, shouldMoveToMain))
+                    if (SuggestBlock(bestPeer, currentBlock, blockIndex == 0, shouldProcess, context.DownloadReceipts, receipts?[blockIndex]))
                     {
                         if (shouldProcess)
                         {
@@ -295,101 +173,19 @@ namespace Nethermind.Synchronization.Blocks
 
                         blocksSynced++;
                     }
-
-                    currentNumber += 1;
                 }
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
                 }
                 else
                 {
                     break;
                 }
-
-                headers?.Dispose();
             }
 
-            headers?.Dispose();
             return blocksSynced;
-        }
-
-        protected virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, long currentNumber, BlocksRequest blocksRequest, CancellationToken cancellation)
-        {
-            if (!_posTransitionHook.ImprovementRequirementSatisfied(bestPeer)) return null;
-            if (currentNumber > bestPeer!.HeadNumber) return null;
-
-            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-            long upperDownloadBoundary = bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-            long blocksLeft = upperDownloadBoundary - currentNumber;
-            int headersToRequest = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
-            if (headersToRequest <= 1)
-            {
-                return null;
-            }
-
-            headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
-            if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-
-            cancellation.ThrowIfCancellationRequested();
-            IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
-            if (headers.Count < 2)
-            {
-                // Peer dont have new header
-                headers.Dispose();
-                return null;
-            }
-
-            return headers;
-        }
-
-        protected virtual bool CheckAncestorJump(PeerInfo? bestPeer, Hash256? startHeaderHash, ref long currentNumber)
-        {
-            BlockHeader? startHeader = (startHeaderHash is null)
-                ? null : _blockTree.FindHeader(startHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (startHeader is null)
-            {
-                _ancestorLookupLevel++;
-                if (_ancestorLookupLevel >= _ancestorJumps.Length)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                    throw new EthSyncException("Peer with inconsistent chain in sync");
-                }
-
-                int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
-                currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
-                return false;
-            }
-            _ancestorLookupLevel = 0;
-            return true;
-        }
-
-        protected virtual bool CheckAncestorJump(PeerInfo? bestPeer, BlockDownloadContext context, ref long currentNumber)
-        {
-            if (context.FullBlocksCount > 0)
-            {
-                Block blockZero = context.Blocks[0];
-                bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
-                if (!parentIsKnown)
-                {
-                    _ancestorLookupLevel++;
-                    if (_ancestorLookupLevel >= _ancestorJumps.Length)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                        throw new EthSyncException("Peer with inconsistent chain in sync");
-                    }
-
-                    int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
-                    currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
-                    currentNumber = Math.Max((_blockTree.BestSuggestedHeader?.Number ?? 0) - MaxReorganizationLength, currentNumber);
-                    return false;
-                }
-            }
-            _ancestorLookupLevel = 0;
-            return true;
         }
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
@@ -401,30 +197,21 @@ namespace Nethermind.Synchronization.Blocks
         private bool SuggestBlock(
             PeerInfo bestPeer,
             Block currentBlock,
-            int blockIndex,
+            bool isFirstInBatch,
             bool shouldProcess,
             bool downloadReceipts,
-            TxReceipt[]?[]? receipts, bool shouldMoveToMain)
+            TxReceipt[]? receipts)
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
-            if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
+            if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
-                if (shouldProcess == false)
-                {
-                    _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                    // Needed to know if a block is the terminal block.
-                    // Not needed if not processing for some reason.
-                    _posTransitionHook.TryUpdateTerminalBlock(currentBlock.Header);
-                }
-
                 if (downloadReceipts)
                 {
-                    TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                    if (contextReceiptsForBlock is not null)
+                    if (receipts is not null)
                     {
-                        _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
+                        _receiptStorage.Insert(currentBlock, receipts);
                     }
                     else
                     {
@@ -435,56 +222,48 @@ namespace Nethermind.Synchronization.Blocks
                         }
                     }
                 }
-
-                OnBlockAdded(currentBlock);
                 handled = true;
             }
 
-            if (shouldMoveToMain)
+            if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                _blockTree.UpdateMainChain([currentBlock], false);
             }
+
+            _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
 
             return handled;
         }
 
-
-        protected virtual void OnBlockAdded(Block currentBlock)
-        {
-        }
-
-        protected async Task<(bool shouldProcess, TxReceipt[]?[]? receipts)> ReceiptEdgeCase(
-            PeerInfo bestPeer,
-            CancellationToken cancellation,
-            long currentBlockNumber,
+        private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
             long bestProcessedBlock,
-            BlockDownloadContext context,
+            long firstBlockNumber,
             bool shouldProcess,
-            TxReceipt[]?[]? receipts)
+            bool shouldDownloadReceipt)
         {
-            if (shouldProcess)
+            if (shouldProcess && !shouldDownloadReceipt)
             {
+                long firstBlock = firstBlockNumber;
+                // TODO: Double check this condition
                 // An edge case where we already have the state but are still downloading preceding blocks.
                 // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
                 // Therefore, we detect this situation and switch from processing to receipts downloading.
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                bool toBeProcessedHasNoProcessedParent = currentBlockNumber > (bestProcessedBlock + 1);
+                bool toBeProcessedHasNoProcessedParent = firstBlock > (bestProcessedBlock + 1);
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
                 if (isFastSyncTransition)
                 {
                     long bestFullState = _fullStateFinder.FindBestFullState();
-                    shouldProcess = currentBlockNumber > bestFullState && bestFullState != 0;
-                    if (!shouldProcess && !context.DownloadReceipts)
+                    shouldProcess = firstBlock > bestFullState && bestFullState != 0;
+                    if (!shouldProcess)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlockNumber}, bestFullState: {bestFullState}, trying to load receipts");
-                        context.SetDownloadReceipts();
-                        await RequestReceipts(bestPeer, cancellation, context);
-                        receipts = context.ReceiptsForBlocks;
+                        if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlock}, bestFullState: {bestFullState}, trying to load receipts");
+                        shouldDownloadReceipt = true;
                     }
                 }
             }
 
-            return (shouldProcess, receipts);
+            return (shouldProcess, shouldDownloadReceipt);
         }
 
         private void PreValidate(PeerInfo bestPeer, BlockDownloadContext blockDownloadContext, int blockIndex)
@@ -533,22 +312,6 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             return default;
-        }
-
-        private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
-        {
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
-            Task<IOwnedReadOnlyList<BlockHeader>> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
-            await headersRequest.ContinueWith(t => DownloadFailHandler(t, "headers"), cancellation);
-
-            cancellation.ThrowIfCancellationRequested();
-
-            IOwnedReadOnlyList<BlockHeader> headers = headersRequest.Result;
-            headers = _posTransitionHook.FilterPosHeader(headers);
-
-            ValidateSeals(headers, cancellation);
-            ValidateBatchConsistencyAndSetParents(peer, headers);
-            return headers;
         }
 
         private async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
@@ -620,82 +383,6 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
-        {
-            // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
-            // so we need to confirm that the blocks form a valid subchain
-            for (int i = 1; i < headers.Count; i++)
-            {
-                if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
-                    throw new EthSyncException("Peer sent an inconsistent block list");
-                }
-
-                if (headers[i] is null)
-                {
-                    break;
-                }
-
-                if (i != 1) // because we will never set TotalDifficulty on the first block?
-                {
-                    headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
-                }
-            }
-        }
-
-        protected void ValidateSeals(IReadOnlyList<BlockHeader?> headers, CancellationToken cancellation)
-        {
-            if (_logger.IsTrace) _logger.Trace("Starting seal validation");
-            ConcurrentQueue<Exception> exceptions = new();
-            int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Count - 2));
-            Parallel.For(0, headers.Count, (i, state) =>
-            {
-                if (cancellation.IsCancellationRequested)
-                {
-                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-                    state.Stop();
-                    return;
-                }
-
-                BlockHeader? header = headers[i];
-                if (header is null)
-                {
-                    return;
-                }
-
-                try
-                {
-                    bool lastBlock = i == headers.Count - 1;
-                    // PoSSwitcher can't determine if a block is a terminal block if TD is missing due to another
-                    // problem. In theory, this should not be a problem, but additional seal check does no harm.
-                    bool terminalBlock = !lastBlock
-                                         && headers.Count > 1
-                                         && headers[i + 1].Difficulty == 0
-                                         && headers[i].Difficulty != 0;
-                    bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
-                    if (!_sealValidator.ValidateSeal(header, forceValidation))
-                    {
-                        if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
-                        throw new EthSyncException("Peer sent a block with an invalid seal");
-                    }
-                }
-                catch (Exception e)
-                {
-                    exceptions.Enqueue(e);
-                    state.Stop();
-                }
-            });
-
-            if (_logger.IsTrace) _logger.Trace("Seal validation complete");
-
-            if (!exceptions.IsEmpty)
-            {
-                if (_logger.IsDebug) _logger.Debug("Seal validation failure");
-                throw new AggregateException(exceptions);
-            }
-        }
-
         private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
         {
             void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
@@ -750,7 +437,7 @@ namespace Nethermind.Synchronization.Blocks
             SyncEvent?.Invoke(this, args);
         }
 
-        private void HandleSyncRequestResult(Task<long> task, PeerInfo? peerInfo)
+        private void HandleSyncRequestResult(Task task, PeerInfo? peerInfo)
         {
             switch (task)
             {
@@ -785,22 +472,11 @@ namespace Nethermind.Synchronization.Blocks
 
                     break;
                 case { IsCanceled: true }:
-                    if (_cancelDueToBetterPeer)
-                    {
-                        _cancelDueToBetterPeer = false;
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
-                        if (peerInfo is not null) // fix this for node data sync
-                        {
-                            InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
-                        }
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
 
                     break;
                 case { IsCompletedSuccessfully: true } t:
-                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed with progress {t.Result}.");
+                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed.");
                     if (peerInfo is not null) // fix this for node data sync
                     {
                         InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
@@ -826,96 +502,6 @@ namespace Nethermind.Synchronization.Blocks
             if (downloadTime < SyncBatchDownloadTimeLowerBound)
             {
                 _syncBatchSize.Expand();
-            }
-        }
-
-        public void OnAllocate(SyncPeerAllocation allocation)
-        {
-            CancellationTokenSource cancellation = new();
-            _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
-
-            allocation.Cancelled += AllocationOnCancelled;
-            allocation.Replaced += AllocationOnReplaced;
-        }
-
-        public void BeforeFree(SyncPeerAllocation allocation)
-        {
-            allocation.Cancelled -= AllocationOnCancelled;
-            allocation.Replaced -= AllocationOnReplaced;
-        }
-
-        private void AllocationOnCancelled(object? sender, AllocationChangeEventArgs e)
-        {
-            AllocationWithCancellation allocationWithCancellation = _allocationWithCancellation;
-            if (allocationWithCancellation.Allocation != sender)
-            {
-                return;
-            }
-
-            allocationWithCancellation.Cancel();
-        }
-
-        private void AllocationOnReplaced(object? sender, AllocationChangeEventArgs e)
-        {
-            if (e.Previous is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} for the blocks sync allocation");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"Replacing {e.Previous} with {e.Current} for the blocks sync allocation.");
-            }
-
-            if (e.Previous is not null)
-            {
-                _cancelDueToBetterPeer = true;
-                _allocationWithCancellation.Cancel();
-            }
-
-            PeerInfo? newPeer = e.Current;
-            BlockHeader? bestSuggested = _blockTree.BestSuggestedHeader;
-            if (_betterPeerStrategy.Compare(bestSuggested, newPeer?.SyncPeer) < 0)
-            {
-                _feed.Activate();
-            }
-        }
-
-        protected struct AllocationWithCancellation : IDisposable
-        {
-            public AllocationWithCancellation(SyncPeerAllocation allocation, CancellationTokenSource cancellation)
-            {
-                Allocation = allocation;
-                Cancellation = cancellation;
-                _isDisposed = false;
-            }
-
-            private CancellationTokenSource Cancellation { get; }
-            public readonly bool IsCancellationRequested => Cancellation.IsCancellationRequested;
-            public SyncPeerAllocation Allocation { get; }
-
-            public readonly void Cancel()
-            {
-                lock (Cancellation)
-                {
-                    if (!_isDisposed)
-                    {
-                        Cancellation.Cancel();
-                    }
-                }
-            }
-
-            private bool _isDisposed;
-
-            public void Dispose()
-            {
-                lock (Cancellation)
-                {
-                    if (!_isDisposed)
-                    {
-                        _isDisposed = true;
-                        Cancellation.Dispose();
-                    }
-                }
             }
         }
     }

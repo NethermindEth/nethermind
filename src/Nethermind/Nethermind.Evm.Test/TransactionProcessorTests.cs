@@ -53,13 +53,14 @@ public class TransactionProcessorTests
     {
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        PreBlockCaches preBlockCaches = new();
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
@@ -235,7 +236,7 @@ public class TransactionProcessorTests
         Assert.That(result.Success, Is.True);
     }
 
-    [TestCase]
+    [Test]
     public void Balance_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
@@ -251,7 +252,7 @@ public class TransactionProcessorTests
         _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
     }
 
-    [TestCase]
+    [Test]
     public void Account_is_not_created_on_call_and_restore()
     {
         long gasLimit = 100000;
@@ -268,7 +269,7 @@ public class TransactionProcessorTests
         _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
     }
 
-    [TestCase]
+    [Test]
     public void Nonce_is_not_changed_on_call_and_restore()
     {
         long gasLimit = 100000;
@@ -316,7 +317,10 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        return estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(err, Is.Null);
+
+        return estimate;
     }
 
     public static IEnumerable<TestCaseData> EstimateWithHighTxValueTestCases
@@ -370,7 +374,8 @@ public class TransactionProcessorTests
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         tracer.GasSpent.Should().Be(21000);
-        estimator.Estimate(tx, block.Header, tracer, 0).Should().Be(21000);
+        estimator.Estimate(tx, block.Header, tracer, out string? err, 0).Should().Be(21000);
+        Assert.That(err, Is.Null);
     }
 
     [TestCase]
@@ -409,8 +414,9 @@ public class TransactionProcessorTests
         IReleaseSpec releaseSpec = Berlin.Instance;
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
         tracer.GasSpent.Should().Be(54764L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
         estimate.Should().Be(75465L);
+        Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
@@ -450,8 +456,9 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
         estimate.Should().Be(59307);
+        Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
@@ -517,8 +524,9 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
         tracer.GasSpent.Should().Be(85669L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
         estimate.Should().Be(87969L);
+        Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
@@ -560,8 +568,9 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
         tracer.GasSpent.Should().Be(87429L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
         estimate.Should().Be(108130L);
+        Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
@@ -599,8 +608,9 @@ public class TransactionProcessorTests
         actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
         tracer.GasSpent.Should().Be(54224L);
-        long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
+        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
         estimate.Should().Be(54224L);
+        Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }

@@ -30,11 +30,11 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Nodes that have been removed from the cache during pruning because they have been persisted before.")]
-        public static long PrunedPersistedNodesCount { get; set; }
+        public static long PrunedPersistedNodesCount;
 
         [CounterMetric]
         [Description("Nodes that have been removed from the cache during deep pruning because they have been persisted before.")]
-        public static long DeepPrunedPersistedNodesCount { get; set; }
+        public static long DeepPrunedPersistedNodesCount;
 
         [CounterMetric]
         [Description("Nodes that have been removed from the cache during pruning because they were no longer needed.")]

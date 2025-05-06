@@ -23,6 +23,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ILogger _logger;
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
+        public bool SupportsBlobs => _innerSource.SupportsBlobs;
+
         public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
@@ -31,13 +33,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             _nonces.Clear();
 
             try
             {
-                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes).Select(tx =>
+                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource).Select(tx =>
                 {
                     if (tx is GeneratedTransaction)
                     {

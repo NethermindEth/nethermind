@@ -12,6 +12,7 @@ namespace Nethermind.TxPool
 {
     public class NullTxPool : ITxPool
     {
+        public bool SupportsBlobs => false;
         private NullTxPool() { }
 
         public static NullTxPool Instance { get; } = new();
@@ -28,7 +29,7 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => [];
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
             => new Dictionary<AddressAsKey, Transaction[]>();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()

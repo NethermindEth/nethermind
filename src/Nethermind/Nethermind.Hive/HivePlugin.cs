@@ -39,12 +39,12 @@ public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 
     public async Task InitNetworkProtocol()
     {
-        if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-        if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-        if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-        if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
-        if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
-        if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+        ArgumentNullException.ThrowIfNull(_api.BlockTree);
+        ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
+        ArgumentNullException.ThrowIfNull(_api.ConfigProvider);
+        ArgumentNullException.ThrowIfNull(_api.LogManager);
+        ArgumentNullException.ThrowIfNull(_api.FileSystem);
+        ArgumentNullException.ThrowIfNull(_api.BlockValidator);
 
         _api.TxPool!.AcceptTxWhenNotSynced = true;
 

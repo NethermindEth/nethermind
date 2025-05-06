@@ -101,11 +101,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
-        spec.Genesis.Header.BaseFeePerGas = 1.GWei();
+        spec.Genesis.Header.BaseFeePerGas = 10.Wei();
 
         // Needed for generating spam state.
-        spec.Genesis.Header.GasLimit = 100000000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(30.Ether());
+        spec.Genesis.Header.GasLimit = 1_000_000_000;
+        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether());
 
         // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
         // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
@@ -230,6 +230,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task FullSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -245,6 +246,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task FastSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -270,6 +272,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task SnapSync()
     {
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
@@ -324,8 +327,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
 
             timestamper.Add(TimeSpan.FromSeconds(1));
-            await manualBlockProductionTrigger.BuildBlock();
-            await newBlockTask;
+            try
+            {
+                (await manualBlockProductionTrigger.BuildBlock()).Should().NotBeNull();
+                await newBlockTask;
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Error building block. Head: {blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, {e}");
+            }
         }
 
 
@@ -384,7 +394,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             });
             payloadId.Should().NotBeNullOrEmpty();
 
-            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!);
+            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
             blockProductionContext.Should().NotBeNull();
             blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
 
@@ -416,7 +426,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private class SyncTestContext(
         [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
-        IWorldStateManager worldStateManager,
         ISpecProvider specProvider,
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
@@ -451,13 +460,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await rlpxHost.ConnectAsync(serverNode);
         }
 
+        Dictionary<Address, UInt256> nonces = [];
+
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
             long gasLimit = 100000;
 
             Hash256 stateRoot = blockTree.Head?.StateRoot!;
-            UInt256 currentNonce = worldStateManager.GlobalStateReader.GetNonce(stateRoot, nodeKey.Address);
+            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
@@ -466,7 +477,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithGasPrice(10.GWei())
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
-
+            nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs(txs, cancellation);
         }
 

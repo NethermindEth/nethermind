@@ -30,6 +30,9 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
+using NSubstitute;
+using Nethermind.Facade;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -66,6 +69,8 @@ public class TraceRpcModuleTests
                 Blockchain.WorldStateManager,
                 Blockchain.BlockTree,
                 JsonRpcConfig,
+                Substitute.For<IBlockchainBridge>(),
+                new BlocksConfig().SecondsPerSlot,
                 Blockchain.BlockPreprocessorStep,
                 new RewardCalculator(Blockchain.SpecProvider),
                 Blockchain.ReceiptStorage,
@@ -613,10 +618,12 @@ public class TraceRpcModuleTests
         TestSpecProvider specProvider = new(releaseSpec);
         await context.Build(specProvider, isAura: true);
         TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressC, 10.Ether());
         UInt256 currentNonceAddressC = blockchain.ReadOnlyState.GetNonce(TestItem.AddressC);
 
         Transaction serviceTransaction = Build.A.Transaction.WithNonce(currentNonceAddressC++)
             .WithTo(TestItem.AddressE)
+            .WithGasPrice(875000000)
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
         await blockchain.AddBlock(serviceTransaction);

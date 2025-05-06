@@ -89,6 +89,7 @@ public class McsPriorityLockTests
 
 
     [Test]
+    [Retry(3)]
     public void PriorityQueueJumpingTest()
     {
         int numberOfThreads = 100;

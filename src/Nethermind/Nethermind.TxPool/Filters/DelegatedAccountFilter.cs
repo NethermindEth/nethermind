@@ -1,11 +1,8 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
-using System.Collections.Concurrent;
-using System.Linq;
 
 namespace Nethermind.TxPool.Filters
 {
@@ -26,25 +23,13 @@ namespace Nethermind.TxPool.Filters
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
-            if (pendingDelegations.HasPending(tx.SenderAddress!))
-            {
-                //Check if the sender has a self-sponsored SetCode transaction with same nonce.
-                //If he does then this is a replacement tx and should be accepted
-                if (!standardPool.BucketAny(tx.SenderAddress!,
-                    t => t.Nonce == tx.Nonce
-                    && t.HasAuthorizationList
-                    && t.AuthorizationList.Any(tuple => tuple.Authority == tx.SenderAddress)))
-                {
-                    return AcceptTxResult.PendingDelegation;
-                }
-            }
-
-            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
+            if ((!state.SenderAccount.HasCode || !codeInfoRepository.TryGetDelegation(worldState, state.SenderAccount.CodeHash, spec, out _))
+                && !pendingDelegations.HasPending(tx.SenderAddress!))
                 return AcceptTxResult.Accepted;
-            //If the account is delegated we only accept the next transaction nonce 
+            //If the account is delegated or has pending delegation we only accept the next transaction nonce 
             if (state.SenderAccount.Nonce != tx.Nonce)
             {
-                return AcceptTxResult.FutureNonceForDelegatedAccount;
+                return AcceptTxResult.NotCurrentNonceForDelegation;
             }
             return AcceptTxResult.Accepted;
         }

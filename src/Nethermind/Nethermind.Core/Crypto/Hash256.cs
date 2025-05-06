@@ -97,11 +97,17 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : a.ValueHash256._bytes == b._bytes;
+        public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
+        public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
+        public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
         public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
+
+        private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -111,6 +117,8 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
     [JsonConverter(typeof(Hash256Converter))]
@@ -158,6 +166,18 @@ namespace Nethermind.Core.Crypto
             }
 
             _hash256 = new ValueHash256(bytes);
+        }
+
+        public static Hash256 FromBytesWithPadding(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != 32)
+            {
+                Span<byte> bytes32 = stackalloc byte[32];
+                bytes.CopyTo(bytes32.Slice(32 - bytes.Length));
+                return new Hash256(bytes32);
+            }
+
+            return new Hash256(bytes);
         }
 
         public override string ToString() => ToString(true);

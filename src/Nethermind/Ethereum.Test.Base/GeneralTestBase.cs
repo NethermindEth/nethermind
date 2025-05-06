@@ -1,16 +1,23 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using Autofac;
+using NUnit.Framework;
+using Nethermind.Config;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -18,20 +25,20 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using NUnit.Framework;
-using System.Threading.Tasks;
-using Autofac;
-using Nethermind.Config;
-using Nethermind.Consensus.Validators;
-using Nethermind.Core.Test.Modules;
 
 namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
-        private static ILogManager _logManager = LimboLogs.Instance;
+        private static ILogger _logger;
+        private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
+
+        static GeneralStateTestBase()
+        {
+            _logManager ??= LimboLogs.Instance;
+            _logger = _logManager.GetClassLogger();
+        }
 
         [SetUp]
         public void Setup()
@@ -54,8 +61,10 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
-            TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            TestContext.Out.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+
+            EofValidator.Logger = _logger;
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
@@ -163,6 +172,18 @@ namespace Ethereum.Test.Base
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
             testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
+
+            if (differences.Count > 0)
+            {
+                TestContext.Out.WriteLine();
+                TestContext.Out.WriteLine("Differences from expected");
+                TestContext.Out.WriteLine();
+
+                foreach (string difference in differences)
+                {
+                    TestContext.Out.WriteLine(difference);
+                }
+            }
 
             //            Assert.Zero(differences.Count, "differences");
             return testResult;

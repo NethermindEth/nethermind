@@ -22,7 +22,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int StackallocByteThreshold = 256;
+        // Used to create the nibble key from bytes, and threshold before using ArrayPool for the key
+        private const int StackallocByteThreshold = 384;
 
         private class TrieNodeDecoder
         {
@@ -166,7 +167,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCoresUpTo16,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
                     (local: 0, item, tree, bufferPool, rootPath),
                     static (i, state) =>
                     {
@@ -227,7 +228,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCoresUpTo16,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
                     (local: 0, item, tree, bufferPool, rootPath),
                     static (i, state) =>
                     {

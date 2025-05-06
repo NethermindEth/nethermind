@@ -27,6 +27,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
@@ -104,6 +105,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = new TestSyncConfig { FastSync = true };
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = Keccak.Zero.ToString();
+        _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
@@ -294,6 +296,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash!));
         _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
@@ -349,13 +352,16 @@ public class ReceiptsSyncFeedTests
             batches.Add(await _feed.PrepareRequest());
         }
 
-        for (int i = 0; i < 2; i++)
+        // Expected batches based on actual MaxReceiptFetch
+        int expectedBatches = (int)Math.Ceiling(256.0 / GethSyncLimits.MaxReceiptFetch);
+
+        for (int i = 0; i < expectedBatches; i++)
         {
             batches[i].Should().NotBeNull();
             batches[i]!.ToString().Should().NotBeNull();
         }
 
-        for (int i = 2; i < 100; i++)
+        for (int i = expectedBatches; i < 100; i++)
         {
             batches[i].Should().BeNull();
         }

@@ -80,7 +80,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
@@ -208,20 +207,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() =>
     //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
     //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-
-    protected override IHeaderValidator CreateHeaderValidator()
-    {
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        IDictionary<long, Address> blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
-        return blockGasLimitContractTransitions?.Any() == true
-            ? new AuRaHeaderValidator(
-                _api.BlockTree,
-                _api.SealValidator,
-                _api.SpecProvider,
-                _api.LogManager,
-                blockGasLimitContractTransitions.Keys.ToArray())
-            : base.CreateHeaderValidator();
-    }
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {

@@ -29,7 +29,7 @@ public class MergeBlockProducer : IMergeBlockProducer
     }
 
     public Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+        PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
     {
         return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducer == false
             ? PostMergeBlockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, token)

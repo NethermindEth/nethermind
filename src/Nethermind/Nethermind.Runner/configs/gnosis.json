@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/gnosis.json",
     "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
     "BaseDbPath": "nethermind_db/gnosis",
-    "LogFileName": "gnosis.logs.txt",
+    "LogFileName": "gnosis.log",
     "MemoryHint": 768000000
   },
   "JsonRpc": {
@@ -14,8 +14,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 38450000,
-    "PivotHash": "0xf974f9961e9c0f31ff2d854e68dd67c32b607d7210bb1b2110c4b6d06fc2d82f",
+    "PivotNumber": 39870000,
+    "PivotHash": "0x95b71b081eb0aa1512f2462e16342330904cf6bff0f7e7049326112dec06f9c5",
     "PivotTotalDifficulty": "8626000110427538733349499292577475819600160930",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000

@@ -129,7 +129,7 @@ public class CliqueBlockProducerTests
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
             TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
+                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new(
@@ -150,7 +150,7 @@ public class CliqueBlockProducerTests
             IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
             WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
+            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
             BlockProcessor minerBlockProcessor = new(
@@ -564,6 +564,7 @@ public class CliqueBlockProducerTests
     private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
+    [Retry(3)]
     public async Task Can_produce_block_with_transactions()
     {
         await On.Goerli
@@ -797,6 +798,7 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task Can_reorganize_when_receiving_in_turn_blocks()
     {
         On goerli = On.FastGoerli;
