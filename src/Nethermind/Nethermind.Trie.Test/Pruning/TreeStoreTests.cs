@@ -40,7 +40,8 @@ namespace Nethermind.Trie.Test.Pruning
         private TrieStore CreateTrieStore(
             IPruningStrategy? pruningStrategy = null,
             IKeyValueStoreWithBatching? kvStore = null,
-            IPersistenceStrategy? persistenceStrategy = null
+            IPersistenceStrategy? persistenceStrategy = null,
+            IPruningConfig? pruningConfig = null
         )
         {
             pruningStrategy ??= No.Pruning;
@@ -50,6 +51,10 @@ namespace Nethermind.Trie.Test.Pruning
                 new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
                 persistenceStrategy,
+                pruningConfig ?? new PruningConfig()
+                {
+                    TrackedPastKeyCountMemoryRatio = 0 // Default disable
+                },
                 _logManager);
         }
 
@@ -925,8 +930,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackedPastKeyCountMemoryRatio = 1
+                });
 
             TreePath emptyPath = TreePath.Empty;
 
@@ -955,12 +965,18 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
+            // TODO: Check why slow
             MemDb memDb = new();
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackedPastKeyCountMemoryRatio = 1
+                });
 
             long reorgBoundary = 0;
             fullTrieStore.ReorgBoundaryReached += (sender, reached) => reorgBoundary = reached.BlockNumber;
@@ -998,8 +1014,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: isPruningPersistenceStrategy);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: isPruningPersistenceStrategy,
+                pruningConfig: new PruningConfig()
+                {
+                    TrackedPastKeyCountMemoryRatio = 1,
+                    PruningBoundary = 2
+                });
 
             TreePath emptyPath = TreePath.Empty;
             TaskCompletionSource tcs = new TaskCompletionSource();
@@ -1030,8 +1051,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackedPastKeyCountMemoryRatio = 1
+                });
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
@@ -1064,8 +1090,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDbProvider.StateDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackedPastKeyCountMemoryRatio = 1
+                });
 
             WorldState worldState = new WorldState(
                 fullTrieStore,
@@ -1111,8 +1142,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 64, 100000),
-                persistenceStrategy: isPruningPersistenceStrategy);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: isPruningPersistenceStrategy,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 64,
+                    TrackedPastKeyCountMemoryRatio = 1
+                });
 
             TreePath emptyPath = TreePath.Empty;
             TaskCompletionSource tcs = new TaskCompletionSource();

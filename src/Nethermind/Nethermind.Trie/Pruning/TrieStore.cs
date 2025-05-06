@@ -16,6 +16,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
@@ -28,6 +29,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 {
     private readonly int _shardedDirtyNodeCount = 256;
     private readonly int _shardBit = 8;
+    private readonly int _maxDepth;
 
     private int _isFirst;
 
@@ -45,11 +47,13 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+    private readonly IPruningConfig _pruningConfig;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
+        IPruningConfig pruningConfig,
         ILogManager logManager)
     {
         _logger = (ILogger)logManager?.GetClassLogger<TrieStore>();
@@ -58,10 +62,12 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         _persistenceStrategy = persistenceStrategy;
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
+        _pruningConfig = pruningConfig;
+        _maxDepth = pruningConfig.PruningBoundary;
 
         if (pruningStrategy.PruningEnabled)
         {
-            _shardBit = _pruningStrategy.ShardBit;
+            _shardBit = _pruningConfig.DirtyNodeShardBit;
             _shardedDirtyNodeCount = 1 << _shardBit;
 
             // 30 because of the 1 << 31 become negative
@@ -80,7 +86,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        if (pruningStrategy.PruningEnabled && pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
+        if (pruningStrategy.PruningEnabled && pruningConfig.TrackedPastKeyCountMemoryRatio > 0 && nodeStorage.RequirePath)
         {
             _livePruningEnabled = true;
         }
@@ -574,7 +580,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             using ArrayPoolList<BlockCommitSet> candidateSets = new(count);
             while (_commitSetQueue!.TryDequeue(out BlockCommitSet frontSet))
             {
-                if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _pruningStrategy.MaxDepth)
+                if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _maxDepth)
                 {
                     toAddBack.Add(frontSet);
                 }
@@ -620,7 +626,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-            if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_pruningStrategy.MaxDepth})");
+            if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
         }
     }
 
@@ -688,8 +694,8 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         try
         {
-            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _pruningStrategy.PrunePersistedNodePortion);
-            targetPruneMemory = Math.Max(targetPruneMemory, _pruningStrategy.PrunePersistedNodeMinimumTarget);
+            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _pruningConfig.PrunePersistedNodePortion);
+            targetPruneMemory = Math.Max(targetPruneMemory, _pruningConfig.PrunePersistedNodeMinimumTarget);
 
             int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * _shardedDirtyNodeCount);
             shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, _shardedDirtyNodeCount));
@@ -988,7 +994,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         Debug.Assert(lastSeen >= 0, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
         return lastSeen < LastPersistedBlockNumber
-               && lastSeen < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth;
+               && lastSeen < LatestCommittedBlockNumber - _maxDepth;
     }
 
     private void DequeueOldCommitSets()
@@ -997,9 +1003,9 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
         {
-            if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth - 1)
+            if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _maxDepth - 1)
             {
-                if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {_pruningStrategy.MaxDepth}");
+                if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {_maxDepth}");
                 _commitSetQueue.TryDequeue(out _);
             }
             else
@@ -1035,7 +1041,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         {
             // even after we persist a block we do not really remember it as a safe checkpoint
             // until max reorgs blocks after
-            if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _pruningStrategy.MaxDepth)
+            if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _maxDepth)
             {
                 shouldAnnounceReorgBoundary = true;
             }
@@ -1064,7 +1070,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     candidateSets.Add(frontSet);
                 }
-                else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth
+                else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - _maxDepth
                          && frontSet!.BlockNumber > candidateSets[0].BlockNumber)
                 {
                     candidateSets.Clear();

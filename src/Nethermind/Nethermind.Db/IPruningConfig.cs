@@ -82,4 +82,10 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
     int DirtyNodeShardBit { get; set; }
+
+    [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
+    double PrunePersistedNodePortion { get; set; }
+
+    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
+    long PrunePersistedNodeMinimumTarget { get; set; }
 }

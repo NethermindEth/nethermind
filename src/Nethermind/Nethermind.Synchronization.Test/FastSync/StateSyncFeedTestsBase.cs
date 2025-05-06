@@ -300,7 +300,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
                 alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
                 TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
-                    Persist.EveryBlock, LimboLogs.Instance);
+                    Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
                 _stateDb = trieStore.TrieNodeRlpStore;
                 _snapServer = new SnapServer(
                     trieStore.AsReadOnly(),
