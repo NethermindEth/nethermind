@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.ContractSearch.Plugin;
 
-public class ContractSearchPlugin : INethermindPlugin
+public class ContractSearchPlugin(IContractSearchConfig contractSearchConfig) : INethermindPlugin
 {
     public string Name => "ContractSearch";
     public string Description => "Search smart contracts for bytecode patterns.";
@@ -17,7 +17,8 @@ public class ContractSearchPlugin : INethermindPlugin
     private IContractSearchConfig _config = null!;
     private ILogManager _logManager = null!;
     private ILogger _logger;
-    private bool Enabled => _config?.Enabled == true;
+    public bool Enabled => contractSearchConfig.Enabled == true;
+
     private IContractSearchRpcModule? _rpcModule;
 
     public Task Init(INethermindApi nethermindApi)
