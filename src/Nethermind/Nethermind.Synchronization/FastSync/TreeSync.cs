@@ -719,7 +719,7 @@ namespace Nethermind.Synchronization.FastSync
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
 
             // Need complete state tree as the correct storage root may be different at this point.
-            StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            StateTree stateTree = new StateTree(new RawScopedTrieStore(_nodeStorage, null), LimboLogs.Instance);
             // The root is not persisted at this point yet, so we set it as root ref here.
             stateTree.RootRef = new TrieNode(NodeType.Unknown, value);
 
