@@ -17,6 +17,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public int? NumberOfLatestBlocksToBeIgnored { get; }
         public Task DownloadTask { get; set; }
+        bool _disposed;
 
         public override string ToString()
         {
@@ -25,6 +26,9 @@ namespace Nethermind.Synchronization.Blocks
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             BodiesRequests?.Dispose();
             ReceiptsRequests?.Dispose();
             OwnedBodies?.Dispose();
