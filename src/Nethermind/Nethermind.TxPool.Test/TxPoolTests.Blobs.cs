@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CkzgLib;
 using FluentAssertions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -677,7 +678,7 @@ namespace Nethermind.TxPool.Test
                 if (uniqueBlobs
                     && blobTxs[i].NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                 {
-                    wrapper.Blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    wrapper.Blobs[0] = new byte[Ckzg.BytesPerBlob];
                     wrapper.Blobs[0][0] = (byte)(i % 256);
 
                     KzgPolynomialCommitments.KzgifyBlob(

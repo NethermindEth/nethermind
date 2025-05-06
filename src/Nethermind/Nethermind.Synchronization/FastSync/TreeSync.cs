@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.FastSync
     public class TreeSync : ITreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
-        public const int MaxRequestSize = 384;
+        public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
 
@@ -99,6 +99,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             try
             {
+                // TODO: Consider using peer-specific request limits from NodeStats instead of fixed MaxRequestSize
                 List<StateSyncItem> requestItems = _pendingItems.TakeBatch(MaxRequestSize);
                 LogRequestInfo(requestItems);
 

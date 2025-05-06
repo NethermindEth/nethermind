@@ -551,7 +551,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         else
         {
-            foreach (Block block in processingBranch.Blocks)
+            foreach (Block block in processingBranch.Blocks.AsSpan())
             {
                 CancellationToken.ThrowIfCancellationRequested();
 
