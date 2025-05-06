@@ -24,12 +24,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IPreBlockCaches, IStorageValueMapOwner
+    public class WorldState : IWorldState, IPreBlockCaches
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private readonly StorageValueMap _storageValueMap;
         private readonly ITrieStore _trieStore;
         private PreBlockCaches? PreBlockCaches { get; }
 
@@ -54,24 +53,17 @@ namespace Nethermind.State
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
             PreBlockCaches? preBlockCaches = null,
-            bool populatePreBlockCache = true,
-            StorageValueMap? storageValueMap = null)
+            bool populatePreBlockCache = true)
         {
             PreBlockCaches = preBlockCaches;
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
-            _storageValueMap = storageValueMap ?? new StorageValueMap(owner: this);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, _storageValueMap, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
-            _transientStorageProvider = new TransientStorageProvider(_storageValueMap, logManager);
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
+            _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
         public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
             : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
-        {
-        }
-
-        internal WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true, StorageValueMap? storageValueMap = null)
-            : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache, storageValueMap: storageValueMap)
         {
         }
 
@@ -116,14 +108,6 @@ namespace Nethermind.State
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
-
-            if (resetBlockChanges)
-            {
-                if (_storageValueMap.IsOwnedBy(this))
-                {
-                    _storageValueMap.Clear();
-                }
-            }
         }
 
         public void WarmUp(AccessList? accessList)
@@ -291,6 +275,5 @@ namespace Nethermind.State
         }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
-        StorageValueMap IStorageValueMapOwner.StorageValueMap => _storageValueMap;
     }
 }

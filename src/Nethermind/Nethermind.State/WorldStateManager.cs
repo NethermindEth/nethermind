@@ -90,7 +90,6 @@ public class WorldStateManager : IWorldStateManager
     public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        StorageValueMap? storageValueMap = (forWarmup as IStorageValueMapOwner)?.StorageValueMap;
 
         ITrieStore store = preBlockCaches is not null
             ? new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache)
@@ -99,8 +98,7 @@ public class WorldStateManager : IWorldStateManager
         return new WorldState(store, _readaOnlyCodeCb,
             _logManager,
             preBlockCaches,
-            true,
-            storageValueMap);
+            true);
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()

@@ -28,20 +28,12 @@ namespace Nethermind.State
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
 
-        /// <summary>
-        /// The map is used for mapping 32-byte wide <see cref="StorageValue"/> to a pointer-sized <see cref="StorageValuePtr"/>.
-        ///
-        /// This makes <see cref="Change"/> and <see cref="ChangeTrace"/> much smaller and allow by-ref/pointer passing by.
-        /// </summary>
-        protected readonly StorageValueMap _map;
-
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected PartialStorageProviderBase(StorageValueMap map, ILogManager? logManager)
+        protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _map = map;
             _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ??
                       throw new ArgumentNullException(nameof(logManager));
         }
@@ -63,7 +55,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, in StorageValue newValue)
         {
-            PushUpdate(in storageCell, _map.Map(newValue));
+            PushUpdate(in storageCell, newValue);
         }
 
         /// <summary>
@@ -168,23 +160,23 @@ namespace Nethermind.State
 
         protected struct ChangeTrace
         {
-            public static readonly ChangeTrace _zeroBytes = new(StorageValuePtr.Null, StorageValuePtr.Null);
+            public static readonly ChangeTrace _zeroBytes = new(StorageValue.Zero, StorageValue.Zero);
             public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
 
-            public ChangeTrace(StorageValuePtr before, StorageValuePtr after)
+            public ChangeTrace(in StorageValue before, in StorageValue after)
             {
                 After = after;
                 Before = before;
             }
 
-            public ChangeTrace(StorageValuePtr after)
+            public ChangeTrace(in StorageValue after)
             {
                 After = after;
-                Before = StorageValuePtr.Null;
+                Before = StorageValue.Zero;
             }
 
-            public StorageValuePtr Before;
-            public StorageValuePtr After;
+            public StorageValue Before;
+            public StorageValue After;
         }
 
         /// <summary>
@@ -247,7 +239,7 @@ namespace Nethermind.State
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
-                return ref _changes[lastChangeIndex].Value.Ref;
+                return ref CollectionsMarshal.AsSpan(_changes)[lastChangeIndex].Value;
             }
 
             return ref Unsafe.NullRef<StorageValue>();
@@ -265,7 +257,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, in StorageValuePtr value)
+        private void PushUpdate(in StorageCell cell, in StorageValue value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
@@ -310,7 +302,7 @@ namespace Nethermind.State
         /// </summary>
         protected readonly struct Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, StorageValuePtr value)
+            public Change(ChangeType changeType, in StorageCell storageCell, in StorageValue value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -319,7 +311,7 @@ namespace Nethermind.State
 
             public readonly ChangeType ChangeType;
             public readonly StorageCell StorageCell;
-            public readonly StorageValuePtr Value;
+            public readonly StorageValue Value;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

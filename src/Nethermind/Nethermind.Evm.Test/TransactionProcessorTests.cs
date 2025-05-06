@@ -54,7 +54,7 @@ public class TransactionProcessorTests
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         PreBlockCaches preBlockCaches = new();
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches, true, null);
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches, true);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
