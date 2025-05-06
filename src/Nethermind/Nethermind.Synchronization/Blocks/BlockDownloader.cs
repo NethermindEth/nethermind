@@ -21,10 +21,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
 using NonBlocking;
 
 namespace Nethermind.Synchronization.Blocks
