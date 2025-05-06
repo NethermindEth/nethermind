@@ -267,7 +267,7 @@ namespace Nethermind.Store.Test.Proofs
         public void Storage_proofs_have_values_set()
         {
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
@@ -291,7 +291,7 @@ namespace Nethermind.Store.Test.Proofs
         public void Storage_proofs_have_keys_set()
         {
             IDb memDb = new MemDb();
-            ITrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
@@ -319,7 +319,7 @@ namespace Nethermind.Store.Test.Proofs
             byte[] c = Bytes.FromHexString("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -355,7 +355,7 @@ namespace Nethermind.Store.Test.Proofs
             byte[] e = Bytes.FromHexString("0x0000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -395,7 +395,7 @@ namespace Nethermind.Store.Test.Proofs
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -435,7 +435,7 @@ namespace Nethermind.Store.Test.Proofs
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -470,7 +470,7 @@ namespace Nethermind.Store.Test.Proofs
         public void Shows_empty_values_when_account_is_missing()
         {
             IDb memDb = new MemDb();
-            StateTree tree = new(TrieStore.ForTest(memDb, LimboLogs.Instance), LimboLogs.Instance);
+            StateTree tree = new(TestTrieStoreFactory.Build(memDb, LimboLogs.Instance), LimboLogs.Instance);
             _ = new byte[] { 1, 2, 3 };
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressB, account2);
@@ -499,7 +499,7 @@ namespace Nethermind.Store.Test.Proofs
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -590,7 +590,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             int storageCount = lines.Length - 2;
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
 
             Address address = new(Bytes.FromHexString(lines[0]));
@@ -643,7 +643,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             for (int j = 0; j < accountProof.StorageProofs.Length; j++)
             {
                 TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
-                node.ResolveNode(TrieStore.ForTest(memDb, NullLogManager.Instance).GetTrieStore(null), TreePath.Empty);
+                node.ResolveNode(TestTrieStoreFactory.Build(memDb, NullLogManager.Instance).GetTrieStore(null), TreePath.Empty);
                 if (node.Value.Length != 1)
                 {
                     TestContext.Out.WriteLine($"{j}");
@@ -679,7 +679,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             }
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TrieStore.ForTest(memDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
 
             for (int i = 0; i < accountsCount; i++)

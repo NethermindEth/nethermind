@@ -44,7 +44,7 @@ public class TransactionProcessorTests
         _spec.FeeCollector = TestItem.AddressB;
 
         MemDb stateDb = new();
-        TrieStore trieStore = TrieStore.ForTest(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);

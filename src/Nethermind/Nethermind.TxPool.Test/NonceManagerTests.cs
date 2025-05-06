@@ -35,7 +35,7 @@ public class NonceManagerTests
     {
         ILogManager logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        var trieStore = TrieStore.ForTest(new MemDb(), logManager);
+        var trieStore = TestTrieStoreFactory.Build(new MemDb(), logManager);
         var codeDb = new MemDb();
         _stateProvider = new WorldState(trieStore, codeDb, logManager);
         _blockTree = Substitute.For<IBlockTree>();

@@ -101,7 +101,7 @@ namespace Nethermind.Store.Test
         {
             db ??= new MemDb();
             return useFullTrieStore
-                ? TrieStore.ForTest(db, LimboLogs.Instance).GetTrieStore(null)
+                ? TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null)
                 : new RawScopedTrieStore(new NodeStorage(db), null);
         }
     }

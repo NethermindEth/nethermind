@@ -46,22 +46,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
-    public static TrieStore ForTest(INodeStorage nodeStorage, ILogManager logManager)
-    {
-        return new TrieStore(nodeStorage, No.Pruning, Persist.EveryBlock, logManager);
-    }
-
-    // Note: Prefer `RawScopedTrieStore` unless testing `TrieStore` itself.
-    public static TrieStore ForTest(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager)
-    {
-        return ForTest(new NodeStorage(keyValueStore), logManager);
-    }
-
-    public static TrieStore ForTest(IKeyValueStoreWithBatching keyValueStore, IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, ILogManager? logManager)
-    {
-        return new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, logManager);
-    }
-
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,

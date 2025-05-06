@@ -61,7 +61,7 @@ public class ParityStyleTracerTests
 
         MemDb stateDb = new();
         MemDb codeDb = new();
-        ITrieStore trieStore = TrieStore.ForTest(stateDb, LimboLogs.Instance).AsReadOnly();
+        ITrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance).AsReadOnly();
         WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
         _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 

@@ -9,7 +9,7 @@ using Nethermind.Logging;
 namespace Nethermind.Trie.Pruning;
 
 public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(
-    keyValueStore,
+    new NodeStorage(keyValueStore),
     No.Pruning,
     Persist.EveryBlock,
     logManager)

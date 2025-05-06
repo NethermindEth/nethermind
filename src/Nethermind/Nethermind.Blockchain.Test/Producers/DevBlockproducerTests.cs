@@ -45,7 +45,7 @@ public class DevBlockProducerTests
             .WithoutSettingHead
             .TestObject;
 
-        TrieStore trieStore = TrieStore.ForTest(dbProvider.RegisteredDbs[DbNames.State],
+        TrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.RegisteredDbs[DbNames.State],
             NoPruning.Instance,
             Archive.Instance,
             LimboLogs.Instance);

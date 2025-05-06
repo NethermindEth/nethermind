@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = TrieStore.ForTest(new MemDb(), LimboLogs.Instance);
+            _store = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
             (_inputStateTree, _inputStorageTree, _storage) = TestItem.Tree.GetTrees(_store);
         }
 

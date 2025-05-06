@@ -221,10 +221,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalNodeStorage = new NodeStorage(LocalDb);
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
-                RemoteTrieStore = TrieStore.ForTest(RemoteStateDb, logManager);
+                RemoteTrieStore = TestTrieStoreFactory.Build(RemoteStateDb, logManager);
 
                 RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTree(TrieStore.ForTest(LocalStateDb, logManager), logManager);
+                LocalStateTree = new StateTree(TestTrieStoreFactory.Build(LocalStateDb, logManager), logManager);
             }
 
             public MemDb RemoteCodeDb { get; }
