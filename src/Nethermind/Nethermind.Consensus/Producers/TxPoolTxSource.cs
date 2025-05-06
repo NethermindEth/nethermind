@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.Producers
 
             if (selectedBlobTxs.Count > 0)
             {
-                foreach (Transaction blobTx in selectedBlobTxs)
+                foreach (Transaction blobTx in selectedBlobTxs.AsSpan())
                 {
                     yield return blobTx;
                 }

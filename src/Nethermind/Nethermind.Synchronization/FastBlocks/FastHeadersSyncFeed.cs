@@ -655,7 +655,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             UInt256? totalDifficulty = nextHeaderTotalDifficulty;
-            foreach (var blockHeader in headersToAdd)
+            foreach (var blockHeader in headersToAdd.AsSpan())
             {
                 blockHeader.TotalDifficulty = totalDifficulty;
                 totalDifficulty = DetermineParentTotalDifficulty(blockHeader);
