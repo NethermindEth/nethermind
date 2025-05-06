@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Cli;
-using Nethermind.Cli.Console;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using System.CommandLine;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.JsonRpc.Client;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 
 namespace SendBlobs;
@@ -198,17 +197,18 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(
-                parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
 
-            FundsDistributor distributor = new FundsDistributor(
-                nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(
+                rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.DitributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
@@ -259,31 +259,28 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
-            FundsDistributor distributor = new(nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
         });
-
         root.Add(command);
     }
 
-    public static INodeManager InitNodeManager(string rpcUrl, ILogger logger)
-    {
-        ICliConsole cliConsole = new CliConsole();
-        IJsonSerializer serializer = new EthereumJsonSerializer();
-        OneLoggerLogManager logManager = new OneLoggerLogManager(logger);
-        ICliEngine engine = new CliEngine(cliConsole);
-        INodeManager nodeManager = new NodeManager(engine, serializer, cliConsole, logManager);
-        nodeManager.SwitchUri(new Uri(rpcUrl));
-        return nodeManager;
-    }
+    public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>
+        new BasicJsonRpcClient(
+            new Uri(rpcUrl),
+            new EthereumJsonSerializer(),
+            new OneLoggerLogManager(logger)
+        );
 
     public static void SetupSendFileCommand(CliCommand root)
     {

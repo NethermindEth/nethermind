@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Crypto;
 
@@ -36,7 +37,6 @@ public static class TxErrorMessages
 
     public const string NotAllowedCreateTransaction =
         "NotAllowedCreateTransaction: To must be set.";
-
 
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
