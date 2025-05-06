@@ -45,11 +45,11 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
 
         if (allBlobsAvailable)
         {
-            Metrics.NumberOfGetBlobsSuccesses++;
+            Metrics.GetBlobsRequestsSuccessTotal++;
         }
         else
         {
-            Metrics.NumberOfGetBlobsFailures++;
+            Metrics.GetBlobsRequestsFailureTotal++;
         }
     }
 }

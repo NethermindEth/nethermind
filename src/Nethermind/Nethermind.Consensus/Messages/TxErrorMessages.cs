@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Crypto;
 
@@ -59,13 +60,13 @@ public static class TxErrorMessages
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
 
     public static readonly string ExceededBlobSize =
-        $"ExceededBlobSize: Cannot be more than {Ckzg.Ckzg.BytesPerBlob}.";
+        $"ExceededBlobSize: Cannot be more than {Ckzg.BytesPerBlob}.";
 
     public static readonly string ExceededBlobCommitmentSize =
-        $"ExceededBlobCommitmentSize: Cannot be more than {Ckzg.Ckzg.BytesPerCommitment}.";
+        $"ExceededBlobCommitmentSize: Cannot be more than {Ckzg.BytesPerCommitment}.";
 
     public static readonly string InvalidBlobProofSize =
-        $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
+        $"InvalidBlobProofSize: Cannot be more than {Ckzg.BytesPerProof}.";
 
     public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
 

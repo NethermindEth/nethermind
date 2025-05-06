@@ -79,13 +79,7 @@ namespace Nethermind.Core
             return item != null;
         }
 
-        public static ulong GetBlobGas(this Transaction tx)
-        {
-            return (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
-        }
-        public static int GetBlobCount(this Transaction tx)
-        {
-            return tx.BlobVersionedHashes?.Length ?? 0;
-        }
+        public static ulong GetBlobGas(this Transaction tx) => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+        public static int GetBlobCount(this Transaction tx) => tx.BlobVersionedHashes?.Length ?? 0;
     }
 }
