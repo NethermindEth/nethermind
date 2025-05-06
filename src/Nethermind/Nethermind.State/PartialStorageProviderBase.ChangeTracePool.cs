@@ -13,7 +13,7 @@ internal partial class PartialStorageProviderBase
     /// <summary>
     /// A resettable pool of <see cref="ChangeTrace"/> objects.
     /// </summary>
-    protected sealed class ChangeTracePool
+    protected sealed class ChangeTracePool : IDisposable
     {
         private readonly uint _size;
         private const int DefaultSize = 512 * 1024;
@@ -42,6 +42,22 @@ internal partial class PartialStorageProviderBase
         public void Clear()
         {
             _index = 0;
+        }
+
+        private unsafe void ReleaseUnmanagedResources()
+        {
+            NativeMemory.AlignedFree(_values);
+        }
+
+        public void Dispose()
+        {
+            ReleaseUnmanagedResources();
+            GC.SuppressFinalize(this);
+        }
+
+        ~ChangeTracePool()
+        {
+            ReleaseUnmanagedResources();
         }
     }
 
