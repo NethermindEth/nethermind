@@ -355,10 +355,8 @@ public class BlockValidator(
         return true;
     }
 
-    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated)
-    {
-        return ValidateBodyAgainstHeader(header, toBeValidated, out _);
-    }
+    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
+        ValidateBodyAgainstHeader(header, toBeValidated, out _);
 
     public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
     {
