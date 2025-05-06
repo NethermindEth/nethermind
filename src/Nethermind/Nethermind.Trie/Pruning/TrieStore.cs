@@ -57,24 +57,21 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         return ForTest(new NodeStorage(keyValueStore), logManager);
     }
 
-    public TrieStore(
-        IKeyValueStoreWithBatching? keyValueStore,
-        IPruningStrategy? pruningStrategy,
-        IPersistenceStrategy? persistenceStrategy,
-        ILogManager? logManager) : this(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, logManager)
+    public static TrieStore ForTest(IKeyValueStoreWithBatching keyValueStore, IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, ILogManager? logManager)
     {
+        return new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, logManager);
     }
 
     public TrieStore(
-        INodeStorage? nodeStorage,
-        IPruningStrategy? pruningStrategy,
-        IPersistenceStrategy? persistenceStrategy,
-        ILogManager? logManager)
+        INodeStorage nodeStorage,
+        IPruningStrategy pruningStrategy,
+        IPersistenceStrategy persistenceStrategy,
+        ILogManager logManager)
     {
-        _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
-        _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
-        _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
-        _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
+        _logger = (ILogger)logManager?.GetClassLogger<TrieStore>();
+        _nodeStorage = nodeStorage;
+        _pruningStrategy = pruningStrategy;
+        _persistenceStrategy = persistenceStrategy;
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
 
