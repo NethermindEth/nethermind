@@ -482,7 +482,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         return true;
     }
 
-    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store) =>
+    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store = null) =>
         new ReadOnlyTrieStore(this, store);
 
     public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
