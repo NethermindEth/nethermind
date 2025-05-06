@@ -23,8 +23,6 @@ jobs:
           echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
           echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
           scripts/deployment/build-runner.sh $GITHUB_SHA $build_timestamp
-      - name: Build Nethermind.Cli
-        run: scripts/deployment/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
       - name: Archive packages
         env:
           PACKAGE_PREFIX: nethermind-preview-${{ steps.build-runner.outputs.commit-hash }}

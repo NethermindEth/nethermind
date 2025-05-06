@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.State;
 using System;
+using System.Linq;
 
 namespace Nethermind.Optimism;
 
@@ -14,16 +15,29 @@ public class Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, I
 {
     public void RewriteContract(BlockHeader header, IWorldState worldState)
     {
-        ArgumentNullException.ThrowIfNull(opSpecHelper.Create2DeployerAddress);
-
-        IReleaseSpec spec = specProvider.GetSpec(header);
         BlockHeader? parent = blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
 
         // A migration at the first block of Canyon unless it's genesis
         if ((parent is null || !opSpecHelper.IsCanyon(parent)) && opSpecHelper.IsCanyon(header) && !header.IsGenesis)
         {
-            worldState.CreateAccountIfNotExists(opSpecHelper.Create2DeployerAddress, 0);
-            worldState.InsertCode(opSpecHelper.Create2DeployerAddress, opSpecHelper.Create2DeployerCode, spec);
+            IReleaseSpec spec = specProvider.GetSpec(header);
+
+            var code = GetCreate2DeployerCode();
+
+            worldState.CreateAccountIfNotExists(PreInstalls.Create2Deployer, 0);
+            worldState.InsertCode(PreInstalls.Create2Deployer, code, spec);
         }
+    }
+
+    private static byte[] GetCreate2DeployerCode()
+    {
+        var asm = typeof(Create2DeployerContractRewriter).Assembly;
+        var name = asm.GetManifestResourceNames()
+            .Single(name => name.EndsWith("Create2Deployer.data"));
+
+        using var stream = asm.GetManifestResourceStream(name);
+        var buffer = new byte[stream!.Length];
+        stream.ReadExactly(buffer, 0, buffer.Length);
+        return buffer;
     }
 }
