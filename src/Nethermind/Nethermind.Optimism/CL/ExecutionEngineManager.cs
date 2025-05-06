@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -32,99 +33,122 @@ public class ExecutionEngineManager(
             logger.Info($"EL manager initialization complete: current head {_currentHead}, current finalized head hash {_currentFinalizedHead.Hash}, current safe hash {_currentSafeHead.Hash}");
     }
 
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+
     public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
-        if (_currentHead.Number >= payloadAttributes.Number)
+        await _semaphore.WaitAsync();
+        try
         {
-            if (logger.IsInfo) logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
-            L2Block actualBlock = await l2Api.GetBlockByNumber(payloadAttributes.Number);
-            if (_derivedBlocksVerifier.ComparePayloadAttributes(
-                    actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
+            if (_currentHead.Number >= payloadAttributes.Number)
             {
-                BlockId newFinalized = BlockId.FromL2Block(actualBlock);
-                return await SendForkChoiceUpdated(_currentHead, newFinalized, newFinalized);
+                if (logger.IsInfo) logger.Info($"Derived old payload. Number: {payloadAttributes.Number}");
+                L2Block actualBlock = await l2Api.GetBlockByNumber(payloadAttributes.Number);
+                if (_derivedBlocksVerifier.ComparePayloadAttributes(
+                        actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
+                {
+                    BlockId newFinalized = BlockId.FromL2Block(actualBlock);
+                    return await SendForkChoiceUpdated(_currentHead, newFinalized, newFinalized);
+                }
+
+                return false;
             }
 
-            return false;
-        }
+            if (logger.IsInfo) logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
+            ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
+            if (executionPayload is null)
+            {
+                return false;
+            }
 
-        if (logger.IsInfo) logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
-        ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
-        if (executionPayload is null)
+            BlockId newHead = BlockId.FromExecutionPayload(executionPayload);
+            return await SendForkChoiceUpdated(newHead, newHead, newHead);
+        }
+        finally
         {
-            return false;
+            _semaphore.Release();
         }
-
-        BlockId newHead = BlockId.FromExecutionPayload(executionPayload);
-        return await SendForkChoiceUpdated(newHead, newHead, newHead);
     }
 
     public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayload)
     {
-        if (_currentHead.Number >= (ulong)executionPayload.BlockNumber)
+        await _semaphore.WaitAsync();
+        try
         {
-            if (logger.IsTrace) logger.Trace($"Got old P2P payload. Number: {executionPayload.BlockNumber}");
-        }
-        if (logger.IsInfo) logger.Info($"New P2P Execution Payload. {executionPayload.BlockNumber} ({executionPayload.BlockHash})");
-        PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
-        switch (npResult.Status)
-        {
-            case PayloadStatus.Invalid:
+            if (_currentHead.Number >= (ulong)executionPayload.BlockNumber)
+            {
+                if (logger.IsTrace) logger.Trace($"Got old P2P payload. Number: {executionPayload.BlockNumber}");
+            }
+
+            if (logger.IsInfo)
+                logger.Info(
+                    $"New P2P Execution Payload. {executionPayload.BlockNumber} ({executionPayload.BlockHash})");
+            PayloadStatusV1 npResult =
+                await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
+            switch (npResult.Status)
+            {
+                case PayloadStatus.Invalid:
                 {
                     if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
                     return false;
                 }
-            case PayloadStatus.Valid:
+                case PayloadStatus.Valid:
                 {
                     if (logger.IsTrace) logger.Trace($"NewPayload Valid P2P payload. {executionPayload}");
                     break;
                 }
-            case PayloadStatus.Accepted:
+                case PayloadStatus.Accepted:
                 {
                     if (logger.IsTrace) logger.Trace($"Accepted P2P payload. {executionPayload}");
                     break;
                 }
-            case PayloadStatus.Syncing:
+                case PayloadStatus.Syncing:
                 {
                     if (logger.IsTrace) logger.Trace($"Syncing P2P payload. {executionPayload}");
                     break;
                 }
-        }
+            }
 
-        var fcuResult = await l2Api.ForkChoiceUpdatedV3(executionPayload.BlockHash, _currentFinalizedHead.Hash, _currentSafeHead.Hash);
-        switch (fcuResult.PayloadStatus.Status)
-        {
-            case PayloadStatus.Invalid:
+            var fcuResult = await l2Api.ForkChoiceUpdatedV3(executionPayload.BlockHash, _currentFinalizedHead.Hash,
+                _currentSafeHead.Hash);
+            switch (fcuResult.PayloadStatus.Status)
+            {
+                case PayloadStatus.Invalid:
                 {
                     if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
                     return false;
                 }
-            case PayloadStatus.Valid:
+                case PayloadStatus.Valid:
                 {
                     if (logger.IsInfo) logger.Info($"FCU Valid P2P payload. {executionPayload}");
+                    _currentHead = BlockId.FromExecutionPayload(executionPayload);
                     if (_isInSyncMode)
                     {
                         if (logger.IsTrace) logger.Trace("EL sync completed");
                         _isInSyncMode = false;
                         _elSyncedTaskCompletionSource.SetResult();
                     }
+
                     break;
                 }
-            case PayloadStatus.Accepted:
+                case PayloadStatus.Accepted:
                 {
-                    if (logger.IsError) logger.Error($"FCU Accepted P2P payload. {executionPayload}");
+                    if (logger.IsInfo) logger.Info($"FCU Accepted P2P payload. {executionPayload}");
                     break;
                 }
-            case PayloadStatus.Syncing:
+                case PayloadStatus.Syncing:
                 {
                     if (logger.IsInfo) logger.Info($"FCU Syncing P2P payload. {executionPayload}");
                     break;
                 }
+            }
+
+            return true;
         }
-
-        _currentHead = BlockId.FromExecutionPayload(executionPayload);
-
-        return true;
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes)

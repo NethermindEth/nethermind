@@ -115,12 +115,16 @@ public class OptimismCL : IDisposable
                 Task driverTask = _driver.Run(_cancellationTokenSource.Token);
                 await _l1Bridge.ProcessUntilHead(_cancellationTokenSource.Token);
                 Task p2pTask = _p2p.Run(_cancellationTokenSource.Token);
-                await _executionEngineManager.OnELSynced.ContinueWith(async _ => await Task.WhenAll(
-                    p2pTask,
-                    decodingPipelineTask,
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
-                    driverTask
-                ));
+                await _executionEngineManager.OnELSynced.ContinueWith(async _ =>
+                {
+                    if (_logger.IsInfo) _logger.Info("EL sync completed. Starting Derivation Process");
+                    await Task.WhenAll(
+                        p2pTask,
+                        decodingPipelineTask,
+                        _l1Bridge.Run(_cancellationTokenSource.Token),
+                        driverTask
+                    );
+                });
             }
         }
         catch (OperationCanceledException)
