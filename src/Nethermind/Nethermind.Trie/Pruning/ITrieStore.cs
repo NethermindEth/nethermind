@@ -44,7 +44,7 @@ namespace Nethermind.Trie.Pruning
         bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
     }
 
-    public interface IPruningTrieStore: ITrieStore
+    public interface IPruningTrieStore : ITrieStore
     {
         public void PersistCache(CancellationToken cancellationToken);
 
