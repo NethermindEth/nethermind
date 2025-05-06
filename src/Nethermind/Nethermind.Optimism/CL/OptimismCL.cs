@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -39,6 +40,7 @@ public class OptimismCL : IDisposable
         ulong l2GenesisTimestamp,
         ILogManager logManager,
         IOptimismEthRpcModule l2EthRpc,
+        IPAddress externalIp,
         IOptimismEngineRpcModule engineRpcModule)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
@@ -76,6 +78,7 @@ public class OptimismCL : IDisposable
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
+            externalIp,
             logManager,
             _executionEngineManager);
     }

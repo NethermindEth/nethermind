@@ -7,6 +7,7 @@ using Nethermind.Libp2p.Protocols;
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -41,6 +42,7 @@ public class OptimismCLP2P : IDisposable
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPeerManager _peerManager;
+    private readonly IPAddress _externalIp;
 
     private PubsubRouter? _router;
     private ILocalPeer? _localPeer;
@@ -55,6 +57,7 @@ public class OptimismCLP2P : IDisposable
         IOptimismConfig config,
         Address sequencerP2PAddress,
         ITimestamper timestamper,
+        IPAddress externalIp,
         ILogManager logManager,
         IExecutionEngineManager executionEngineManager)
     {
@@ -64,6 +67,7 @@ public class OptimismCLP2P : IDisposable
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
         _peerManager = new PeerManager(_logger);
+        _externalIp = externalIp;
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
 
@@ -292,7 +296,8 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string address = $"/ip4/{_config.ClP2PHost}/tcp/{_config.ClP2PPort}";
+        string hostIp = _config.ClP2PHost ?? _externalIp.ToString();
+        string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
         _localPeer = peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;

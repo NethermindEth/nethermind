@@ -11,8 +11,8 @@ public interface IOptimismConfig : IConfig
     string? SequencerUrl { get; set; }
     [ConfigItem(Description = "Use enshrined op cl.", DefaultValue = "false")]
     bool ClEnabled { get; set; }
-    [ConfigItem(Description = "CL p2p communication host", DefaultValue = "127.0.0.1")]
-    public string ClP2PHost { get; set; }
+    [ConfigItem(Description = "CL p2p communication host", DefaultValue = "null")]
+    public string? ClP2PHost { get; set; }
     [ConfigItem(Description = "CL p2p communication host", DefaultValue = "3030")]
     public int ClP2PPort { get; set; }
     [ConfigItem(Description = "URL to L1 beacon node", DefaultValue = "null")]

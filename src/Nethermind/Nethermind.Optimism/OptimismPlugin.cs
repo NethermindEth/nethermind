@@ -267,6 +267,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
+        StepDependencyException.ThrowIfNull(_api.IpResolver);
 
         IOptimismConfig config = _api.Config<IOptimismConfig>();
         if (config.ClEnabled)
@@ -283,6 +284,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _api.ChainSpec.Genesis.Timestamp,
                 _api!.LogManager,
                 _api.OptimismEthRpcModule,
+                _api.IpResolver.ExternalIp,
                 opEngine);
             _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
             _api.DisposeStack.Push(_cl);
