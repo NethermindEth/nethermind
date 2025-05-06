@@ -239,7 +239,6 @@ namespace Nethermind.Blockchain.Test
                 .WithShardBlobTxTypeAndFields(blobCount)
                 .WithNonce(nonce)
                 .WithMaxFeePerGas(maxFee)
-                .WithMaxFeePerBlobGas(2)
                 .WithMaxPriorityFeePerGas(priority)
                 .WithGasLimit(20)
                 .SignedAndResolved(key).TestObject;
