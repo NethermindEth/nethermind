@@ -63,7 +63,15 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         using ArrayPoolList<byte[]> requests = new(3);
 
-        ProcessDeposits(receipts, spec, requests);
+        try
+        {
+            ProcessDeposits(receipts, spec, requests);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(ex.Message));
+        }
+
         if (spec.WithdrawalRequestsEnabled) ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests,
             _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest, BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
         if (spec.ConsolidationRequestsEnabled) ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests,

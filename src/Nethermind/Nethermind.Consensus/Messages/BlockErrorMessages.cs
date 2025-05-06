@@ -130,14 +130,17 @@ public static class BlockErrorMessages
 
 
     public const string WithdrawalsContractEmpty =
-        "Withdrawals: Contract is not deployed.";
+        "WithdrawalsEmpty: Contract is not deployed.";
 
     public const string WithdrawalsContractFailed =
-        "Withdrawals: Contract execution failed.";
+        "WithdrawalsFailed: Contract execution failed.";
 
     public const string ConsolidationsContractEmpty =
-        "Consolidations: Contract is not deployed.";
+        "ConsolidationsEmpty: Contract is not deployed.";
 
     public const string ConsolidationsContractFailed =
-        "Consolidations: Contract execution failed.";
+        "ConsolidationsFailed: Contract execution failed.";
+
+    public static string InvalidDepositEventLayout(string error) =>
+        $"DepositsInvalid: Invalid deposit event layout: {error}";
 }

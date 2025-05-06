@@ -1,8 +1,6 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
@@ -19,10 +17,13 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Linq;
 
 namespace Nethermind.Consensus.Test;
 
@@ -71,6 +72,9 @@ public class ExecutionProcessorTests
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
+        byte[] code = [1, 2, 3];
+        _stateProvider.InsertCode(eip7002Account, ValueKeccak.Compute(code), code, Prague.Instance);
+        _stateProvider.InsertCode(eip7251Account, ValueKeccak.Compute(code), code, Prague.Instance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
