@@ -53,7 +53,7 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy,
                 pruningConfig ?? new PruningConfig()
                 {
-                    TrackedPastKeyCountMemoryRatio = 0 // Default disable
+                    TrackPastKeys = false // Default disable
                 },
                 _logManager);
         }
@@ -935,7 +935,7 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningConfig: new PruningConfig()
                 {
                     PruningBoundary = 2,
-                    TrackedPastKeyCountMemoryRatio = 1
+                    TrackPastKeys = true
                 });
 
             TreePath emptyPath = TreePath.Empty;
@@ -975,7 +975,7 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningConfig: new PruningConfig()
                 {
                     PruningBoundary = 2,
-                    TrackedPastKeyCountMemoryRatio = 1
+                    Enabled = true
                 });
 
             long reorgBoundary = 0;
@@ -1018,7 +1018,7 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: isPruningPersistenceStrategy,
                 pruningConfig: new PruningConfig()
                 {
-                    TrackedPastKeyCountMemoryRatio = 1,
+                    TrackPastKeys = true,
                     PruningBoundary = 2
                 });
 
@@ -1056,7 +1056,7 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningConfig: new PruningConfig()
                 {
                     PruningBoundary = 2,
-                    TrackedPastKeyCountMemoryRatio = 1
+                    TrackPastKeys = true
                 });
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
@@ -1095,7 +1095,7 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningConfig: new PruningConfig()
                 {
                     PruningBoundary = 2,
-                    TrackedPastKeyCountMemoryRatio = 1
+                    TrackPastKeys = true
                 });
 
             WorldState worldState = new WorldState(
@@ -1147,7 +1147,7 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningConfig: new PruningConfig()
                 {
                     PruningBoundary = 64,
-                    TrackedPastKeyCountMemoryRatio = 1
+                    TrackPastKeys = true
                 });
 
             TreePath emptyPath = TreePath.Empty;

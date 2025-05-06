@@ -53,7 +53,7 @@ namespace Nethermind.Trie.Test
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
 
-                _pruningConfig = pruningConfig ?? new PruningConfig() { TrackedPastKeyCountMemoryRatio = 0.0 };
+                _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
                 _trieStore = TestTrieStoreFactory.Build(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
@@ -83,7 +83,7 @@ namespace Nethermind.Trie.Test
                 [DebuggerStepThrough]
                 get => new(new TestPruningStrategy(true), No.Persistence, new PruningConfig()
                 {
-                    TrackedPastKeyCountMemoryRatio = 1,
+                    TrackPastKeys = true,
                 });
             }
 
@@ -92,7 +92,7 @@ namespace Nethermind.Trie.Test
                 [DebuggerStepThrough]
                 get => new(new TestPruningStrategy(true, true), No.Persistence, new PruningConfig()
                 {
-                    TrackedPastKeyCountMemoryRatio = 1,
+                    TrackPastKeys = true,
                 });
             }
 

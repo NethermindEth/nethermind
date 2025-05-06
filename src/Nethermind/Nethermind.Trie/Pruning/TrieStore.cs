@@ -86,7 +86,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        if (pruningStrategy.PruningEnabled && pruningConfig.TrackedPastKeyCountMemoryRatio > 0 && nodeStorage.RequirePath)
+        if (pruningStrategy.PruningEnabled && pruningConfig.TrackPastKeys && nodeStorage.RequirePath)
         {
             _livePruningEnabled = true;
         }
