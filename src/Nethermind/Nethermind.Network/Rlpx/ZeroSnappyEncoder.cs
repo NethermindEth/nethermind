@@ -23,7 +23,7 @@ public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
     {
         byte packetType = input.ReadByte();
 
-        var maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes);
+        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes);
         output.EnsureWritable(1 + maxLength);
         output.WriteByte(packetType);
 
