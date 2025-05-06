@@ -16,7 +16,7 @@ public sealed class SimulateOptimismTransactionProcessor(
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager logManager,
@@ -26,7 +26,7 @@ public sealed class SimulateOptimismTransactionProcessor(
         worldState,
         virtualMachine,
         logManager,
-        l1CostHelper,
+        costHelper,
         opSpecHelper,
         codeInfoRepository)
 {
@@ -44,7 +44,7 @@ public sealed class SimulateOptimismTransactionProcessor(
 }
 
 public sealed class SimulateOptimismTransactionProcessorFactory(
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper
 ) : ISimulateTransactionProcessorFactory
 {
@@ -60,7 +60,7 @@ public sealed class SimulateOptimismTransactionProcessorFactory(
             specProvider,
             worldState,
             virtualMachine,
-            l1CostHelper,
+            costHelper,
             opSpecHelper,
             codeInfoRepository,
             logManager!,
