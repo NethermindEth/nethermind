@@ -617,15 +617,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             ref ChangeTracePtr value =
                 ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
-            if (!exists && _missingAreDefault)
+
+            if (!exists)
             {
-                // Where we know the rest of the tree is empty
-                // we can say the value was found but is default
-                // rather than having to check the database
-                var trace = pool.New();
-                trace.Ref = ChangeTrace.ZeroBytes;
-                value = trace;
-                exists = true;
+                value = pool.New();
+                if (_missingAreDefault)
+                {
+                    // Where we know the rest of the tree is empty
+                    // we can say the value was found but is default
+                    // rather than having to check the database
+                    value.Ref = ChangeTrace.ZeroBytes;
+                    exists = true;
+                }
             }
 
             return ref value.Ref;
