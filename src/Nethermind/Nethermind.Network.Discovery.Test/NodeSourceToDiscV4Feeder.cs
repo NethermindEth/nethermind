@@ -3,6 +3,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Test;
 using Nethermind.Stats.Model;
@@ -14,15 +15,16 @@ namespace Nethermind.Network.Discovery.Test;
 public class NodeSourceToDiscV4FeederTests
 {
     [Test]
-    public async Task Test_ShouldAddNodeToDiscover()
+    [CancelAfter(1000)]
+    public async Task Test_ShouldAddNodeToDiscover(CancellationToken token)
     {
         TestNodeSource source = new();
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, 10);
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 10);
 
-        using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(1000);
-        _ = feeder.Run(cts.Token);
+        _ = feeder.Run();
         source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
         await Task.Delay(100);
 
@@ -30,15 +32,16 @@ public class NodeSourceToDiscV4FeederTests
     }
 
     [Test]
-    public async Task Test_ShouldLimitAddedNode()
+    [CancelAfter(1000)]
+    public async Task Test_ShouldLimitAddedNode(CancellationToken token)
     {
         TestNodeSource source = new();
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, 10);
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 10);
 
-        using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(1000);
-        _ = feeder.Run(cts.Token);
+        _ = feeder.Run();
         for (int i = 0; i < 20; i++)
         {
             source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));

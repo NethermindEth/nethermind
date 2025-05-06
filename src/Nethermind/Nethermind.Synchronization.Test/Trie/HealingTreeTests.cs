@@ -192,7 +192,7 @@ public class HealingTreeTests
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 
             // Copy from server to client, but randomly remove some of them.
-            foreach (var kv in allValues)
+            foreach (var kv in allValues.AsSpan())
             {
                 if (random.NextDouble() < 0.9)
                 {

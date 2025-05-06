@@ -12,6 +12,7 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -771,7 +772,12 @@ public partial class EthRpcModule(
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc>.Success(null);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
+            return blockHash is null
+                ? GetFailureResult<ReceiptForRpc, Block>(
+                    new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable),
+                    _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+                : ResultWrapper<ReceiptForRpc>.Success(null);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
@@ -780,7 +786,13 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
-        return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
+        SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
+        return searchResult switch
+        {
+            { ErrorCode: ErrorCodes.PrunedHistoryUnavailable } => GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet()),
+            { IsError: true } => ResultWrapper<ReceiptForRpc[]>.Success(null),
+            _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
+        };
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>

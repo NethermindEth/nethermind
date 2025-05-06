@@ -31,7 +31,7 @@ internal class DelegatedAccountFilterTest
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new();
+        TxFilteringState state = new(transaction, Substitute.For<IAccountStateProvider>());
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 

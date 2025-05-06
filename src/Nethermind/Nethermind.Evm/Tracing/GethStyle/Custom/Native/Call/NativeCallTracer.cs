@@ -174,7 +174,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
-        firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
+        firstCallFrame.Output = new ArrayPoolList<byte>(output);
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
@@ -183,7 +183,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)
-            firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
+            firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
@@ -267,7 +267,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             callFrame.Logs = null;
         }
 
-        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls)
+        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls.AsSpan())
         {
             ClearFailedLogs(childCallFrame, failed);
         }

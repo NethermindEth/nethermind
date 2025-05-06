@@ -18,6 +18,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -45,7 +46,7 @@ public class PruningTrieStateFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
-    public (IWorldStateManager, INodeStorage, CompositePruningTrigger) Build()
+    public (IWorldStateManager, INodeStorage, IPruningTrieStateAdminRpcModule) Build()
     {
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
@@ -82,15 +83,15 @@ public class PruningTrieStateFactory(
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IKeyValueStoreWithBatching stateDb = dbProvider.StateDb;
+        IDb stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
         {
             persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-            if (pruningConfig.Mode.IsFull())
+            if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
             {
-                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)dbProvider!.StateDb, blockTree!, logManager);
+                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
                 disposeStack.Push(triggerPersistenceStrategy);
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
@@ -192,6 +193,7 @@ public class PruningTrieStateFactory(
         disposeStack.Push(mainWorldTrieStore);
 
         InitializeFullPruning(
+            stateDb,
             stateManager.GlobalStateReader,
             mainNodeStorage,
             nodeStorageFactory,
@@ -199,10 +201,21 @@ public class PruningTrieStateFactory(
             compositePruningTrigger
         );
 
-        return (stateManager, mainNodeStorage, compositePruningTrigger);
+        var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
+        ManualPruningTrigger pruningTrigger = new();
+        compositePruningTrigger.Add(pruningTrigger);
+        PruningTrieStateAdminRpcModule adminRpcModule = new PruningTrieStateAdminRpcModule(
+            pruningTrigger,
+            blockTree,
+            stateManager.GlobalStateReader,
+            verifyTrieStarter!
+        );
+
+        return (stateManager, mainNodeStorage, adminRpcModule);
     }
 
     private void InitializeFullPruning(
+        IDb stateDb,
         IStateReader stateReader,
         INodeStorage mainNodeStorage,
         INodeStorageFactory nodeStorageFactory,
@@ -226,34 +239,30 @@ public class PruningTrieStateFactory(
             }
         }
 
-        if (pruningConfig.Mode.IsFull())
+        if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
         {
-            IDb stateDb = dbProvider!.StateDb;
-            if (stateDb is IFullPruningDb fullPruningDb)
+            string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
+            IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(pruningDbPath);
+            if (pruningTrigger is not null)
             {
-                string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
-                IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(pruningDbPath);
-                if (pruningTrigger is not null)
-                {
-                    compositePruningTrigger.Add(pruningTrigger);
-                }
-
-                IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(
-                    fullPruningDb,
-                    nodeStorageFactory,
-                    mainNodeStorage,
-                    compositePruningTrigger,
-                    pruningConfig,
-                    blockTree!,
-                    stateReader,
-                    processExit!,
-                    ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
-                    drive,
-                    trieStore,
-                    logManager);
-                disposeStack.Push(pruner);
+                compositePruningTrigger.Add(pruningTrigger);
             }
+
+            IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
+            FullPruner pruner = new(
+                fullPruningDb,
+                nodeStorageFactory,
+                mainNodeStorage,
+                compositePruningTrigger,
+                pruningConfig,
+                blockTree!,
+                stateReader,
+                processExit!,
+                ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
+                drive,
+                trieStore,
+                logManager);
+            disposeStack.Push(pruner);
         }
     }
 }
