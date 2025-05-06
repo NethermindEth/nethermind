@@ -1389,9 +1389,7 @@ public partial class BlockDownloaderTests
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
-        public BlockHeader? GetHeader(Hash256 hash)
-        {
-            return _headers.TryGetValue(hash, out var header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
-        }
+        public BlockHeader? GetHeader(Hash256 hash) =>
+            _headers.TryGetValue(hash, out var header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
     }
 }
