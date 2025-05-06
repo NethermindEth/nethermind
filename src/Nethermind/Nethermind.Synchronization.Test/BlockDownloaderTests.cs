@@ -295,7 +295,6 @@ public partial class BlockDownloaderTests
 
                 if (blockHashes.Count == 0)
                 {
-                    Console.Error.WriteLine("No blocks at all");
                     return new OwnedBlockBodies([]);
                 }
 
@@ -303,7 +302,6 @@ public partial class BlockDownloaderTests
                     .BuildBlocksResponse(blockHashes, responseOptions)
                     .Result
                     .Bodies!;
-                Console.Error.WriteLine($"Satisfied {blockHashes.Count} hashes with {response.Length}");
 
                 if (response.Length < minResponseLength)
                 {
@@ -1250,10 +1248,6 @@ public partial class BlockDownloaderTests
                 for (int i = 1; i < number; i++)
                 {
                     Hash256 receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Hash256("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
-                    if (headers[i - 1] == null)
-                    {
-                        Console.Error.WriteLine($"No header found for number {i - 1}. Looking for {i} {consistent}");
-                    }
                     BlockHeaderBuilder blockHeaderBuilder = consistent
                         ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
                         : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
