@@ -32,7 +32,7 @@ public class OptimismCL : IDisposable
     public OptimismCL(
         ISpecProvider specProvider,
         CLChainSpecEngineParameters engineParameters,
-        ICLConfig config,
+        IOptimismConfig config,
         IJsonSerializer jsonSerializer,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
@@ -45,17 +45,18 @@ public class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
+        ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
 
         _logger = logManager.GetClassLogger();
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _l2GenesisTimestamp = l2GenesisTimestamp;
 
-        IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
+        IEthApi ethApi = new EthereumEthApi(config.L1EthApiEndpoint, jsonSerializer, logManager);
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger);
 
         _decodingPipeline = new DecodingPipeline(_logger);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, engineParameters, _decodingPipeline, _logger);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, engineParameters, _decodingPipeline, _logger);
 
         ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, _logger);

@@ -19,7 +19,6 @@ public class EthereumL1Bridge : IL1Bridge
 {
     private const int L1SlotTimeMilliseconds = 12000;
 
-    private readonly ICLConfig _config;
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
     private readonly IDecodingPipeline _decodingPipeline;
@@ -34,7 +33,6 @@ public class EthereumL1Bridge : IL1Bridge
     public EthereumL1Bridge(
         IEthApi ethL1Rpc,
         IBeaconApi beaconApi,
-        ICLConfig config,
         CLChainSpecEngineParameters engineParameters,
         IDecodingPipeline decodingPipeline,
         ILogger logger)
@@ -44,7 +42,6 @@ public class EthereumL1Bridge : IL1Bridge
         ArgumentNullException.ThrowIfNull(engineParameters.BatchSubmitter);
         _logger = logger;
         _decodingPipeline = decodingPipeline;
-        _config = config;
         _ethL1Api = ethL1Rpc;
         _beaconApi = beaconApi;
 

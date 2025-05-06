@@ -268,15 +268,15 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
 
-        ICLConfig clConfig = _api.Config<ICLConfig>();
-        if (clConfig.Enabled)
+        IOptimismConfig config = _api.Config<IOptimismConfig>();
+        if (config.ClEnabled)
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(
                 _api.SpecProvider,
                 chainSpecEngineParameters,
-                clConfig,
+                config,
                 _api.EthereumJsonSerializer,
                 _api.EthereumEcdsa,
                 _api.Timestamper,

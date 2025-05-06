@@ -37,7 +37,7 @@ public class OptimismCLP2P : IDisposable
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly P2PBlockValidator _blockValidator;
     private readonly Multiaddress[] _staticPeerList;
-    private readonly ICLConfig _config;
+    private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPeerManager _peerManager;
@@ -52,7 +52,7 @@ public class OptimismCLP2P : IDisposable
     public OptimismCLP2P(
         ulong chainId,
         string[] staticPeerList,
-        ICLConfig config,
+        IOptimismConfig config,
         Address sequencerP2PAddress,
         ITimestamper timestamper,
         ILogManager logManager,
@@ -292,7 +292,7 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string address = $"/ip4/{_config.P2PHost}/tcp/{_config.P2PPort}";
+        string address = $"/ip4/{_config.ClP2PHost}/tcp/{_config.ClP2PPort}";
         _localPeer = peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
