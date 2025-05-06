@@ -159,12 +159,13 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
-                if (spec.BlobProofVersion != proofVersion)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
-                    continue;
-                }
+                // TODO: fix it
+                // ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
+                // if (spec.BlobProofVersion != proofVersion)
+                // {
+                //     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
+                //     continue;
+                // }
 
                 if (txBlobCount == 1 && candidates is null)
                 {
