@@ -102,7 +102,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
     {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
+        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);
     }
 

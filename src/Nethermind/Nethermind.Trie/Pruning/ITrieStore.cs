@@ -13,9 +13,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStore : IDisposable, ITrieStoreInternal
     {
-        // Used for serving via hash
-        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
-
         bool HasRoot(Hash256 stateRoot);
 
         IScopedTrieStore GetTrieStore(Hash256? address);
@@ -52,6 +49,8 @@ namespace Nethermind.Trie.Pruning
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
+        // Used for serving via hash
+        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
     }
 
     /// <summary>
