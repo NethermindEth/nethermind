@@ -50,11 +50,14 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         return AsSpan();
     }
 
-    public IEnumerator<T> GetEnumerator()
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
+
+    public ArrayPoolListEnumerator GetEnumerator()
     {
         GuardDispose();
         return new ArrayPoolListEnumerator(_array, Count);
     }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GuardDispose()
@@ -340,7 +343,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public static ArrayPoolList<T> Empty() => new(0);
 
-    private struct ArrayPoolListEnumerator(T[] array, int count) : IEnumerator<T>
+    public struct ArrayPoolListEnumerator(T[] array, int count) : IEnumerator<T>
     {
         private int _index = -1;
 
