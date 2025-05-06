@@ -367,8 +367,6 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                // Note: For some magical reason, the `header` is not the same as `entry.Header`.
-                // This is important as `entry.Header.MaybeParent` need to be kept alive.
                 Block block = new Block(entry.Header, body);
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
