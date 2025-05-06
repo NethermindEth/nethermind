@@ -33,12 +33,14 @@ namespace Nethermind.Synchronization.SnapSync
 
         // This is actually close to 97% effective.
         private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
+        private readonly RawScopedTrieStore _stateTrieStore;
 
         public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
             _codeDb = codeDb;
             _progressTracker = progressTracker;
             _nodeStorage = nodeStorage;
+            _stateTrieStore = new RawScopedTrieStore(_nodeStorage, null);
 
             _logManager = logManager;
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -90,7 +92,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
-            StateTree tree = new(new RawScopedTrieStore(_nodeStorage, null), _logManager);
+            StateTree tree = new(_stateTrieStore, _logManager);
 
             ValueHash256 effectiveHashLimit = hashLimit ?? ValueKeccak.MaxValue;
 
@@ -217,7 +219,7 @@ namespace Nethermind.Synchronization.SnapSync
         public void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response)
         {
             int respLength = response.Count;
-            IScopedTrieStore stateStore = new RawScopedTrieStore(_nodeStorage, null);
+            IScopedTrieStore stateStore = _stateTrieStore;
             for (int reqi = 0; reqi < request.Paths.Count; reqi++)
             {
                 var requestedPath = request.Paths[reqi];
