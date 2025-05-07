@@ -27,7 +27,4 @@ public sealed class ScopedTrieStore(ITrieStore fullTrieStore, Hash256? address) 
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         fullTrieStore.IsPersisted(address, path, in keccak);
-
-    public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) =>
-        fullTrieStore.Set(address, path, keccak, rlp);
 }
