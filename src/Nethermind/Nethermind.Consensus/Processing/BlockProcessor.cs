@@ -326,7 +326,12 @@ public partial class BlockProcessor(
         _blockhashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        var blkCtx = new BlockExecutionContext(block.Header, spec);
+
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, blkCtx, options, ReceiptsTracer, spec);
+
+        _stateProvider.Commit(spec, commitStorageRoots: false);
+
         CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)
@@ -365,6 +370,11 @@ public partial class BlockProcessor(
 
         return receipts;
     }
+
+    /// <summary>
+    /// Builds the block context ouf the block and the release spec.
+    /// </summary>
+    protected virtual BlockExecutionContext BuildBlockContext(Block block, IReleaseSpec spec) => new(block.Header, spec);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)

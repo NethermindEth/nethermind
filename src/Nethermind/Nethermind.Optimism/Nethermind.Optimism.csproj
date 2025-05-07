@@ -22,4 +22,15 @@
     <PackageReference Include="Snappier" />
   </ItemGroup>
 
+
+  <ItemGroup>
+    <Folder Include="Raw\" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <None Remove="Raw\Create2Deployer.data" />
+    <EmbeddedResource Include="Raw\Create2Deployer.data" />
+  </ItemGroup>
+
 </Project>

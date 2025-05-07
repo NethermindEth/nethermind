@@ -60,6 +60,7 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
+            _api.SpecHelper,
             _api.LogManager,
             _api.Config<IBlocksConfig>());
 

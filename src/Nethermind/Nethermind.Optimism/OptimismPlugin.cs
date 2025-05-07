@@ -84,7 +84,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
         ILogManager logManager, ChainSpec chainSpec) =>
-        new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+        new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec, new OptimismSpecHelper(
+            chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>()));
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {

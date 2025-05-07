@@ -332,6 +332,9 @@ namespace Nethermind.Core.Specs
         /// Taiko Ontake
         bool IsOntakeEnabled { get; }
 
+        // OP Isthmus
+        bool IsOpIsthmusEnabled { get; }
+
         /// <summary>
         ///  Increase call data cost
         /// </summary>

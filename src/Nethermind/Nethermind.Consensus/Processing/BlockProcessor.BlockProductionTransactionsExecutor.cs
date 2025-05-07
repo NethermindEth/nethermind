@@ -63,14 +63,15 @@ namespace Nethermind.Consensus.Processing
                 remove => txPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            public virtual TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
                 int i = 0;
+
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
-                BlockExecutionContext blkCtx = new(block.Header, spec);
+
                 foreach (Transaction currentTx in transactions)
                 {
                     TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);

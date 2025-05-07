@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.State;
 using Metrics = Nethermind.Evm.Metrics;
 
@@ -31,20 +30,22 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 Metrics.ResetBlockStats();
-                BlockExecutionContext blkCtx = CreateBlockExecutionContext(block, spec);
+
+                var enhanced = EnhanceBlockExecutionContext(blkCtx);
+
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(in enhanced, currentTx, i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block, IReleaseSpec spec) => new(block.Header, spec);
+            protected virtual BlockExecutionContext EnhanceBlockExecutionContext(in BlockExecutionContext blkCtx) => blkCtx;
 
             protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {

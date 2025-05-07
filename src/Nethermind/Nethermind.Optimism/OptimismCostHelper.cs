@@ -9,13 +9,12 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace Nethermind.Optimism;
 
-public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : IL1CostHelper
+public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : ICostHelper
 {
-    private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper;
-
     private readonly StorageCell _l1BaseFeeSlot = new(l1BlockAddr, new UInt256(1));
     private readonly StorageCell _overheadSlot = new(l1BlockAddr, new UInt256(5));
     private readonly StorageCell _scalarSlot = new(l1BlockAddr, new UInt256(6));
@@ -29,13 +28,15 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
     private static readonly UInt256 PrecisionMultiplier = 16;
     private static readonly UInt256 PrecisionDivisor = PrecisionMultiplier * BasicDivisor;
 
-
     // Fjord
     private static readonly UInt256 L1CostInterceptNeg = 42_585_600;
     private static readonly UInt256 L1CostFastlzCoef = 836_500;
 
     private static readonly UInt256 MinTransactionSizeScaled = 100 * 1_000_000;
     private static readonly UInt256 FjordDivisor = 1_000_000_000_000;
+
+    // Isthmus
+    private readonly StorageCell _operatorFeeParamsSlot = new(l1BlockAddr, new UInt256(8));
 
     [SkipLocalsInit]
     public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
@@ -45,7 +46,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
 
         UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
 
-        if (_opSpecHelper.IsFjord(header))
+        if (opSpecHelper.IsFjord(header))
         {
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
 
@@ -64,12 +65,12 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
             return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
         }
 
-        UInt256 dataGas = ComputeDataGas(tx, _opSpecHelper.IsRegolith(header));
+        UInt256 dataGas = ComputeDataGas(tx, opSpecHelper.IsRegolith(header));
 
         if (dataGas.IsZero)
             return UInt256.Zero;
 
-        if (_opSpecHelper.IsEcotone(header))
+        if (opSpecHelper.IsEcotone(header))
         {
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
 
@@ -91,6 +92,48 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
             UInt256 feeScalar = new(worldState.Get(_scalarSlot), true);
 
             return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
+        }
+    }
+
+    public UInt256 ComputeOperatorCost(long gas, BlockHeader header, IWorldState worldState)
+    {
+        if (!opSpecHelper.IsIsthmus(header))
+            return UInt256.Zero;
+
+        var span = worldState.Get(_operatorFeeParamsSlot);
+        if (span.IsEmpty)
+            return UInt256.Zero;
+
+        const int scalarSize = 4;
+        const int constantSize = 8;
+        const int size = scalarSize + constantSize;
+
+        (uint scalar, ulong constant) operatorFee;
+
+        switch (span.Length)
+        {
+            case size:
+                operatorFee = Parse(span);
+                break;
+            case > size:
+                operatorFee = Parse(span.Slice(span.Length - size));
+                break;
+            case < size:
+                Span<byte> aligned = stackalloc byte[size];
+                span.CopyTo(aligned.Slice(size - span.Length));
+                operatorFee = Parse(aligned);
+                break;
+        }
+
+        return (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
+
+        static (uint scalar, ulong constant) Parse(scoped ReadOnlySpan<byte> span)
+        {
+            const int feeStart = 4;
+
+            var operatorFeeScalar = ReadUInt32BigEndian(span[..feeStart]);
+            var operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
+            return (operatorFeeScalar, operatorFeeConstant);
         }
     }
 
