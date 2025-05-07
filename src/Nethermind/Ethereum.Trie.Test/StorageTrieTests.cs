@@ -16,7 +16,7 @@ namespace Ethereum.Trie.Test
     {
         private StorageTree CreateStorageTrie()
         {
-            return new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            return new StorageTree(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
         }
 
         [Test]
