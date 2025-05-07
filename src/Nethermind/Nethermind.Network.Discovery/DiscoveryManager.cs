@@ -76,7 +76,7 @@ public class DiscoveryManager : IDiscoveryManager
         set => _msgSender = value;
     }
 
-    public void OnIncomingMsg(DiscoveryMsg msg)
+    public Task OnIncomingMsg(DiscoveryMsg msg)
     {
         try
         {
@@ -87,7 +87,7 @@ public class DiscoveryManager : IDiscoveryManager
             INodeLifecycleManager? nodeManager = GetNodeLifecycleManager(node);
             if (nodeManager is null)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             switch (msgType)
@@ -116,7 +116,7 @@ public class DiscoveryManager : IDiscoveryManager
                     break;
                 default:
                     _logger.Error($"Unsupported msgType: {msgType}");
-                    return;
+                    return Task.CompletedTask;
             }
 
             NotifySubscribersOnMsgReceived(msgType, nodeManager.ManagedNode, msg);
@@ -126,6 +126,8 @@ public class DiscoveryManager : IDiscoveryManager
         {
             _logger.Error("Error during msg handling", e);
         }
+
+        return Task.CompletedTask;
     }
 
     private int _managersCreated;

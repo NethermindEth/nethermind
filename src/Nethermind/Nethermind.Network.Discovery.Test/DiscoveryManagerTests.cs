@@ -84,7 +84,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving ping
             IPEndPoint address = new(IPAddress.Parse(Host), Port);
-            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) { FarAddress = address });
+            await _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) { FarAddress = address });
             await Task.Delay(500);
 
             // expecting to send pong
@@ -176,7 +176,7 @@ namespace Nethermind.Network.Discovery.Test
             //receiving findNode
             NeighborsMsg msg = new(_publicKey, GetExpirationTime(), _nodes);
             msg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
-            _discoveryManager.OnIncomingMsg(msg);
+            await _discoveryManager.OnIncomingMsg(msg);
 
             //expecting to send 3 pings to both nodes
             await Task.Delay(600);
