@@ -18,6 +18,7 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 public class EthereumL1Bridge : IL1Bridge
 {
     private const int L1SlotTimeMilliseconds = 12000;
+    private const int L1EpochTimeMilliseconds = 32 * L1SlotTimeMilliseconds;
 
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
@@ -59,7 +60,7 @@ public class EthereumL1Bridge : IL1Bridge
             ulong newHeadNumber = newHead.Number;
             if (newHeadNumber == _currentHead.Number)
             {
-                await Task.Delay(1000, token);
+                await Task.Delay(L1SlotTimeMilliseconds, token);
                 continue;
             }
             await BuildUp(_currentHead.Number, newHeadNumber, token);
@@ -67,7 +68,7 @@ public class EthereumL1Bridge : IL1Bridge
 
             _currentHead = BlockId.FromL1Block(newHead);
 
-            await Task.Delay(32 * L1SlotTimeMilliseconds, token);
+            await Task.Delay(L1EpochTimeMilliseconds, token);
         }
     }
 
