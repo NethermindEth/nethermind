@@ -64,11 +64,18 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     outputs:
-      runner_label: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
+      runner_label: ${{ steps.set-label.outputs.label }}
       machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
     steps:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Set short label
+        id: set-label
+        run: |
+          # Take first 10 chars of network name
+          NETWORK_SHORT=$(echo "${{ matrix.config.network }}" | cut -c1-10)
+          echo "label=r${{ github.run_id }}-${NETWORK_SHORT}" >> $GITHUB_OUTPUT
 
       - name: Create a Runner
         id: run-linode-action
@@ -77,7 +84,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "create"
-          runner_label: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
+          runner_label: ${{ steps.set-label.outputs.label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -94,7 +101,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
 
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
+    runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
     timeout-minutes: ${{ matrix.config.timeout }}
 
     steps:
@@ -326,8 +333,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
-          search_phrase: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label }}
+          search_phrase: ${{ needs.create_a_runner.outputs.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -348,8 +355,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine"
-          runner_label: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
-          search_phrase: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label }}
+          search_phrase: ${{ needs.create_a_runner.outputs.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -360,8 +367,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-runner"
-          runner_label: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
-          search_phrase: r${{ github.run_id }}-${{ matrix.config.network | slice: 0, 10 }}
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label }}
+          search_phrase: ${{ needs.create_a_runner.outputs.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
