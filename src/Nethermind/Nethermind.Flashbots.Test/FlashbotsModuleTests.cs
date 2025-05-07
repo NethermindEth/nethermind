@@ -78,7 +78,7 @@ public partial class FlashbotsModuleTests
 
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0x479f7c9b7389e9ff3f443b99c3cd4b90f9b7feef5f41d714edb59de6b3e7ac02");
+        Hash256 expectedBlockHash = new("0x961f11bf7889f09f3ada48da02506d1459310c0386c328d8cf760a7a20d92dd5");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(

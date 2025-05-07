@@ -96,6 +96,9 @@ public class ExecutionProcessorTests
             {
                 Transaction transaction = ci.Arg<Transaction>();
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
+
+                tracer.StatusCode = StatusCode.Success;
+
                 if (transaction.To == eip7002Account)
                 {
                     Span<byte> buffer = new byte[_executionWithdrawalRequests.GetRequestsByteSize()];
