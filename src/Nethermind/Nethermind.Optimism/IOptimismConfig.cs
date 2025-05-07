@@ -7,7 +7,7 @@ namespace Nethermind.Optimism;
 
 public interface IOptimismConfig : IConfig
 {
-    [ConfigItem(Description = "The sequencer address.", DefaultValue = "null")]
+    [ConfigItem(Description = "The Optimism sequencer URL.", DefaultValue = "null")]
     string? SequencerUrl { get; set; }
     [ConfigItem(Description = "Whether to use the enshrined Optimism consensus layer.", DefaultValue = "false")]
     bool ClEnabled { get; set; }
