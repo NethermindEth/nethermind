@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
@@ -25,9 +24,6 @@ namespace Nethermind.Flashbots.Test;
 
 public partial class FlashbotsModuleTests
 {
-    private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
-    private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-
     [Test]
     public virtual async Task TestValidateBuilderSubmissionV3()
     {
