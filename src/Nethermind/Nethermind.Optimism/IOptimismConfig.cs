@@ -9,14 +9,14 @@ public interface IOptimismConfig : IConfig
 {
     [ConfigItem(Description = "The sequencer address.", DefaultValue = "null")]
     string? SequencerUrl { get; set; }
-    [ConfigItem(Description = "Use enshrined op cl.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to use the enshrined Optimism consensus layer.", DefaultValue = "false")]
     bool ClEnabled { get; set; }
-    [ConfigItem(Description = "CL p2p communication host", DefaultValue = "null")]
+    [ConfigItem(Description = "The Optimism consensus layer host.", DefaultValue = "null")]
     public string? ClP2PHost { get; set; }
     [ConfigItem(Description = "CL p2p communication host", DefaultValue = "3030")]
     public int ClP2PPort { get; set; }
-    [ConfigItem(Description = "URL to L1 beacon node", DefaultValue = "null")]
+    [ConfigItem(Description = "The URL of the Optimism L1 consensus node API.", DefaultValue = "null")]
     string? L1BeaconApiEndpoint { get; set; }
-    [ConfigItem(Description = "URL to L1 execution node.", DefaultValue = "null")]
+    [ConfigItem(Description = "The URL of the Optimism L1 execution node JSON-RPC API.", DefaultValue = "null")]
     string? L1EthApiEndpoint { get; set; }
 }
