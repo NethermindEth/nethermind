@@ -23,6 +23,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Consensus.Test;
@@ -101,13 +102,13 @@ public class ExecutionProcessorTests
 
                 if (transaction.To == eip7002Account)
                 {
-                    Span<byte> buffer = new byte[_executionWithdrawalRequests.GetRequestsByteSize()];
+                    Span<byte> buffer = new byte[GetRequestsByteSize(_executionWithdrawalRequests)];
                     FlatEncodeWithoutType(_executionWithdrawalRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
                 else if (transaction.To == eip7251Account)
                 {
-                    Span<byte> buffer = new byte[_executionConsolidationRequests.GetRequestsByteSize()];
+                    Span<byte> buffer = new byte[GetRequestsByteSize(_executionConsolidationRequests)];
                     FlatEncodeWithoutType(_executionConsolidationRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
@@ -116,6 +117,8 @@ public class ExecutionProcessorTests
                     tracer.ReturnValue = [];
                 }
                 return new TransactionResult();
+
+                static int GetRequestsByteSize(IEnumerable<ExecutionRequest> requests) => requests.Sum(r => r.RequestData.Length);
             });
     }
 
@@ -151,6 +154,9 @@ public class ExecutionProcessorTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
 
+        var a = TestItem.ExecutionRequestA.RequestDataParts.Sum(x => x.Length);
+        var b = TestItem.ExecutionRequestB.RequestDataParts.Sum(x => x.Length);
+        var c = TestItem.ExecutionRequestC.RequestDataParts.Sum(x => x.Length);
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts),

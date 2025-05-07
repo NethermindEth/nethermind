@@ -169,13 +169,9 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             return;
         }
 
-        int validLength = tracer.ReturnValue.Length;
-
-        if (validLength == 0) return;
-
-        byte[] buffer = new byte[validLength + 1];
+        byte[] buffer = new byte[tracer.ReturnValue.Length + 1];
         buffer[0] = (byte)type;
-        tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.AsSpan(1));
+        tracer.ReturnValue.AsSpan().CopyTo(buffer.AsSpan(1));
         requests.Add(buffer);
     }
 }
