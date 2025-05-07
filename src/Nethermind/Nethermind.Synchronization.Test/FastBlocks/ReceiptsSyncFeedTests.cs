@@ -27,6 +27,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
@@ -351,13 +352,16 @@ public class ReceiptsSyncFeedTests
             batches.Add(await _feed.PrepareRequest());
         }
 
-        for (int i = 0; i < 2; i++)
+        // Expected batches based on actual MaxReceiptFetch
+        int expectedBatches = (int)Math.Ceiling(256.0 / GethSyncLimits.MaxReceiptFetch);
+
+        for (int i = 0; i < expectedBatches; i++)
         {
             batches[i].Should().NotBeNull();
             batches[i]!.ToString().Should().NotBeNull();
         }
 
-        for (int i = 2; i < 100; i++)
+        for (int i = expectedBatches; i < 100; i++)
         {
             batches[i].Should().BeNull();
         }

@@ -119,7 +119,7 @@ public class ShutterTxLoader(
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
-        foreach (SequencedTransaction index in sortedIndexes)
+        foreach (SequencedTransaction index in sortedIndexes.AsSpan())
         {
             sortedKeyIndexes[index.Index] = keyIndex++;
         }

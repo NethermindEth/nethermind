@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -31,9 +30,15 @@ namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger = new(new NUnitLogger(LogLevel.Info));
-        private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
+        private static ILogger _logger;
+        private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
+
+        static GeneralStateTestBase()
+        {
+            _logManager ??= LimboLogs.Instance;
+            _logger = _logManager.GetClassLogger();
+        }
 
         [SetUp]
         public void Setup()
@@ -46,6 +51,7 @@ namespace Ethereum.Test.Base
         protected static void Setup(ILogManager logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
+            _logger = _logManager.GetClassLogger();
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
@@ -172,10 +178,11 @@ namespace Ethereum.Test.Base
                 TestContext.Out.WriteLine();
                 TestContext.Out.WriteLine("Differences from expected");
                 TestContext.Out.WriteLine();
-            }
-            foreach (string difference in differences)
-            {
-                TestContext.Out.WriteLine(difference);
+
+                foreach (string difference in differences)
+                {
+                    TestContext.Out.WriteLine(difference);
+                }
             }
 
             //            Assert.Zero(differences.Count, "differences");
