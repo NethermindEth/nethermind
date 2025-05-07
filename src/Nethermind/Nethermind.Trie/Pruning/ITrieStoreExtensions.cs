@@ -9,9 +9,6 @@ namespace Nethermind.Trie.Pruning
     // ReSharper disable once InconsistentNaming
     public static class ITrieStoreExtensions
     {
-        public static IReadOnlyTrieStore AsReadOnly(this ITrieStore trieStore, INodeStorage? readOnlyStore = null) =>
-            trieStore.AsReadOnly(readOnlyStore);
-
         public static IScopedTrieStore GetTrieStore(this ITrieStore trieStore, Address address) =>
             trieStore.GetTrieStore((Hash256)address.ToAccountPath);
     }
