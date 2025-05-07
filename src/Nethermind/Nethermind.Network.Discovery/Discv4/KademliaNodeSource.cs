@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 using Prometheus;

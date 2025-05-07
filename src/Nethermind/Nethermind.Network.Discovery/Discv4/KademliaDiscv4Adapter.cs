@@ -15,7 +15,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.Discv4;
 
 public class KademliaDiscv4Adapter(
     Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
@@ -26,89 +26,22 @@ public class KademliaDiscv4Adapter(
     ITimestamper timestamper
 ): IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
 {
-    private ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
+    private readonly TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan _tryAuthenticatedTimeout = TimeSpan.FromSeconds(2);
+    private readonly TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
 
-    private readonly CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _messageHandlerCancellation = new();
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
     public IMsgSender? MsgSender { get; set; }
     public NodeFilter NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
-    private TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
-    private TimeSpan _tryAuthenticatedTimeout = TimeSpan.FromSeconds(2);
-    private TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
 
-    private interface IMessageHandler
-    {
-        bool Handle(DiscoveryMsg msg);
-    }
-
-    private interface ITaskCompleter<T>: IMessageHandler
-    {
-        TaskCompletionSource<T> TaskCompletionSource { get; }
-    }
-
-    private class PongMsgHandler(PingMsg ping) : ITaskCompleter<PongMsg>
-    {
-        public TaskCompletionSource<PongMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public bool Handle(DiscoveryMsg msg)
-        {
-            if (msg is PongMsg pong && Bytes.AreEqual(pong.PingMdc, ping.Mdc) && TaskCompletionSource.TrySetResult(pong))
-            {
-                return true;
-            }
-            return false;
-        }
-    }
-
-    private class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
-    {
-        private Node[] _current = Array.Empty<Node>();
-        public TaskCompletionSource<Node[]> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        private static readonly TimeSpan _secondRequestTimeout = TimeSpan.FromSeconds(1);
-        private bool _timeoutInitiated = false;
-
-        public bool Handle(DiscoveryMsg msg)
-        {
-            NeighborsMsg neighborsMsg = (NeighborsMsg)msg;
-            if (_current.Length >= k || _current.Length + neighborsMsg.Nodes.Length > k) return false;
-
-            _current = _current.Concat(neighborsMsg.Nodes).ToArray();
-            if (_current.Length == k)
-            {
-                TaskCompletionSource.TrySetResult(_current);
-            }
-            else
-            {
-                // Some client (nethermind) only respond with one request.
-                Task.Run(async () =>
-                {
-                    if (Interlocked.CompareExchange(ref _timeoutInitiated, !_timeoutInitiated, false) == false) return;
-                    await Task.Delay(_secondRequestTimeout);
-                    TaskCompletionSource.TrySetResult(_current);
-                });
-            }
-            return true;
-        }
-    }
-
-    private class EnrResponseHandler : ITaskCompleter<EnrResponseMsg> {
-        public TaskCompletionSource<EnrResponseMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public bool Handle(DiscoveryMsg msg)
-        {
-            if (msg is EnrResponseMsg resp && TaskCompletionSource.TrySetResult(resp))
-            {
-                return true;
-            }
-            return false;
-        }
-    }
-
-    private readonly ConcurrentDictionary<ValueHash256, TaskCompletionSource> _awaitingPongToNode = new();
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
 
-    private readonly LruCache<ValueHash256, DateTimeOffset> _bondDeadline = new(1024 * 10, "");
-    private readonly ConcurrentDictionary<ValueHash256, long> _authenticatedRequestFailure = new();
+    private readonly ConcurrentDictionary<ValueHash256, TaskCompletionSource<object>> _awaitingPongToNode = new(); // This is for waiting to send pong in attempt to authenticate.
+    private readonly LruCache<ValueHash256, DateTimeOffset> _outgoingBondDeadline = new(1024 * 10, "outgoing_bond_deadline");
+
+    private readonly LruCache<ValueHash256, DateTimeOffset> _incomingBondDeadline = new(1024 * 10, "incoming_bond_deadline");
+    private readonly ConcurrentDictionary<ValueHash256, long> _authenticatedRequestFailure = new(); // TODO: To lru cache
     private static TimeSpan _bondTimeout = TimeSpan.FromHours(12);
     private const int AuthenticatedRequestFailureLimit = 5;
 
@@ -151,29 +84,45 @@ public class KademliaDiscv4Adapter(
 
     private void HandleEnrRequest(Node node, EnrRequestMsg msg)
     {
-        if (!IsPeerSafe(node)) return;
-
         Task.Run(async () =>
         {
-            Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
-            await SendMessage(node, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)));
+            try
+            {
+                await EnsureIncomingBondedPeer(node, _messageHandlerCancellation.Token);
+
+                Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
+                await SendMessage(node, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)));
+            }
+            catch (Exception)
+            {
+                // If ping fails, we don't respond
+                if (_logger.IsTrace) _logger.Trace($"Failed to ensure bonded peer {node} for ENR request");
+            }
         });
     }
 
     private void HandleFindNode(Node node, FindNodeMsg msg)
     {
-        if (!IsPeerSafe(node)) return;
-
         Task.Run(async () =>
         {
-            PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
-            Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, _cts.Token);
-            if (nodes.Length > 12)
+            try
             {
-                // some issue with large neighbour message. Too large, and its larger than the default mtu 1280.
-                nodes = nodes.Slice(0, 12).ToArray();
+                await EnsureIncomingBondedPeer(node, _messageHandlerCancellation.Token);
+
+                PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
+                Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, _messageHandlerCancellation.Token);
+                if (nodes.Length > 12)
+                {
+                    // some issue with large neighbour message. Too large, and its larger than the default mtu 1280.
+                    nodes = nodes.Slice(0, 12).ToArray();
+                }
+                await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
             }
-            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
+            catch (Exception)
+            {
+                // If ping fails, we don't respond
+                if (_logger.IsTrace) _logger.Trace($"Failed to ensure bonded peer {node} for FindNode request");
+            }
         });
     }
 
@@ -182,15 +131,18 @@ public class KademliaDiscv4Adapter(
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
         Task.Run(async () =>
         {
-            await kademliaMessageReceiver.Value.Ping(node, _cts.Token);
-            PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
+            await kademliaMessageReceiver.Value.Ping(node, _messageHandlerCancellation.Token);
+            // Generate MDC hash from the ping message
+            Rlp requestRlp = Rlp.Encode(Rlp.Encode(ping.ExpirationTime));
+            byte[] mdc = Keccak.Compute(requestRlp.Bytes).Bytes.ToArray();
+            PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), mdc);
             await SendMessage(node, msg);
         });
     }
 
     private bool IsShouldBeBonded(Node node)
     {
-        return _bondDeadline.TryGet(node.IdHash, out DateTimeOffset bondDeadline)
+        return _outgoingBondDeadline.TryGet(node.IdHash, out DateTimeOffset bondDeadline)
                && bondDeadline > DateTimeOffset.Now
                && (!_authenticatedRequestFailure.TryGetValue(node.IdHash, out long failedFinedNodes) || failedFinedNodes <= AuthenticatedRequestFailureLimit);
     }
@@ -202,7 +154,7 @@ public class KademliaDiscv4Adapter(
         if (_logger.IsTrace) _logger.Trace($"Ensure session for node {node}");
         using var cts = token.CreateChildTokenSource(_tryAuthenticatedTimeout);
         token = cts.Token;
-        TaskCompletionSource pongCts = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<object> pongCts = new(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationTokenRegistration unregister = token.RegisterToCompletionSource(pongCts);
         try
         {
@@ -237,7 +189,7 @@ public class KademliaDiscv4Adapter(
             if (!shouldBeBonded)
             {
                 // Well.... maybe we already bonded, we just forgot about it....
-                _bondDeadline.Set(node.IdHash, DateTimeOffset.Now + _bondTimeout);
+                _outgoingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + _bondTimeout);
             }
             _authenticatedRequestFailure[node.IdHash] = 0;
             return resp;
@@ -302,10 +254,10 @@ public class KademliaDiscv4Adapter(
         {
             if (msg is PongMsg pong)
             {
-                _bondDeadline.Set(node.IdHash, DateTimeOffset.Now + _bondTimeout);
-                if (_awaitingPongToNode.TryGetValue(node.IdHash, out TaskCompletionSource? completionSource))
+                _outgoingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + _bondTimeout);
+                if (_awaitingPongToNode.TryGetValue(node.IdHash, out TaskCompletionSource<object>? completionSource))
                 {
-                    completionSource.TrySetResult();
+                    completionSource.TrySetResult(new object());
                 }
             }
 
@@ -380,14 +332,26 @@ public class KademliaDiscv4Adapter(
         return true;
     }
 
-    private bool IsPeerSafe(Node node)
+    public bool IsPeerSafe(Node node)
     {
-        return true;
+        return _incomingBondDeadline.TryGet(node.IdHash, out DateTimeOffset safeUntil) && safeUntil > DateTimeOffset.Now;
+    }
+
+    private async Task EnsureIncomingBondedPeer(Node node, CancellationToken token)
+    {
+        if (IsPeerSafe(node))
+        {
+            return;
+        }
+
+        // If we're here, the node is not safe, so we'll send a ping to verify
+        await Ping(node, token);
+        _incomingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + _bondTimeout);
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _cts.CancelAsync();
-        _cts.Dispose();
+        await _messageHandlerCancellation.CancelAsync();
+        _messageHandlerCancellation.Dispose();
     }
 }
