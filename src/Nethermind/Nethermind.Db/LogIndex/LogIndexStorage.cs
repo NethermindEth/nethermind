@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,9 +25,9 @@ namespace Nethermind.Db
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
     public sealed class LogIndexStorage : ILogIndexStorage
     {
-        private static readonly byte[] LastBlockNumKey = "LastBlockNum"u8.ToArray();
+        // Use value that we won't encounter during iterator Seek or SeekForPrev
+        private static readonly byte[] LastBlockNumKey = Enumerable.Repeat(byte.MaxValue, Math.Max(Address.Size, Hash256.Size) + 1).ToArray();
 
-        private readonly IDb _defaultDb;
         private readonly IDb _addressDb;
         private readonly IDb _topicsDb;
         private readonly ILogger _logger;
@@ -56,7 +57,6 @@ namespace Nethermind.Db
 
             _addressDb = columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = columnsDb.GetColumnDb(LogIndexColumns.Topics);
-            _defaultDb = columnsDb.GetColumnDb(LogIndexColumns.Default);
         }
 
         // TODO: remove if unused
@@ -79,7 +79,6 @@ namespace Nethermind.Db
                 // TODO: check if needed
                 _addressDb.Flush();
                 _topicsDb.Flush();
-                _defaultDb.Flush();
 
                 if (_logger.IsInfo) _logger.Info("Log index storage stopped");
             }
@@ -96,18 +95,22 @@ namespace Nethermind.Db
             _setReceiptsSemaphore.Dispose();
             _addressDb.Dispose();
             _topicsDb.Dispose();
-            _defaultDb.Dispose();
 
             return ValueTask.CompletedTask;
         }
 
-        private int _lastKnownBlock = -1;
+        private int _addressLastKnownBlock = -1;
+        private int _topicLastKnownBlock = -1;
 
         public int GetLastKnownBlockNumber()
         {
-            return _lastKnownBlock < 0
-                ? ReadLastKnownBlockNumber() // Should only happen until first update
-                : _lastKnownBlock;
+            if (_addressLastKnownBlock < 0)
+                _addressLastKnownBlock = ReadLastKnownBlockNumber(_addressDb);
+
+            if (_topicLastKnownBlock < 0)
+                _topicLastKnownBlock = ReadLastKnownBlockNumber(_topicsDb);
+
+            return Math.Min(_addressLastKnownBlock, _topicLastKnownBlock);
         }
 
         public IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to)
@@ -230,7 +233,7 @@ namespace Nethermind.Db
             BlockReceipts[] batch, SetReceiptsStats stats
         )
         {
-            if (batch[^1].BlockNumber <= _lastKnownBlock)
+            if (batch[^1].BlockNumber <= GetLastKnownBlockNumber())
                 return null;
 
             var timestamp = Stopwatch.GetTimestamp();
@@ -238,7 +241,7 @@ namespace Nethermind.Db
             var blockNumsByKey = new Dictionary<byte[], List<int>>(Bytes.EqualityComparer);
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
             {
-                if (blockNumber <= _lastKnownBlock)
+                if (blockNumber <= GetLastKnownBlockNumber())
                     continue;
 
                 stats.BlocksAdded++;
@@ -256,19 +259,24 @@ namespace Nethermind.Db
 
                         List<int> addressNums = blockNumsByKey.GetOrAdd(log.Address.Bytes, _ => new(1));
 
-                        if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
-                            addressNums.Add(blockNumber);
-
-                        for (byte i = 0; i < log.Topics.Length; i++)
+                        if (blockNumber > _addressLastKnownBlock && (addressNums.Count == 0 || addressNums[^1] != blockNumber))
                         {
-                            stats.TopicsAdded++;
+                            addressNums.Add(blockNumber);
+                        }
 
-                            var topic = log.Topics[i];
-                            var topicKey = BuildTopicKey(topic, i);
+                        if (blockNumber > _topicLastKnownBlock)
+                        {
+                            for (byte i = 0; i < log.Topics.Length; i++)
+                            {
+                                stats.TopicsAdded++;
 
-                            var topicNums = blockNumsByKey.GetOrAdd(topicKey, _ => new(1));
-                            if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
-                                topicNums.Add(blockNumber);
+                                var topic = log.Topics[i];
+                                var topicKey = BuildTopicKey(topic, i);
+
+                                var topicNums = blockNumsByKey.GetOrAdd(topicKey, _ => new(1));
+                                if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
+                                    topicNums.Add(blockNumber);
+                            }
                         }
                     }
                 }
@@ -374,9 +382,6 @@ namespace Nethermind.Db
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
 
-            if (_lastKnownBlock < 0)
-                _lastKnownBlock = GetLastKnownBlockNumber();
-
             var stats = new SetReceiptsStats();
 
             try
@@ -402,10 +407,14 @@ namespace Nethermind.Db
                     _lastCompactionAt = batch[^1].BlockNumber;
                 }
 
-                if (_lastKnownBlock < batch[^1].BlockNumber)
-                    WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
+                var lastAddedBlockNum = batch[^1].BlockNumber;
+                if (GetLastKnownBlockNumber() < lastAddedBlockNum)
+                {
+                    WriteLastKnownBlockNumber(_addressDb, _addressLastKnownBlock = lastAddedBlockNum);
+                    WriteLastKnownBlockNumber(_topicsDb, _topicLastKnownBlock = lastAddedBlockNum);
+                }
 
-                stats.LastBlockNumber = _lastKnownBlock;
+                stats.LastBlockNumber = GetLastKnownBlockNumber();
 
                 _setReceiptsSemaphore.Release();
             }
@@ -511,17 +520,17 @@ namespace Nethermind.Db
             return buffer[..length];
         }
 
-        private int ReadLastKnownBlockNumber()
+        private int ReadLastKnownBlockNumber(IDb db)
         {
-            var value = _defaultDb.Get(LastBlockNumKey);
+            var value = db.Get(LastBlockNumKey);
             return value is { Length: > 1 } ? BinaryPrimitives.ReadInt32BigEndian(value) : -1;
         }
 
-        private void WriteLastKnownBlockNumber(int value)
+        private void WriteLastKnownBlockNumber(IDb db, int value)
         {
             Span<byte> buffer = ArrayPool<byte>.Shared.RentSpan(sizeof(int));
             BinaryPrimitives.WriteInt32BigEndian(buffer, value);
-            _defaultDb.PutSpan(LastBlockNumKey, buffer);
+            db.PutSpan(LastBlockNumKey, buffer);
         }
 
         // used for data validation, TODO: remove, replace with tests

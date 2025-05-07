@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 namespace Nethermind.Db;
 public enum LogIndexColumns
 {
-    Default,
     Addresses,
     Topics
 }
