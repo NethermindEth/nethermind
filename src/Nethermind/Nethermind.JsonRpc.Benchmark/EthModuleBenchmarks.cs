@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            var trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());

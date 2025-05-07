@@ -68,7 +68,7 @@ public class MultipleUnsignedOperations
     [GlobalSetup]
     public void GlobalSetup()
     {
-        TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
         IKeyValueStoreWithBatching codeDb = new MemDb();
 
         _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
