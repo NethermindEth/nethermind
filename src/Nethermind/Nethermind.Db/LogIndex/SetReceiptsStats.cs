@@ -15,6 +15,7 @@ public class SetReceiptsStats
 
     public ExecTimeStats BuildingDictionary { get; } = new();
     public ExecTimeStats Processing { get; } = new();
+    public ExecTimeStats WritingBatch { get; } = new();
 
     public ExecTimeStats CallingMerge { get; } = new();
     public ExecTimeStats CompactingDbs { get; } = new();
@@ -37,6 +38,7 @@ public class SetReceiptsStats
 
         BuildingDictionary.Combine(other.BuildingDictionary);
         Processing.Combine(other.Processing);
+        WritingBatch.Combine(other.WritingBatch);
         CallingMerge.Combine(other.CallingMerge);
         CompactingDbs.Combine(other.CompactingDbs);
         FlushingDbs.Combine(other.FlushingDbs);

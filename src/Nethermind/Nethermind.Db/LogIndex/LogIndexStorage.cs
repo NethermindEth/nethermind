@@ -382,40 +382,58 @@ namespace Nethermind.Db
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
 
+            long timestamp;
             var stats = new SetReceiptsStats();
 
             try
             {
-                var dictionary = BuildProcessingDictionary(batch, stats);
-
-                if (dictionary is { Count: > 0 })
+                Dictionary<int, IWriteBatch> dbBatches = new(2)
                 {
-                    var timestamp = Stopwatch.GetTimestamp();
-                    Parallel.ForEach(
-                        dictionary, new() { MaxDegreeOfParallelism = _ioParallelism },
-                        pair => SaveBlockNumbersByKey(pair.Key, pair.Value, stats)
-                    );
+                    [Address.Size] = _addressDb.StartWriteBatch(),
+                    [Hash256.Size] = _topicsDb.StartWriteBatch()
+                };
+
+                if (BuildProcessingDictionary(batch, stats) is { Count: > 0 } dictionary)
+                {
+                    // Add values to batches
+                    timestamp = Stopwatch.GetTimestamp();
+                    foreach (var (key, blockNums) in dictionary)
+                    {
+                        var dbBatch = dbBatches[key.Length];
+                        SaveBlockNumbersByKey(dbBatch, key, blockNums, stats);
+                    }
                     stats.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
-                }
-            }
-            finally
-            {
-                _lastCompactionAt ??= batch[0].BlockNumber;
-                if (batch[^1].BlockNumber - _lastCompactionAt >= _compactionDistance)
-                {
-                    Compact(stats);
-                    _lastCompactionAt = batch[^1].BlockNumber;
+
+                    // Compact if needed
+                    _lastCompactionAt ??= batch[0].BlockNumber;
+                    if (batch[^1].BlockNumber - _lastCompactionAt >= _compactionDistance)
+                    {
+                        Compact(stats);
+                        _lastCompactionAt = batch[^1].BlockNumber;
+                    }
                 }
 
+                // Update last processed block number
                 var lastAddedBlockNum = batch[^1].BlockNumber;
                 if (GetLastKnownBlockNumber() < lastAddedBlockNum)
                 {
-                    WriteLastKnownBlockNumber(_addressDb, _addressLastKnownBlock = lastAddedBlockNum);
-                    WriteLastKnownBlockNumber(_topicsDb, _topicLastKnownBlock = lastAddedBlockNum);
+                    WriteLastKnownBlockNumber(dbBatches[Address.Size], _addressLastKnownBlock = lastAddedBlockNum);
+                    WriteLastKnownBlockNumber(dbBatches[Hash256.Size], _topicLastKnownBlock = lastAddedBlockNum);
                 }
 
-                stats.LastBlockNumber = GetLastKnownBlockNumber();
+                // Submit batches
+                // TODO: return batches in case of an error without writing anything
+                timestamp = Stopwatch.GetTimestamp();
+                foreach (var dbBatch in dbBatches.Values)
+                {
+                    dbBatch.Dispose();
+                }
+                stats.WritingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
+                stats.LastBlockNumber = GetLastKnownBlockNumber();
+            }
+            finally
+            {
                 _setReceiptsSemaphore.Release();
             }
 
@@ -425,21 +443,19 @@ namespace Nethermind.Db
         private void Compact(SetReceiptsStats stats)
         {
             // TODO: log as Debug
-            var watch = new Stopwatch();
-
             _logger.Warn("Log index flushing starting");
-            watch.Restart();
+            var timestamp = Stopwatch.GetTimestamp();
             _addressDb.Flush();
             _topicsDb.Flush();
-            stats.FlushingDbs.Include(watch.Elapsed);
+            stats.FlushingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
             _logger.Warn("Log index flushing completed");
 
             // TODO: try keep writing during compaction
             _logger.Warn("Log index compaction starting");
-            watch.Restart();
+            timestamp = Stopwatch.GetTimestamp();
             _addressDb.Compact();
             _topicsDb.Compact();
-            stats.CompactingDbs.Include(watch.Elapsed);
+            stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
             _logger.Warn("Log index compaction completed");
 
             _logger.Warn("Log index post-merge processing starting");
@@ -448,10 +464,8 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private void SaveBlockNumbersByKey(byte[] key, IReadOnlyList<int> blockNums, SetReceiptsStats stats)
+        private void SaveBlockNumbersByKey(IWriteBatch dbBatch, byte[] key, IReadOnlyList<int> blockNums, SetReceiptsStats stats)
         {
-            var db = GetDbByKeyLength(key.Length);
-
             var dbKeyArray = ArrayPool<byte>.Shared.Rent(key.Length + BlockNumSize);
             var dbKey = dbKeyArray.AsSpan(0, key.Length + BlockNumSize);
 
@@ -466,7 +480,7 @@ namespace Nethermind.Db
                 var newValue = CreateDbValue(blockNums);
 
                 var timestamp = Stopwatch.GetTimestamp();
-                db.Merge(dbKey, newValue);
+                dbBatch.Merge(dbKey, newValue);
                 stats.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
             }
             finally
@@ -526,11 +540,11 @@ namespace Nethermind.Db
             return value is { Length: > 1 } ? BinaryPrimitives.ReadInt32BigEndian(value) : -1;
         }
 
-        private void WriteLastKnownBlockNumber(IDb db, int value)
+        private void WriteLastKnownBlockNumber(IWriteBatch dbBatch, int value)
         {
             Span<byte> buffer = ArrayPool<byte>.Shared.RentSpan(sizeof(int));
             BinaryPrimitives.WriteInt32BigEndian(buffer, value);
-            db.PutSpan(LastBlockNumKey, buffer);
+            dbBatch.PutSpan(LastBlockNumKey, buffer);
         }
 
         // used for data validation, TODO: remove, replace with tests
