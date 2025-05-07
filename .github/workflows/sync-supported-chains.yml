@@ -20,6 +20,11 @@ on:
         description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
         required: false
+      superchains:
+        description: "Used to execute action on superchains."
+        default: "false"
+        required: false
+        type: boolean
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -39,7 +44,11 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+          if [ "${{ github.event.inputs.superchains }}" = true ]; then
+            matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+          else
+            matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+          fi
 
           if [ -n "${{ github.event.inputs.network_filter }}" ]; then
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
@@ -131,7 +140,7 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch feat/core/superchains --single-branch
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
@@ -159,7 +168,7 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* || "${{ github.event.inputs.superchains }}" = true ]]; then
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
@@ -179,9 +188,7 @@ jobs:
               extra_param="--chain worldchain"
             fi
 
-            stripped_network="${network#base-}"
-            stripped_network="${stripped_network#op-}"
-            stripped_network="${stripped_network#world-}"
+            stripped_network="${network##*-}"
 
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config

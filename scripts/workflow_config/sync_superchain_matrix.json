@@ -1,0 +1,468 @@
+[
+    {
+      "network": "hashkeychain-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "lyra-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "worldchain-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "mint-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "race-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "cyber-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "mode-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "funki-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "bob-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "op-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "base-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "redstone-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "swan-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "arena-z-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "zora-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "ink-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "swell-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "ethernity-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "lisk-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "xterio-eth-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "orderly-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "shape-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "metal-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "soneium-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "sseed-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "polynomial-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "tbn-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "automata-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    {
+      "network": "unichain-mainnet",
+      "cl": "",
+      "cl_image": "",
+      "checkpoint-sync-url": "",
+      "timeout": 600,
+      "agent": "g6-standard-6"
+    },
+    [
+        {
+          "network": "hashkeychain-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "lyra-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "worldchain-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "mint-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "race-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "cyber-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "mode-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "funki-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "bob-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "op-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "base-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "redstone-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "swan-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "arena-z-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "zora-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "ink-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "swell-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "ethernity-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "lisk-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "xterio-eth-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "orderly-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "shape-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "metal-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "soneium-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "sseed-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "polynomial-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "tbn-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "automata-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        },
+        {
+          "network": "unichain-mainnet",
+          "cl": "",
+          "cl_image": "",
+          "checkpoint-sync-url": "",
+          "timeout": 600,
+          "agent": "g6-standard-6"
+        }
+      ]
+  ]
