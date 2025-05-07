@@ -37,6 +37,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
         GasPrice = UInt256.Zero,
+        IsSystemCall = true,
     };
 
     private readonly Transaction _consolidationTransaction = new()
@@ -47,6 +48,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
         GasPrice = UInt256.Zero,
+        IsSystemCall = true,
     };
 
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)

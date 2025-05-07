@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -256,6 +256,8 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
+
+        public bool IsSystemCall { get; set; } = false;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {

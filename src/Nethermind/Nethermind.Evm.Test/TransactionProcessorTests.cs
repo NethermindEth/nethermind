@@ -298,7 +298,7 @@ public class TransactionProcessorTests
         else
         {
             action.Should().NotThrow();
-            tracer.GasSpent.Should().Be(0);
+            tracer.GasSpent.Should().Be(Transaction.BaseTxGasCost);
         }
     }
 
