@@ -207,4 +207,23 @@ public class EthereumL1Bridge : IL1Bridge
         _currentHead = BlockId.FromL1Block(finalized);
         if (_logger.IsInfo) _logger.Info($"Initializing L1 bridge. New head number: {finalized.Number}, new head hash {finalized.Hash}");
     }
+
+    public async Task ProcessUntilHead(CancellationToken token)
+    {
+        if (_logger.IsInfo) _logger.Info("Deriving blocks after restart");
+        while (!token.IsCancellationRequested)
+        {
+            L1Block newHead = await GetFinalized(token);
+            ulong newHeadNumber = newHead.Number;
+            if (newHeadNumber == _currentHead.Number)
+            {
+                return;
+            }
+
+            await BuildUp(_currentHead.Number, newHeadNumber, token);
+            await ProcessBlock(newHead, token);
+
+            _currentHead = BlockId.FromL1Block(newHead);
+        }
+    }
 }

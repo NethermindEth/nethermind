@@ -127,6 +127,7 @@ public class OptimismCLP2P : IDisposable
 
                 if ((ulong)payload.BlockNumber <= _headNumber)
                 {
+                    // Old payload. skip
                     return;
                 }
 
@@ -180,7 +181,7 @@ public class OptimismCLP2P : IDisposable
     {
         try
         {
-            CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            using CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
             if (session is null) return null;
             ExecutionPayloadV3? payload =
@@ -280,7 +281,7 @@ public class OptimismCLP2P : IDisposable
     {
         try
         {
-            CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            using CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
             return await _localPeer!.DialAsync(remotePeer, cancellationTokenSource.Token);
         }
@@ -344,6 +345,11 @@ public class OptimismCLP2P : IDisposable
         sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
         sha256.AppendData(message.Data.Span);
         return new MessageId(sha256.GetHashAndReset());
+    }
+
+    public void Reset(ulong headNumber)
+    {
+        _headNumber = headNumber;
     }
 
     public void Dispose()

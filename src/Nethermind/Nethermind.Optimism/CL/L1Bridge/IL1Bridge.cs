@@ -13,6 +13,7 @@ public interface IL1Bridge
 {
     Task Initialize(CancellationToken token);
     Task Run(CancellationToken token);
+    Task ProcessUntilHead(CancellationToken token);
     Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token);
     Task<L1Block> GetBlockByHash(Hash256 blockHash, CancellationToken token);
     Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash, CancellationToken token);

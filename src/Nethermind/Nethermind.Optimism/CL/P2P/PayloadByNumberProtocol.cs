@@ -44,7 +44,7 @@ public class PayloadByNumberProtocol(ulong chainId, IPayloadDecoder payloadDecod
         byte[] requestBytes = new byte[8];
         BinaryPrimitives.WriteUInt64LittleEndian(requestBytes, request);
         await downChannel.WriteAsync(new ReadOnlySequence<byte>(requestBytes));
-        var res = (await downChannel.ReadAsync(1)).Data.First.Span[0];
+        var res = (await downChannel.ReadAsync(1)).Data.FirstSpan[0];
         switch (res)
         {
             case Result.Success:

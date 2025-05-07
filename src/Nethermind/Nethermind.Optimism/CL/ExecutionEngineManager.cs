@@ -78,6 +78,7 @@ public class ExecutionEngineManager(
             if (_currentHead.Number >= (ulong)executionPayload.BlockNumber)
             {
                 if (logger.IsTrace) logger.Trace($"Got old P2P payload. Number: {executionPayload.BlockNumber}");
+                return true;
             }
 
             if (logger.IsInfo)
@@ -122,10 +123,9 @@ public class ExecutionEngineManager(
                     {
                         if (logger.IsInfo) logger.Info($"FCU Valid P2P payload. {executionPayload}");
                         _currentHead = BlockId.FromExecutionPayload(executionPayload);
-                        if (_isInSyncMode)
+                        if (!OnELSynced.IsCompleted)
                         {
                             if (logger.IsTrace) logger.Trace("EL sync completed");
-                            _isInSyncMode = false;
                             _elSyncedTaskCompletionSource.SetResult();
                         }
 
@@ -217,7 +217,6 @@ public class ExecutionEngineManager(
         return true;
     }
 
-    private bool _isInSyncMode = true;
     private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();
     public Task OnELSynced => _elSyncedTaskCompletionSource.Task;
 }

@@ -26,6 +26,7 @@ public class OptimismCL : IDisposable
     private readonly Driver _driver;
     private readonly IL2Api _l2Api;
     private readonly OptimismCLP2P _p2p;
+    private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -53,6 +54,7 @@ public class OptimismCL : IDisposable
         _logger = logManager.GetClassLogger();
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _l2GenesisTimestamp = l2GenesisTimestamp;
+        _timestamper = timestamper;
 
         IEthApi ethApi = new EthereumEthApi(config.L1EthApiEndpoint, jsonSerializer, logManager);
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger);
@@ -93,29 +95,30 @@ public class OptimismCL : IDisposable
             if (finalized is null || IsFinalizedHeadTooOld(finalized.Number))
             {
                 Task p2pTask = _p2p.Run(_cancellationTokenSource.Token);
-                await _executionEngineManager.OnELSynced
-                    .ContinueWith(async _ =>
-                    {
-                        if (_logger.IsInfo) _logger.Info("EL sync completed. Starting Derivation Process");
-                        _driver.Reset((await _l2Api.GetHeadBlock()).Number);
-                        await _l1Bridge.Initialize(_cancellationTokenSource.Token);
-                        await Task.WhenAll(
-                            p2pTask,
-                            _decodingPipeline.Run(_cancellationTokenSource.Token),
-                            _l1Bridge.Run(_cancellationTokenSource.Token),
-                            _driver.Run(_cancellationTokenSource.Token)
-                        );
-                    });
+                await _executionEngineManager.OnELSynced;
+                if (_logger.IsInfo) _logger.Info("EL sync completed. Starting Derivation Process");
+                _driver.Reset((await _l2Api.GetHeadBlock()).Number);
+                await _l1Bridge.Initialize(_cancellationTokenSource.Token);
+                await Task.WhenAll(
+                    p2pTask,
+                    _decodingPipeline.Run(_cancellationTokenSource.Token),
+                    _l1Bridge.Run(_cancellationTokenSource.Token),
+                    _driver.Run(_cancellationTokenSource.Token)
+                );
             }
             else
             {
                 _l1Bridge.Reset(finalized.L1BlockInfo);
+                Task decodingPipelineTask = _decodingPipeline.Run(_cancellationTokenSource.Token);
                 _driver.Reset(finalized.Number);
+                Task driverTask = _driver.Run(_cancellationTokenSource.Token);
+                await _l1Bridge.ProcessUntilHead(_cancellationTokenSource.Token);
+                _p2p.Reset((await _l2Api.GetFinalizedBlock())!.Number);
                 await Task.WhenAll(
                     _p2p.Run(_cancellationTokenSource.Token),
-                    _decodingPipeline.Run(_cancellationTokenSource.Token),
+                    decodingPipelineTask,
                     _l1Bridge.Run(_cancellationTokenSource.Token),
-                    _driver.Run(_cancellationTokenSource.Token)
+                    driverTask
                 );
             }
         }
@@ -138,7 +141,7 @@ public class OptimismCL : IDisposable
     private bool IsFinalizedHeadTooOld(ulong finalizedHeadNumber)
     {
         const ulong blobExpiryThresholdSeconds = 1124000; // around 13 days
-        ulong currentTimeSeconds = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        ulong currentTimeSeconds = _timestamper.UnixTime.Seconds;
         ulong finalizedBlockTimestamp = finalizedHeadNumber * _l2BlockTime + _l2GenesisTimestamp;
         return finalizedBlockTimestamp + blobExpiryThresholdSeconds < currentTimeSeconds;
     }

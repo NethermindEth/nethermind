@@ -96,7 +96,7 @@ public class L1BlockInfoBuilder
     public static L1BlockInfo FromL1BlockAndSystemConfig(L1Block block, SystemConfig config, ulong sequenceNumber)
     {
         // TODO: fetch BlobBaseFeeUpdateFraction
-        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, Prague.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
         return new()
         {
             BaseFeeScalar = config.BaseFeeScalar,
