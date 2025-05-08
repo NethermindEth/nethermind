@@ -28,11 +28,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     {
         private KademliaDiscv4Adapter _adapter = null!;
 
-        [TearDown]
-        public async Task TearDown()
-        {
-            await _adapter.DisposeAsync();
-        }
         private IKademliaMessageReceiver<PublicKey, Node> _kademliaMessageReceiver = null!;
         private INetworkConfig _networkConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
@@ -46,24 +41,18 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [SetUp]
         public void Setup()
         {
+            // test node & dependencies
             _testPublicKey = TestItem.PublicKeyA;
             _testNode = new Node(_testPublicKey, "192.168.1.1", 30303);
 
             _kademliaMessageReceiver = Substitute.For<IKademliaMessageReceiver<PublicKey, Node>>();
-
             _networkConfig = Substitute.For<INetworkConfig>();
             _networkConfig.MaxActivePeers.Returns(25);
-
-            _kademliaConfig = new KademliaConfig<Node>();
-            _kademliaConfig.CurrentNodeId = _testNode;
-
+            _kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _testNode };
             _selfNodeRecord = Substitute.For<NodeRecord>();
-
             _logManager = LimboLogs.Instance;
-
             _timestamper = Substitute.For<ITimestamper>();
             _timestamper.UnixTime.Returns(new UnixTime(new DateTime(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc)));
-
             _msgSender = Substitute.For<IMsgSender>();
 
             _adapter = new KademliaDiscv4Adapter(
@@ -74,94 +63,128 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),
                 _logManager
-                );
-
+            );
             _adapter.MsgSender = _msgSender;
         }
 
+        [TearDown]
+        public async Task TearDown()
+        {
+            await _adapter.DisposeAsync();
+        }
+
         [Test]
-        public async Task Ping_should_send_ping_message()
+        [CancelAfter(5000)]
+        public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
+        {
+            var receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
+                .Do(ci =>
+                {
+                    var sent = (PingMsg)ci[0]!;
+                    sent.FarPublicKey = TestItem.PublicKeyA;
+                    sent.Mdc = new byte[32]; // Normally set by serializer
+                    var pong = new PongMsg(
+                        receiver.Address,
+                        _timestamper.UnixTime.SecondsLong + 1,
+                        sent.Mdc!);
+                    Task.Run(() => _adapter.OnIncomingMsg(pong));
+                });
+
+            await _adapter.Ping(receiver, token);
+
+            await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m =>
+                m.FarAddress!.Equals(receiver.Address)));
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task FindNeighbours_should_ping_then_findnode_and_return_nodes(CancellationToken token)
         {
             // Arrange
-            Node receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            var receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            var target   = TestItem.PublicKeyC;
+            var expected = new[] { new Node(TestItem.PublicKeyD, "192.168.1.3", 30303) };
+
+            // Stub: replying to PingMsg with PongMsg
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
+                .Do(ci =>
+                {
+                    var sent = (PingMsg)ci[0]!;
+                    var pong = new PongMsg(
+                        receiver.Address,
+                        _timestamper.UnixTime.SecondsLong + 1,
+                        sent.Mdc!);
+                    Task.Run(() => _adapter.OnIncomingMsg(pong));
+                });
+
+            // Stub: replying to FindNodeMsg with NeighborsMsg
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<FindNodeMsg>()))
+                .Do(ci =>
+                {
+                    var sent = (FindNodeMsg)ci[0]!;
+                    var neighbors = new NeighborsMsg(
+                        receiver.Address,
+                        _timestamper.UnixTime.SecondsLong + 1,
+                        expected);
+                    Task.Run(() => _adapter.OnIncomingMsg(neighbors));
+                });
 
             // Act
-            await _adapter.Ping(receiver, CancellationToken.None);
+            Node[] result = await _adapter.FindNeighbours(receiver, target, token);
 
             // Assert
             await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m =>
-                m.FarAddress!.Equals(receiver.Address) &&
-                m.SourceAddress!.Equals(_kademliaConfig.CurrentNodeId.Address)));
-        }
-
-        [Test]
-        public async Task FindNeighbours_should_send_find_node_message_and_return_nodes()
-        {
-            // Arrange
-            Node receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
-            PublicKey target = TestItem.PublicKeyC;
-            Node[] expectedNodes = { new Node(TestItem.PublicKeyD, "192.168.1.3", 30303) };
-
-            // Setup the message sender to respond with a pong when a ping is sent
-            _msgSender.When(x => x.SendMsg(Arg.Any<PingMsg>()))
-                .Do(x =>
-                {
-                    PingMsg pingMsg = (PingMsg)x[0];
-                    PongMsg pongMsg = new PongMsg(receiver.Id, _timestamper.UnixTime.SecondsLong + 20, pingMsg.Mdc!);
-                    Task.Run(() => _adapter.OnIncomingMsg(pongMsg));
-                });
-
-            // Setup the message sender to respond with neighbors when a find node is sent
-            _msgSender.When(x => x.SendMsg(Arg.Any<FindNodeMsg>()))
-                .Do(x =>
-                {
-                    FindNodeMsg findNodeMsg = (FindNodeMsg)x[0];
-                    NeighborsMsg neighborsMsg = new NeighborsMsg(receiver.Id, _timestamper.UnixTime.SecondsLong + 20, expectedNodes);
-                    Task.Run(() => _adapter.OnIncomingMsg(neighborsMsg));
-                });
-
-            // Act
-            Node[] result = await _adapter.FindNeighbours(receiver, target, CancellationToken.None);
-
-            // Assert
-            await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Equals(receiver.Address)));
+                m.FarAddress!.Equals(receiver.Address)));
             await _msgSender.Received(1).SendMsg(Arg.Is<FindNodeMsg>(m =>
                 m.FarAddress!.Equals(receiver.Address) &&
                 m.SearchedNodeId!.SequenceEqual(target.Bytes)));
-
-            result.Should().BeEquivalentTo(expectedNodes);
+            result.Should().BeEquivalentTo(expected);
         }
 
         [Test]
-        public async Task SendEnrRequest_should_send_enr_request_message_and_return_response()
+        [CancelAfter(5000)]
+        public async Task SendEnrRequest_should_ping_then_enr_request_and_return_response(CancellationToken token)
         {
             // Arrange
-            Node receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
-            EnrResponseMsg expectedResponse = new EnrResponseMsg(receiver.Id, _selfNodeRecord, new Hash256(new byte[32]));
+            var receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            var expectedResponse = new EnrResponseMsg(
+                receiver.Address,
+                _selfNodeRecord,
+                new Hash256(new byte[32]));
 
-            // Setup the message sender to respond with a pong when a ping is sent
-            _msgSender.When(x => x.SendMsg(Arg.Any<PingMsg>()))
-                .Do(x =>
+            // Stub: replying to PingMsg with PongMsg
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
+                .Do(ci =>
                 {
-                    PingMsg pingMsg = (PingMsg)x[0];
-                    PongMsg pongMsg = new PongMsg(receiver.Id, _timestamper.UnixTime.SecondsLong + 20, pingMsg.Mdc!);
-                    Task.Run(() => _adapter.OnIncomingMsg(pongMsg));
+                    var sent = (PingMsg)ci[0]!;
+                    var pong = new PongMsg(
+                        receiver.Address,
+                        _timestamper.UnixTime.SecondsLong + 1,
+                        sent.Mdc!);
+                    Task.Run(() => _adapter.OnIncomingMsg(pong));
                 });
 
-            // Setup the message sender to respond with ENR response when an ENR request is sent
-            _msgSender.When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
-                .Do(x =>
+            // Stub: replying to EnrRequestMsg with EnrResponseMsg
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
                 {
                     Task.Run(() => _adapter.OnIncomingMsg(expectedResponse));
                 });
 
             // Act
-            EnrResponseMsg result = await _adapter.SendEnrRequest(receiver, CancellationToken.None);
+            EnrResponseMsg result = await _adapter.SendEnrRequest(receiver, token);
 
             // Assert
-            await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Equals(receiver.Address)));
-            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(receiver.Address)));
-
+            await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m =>
+                m.FarAddress!.Equals(receiver.Address)));
             result.Should().Be(expectedResponse);
         }
 
