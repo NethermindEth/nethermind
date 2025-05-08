@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -25,7 +24,7 @@ namespace Nethermind.Trie.Pruning;
 /// Trie store helps to manage trie commits block by block.
 /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
 /// </summary>
-public class TrieStore : ITrieStore, IPruningTrieStore
+public sealed class TrieStore : ITrieStore, IPruningTrieStore
 {
     private readonly int _shardedDirtyNodeCount = 256;
     private readonly int _shardBit = 8;
@@ -453,10 +452,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public virtual byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
-    public virtual byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => TryLoadRlp(address, path, hash, null, flags);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => TryLoadRlp(address, path, hash, null, flags);
 
-    public virtual bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
+    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
         byte[]? rlp = _nodeStorage.Get(address, path, keccak, ReadFlags.None);
 
@@ -478,7 +477,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
         FindCachedOrUnknown(address, path, hash, false);
 
-    internal virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
+    internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
     {
         ArgumentNullException.ThrowIfNull(hash);
 
@@ -812,7 +811,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         return prior ?? instance;
     }
 
-    protected virtual void VerifyNewCommitSet(long blockNumber)
+    private void VerifyNewCommitSet(long blockNumber)
     {
         if (_lastCommitSet is not null)
         {
