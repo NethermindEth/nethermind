@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -30,7 +30,6 @@ namespace Nethermind.Trie.Test
         public void SetUp()
         {
             _logManager = LimboLogs.Instance;
-            // new NUnitLogManager(LogLevel.Trace);
             _logger = _logManager.GetClassLogger();
         }
 

@@ -18,6 +18,7 @@ public interface ICodeInfoRepository
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
+    bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
 }
 
 public static class CodeInfoRepositoryExtensions

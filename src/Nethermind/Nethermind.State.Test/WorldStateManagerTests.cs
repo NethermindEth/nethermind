@@ -25,7 +25,7 @@ public class WorldStateManagerTests
     public void ShouldProxyGlobalWorldState()
     {
         IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
@@ -36,7 +36,7 @@ public class WorldStateManagerTests
     public void ShouldProxyReorgBoundaryEvent()
     {
         IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
@@ -52,7 +52,7 @@ public class WorldStateManagerTests
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
         IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);

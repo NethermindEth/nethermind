@@ -482,7 +482,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         return true;
     }
 
-    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store) =>
+    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store = null) =>
         new ReadOnlyTrieStore(this, store);
 
     public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
@@ -1196,11 +1196,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
     public bool IsCurrentlyFullPruning => _persistenceStrategy.IsFullPruning;
-
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
-    {
-        _nodeStorage.Set(address, path, keccak, rlp);
-    }
 
     private class TrieKeyValueStore(TrieStore trieStore) : IReadOnlyKeyValueStore
     {

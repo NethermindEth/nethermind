@@ -57,9 +57,11 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
-        WorldState worldState = new WorldState(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
+        _worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+
+        IWorldState worldState = _worldStateManager.GlobalWorldState;
         using var _ = worldState.BeginScope();
+
         worldState.CreateAccount(TestItem.AddressA, 100000);
         worldState.Commit(London.Instance);
         worldState.CommitTree(0);
@@ -71,7 +73,6 @@ public class ProofRpcModuleTests
             .OfChainLength(10)
             .TestObject;
 
-        _worldStateManager = new WorldStateManager(worldState, trieStore, _dbProvider, LimboLogs.Instance);
         ProofModuleFactory moduleFactory = new(
             _worldStateManager,
             _blockTree,
