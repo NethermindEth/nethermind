@@ -418,7 +418,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     _visitor.VisitExtension(nodeContext, node);
                     TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
                     child.ResolveKey(nodeResolver, ref emptyPath, false);
-                    TNodeContext childContext = nodeContext.Add(node.Key!);
+                    TNodeContext childContext = nodeContext.Add(node.Key);
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
                         trieVisitContext.Level++;
@@ -599,6 +599,8 @@ public interface INodeContext<out TNodeContext>
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     TNodeContext Add(ReadOnlySpan<byte> nibblePath);
+
+    TNodeContext Add(NibblePath nibblePath) => throw new NotImplementedException("Not implemented");
 
     TNodeContext Add(byte nibble);
     TNodeContext AddStorage(in ValueHash256 storage);

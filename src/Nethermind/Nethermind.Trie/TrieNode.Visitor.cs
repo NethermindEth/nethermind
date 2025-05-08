@@ -99,7 +99,7 @@ namespace Nethermind.Trie
                         TrieNode child = node.GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
                         int previousPathLength = node.AppendChildPath(ref path, 0);
                         child.ResolveKey(nodeResolver, ref path, false);
-                        TNodeContext childContext = nodeContext.Add(node.Key!);
+                        TNodeContext childContext = nodeContext.Add(node.Key);
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             actualSubtreeSize += Accept(child, childContext, nodeResolver, ref path, isStorage, subtreeSizeHint);
@@ -115,7 +115,7 @@ namespace Nethermind.Trie
 
                         AddVisited();
 
-                        TNodeContext leafContext = nodeContext.Add(node.Key!);
+                        TNodeContext leafContext = nodeContext.Add(node.Key);
 
                         if (!isStorage && visitor.ExpectAccounts)
                         {

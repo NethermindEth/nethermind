@@ -174,7 +174,7 @@ namespace Nethermind.Trie
 
                 if (IsSealed)
                 {
-                    if (node.Key.AsSpan().SequenceEqual(value))
+                    if (node.Key.Equals(value))
                     {
                         // No change, parallel read
                         return;
@@ -823,7 +823,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(byte[] key)
+        public TrieNode CloneWithChangedKey(NibblePath key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -857,7 +857,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(NibblePath key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

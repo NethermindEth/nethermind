@@ -85,6 +85,11 @@ public struct TreePath : IEquatable<TreePath>
         }
     }
 
+    public readonly TreePath Append(NibblePath nibbles)
+    {
+        throw new NotImplementedException("NOT IMPLEMENTED EXCEPTION");
+    }
+
     public readonly TreePath Append(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return this;
@@ -107,6 +112,11 @@ public struct TreePath : IEquatable<TreePath>
         TreePath copy = this;
         for (int i = 0; i < repeat; i++) copy.AppendMut(nib);
         return copy;
+    }
+
+    internal void AppendMut(NibblePath nibbles)
+    {
+        throw new NotImplementedException();
     }
 
     internal void AppendMut(ReadOnlySpan<byte> nibbles)
@@ -415,7 +425,7 @@ public struct TreePath : IEquatable<TreePath>
 
 public static class TreePathExtensions
 {
-    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, Span<byte> nibbles)
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, NibblePath nibbles)
     {
         int previousLength = path.Length;
         path.AppendMut(nibbles);
