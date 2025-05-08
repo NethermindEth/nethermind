@@ -1417,9 +1417,9 @@ namespace Nethermind.Serialization.Rlp
             WriteByte(EmptyArrayByte);
         }
 
-        public const byte EmptyArrayByte = 128;
+        private const byte EmptyArrayByte = 128;
         private const byte EmptySequenceByte = 192;
-        public const int SmallPrefixBarrier = 56;
+        private const int SmallPrefixBarrier = 56;
 
         public override string ToString()
         {

@@ -77,7 +77,7 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    Rlp.Encode(destination, position, nodeRef.FullRlp);
+                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
                 }
                 else
                 {
@@ -122,6 +122,7 @@ namespace Nethermind.Trie
                 }
 
                 Rlp.Encode(destination, position, node.Value);
+
                 return data;
             }
 
