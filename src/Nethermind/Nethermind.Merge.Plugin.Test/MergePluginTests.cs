@@ -81,6 +81,7 @@ public class MergePluginTests
                     api.TransactionComparerProvider!,
                     ctx.Resolve<IBlocksConfig>(),
                     api.LogManager!);
+                api.EngineRequestsTracker = NullEngineRequestsTracker.Instance;
             })
             .Build();
     }
