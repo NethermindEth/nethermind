@@ -50,44 +50,58 @@ public class Driver : IDisposable
 
     public async Task Run(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        try
         {
-            BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
-
-            ulong firstBlockNumber = decodedBatch.RelTimestamp / _l2BlockTime;
-            ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
-            if (lastBlockNumber <= _currentDerivedBlock)
+            while (!token.IsCancellationRequested)
             {
-                if (_logger.IsInfo) _logger.Info("Got old batch. Skipping");
-                continue;
-            }
+                BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
 
-            if (_currentDerivedBlock + 1 < firstBlockNumber)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Derived batch is out of order. Highest derived block: {_currentDerivedBlock}, Batch first block: {firstBlockNumber}");
-                throw new ArgumentException("Batch is out of order");
-            }
-            L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
-
-            var derivedPayloadAttributes = _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token)
-                .GetAsyncEnumerator(token);
-            while (await derivedPayloadAttributes.MoveNextAsync())
-            {
-                PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
-                bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
-                if (!valid)
+                ulong firstBlockNumber = decodedBatch.RelTimestamp / _l2BlockTime;
+                ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
+                if (_logger.IsInfo)
+                    _logger.Info($"Got batch for processing. Blocks from {firstBlockNumber} to {lastBlockNumber}");
+                if (lastBlockNumber <= _currentDerivedBlock)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
-                    break;
+                    if (_logger.IsInfo) _logger.Info("Got old batch. Skipping");
+                    continue;
                 }
 
-                _currentDerivedBlock = payloadAttributes.Number;
+                if (_currentDerivedBlock + 1 < firstBlockNumber)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            $"Derived batch is out of order. Highest derived block: {_currentDerivedBlock}, Batch first block: {firstBlockNumber}");
+                    throw new ArgumentException("Batch is out of order");
+                }
+
+                L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
+
+                var derivedPayloadAttributes = _derivationPipeline
+                    .DerivePayloadAttributes(l2Parent, decodedBatch, token)
+                    .GetAsyncEnumerator(token);
+                while (await derivedPayloadAttributes.MoveNextAsync())
+                {
+                    PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
+                    bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
+                    if (!valid)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
+                        break;
+                    }
+
+                    _currentDerivedBlock = payloadAttributes.Number;
+                }
             }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Unhandled exception in Driver: {e}");
         }
     }
 
     public void Reset(ulong finalizedBlockNumber)
     {
+        if (_logger.IsInfo) _logger.Info($"Resetting Driver. New finalized block {finalizedBlockNumber}");
         _currentDerivedBlock = finalizedBlockNumber;
     }
 

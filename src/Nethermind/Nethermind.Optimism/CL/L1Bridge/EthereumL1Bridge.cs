@@ -121,6 +121,7 @@ public class EthereumL1Bridge : IL1Bridge
 
     private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber, CancellationToken token)
     {
+        if (_logger.IsInfo) _logger.Info($"Processing BLob Batcher transaction. TxHash: {transaction.Hash}");
         BlobSidecar[] blobSidecars = await _beaconApi.GetBlobSidecars(slotNumber, startingBlobIndex,
             startingBlobIndex + transaction.BlobVersionedHashes!.Length - 1, token);
 
