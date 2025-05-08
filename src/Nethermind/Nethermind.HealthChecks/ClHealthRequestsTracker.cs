@@ -1,0 +1,76 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Core;
+using Nethermind.Logging;
+
+namespace Nethermind.HealthChecks;
+
+public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalClRequestTime, ILogger logger)
+    : IEngineRequestsTracker, IClHealthTracker
+{
+    private const int ClUnavailableReportMessageDelay = 5;
+
+    private DateTime? _latestForkchoiceUpdated;
+    private DateTime? _latestNewPayload;
+
+    private Timer _timer;
+
+    public Task StartAsync()
+    {
+        _latestForkchoiceUpdated = timestamper.UtcNow;
+        _latestNewPayload = timestamper.UtcNow;
+        _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
+            TimeSpan.FromSeconds(ClUnavailableReportMessageDelay));
+
+        return Task.CompletedTask;
+    }
+
+    private Task StopAsync()
+    {
+        _timer.Change(Timeout.Infinite, 0);
+
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+        await _timer.DisposeAsync();
+    }
+
+    private void ReportClStatus(object _)
+    {
+        if (!CheckClAlive())
+        {
+            if (logger.IsWarn)
+                logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync.");
+        }
+    }
+
+    private bool IsRequestTooOld(DateTime now, DateTime requestTime)
+    {
+        int diff = (int)(Math.Floor((now - requestTime).TotalSeconds));
+        return diff > maxIntervalClRequestTime;
+    }
+
+    public bool CheckClAlive()
+    {
+        var now = timestamper.UtcNow;
+        return !IsRequestTooOld(now, _latestForkchoiceUpdated!.Value) && !IsRequestTooOld(now, _latestNewPayload!.Value);
+    }
+
+    public void OnForkchoiceUpdatedCalled()
+    {
+        _latestForkchoiceUpdated = timestamper.UtcNow;
+    }
+
+    public void OnNewPayloadCalled()
+    {
+        _latestNewPayload = timestamper.UtcNow;
+    }
+}

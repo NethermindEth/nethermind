@@ -43,8 +43,6 @@ public class NodeHealthServiceTests
         IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
-        INethermindApi api = Substitute.For<INethermindApi>();
-        api.SpecProvider.Returns(Substitute.For<ISpecProvider>());
         blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
         blockProducerRunner.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
         syncServer.GetPeerCount().Returns(test.PeerCount);
@@ -66,9 +64,10 @@ public class NodeHealthServiceTests
         }
 
         IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(), syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
+        IClHealthTracker tracker = Substitute.For<IClHealthTracker>();
         NodeHealthService nodeHealthService =
             new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
-                healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
+                healthHintService, ethSyncingInfo, tracker, null, new[] { drive }, test.IsMining);
         CheckHealthResult result = nodeHealthService.CheckHealth();
         Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
         Assert.That(FormatMessages(result.Messages.Select(static x => x.Message)), Is.EqualTo(test.ExpectedMessage));
@@ -131,13 +130,12 @@ public class NodeHealthServiceTests
             blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
         }
 
-        CustomRpcCapabilitiesProvider customProvider =
-            new(test.EnabledCapabilities, test.DisabledCapabilities);
         IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(),
             new SyncConfig(), syncModeSelector, Substitute.For<ISyncProgressResolver>(), new TestLogManager());
+        IClHealthTracker tracker = Substitute.For<IClHealthTracker>();
         NodeHealthService nodeHealthService =
             new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
-                healthHintService, ethSyncingInfo, customProvider, api, new[] { drive }, false);
+                healthHintService, ethSyncingInfo, tracker, null, new[] { drive }, false);
         nodeHealthService.CheckHealth();
 
         timestamper.Add(TimeSpan.FromSeconds(test.TimeSpanSeconds));

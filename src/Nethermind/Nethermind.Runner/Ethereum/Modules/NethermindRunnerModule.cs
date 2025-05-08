@@ -13,6 +13,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.HealthChecks;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
