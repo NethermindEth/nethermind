@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <PublishSingleFile>true</PublishSingleFile>
-        <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-        <AllowedReferenceRelatedFileExtensions>*.pdb</AllowedReferenceRelatedFileExtensions>
-    </PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <AllowedReferenceRelatedFileExtensions>*.pdb</AllowedReferenceRelatedFileExtensions>
+    <StartupObject>SendBlobs.Program</StartupObject>
+  </PropertyGroup>
 
     <ItemGroup>
       <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24528.1" />
