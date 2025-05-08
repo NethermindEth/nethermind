@@ -279,7 +279,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 RlpStream rlpStream = new(data);
 
                 rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions)
+                foreach (Transaction tx in Transactions.AsSpan())
                 {
                     txDecoder.Encode(rlpStream, tx);
                 }

@@ -341,6 +341,9 @@ namespace Nethermind.Core.Specs
         /// OP Holocene
         bool IsOpHoloceneEnabled { get; }
 
+        // OP Isthmus
+        bool IsOpIsthmusEnabled { get; }
+
         /// <summary>
         ///  Increase call data cost
         /// </summary>

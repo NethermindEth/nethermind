@@ -173,10 +173,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
-            WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+            WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
         return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+    }
+
+    protected virtual Hash256? BuildWithdrawalsRoot()
+    {
+        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
     }
 
     protected Transaction[]? _transactions = null;

@@ -8,7 +8,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingStorageTreeFactory : IStorageTreeFactory
+public class HealingStorageTreeFactory(INodeStorage nodeStorage) : IStorageTreeFactory
 {
     private IPathRecovery? _recovery;
 
@@ -18,5 +18,5 @@ public class HealingStorageTreeFactory : IStorageTreeFactory
     }
 
     public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager) =>
-        new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _recovery);
+        new HealingStorageTree(trieStore, nodeStorage, storageRoot, logManager, address, stateRoot, _recovery);
 }
