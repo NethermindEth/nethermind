@@ -17,6 +17,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Evm.Test;
 

@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Trie.Pruning;
+namespace Nethermind.Core.Test;
 
 // Note: Prefer `RawScopedTrieStore` where possible as it is constructed faster.
 public static class TestTrieStoreFactory

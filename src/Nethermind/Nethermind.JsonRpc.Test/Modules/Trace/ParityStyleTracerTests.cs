@@ -33,6 +33,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Facade;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 

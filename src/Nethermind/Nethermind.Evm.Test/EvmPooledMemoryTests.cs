@@ -19,6 +19,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using FluentAssertions;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

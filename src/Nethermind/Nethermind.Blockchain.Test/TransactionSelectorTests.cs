@@ -25,6 +25,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 
 namespace Nethermind.Blockchain.Test

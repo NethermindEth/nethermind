@@ -27,6 +27,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.State.Tracing;
 using NSubstitute;
@@ -57,7 +58,7 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        _worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
         worldState.CreateAccount(TestItem.AddressA, 100000);
