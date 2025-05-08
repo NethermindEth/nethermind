@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.Validators
                 && ValidateRequestsHash(header, spec, ref error);
         }
 
-        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.RequestsEnabled)
             {
