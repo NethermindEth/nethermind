@@ -167,8 +167,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         else
         {
             // So that any EIP after the merge is not activated.
-            DateTime mergeTime = new DateTime(2022, 9, 15, 13, 45, 0, DateTimeKind.Utc);
-            ManualTimestamper timestamper = new ManualTimestamper(mergeTime.AddDays(-1));
+            ManualTimestamper timestamper = ManualTimestamper.PreMerge;
             builder
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddSingleton<ITimestamper>(timestamper)
