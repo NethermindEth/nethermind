@@ -38,7 +38,7 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
 
-    public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null && baseStore.HasRoot(stateRoot);
+    public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 

@@ -29,6 +29,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly int _shardedDirtyNodeCount = 256;
     private readonly int _shardBit = 8;
     private readonly int _maxDepth;
+    private readonly double _prunePersistedNodePortion;
+    private readonly long _prunePersistedNodeMinimumTarget;
 
     private int _isFirst;
 
@@ -46,7 +48,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-    private readonly IPruningConfig _pruningConfig;
 
     public TrieStore(
         INodeStorage nodeStorage,
@@ -55,18 +56,19 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
-        _logger = (ILogger)logManager?.GetClassLogger<TrieStore>();
+        _logger = logManager.GetClassLogger<TrieStore>();
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
-        _pruningConfig = pruningConfig;
         _maxDepth = pruningConfig.PruningBoundary;
+        _prunePersistedNodePortion = pruningConfig.PrunePersistedNodePortion;
+        _prunePersistedNodeMinimumTarget = pruningConfig.PrunePersistedNodeMinimumTarget;
 
         if (pruningStrategy.PruningEnabled)
         {
-            _shardBit = _pruningConfig.DirtyNodeShardBit;
+            _shardBit = pruningConfig.DirtyNodeShardBit;
             _shardedDirtyNodeCount = 1 << _shardBit;
 
             // 30 because of the 1 << 31 become negative
@@ -693,8 +695,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         try
         {
-            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _pruningConfig.PrunePersistedNodePortion);
-            targetPruneMemory = Math.Max(targetPruneMemory, _pruningConfig.PrunePersistedNodeMinimumTarget);
+            long targetPruneMemory = (long)(PersistedMemoryUsedByDirtyCache * _prunePersistedNodePortion);
+            targetPruneMemory = Math.Max(targetPruneMemory, _prunePersistedNodeMinimumTarget);
 
             int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * _shardedDirtyNodeCount);
             shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, _shardedDirtyNodeCount));
