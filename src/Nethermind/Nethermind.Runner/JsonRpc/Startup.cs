@@ -180,7 +180,7 @@ public class Startup
                 }
             }
 
-            if (method == "GET" && !(ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal)))
+            if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 && !(ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal)))
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
