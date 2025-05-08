@@ -95,20 +95,17 @@ public class DataFeed
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers["X-Accel-Buffering"] = "no";
 
-        await ctx.Response.WriteAsync($"event: nodeData\n", cancellationToken: ct);
-        await ctx.Response.WriteAsync($"data: ", cancellationToken: ct);
+        await ctx.Response.WriteAsync("event: nodeData\ndata: ", cancellationToken: ct);
         await ctx.Response.Body.WriteAsync(GetNodeData(), cancellationToken: ct);
-        await ctx.Response.WriteAsync($"\n\n", cancellationToken: ct);
+        await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
 
-        await ctx.Response.WriteAsync($"event: txNodes\n", cancellationToken: ct);
-        await ctx.Response.WriteAsync($"data: ", cancellationToken: ct);
+        await ctx.Response.WriteAsync("event: txNodes\ndata: ", cancellationToken: ct);
         await ctx.Response.Body.WriteAsync(TxPoolFlow.NodeJson, cancellationToken: ct);
-        await ctx.Response.WriteAsync($"\n\n", cancellationToken: ct);
+        await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
 
-        await ctx.Response.WriteAsync($"event: log\n", cancellationToken: ct);
-        await ctx.Response.WriteAsync($"data: ", cancellationToken: ct);
+        await ctx.Response.WriteAsync("event: log\ndata: ", cancellationToken: ct);
         await ctx.Response.Body.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(ConsoleHelpers.GetRecentMessages(), JsonSerializerOptions.Web), cancellationToken: ct);
-        await ctx.Response.WriteAsync($"\n\n", cancellationToken: ct);
+        await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
 
         var channel = Channel.CreateUnbounded<ChannelEntry>();
 
@@ -116,10 +113,9 @@ public class DataFeed
 
         await foreach (ChannelEntry entry in channel.Reader.ReadAllAsync(ct))
         {
-            await ctx.Response.WriteAsync($"event: {entry.Type}\n", cancellationToken: ct);
-            await ctx.Response.WriteAsync($"data: ", cancellationToken: ct);
+            await ctx.Response.WriteAsync($"event: {entry.Type}\ndata: ", cancellationToken: ct);
             await ctx.Response.Body.WriteAsync(entry.Data, cancellationToken: ct);
-            await ctx.Response.WriteAsync($"\n\n", cancellationToken: ct);
+            await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
 
             if (channel.Reader.Count == 0)
             {
