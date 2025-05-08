@@ -281,6 +281,7 @@ public abstract class BlockchainTestBase
 
     private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
+        using var _ = stateProvider.BeginScope();
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
         {
@@ -302,6 +303,7 @@ public abstract class BlockchainTestBase
 
     private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
     {
+        using var _ = stateProvider.BeginScope();
         if (test.PostStateRoot is not null)
         {
             return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();

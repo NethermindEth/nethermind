@@ -60,6 +60,8 @@ public class ProofRpcModuleTests
         _worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
+        using var _ = worldState.BeginScope();
+
         worldState.CreateAccount(TestItem.AddressA, 100000);
         worldState.Commit(London.Instance);
         worldState.CommitTree(0);
@@ -803,6 +805,7 @@ public class ProofRpcModuleTests
     private async Task TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
     {
         WorldState stateProvider = CreateInitialState(code);
+        using var __ = stateProvider.BeginScope();
 
         for (int i = 0; i < 10000; i++)
         {
@@ -875,6 +878,7 @@ public class ProofRpcModuleTests
     private WorldState CreateInitialState(byte[]? code)
     {
         WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope();
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

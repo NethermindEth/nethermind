@@ -31,6 +31,7 @@ internal class Create2DeployerContractRewriterTests
         MemDb codeDb = new();
         TrieStore ts = new(stateDb, LimboLogs.Instance);
         WorldState ws = new(ts, codeDb, LimboLogs.Instance);
+        using var _ = ws.BeginScope();
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 

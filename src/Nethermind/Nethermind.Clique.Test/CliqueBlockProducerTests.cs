@@ -57,6 +57,7 @@ public class CliqueBlockProducerTests
         private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
         private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
         private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
+        private readonly Dictionary<PrivateKey, IWorldState> _stateProviders = new();
 
         private On()
             : this(15)
@@ -92,10 +93,14 @@ public class CliqueBlockProducerTests
             var trieStore = new TrieStore(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
-            stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
             SepoliaSpecProvider goerliSpecProvider = SepoliaSpecProvider.Instance;
-            stateProvider.Commit(goerliSpecProvider.GenesisSpec);
-            stateProvider.CommitTree(0);
+            using (stateProvider.BeginScope(Keccak.EmptyTreeHash))
+            {
+                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
+                stateProvider.Commit(goerliSpecProvider.GenesisSpec);
+                stateProvider.CommitTree(0);
+            }
+
 
             BlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(goerliSpecProvider)
@@ -116,6 +121,7 @@ public class CliqueBlockProducerTests
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer());
             _pools[privateKey] = txPool;
+            _stateProviders[privateKey] = stateProvider;
 
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             _blockTrees.Add(privateKey, blockTree);
@@ -461,7 +467,10 @@ public class CliqueBlockProducerTests
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-            _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
+            using (_stateProviders[nodeKey].BeginScope(_stateProviders[nodeKey].StateRoot))
+            {
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
+            }
 
             return this;
         }

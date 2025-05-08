@@ -47,6 +47,7 @@ public class RbuilderRpcModuleTests
         Console.Error.WriteLine(theHash.ToString());
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
+        using var _ = worldState.BeginScope();
         worldState.CreateAccount(TestItem.AddressA, 100000);
         worldState.InsertCode(TestItem.AddressA, theCodeBytes, London.Instance);
         worldState.Commit(London.Instance);

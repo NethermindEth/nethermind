@@ -39,7 +39,8 @@ namespace Nethermind.AuRa.Test.Contract
             _stateProvider = Substitute.For<IWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+            IReadOnlyTxProcessingScope toReturn = new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider);
+            _readOnlyTxProcessorSource.BuildAndInit(Arg.Any<Hash256>()).Returns(toReturn);
         }
 
         [Test]

@@ -237,6 +237,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedCreate2DiffModeTrace)]
     public void Test_PrestateTrace_Create2(string? config, string expectedTrace)
     {
+
         byte[] salt = { 4, 5, 6 };
         byte[] deployedCode = { 1, 2, 3 };
         byte[] initCode = Prepare.EvmCode
@@ -307,6 +308,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedExistingAccountDiffModeTrace)]
     public void Test_PrestateTrace_ExistingAccount(string? config, string expectedTrace)
     {
+
         TestState.CreateAccount(Address.Zero, 100.Ether());
         TestState.CreateAccount(TestItem.AddressC, 5.Ether());
         TestState.IncrementNonce(TestItem.AddressC);
@@ -359,6 +361,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedEmptyToDiffModeTrace)]
     public void Test_PrestateTrace_EmptyTo(string? config, string expectedTrace)
     {
+
         TestState.CreateAccount(Address.Zero, 100.Ether());
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);
@@ -412,6 +415,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedSelfDestructDiffModeTrace)]
     public void Test_PrestateTrace_SelfDestruct(string? config, string expectedTrace)
     {
+
         TestState.CreateAccount(Address.Zero, 100.Ether());
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);

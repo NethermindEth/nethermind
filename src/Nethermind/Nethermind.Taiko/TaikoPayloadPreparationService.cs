@@ -76,7 +76,12 @@ public class TaikoPayloadPreparationService(
             {
                 if (worldState.HasStateForRoot(parentStateRoot))
                 {
-                    worldState.StateRoot = parentStateRoot;
+                    // TODO: do we need this here?
+                    using (worldState.BeginScope())
+                    {
+                        worldState.StateRoot = parentStateRoot;
+                    }
+
 
                     return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
                         ?? throw new InvalidOperationException("Block processing failed");

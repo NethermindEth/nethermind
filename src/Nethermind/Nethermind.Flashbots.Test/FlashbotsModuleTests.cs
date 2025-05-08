@@ -72,6 +72,7 @@ public partial class FlashbotsModuleTests
     {
         BlockHeader currentHeader = chain.BlockTree.Head.Header;
         IWorldState State = chain.WorldStateManager.GlobalWorldState;
+        using var _ = State.BeginScope();
         State.CreateAccount(TestKeysAndAddress.TestAddr, TestKeysAndAddress.TestBalance);
         UInt256 nonce = State.GetNonce(TestKeysAndAddress.TestAddr);
 

@@ -104,7 +104,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
-            IReadOnlyTxProcessingScope scope = producerEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = producerEnv.Build();
 
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,

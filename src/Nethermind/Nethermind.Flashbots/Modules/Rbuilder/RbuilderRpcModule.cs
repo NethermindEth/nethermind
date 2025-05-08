@@ -37,7 +37,9 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         IOverridableWorldScope worldScope = _overridableWorldScopePool.Get();
         try
         {
+            // TODO: this seems wrong, refac worldScope
             IWorldState worldState = worldScope.WorldState;
+            using var _ = worldState.BeginScope();
             IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
             worldState.StateRoot = blockHeader.StateRoot!;
 
@@ -149,8 +151,13 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
         public bool Return(IOverridableWorldScope obj)
         {
-            obj.WorldState.Reset();
-            obj.WorldState.ResetOverrides();
+            // TODO: this is wrong - fix this
+            using (obj.WorldState.BeginScope())
+            {
+                obj.WorldState.Reset();
+                obj.WorldState.ResetOverrides();
+            }
+
             return true;
         }
     }
