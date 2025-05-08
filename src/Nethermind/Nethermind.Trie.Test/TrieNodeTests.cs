@@ -192,7 +192,7 @@ public class TrieNodeTests
         decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
         Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
-        Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
+        Assert.That(NibblePath.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(NibblePath.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
     }
 
     [Test]
@@ -229,7 +229,7 @@ public class TrieNodeTests
         decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
         Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
-        Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
+        Assert.That(NibblePath.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(NibblePath.ToBytes(ctx.TiniestLeaf.Key!, true)),
             "key");
     }
 

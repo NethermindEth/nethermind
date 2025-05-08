@@ -162,9 +162,9 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[]? Key
+        public NibblePath Key
         {
-            get => _nodeData is INodeWithKey node ? node?.Key : null;
+            get => _nodeData is INodeWithKey node ? node.Key : default;
             internal set
             {
                 if (_nodeData is not INodeWithKey node)
@@ -200,6 +200,7 @@ namespace Nethermind.Trie
                 }
             }
         }
+
         public ref readonly CappedArray<byte> ValueRef
         {
             get
@@ -493,7 +494,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                (NibblePath key, bool isLeaf) = NibblePath.FromBytes(rlpStream.DecodeByteArraySpan());
                 if (isLeaf)
                 {
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
