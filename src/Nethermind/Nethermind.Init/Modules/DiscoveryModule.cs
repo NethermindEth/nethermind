@@ -27,7 +27,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
     {
         builder
             // Enr discovery uses DNS to get some bootnodes.
-            // TODO: Node source to discovery 4 feeder.
             .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
             {
                 // I do not use the key here -> API is broken - no sense to use the node signer here
@@ -98,7 +97,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 return networkConfig;
             })
 
-            // TODO: Add banner for `PrivateKey`, `IProtectedPrivateKey` and `IKeyGenerator`.
+            // Serializers
             // The `IPrivateKeyGenerator` here is not exactly a `generator`. It is used to pass the exact same
             // private key to the discovery message serializer to sign the message.
             .AddKeyedSingleton<IPrivateKeyGenerator>(IProtectedPrivateKey.NodeKey, ctx => new SameKeyGenerator(ctx.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey).Unprotect()))

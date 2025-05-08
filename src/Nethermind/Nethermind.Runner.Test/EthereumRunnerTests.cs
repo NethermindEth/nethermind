@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Autofac.Core.Lifetime;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -26,8 +27,10 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -50,6 +53,7 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Taiko;
 using Nethermind.Taiko.TaikoSpec;
@@ -244,6 +248,36 @@ public class EthereumRunnerTests
             api.Context.Resolve<ISynchronizer>();
             api.Context.Resolve<IAdminEraService>();
             api.Context.Resolve<IRpcModuleProvider>();
+            api.Context.Resolve<IMessageSerializationService>();
+
+            // The following types should not have a global unnamed singleton registration. This is because
+            // They are ambiguous by nature. Eg: For `IProtectedPrivateKey`, is it signer key or node key?
+            // Consider wrapping them in an type that is clearly global eg: `IWorldStateManager.GlobalWorldState`
+            // or using a named registration, or create an explicit child lifetime for that particular instance.
+            HashSet<Type> bannedTypeForRootScope =
+            [
+                typeof(IWorldState),
+                typeof(IBlockProcessor),
+                typeof(IBlockchainProcessor),
+                typeof(IProtectedPrivateKey),
+                typeof(PublicKey),
+                typeof(IPrivateKeyGenerator),
+            ];
+
+            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            {
+                if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
+                foreach (var registrationsService in registrations.Services)
+                {
+                    if (registrationsService is TypedService typedService)
+                    {
+                        if (bannedTypeForRootScope.Contains(typedService.ServiceType))
+                        {
+                            Assert.Fail($"{typedService.ServiceType} has a root registration. This is likely a bug.");
+                        }
+                    }
+                }
+            }
         }
         finally
         {
