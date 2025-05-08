@@ -6,18 +6,25 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore store) : ITrieStore
+/// <summary>
+/// OverlayTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
+/// If a node is missing, then it will try to find from the base store.
+/// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
+/// see overlayed keys.
+/// </summary>
+public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
 
     public void Dispose()
     {
-        store.Dispose();
+        baseStore.Dispose();
     }
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
-        return store.FindCachedOrUnknown(address, in path, hash);
+        // We always return Unknown even if baseStore return unknown, like archive node.
+        return baseStore.FindCachedOrUnknown(address, in path, hash);
     }
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
@@ -27,15 +34,15 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
         return rlp;
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => store.TryLoadRlp(address, in path, hash, flags) ?? _nodeStorage.Get(address, in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => store.IsPersisted(address, in path, in keccak) || _nodeStorage.Get(address, in path, in keccak) is not null;
+    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
 
-    public bool HasRoot(Hash256 stateRoot) => store.HasRoot(stateRoot) || _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null;
+    public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null && baseStore.HasRoot(stateRoot);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    public INodeStorage.KeyScheme Scheme => store.Scheme;
+    public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
 
     public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
