@@ -321,8 +321,8 @@ public class SnapServerTest
             server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
-        storageSlots.Count.Should().Be(1);
-        proofs?.Count.Should().Be(0);
+        storageSlots.Count.Should().Be(0);
+        proofs?.Count.Should().BeGreaterThan(0); //in worst case should get at least root node
 
         storageSlots.DisposeRecursive();
         proofs?.Dispose();
