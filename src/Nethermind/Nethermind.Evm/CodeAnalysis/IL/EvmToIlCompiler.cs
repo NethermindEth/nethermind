@@ -113,7 +113,7 @@ public static class Precompiler
             _currentDynamicModBuilder = runtimeAsm.DefineDynamicModule("MainModule");
         }
 
-        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{contractName}", codeInfo, metadata, config, true)) is null) {
+        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{(new Random()).Next()}_{contractName}", codeInfo, metadata, config, true)) is null) {
             return false;
         }
 
