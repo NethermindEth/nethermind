@@ -14,7 +14,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
