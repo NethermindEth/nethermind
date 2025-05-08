@@ -54,13 +54,16 @@ public class OptimismWithdrawalTests
             .WithTransactions(0, releaseSpec)
             .TestObject;
 
-        state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
+        using (state.BeginScope())
+        {
+            state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
 
-        // This will make the storage root of ActualStorageRoot
-        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [1]);
-
-        var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
-        processor.ProcessWithdrawals(block, releaseSpec);
+            // This will make the storage root of ActualStorageRoot
+            state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [1]);
+            var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
+            processor.ProcessWithdrawals(block, releaseSpec);
+            state.Commit(releaseSpec);
+        }
 
         if (withdrawalHash == null)
         {
@@ -89,10 +92,13 @@ public class OptimismWithdrawalTests
         var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
         var releaseSpec = Substitute.For<IReleaseSpec>();
 
+        using var _ = state.BeginScope();
+
         // Initialize the storage root
         state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
         state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [10]);
         state.Commit(releaseSpec);
+
 
         var header_A = Build.A.BlockHeader
             .WithNumber(1)

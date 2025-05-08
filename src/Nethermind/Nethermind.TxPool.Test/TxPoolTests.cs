@@ -2433,9 +2433,13 @@ namespace Nethermind.TxPool.Test
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
+            using var __ = _stateProvider.BeginScope();
+
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
+
+
 
             Transaction[] txsA = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
             Transaction[] txsB = { GetTx(TestItem.PrivateKeyC) };
