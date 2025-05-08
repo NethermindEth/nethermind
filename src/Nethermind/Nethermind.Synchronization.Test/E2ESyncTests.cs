@@ -114,17 +114,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         // TODO: Need to double check which code part does not pass in timestamp from header.
         spec.Parameters.Eip658Transition = 0;
 
-        if (!isPostMerge)
-        {
-            // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
-            spec.Parameters.Eip4895TransitionTimestamp = null;
-
-            // 4844 add BlobGasUsed which in the header decoder also imply WithdrawalRoot which would be set to 0 instead of null
-            // which become invalid when using block body with null withdrawal.
-            // Basically, these need merge block builder, or it will fail block validation on download.
-            spec.Parameters.Eip4844TransitionTimestamp = null;
-        }
-        else
+        if (isPostMerge)
         {
             spec.Genesis.Header.Difficulty = 10000;
 
@@ -157,6 +147,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         var builder = new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
@@ -172,12 +163,19 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ))
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
-
+        }
+        else
+        {
+            // So that any EIP after the merge is not activated.
+            DateTime mergeTime = new DateTime(2022, 9, 15, 13, 45, 0, DateTimeKind.Utc);
+            ManualTimestamper timestamper = new ManualTimestamper(mergeTime.AddDays(-1));
+            builder
+                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
+                .AddSingleton<ITimestamper>(timestamper)
+                ;
         }
 
-        return builder
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
-            .Build();
+        return builder.Build();
     }
 
     [OneTimeSetUp]
@@ -390,6 +388,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 PrevRandao = Hash256.Zero,
                 SuggestedFeeRecipient = TestItem.AddressA,
                 Withdrawals = [],
+                ParentBeaconBlockRoot = Hash256.Zero,
                 Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
             payloadId.Should().NotBeNullOrEmpty();
