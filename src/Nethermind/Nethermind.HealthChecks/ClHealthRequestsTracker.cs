@@ -15,15 +15,13 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalCl
 {
     private const int ClUnavailableReportMessageDelay = 5;
 
-    private DateTime? _latestForkchoiceUpdated;
-    private DateTime? _latestNewPayload;
+    private DateTime _latestForkchoiceUpdated = timestamper.UtcNow;
+    private DateTime _latestNewPayload = timestamper.UtcNow;
 
     private Timer _timer;
 
     public Task StartAsync()
     {
-        _latestForkchoiceUpdated = timestamper.UtcNow;
-        _latestNewPayload = timestamper.UtcNow;
         _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
             TimeSpan.FromSeconds(ClUnavailableReportMessageDelay));
 
@@ -61,7 +59,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalCl
     public bool CheckClAlive()
     {
         var now = timestamper.UtcNow;
-        return !IsRequestTooOld(now, _latestForkchoiceUpdated!.Value) && !IsRequestTooOld(now, _latestNewPayload!.Value);
+        return !IsRequestTooOld(now, _latestForkchoiceUpdated) && !IsRequestTooOld(now, _latestNewPayload);
     }
 
     public void OnForkchoiceUpdatedCalled()
