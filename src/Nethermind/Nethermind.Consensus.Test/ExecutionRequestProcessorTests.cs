@@ -154,9 +154,6 @@ public class ExecutionProcessorTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
 
-        var a = TestItem.ExecutionRequestA.RequestDataParts.Sum(x => x.Length);
-        var b = TestItem.ExecutionRequestB.RequestDataParts.Sum(x => x.Length);
-        var c = TestItem.ExecutionRequestC.RequestDataParts.Sum(x => x.Length);
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts),
