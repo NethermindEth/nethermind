@@ -139,7 +139,8 @@ public abstract class BlockchainTestBase
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
 
-        InitializeTestState(test, stateProvider, specProvider);
+        using (stateProvider.BeginScope())
+            InitializeTestState(test, stateProvider, specProvider);
 
         stopwatch?.Start();
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -210,9 +211,11 @@ public abstract class BlockchainTestBase
             preWarmer.ClearCaches();
         }
 
-        List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+        List<string> differences;
+        using (stateProvider.BeginScope())
+            differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
 
-        Assert.That(differences.Count, Is.Zero, "differences");
+        Assert.That(differences, Is.Empty, "differences");
 
         return new EthereumTestResult
         (
@@ -281,7 +284,6 @@ public abstract class BlockchainTestBase
 
     private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
-        using var _ = stateProvider.BeginScope();
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
         {
@@ -303,7 +305,6 @@ public abstract class BlockchainTestBase
 
     private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
     {
-        using var _ = stateProvider.BeginScope();
         if (test.PostStateRoot is not null)
         {
             return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();

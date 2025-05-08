@@ -90,6 +90,9 @@ namespace Ethereum.Test.Base
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
+            // start a global worldState scope for all the activities
+            using var __ = stateProvider.BeginScope();
+
             InitializeTestState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(
@@ -136,7 +139,6 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            using var _ = stateProvider.BeginScope();
             ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
             TransactionResult? txResult = null;
             if (txIsValid)
@@ -192,7 +194,6 @@ namespace Ethereum.Test.Base
 
         public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
         {
-            using var _ = stateProvider.BeginScope();
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
