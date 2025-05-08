@@ -47,9 +47,8 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            // todo: change?
             public bool IsTransactionInBlock(Transaction tx)
-                => false;
+                => throw new NotImplementedException();
 
             protected virtual BlockExecutionContext EnhanceBlockExecutionContext(in BlockExecutionContext blkCtx) => blkCtx;
 

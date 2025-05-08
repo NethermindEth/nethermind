@@ -76,5 +76,5 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
     }
 
     public bool IsTransactionInBlock(Transaction tx)
-        => throw new InvalidOperationException();
+        => throw new NotImplementedException();
 }
