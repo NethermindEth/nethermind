@@ -3,8 +3,10 @@
 
 using System;
 using System.Security;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {
@@ -18,6 +20,18 @@ namespace Nethermind.Wallet
         Signature Sign(Hash256 message, Address address, SecureString passphrase = null);
         Signature Sign(Hash256 message, Address address);
         Address[] GetAccounts();
+
+        void Sign(Transaction tx, ulong chainId)
+        {
+            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            tx.Signature = Sign(hash, tx.SenderAddress);
+            if (tx.Signature is null)
+            {
+                throw new CryptographicException($"Failed to sign tx {tx.Hash} using the {tx.SenderAddress} address.");
+            }
+
+            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * chainId : (ulong)(tx.Signature.RecoveryId + 27);
+        }
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
     }

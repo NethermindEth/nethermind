@@ -30,6 +30,7 @@
     "Enabled": false
   },
   "Mining": {
-    "Enabled": true
+    "Enabled": true,
+    "Signer":"http://localhost:8550"
   }
 }
