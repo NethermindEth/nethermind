@@ -156,12 +156,6 @@ namespace Nethermind.Consensus.Processing
 
                 return args.Action;
 
-
-                // protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
-
-                // protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)
-                //     => block.TrySetTransactions([.. transactionsInBlock]);
-
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");

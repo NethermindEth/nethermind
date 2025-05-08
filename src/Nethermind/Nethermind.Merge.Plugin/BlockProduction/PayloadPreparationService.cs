@@ -162,38 +162,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             });
 
 
-    // protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts) =>
-    //     _payloadStorage.AddOrUpdate(payloadId,
-    //         id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
-    //         (id, currentContext) =>
-    //         {
-    //             if (cts.IsCancellationRequested)
-    //             {
-    //                 // If cancelled, return previous
-    //                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
-    //                 return currentContext;
-    //             }
-    //             if (!currentContext.ImprovementTask.IsCompleted)
-    //             {
-    //                 // If there is payload improvement and its not yet finished leave it be
-    //                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
-    //                 return currentContext;
-    //             }
-
-    //             IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
-    //             if (!cts.IsCancellationRequested)
-    //             {
-    //                 currentContext.Dispose();
-    //                 return newContext;
-    //             }
-    //             else
-    //             {
-    //                 newContext.Dispose();
-    //                 return currentContext;
-    //             }
-    //         });
-
-
     private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
