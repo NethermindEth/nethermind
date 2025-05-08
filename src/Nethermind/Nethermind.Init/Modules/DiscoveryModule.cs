@@ -12,6 +12,8 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
@@ -95,6 +97,19 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 networkConfig.Bootnodes = discoveryConfig.Bootnodes;
                 return networkConfig;
             })
+
+            // TODO: Add banner for `PrivateKey`, `IProtectedPrivateKey` and `IKeyGenerator`.
+            // The `IPrivateKeyGenerator` here is not exactly a `generator`. It is used to pass the exact same
+            // private key to the discovery message serializer to sign the message.
+            .AddKeyedSingleton<IPrivateKeyGenerator>(IProtectedPrivateKey.NodeKey, ctx => new SameKeyGenerator(ctx.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey).Unprotect()))
+            .AddSingleton<INodeIdResolver, NodeIdResolver>()
+            .AddMessageSerializer<PingMsg, PingMsgSerializer>()
+            .AddMessageSerializer<PongMsg, PongMsgSerializer>()
+            .AddMessageSerializer<FindNodeMsg, FindNodeMsgSerializer>()
+            .AddMessageSerializer<NeighborsMsg, NeighborsMsgSerializer>()
+            .AddMessageSerializer<EnrRequestMsg, EnrRequestMsgSerializer>()
+            .AddMessageSerializer<EnrResponseMsg, EnrResponseMsgSerializer>()
+
             ;
 
 
