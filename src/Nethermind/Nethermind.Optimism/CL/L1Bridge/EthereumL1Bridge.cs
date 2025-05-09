@@ -54,21 +54,34 @@ public class EthereumL1Bridge : IL1Bridge
     public async Task Run(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting L1Bridge");
-        while (!token.IsCancellationRequested)
+        try
         {
-            L1Block newHead = await GetFinalized(token);
-            ulong newHeadNumber = newHead.Number;
-            if (newHeadNumber == _currentHead.Number)
+            while (!token.IsCancellationRequested)
             {
-                await Task.Delay(L1SlotTimeMilliseconds, token);
-                continue;
+                L1Block newHead = await GetFinalized(token);
+                ulong newHeadNumber = newHead.Number;
+                if (newHeadNumber == _currentHead.Number)
+                {
+                    await Task.Delay(L1SlotTimeMilliseconds, token);
+                    continue;
+                }
+
+                await BuildUp(_currentHead.Number, newHeadNumber, token);
+                await ProcessBlock(newHead, token);
+
+                _currentHead = BlockId.FromL1Block(newHead);
+
+                await Task.Delay(L1EpochTimeMilliseconds, token);
             }
-            await BuildUp(_currentHead.Number, newHeadNumber, token);
-            await ProcessBlock(newHead, token);
-
-            _currentHead = BlockId.FromL1Block(newHead);
-
-            await Task.Delay(L1EpochTimeMilliseconds, token);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn && e is not OperationCanceledException)
+                _logger.Warn($"Unhandled exception in L1Bridge: {e}");
+        }
+        finally
+        {
+            if (_logger.IsInfo) _logger.Info("Driver is shutting down.");
         }
     }
 
