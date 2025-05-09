@@ -45,8 +45,8 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalCl
 
     private bool IsRequestTooOld(DateTime now, DateTime requestTime)
     {
-        int diff = (int)(Math.Floor((now - requestTime).TotalSeconds));
-        return diff > maxIntervalClRequestTime;
+        TimeSpan diff = (now - requestTime).Duration();
+        return diff > TimeSpan.FromSeconds(maxIntervalClRequestTime);
     }
 
     public bool CheckClAlive()
