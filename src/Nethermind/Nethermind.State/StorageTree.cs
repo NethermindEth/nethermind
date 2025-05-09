@@ -6,6 +6,8 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -59,6 +61,7 @@ namespace Nethermind.State
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }
 
+
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
@@ -78,6 +81,19 @@ namespace Nethermind.State
             }
         }
 
+        [SkipLocalsInit]
+        public StorageValue GetValue(in UInt256 index, Hash256? storageRoot = null)
+        {
+            if (index < LookupSize)
+            {
+                return GetValue(Lookup[index], storageRoot);
+            }
+
+            Span<byte> key = stackalloc byte[32];
+            ComputeKey(index, key);
+            return GetValue(key, storageRoot);
+        }
+
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> value = Get(rawKey, rootHash);
@@ -89,6 +105,19 @@ namespace Nethermind.State
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
+        }
+
+        public StorageValue GetValue(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        {
+            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
+
+            if (value.IsEmpty)
+            {
+                return StorageValue.Zero;
+            }
+
+            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            return new StorageValue(rlp.DecodeByteArraySpan());
         }
 
         [SkipLocalsInit]
@@ -109,6 +138,29 @@ namespace Nethermind.State
                 Span<byte> key = stackalloc byte[32];
                 ComputeKey(index, key);
                 SetInternal(key, value);
+            }
+        }
+
+        [SkipLocalsInit]
+        public void SetValue(in UInt256 index, in StorageValue value)
+        {
+            var capped = value.IsZero ? CappedArray<byte>.Empty : Rlp.EncodeToArray(value.BytesWithNoLeadingZeroes);
+
+            if (index < LookupSize)
+            {
+                Set(Lookup[index], capped);
+            }
+            else
+            {
+                SetWithKeyGenerate(in index, capped);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, in CappedArray<byte> value)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                Set(key, value);
             }
         }
 

@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             {
                 Balance = new ParityStateChange<UInt256?>(1, 2),
                 Nonce = new ParityStateChange<UInt256?>(0, 1),
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> { [1] = new(new byte[] { 1 }, new byte[] { 2 }) },
+                Storage = new Dictionary<UInt256, ParityStateChange<StorageValue>> { [1] = new(new byte[] { 1 }, new byte[] { 2 }) },
                 Code = new ParityStateChange<byte[]>(new byte[] { 1 }, new byte[] { 2 })
             };
 

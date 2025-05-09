@@ -13,8 +13,8 @@ public class StorageTxTracer : TxTracer, IBlockTracer
     public bool IsTracingRewards => false;
     public override bool IsTracingOpLevelStorage => true;
 
-    public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
-        ReadOnlySpan<byte> currentValue)
+    public override void SetOperationStorage(Address address, UInt256 storageIndex, in StorageValue newValue,
+        in StorageValue currentValue)
     {
         if (!_storages.TryGetValue(address, out _))
         {

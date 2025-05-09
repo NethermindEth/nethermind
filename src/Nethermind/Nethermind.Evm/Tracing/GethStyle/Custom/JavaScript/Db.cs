@@ -25,7 +25,9 @@ public class Db
     {
         using var handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
-        ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
+        StorageValue v = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
+        var bytes = v.BytesWithNoLeadingZeroes;
+
         if (bytes.Length < array.Length)
         {
             Array.Clear(array);

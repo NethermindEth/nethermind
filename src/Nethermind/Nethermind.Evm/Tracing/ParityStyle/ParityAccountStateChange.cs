@@ -5,6 +5,7 @@ using System.Collections.Generic;
 
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -14,6 +15,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public ParityStateChange<byte[]>? Code { get; set; }
         public ParityStateChange<UInt256?>? Balance { get; set; }
         public ParityStateChange<UInt256?>? Nonce { get; set; }
-        public Dictionary<UInt256, ParityStateChange<byte[]>>? Storage { get; set; }
+        public Dictionary<UInt256, ParityStateChange<StorageValue>>? Storage { get; set; }
     }
 }
