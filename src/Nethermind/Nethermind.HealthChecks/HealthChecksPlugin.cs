@@ -145,7 +145,7 @@ namespace Nethermind.HealthChecks
 
             if (_mergeConfig.Enabled)
             {
-                _engineRequestsTracker.StartAsync();
+                _ = _engineRequestsTracker.StartAsync(); // Fire and forget
                 _api.DisposeStack.Push(_engineRequestsTracker);
             }
 
