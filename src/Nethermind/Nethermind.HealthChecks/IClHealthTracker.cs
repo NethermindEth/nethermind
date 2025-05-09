@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.HealthChecks;
 
-public interface IClHealthTracker : IAsyncDisposable
+public interface IClHealthTracker
 {
     bool CheckClAlive();
 }

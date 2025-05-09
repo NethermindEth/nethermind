@@ -11,7 +11,7 @@ using Nethermind.Logging;
 namespace Nethermind.HealthChecks;
 
 public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalClRequestTime, ILogger logger)
-    : IEngineRequestsTracker, IClHealthTracker
+    : IEngineRequestsTracker, IClHealthTracker, IAsyncDisposable
 {
     private const int ClUnavailableReportMessageDelay = 5;
 
@@ -28,17 +28,10 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalCl
         return Task.CompletedTask;
     }
 
-    private Task StopAsync()
-    {
-        _timer.Change(Timeout.Infinite, 0);
-
-        return Task.CompletedTask;
-    }
-
     public async ValueTask DisposeAsync()
     {
-        await StopAsync();
-        await _timer.DisposeAsync();
+        _timer?.Change(Timeout.Infinite, 0);
+        if (_timer is not null) await _timer.DisposeAsync();
     }
 
     private void ReportClStatus(object _)

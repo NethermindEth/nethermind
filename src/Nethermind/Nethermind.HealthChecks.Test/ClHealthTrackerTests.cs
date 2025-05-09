@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -12,10 +13,10 @@ namespace Nethermind.HealthChecks.Test;
 public class ClHealthTrackerTests
 {
     [Test]
-    public void ClHealthRequestsTracker_multiple_requests()
+    public async Task ClHealthRequestsTracker_multiple_requests()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        ClHealthRequestsTracker healthTracker = new(timestamper, 300, NullLogger.Instance);
+        await using ClHealthRequestsTracker healthTracker = new(timestamper, 300, NullLogger.Instance);
 
         healthTracker.CheckClAlive().Should().BeTrue();
 

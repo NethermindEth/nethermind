@@ -23,7 +23,7 @@ namespace Nethermind.HealthChecks
         public IEnumerable<string> Errors { get; set; }
     }
 
-    public class NodeHealthService : INodeHealthService, IAsyncDisposable
+    public class NodeHealthService : INodeHealthService
     {
         private readonly ISyncServer _syncServer;
         private readonly IBlockchainProcessor _blockchainProcessor;
@@ -242,10 +242,6 @@ namespace Nethermind.HealthChecks
         private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent)
         {
             messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
-        }
-        public async ValueTask DisposeAsync()
-        {
-            await _clHealthTracker.DisposeAsync();
         }
     }
 }
