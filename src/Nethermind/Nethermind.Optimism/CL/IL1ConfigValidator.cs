@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Optimism.CL;
 
 /// <summary>
-/// Interface for validating L1 chain configuration parameters
+/// Validate L1 configuration parameters against expected values
 /// </summary>
 public interface IL1ConfigValidator
 {
