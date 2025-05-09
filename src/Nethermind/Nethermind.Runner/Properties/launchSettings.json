@@ -1,5 +1,12 @@
 {
   "profiles": {
+    "Arbitrum Local": {
+      "commandName": "Project",
+      "commandLineArgs": "-c arbitrum-local --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Base Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c base-mainnet --data-dir .data",

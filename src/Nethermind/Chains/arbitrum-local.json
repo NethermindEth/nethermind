@@ -1,0 +1,100 @@
+{
+  "name": "Arbitrum Full Chain Simulation",
+  "dataDir": "arbitrum-local",
+  "engine": {
+    "Arbitrum": {
+      "params": {}
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400",
+    "accountStartNonce": "0x0",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkID": "0x64aba",
+    "forkBlock": "0x0",
+    "maxCodeSize": "0x6000",
+    "maxCodeSizeTransition": "0x0",
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip155Transition": "0x0",
+    "eip140Transition": "0x0",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip145Transition": "0x0",
+    "eip1014Transition": "0x0",
+    "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",
+    "eip152Transition": "0x0",
+    "eip1108Transition": "0x0",
+    "eip1344Transition": "0x0",
+    "eip1884Transition": "0x0",
+    "eip2028Transition": "0x0",
+    "eip2200Transition": "0x0",
+    "eip2565Transition": "0x0",
+    "eip2929Transition": "0x0",
+    "eip2930Transition": "0x0",
+    "eip1559Transition": "0x0",
+    "eip3198Transition": "0x0",
+    "eip3529Transition": "0x0",
+    "eip3541Transition": "0x0",
+    "terminalTotalDifficulty": "3C6568F12E8000",
+    "mergeForkIdTransition": "0x0",
+    "beaconChainGenesisTimestamp": "0x62b07d60",
+    "eip4895TransitionTimestamp": "0x63FD7D60",
+    "eip3855TransitionTimestamp": "0x63FD7D60",
+    "eip3651TransitionTimestamp": "0x63FD7D60",
+    "eip3860TransitionTimestamp": "0x63FD7D60",
+    "eip1153TransitionTimestamp": "0x65B97D60",
+    "eip4788TransitionTimestamp": "0x65B97D60",
+    "eip4844TransitionTimestamp": "0x65B97D60",
+    "eip5656TransitionTimestamp": "0x65B97D60",
+    "eip6780TransitionTimestamp": "0x65B97D60",
+    "eip2537TransitionTimestamp": "0x67C7FD60",
+    "eip2935TransitionTimestamp": "0x67C7FD60",
+    "eip6110TransitionTimestamp": "0x67C7FD60",
+    "eip7002TransitionTimestamp": "0x67C7FD60",
+    "eip7251TransitionTimestamp": "0x67C7FD60",
+    "eip7623TransitionTimestamp": "0x67C7FD60",
+    "eip7702TransitionTimestamp": "0x67C7FD60",
+    "depositContractAddress": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": "0x32f0ed"
+      },
+      "prague": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": "0x4c6964"
+      }
+    }
+  },
+  "genesis": {
+    "seal": {
+      "ethereum": {
+        "nonce": "0x0",
+        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "number": "0x0",
+    "difficulty": "0x1",
+    "author": "0x0000000000000000000000000000000000000000",
+    "timestamp": "0x5c28d2a1",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "extraData": "0x424544524f434b",
+    "gasLimit": "0x47b760",
+    "baseFeePerGas": "0x3b9aca00"
+  },
+  "nodes": [],
+  "accounts": {
+    "0000000000000000000000000000000000000000": {
+      "balance": "0x1"
+    }
+  }
+}
