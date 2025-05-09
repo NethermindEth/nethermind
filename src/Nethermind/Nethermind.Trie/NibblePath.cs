@@ -167,4 +167,35 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     }
 
 
+    public readonly ref struct Ref
+    {
+        public Ref(in ReadOnlySpan<byte> rawKey)
+        {
+        }
+
+        public byte this[int index] => throw new NotImplementedException();
+        public int Length  => throw new NotImplementedException();
+
+        public NibblePath Slice(int from, int length)
+        {
+            throw new NotImplementedException();
+        }
+
+        public NibblePath Slice(int from) => Slice(from, Length - from);
+
+        public string ToHexString()
+        {
+            throw new NotImplementedException();
+        }
+
+        public NibblePath ToPath()
+        {
+            throw new NotImplementedException();
+        }
+
+        public int CommonPrefixLength(NibblePath nodeKey)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }
