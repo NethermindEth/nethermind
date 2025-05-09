@@ -32,8 +32,8 @@ public class NetworkModuleTest
         {
             if (!serializersInContainer.TryGetValue(MessageType, out var serializer))
             {
-               Console.Out.WriteLine($".AddMessageSerializer<{MessageType}, {SerializerTypeInAssembly}>()");
-               continue;
+                Console.Out.WriteLine($".AddMessageSerializer<{MessageType}, {SerializerTypeInAssembly}>()");
+                continue;
             }
             // serializersInContainer.TryGetValue(MessageType, out var serializer).Should().BeTrue();
             serializer.Should().BeOfType(SerializerTypeInAssembly);

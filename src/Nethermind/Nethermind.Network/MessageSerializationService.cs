@@ -28,7 +28,7 @@ namespace Nethermind.Network
                         $"Serializer of type {Serializer.GetType().Name} must implement {expectedInterface.Name}.");
                 }
 
-                _zeroSerializers.TryAdd(MessageType.TypeHandle, Serializer );
+                _zeroSerializers.TryAdd(MessageType.TypeHandle, Serializer);
             }
         }
 
