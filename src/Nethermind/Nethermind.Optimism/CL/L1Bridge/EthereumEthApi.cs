@@ -40,4 +40,9 @@ public class EthereumEthApi(string l1EthApiEndpoint, IJsonSerializer jsonSeriali
     {
         return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", BlockParameter.Finalized, fullTxs);
     }
+
+    public Task<ulong> GetChainId()
+    {
+        return _ethRpcClient.Post<ulong>("eth_chainId");
+    }
 }

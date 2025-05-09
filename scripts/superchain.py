@@ -80,6 +80,10 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "mainnet": 1606824023,
             "sepolia": 1655733600,
         },
+        "L1ChainId": {
+            "mainnet": 1,
+            "sepolia": 11155111,
+        },
         "DepositContractAddress": {
             "mainnet": "0x00000000219ab540356cbb839cbe05303d7705fa",
             "sepolia": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
@@ -118,6 +122,9 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "OptimismCL": merge_all(
                 {
                     "L1BeaconGenesisSlotTime": lookup(constants, ["L1BeaconGenesisSlotTime", l1]),
+                    "L1ChainId": lookup(constants, ["L1ChainId", l1]),
+                    "L1GenesisNumber": lookup(config, ["genesis", "l1", "number"]),
+                    "L1GenesisHash": lookup(config, ["genesis", "l1", "hash"]),
                     "BatcherInboxAddress": lookup(config, ["batch_inbox_addr"]),
                     "L2BlockTime": lookup(config, ["block_time"]),
                     "SeqWindowSize": lookup(config, ["seq_window_size"]),
