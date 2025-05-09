@@ -22,13 +22,14 @@ public class OptimismCL : IDisposable
 {
     private readonly DecodingPipeline _decodingPipeline;
     private readonly IL1Bridge _l1Bridge;
+    private readonly L1ConfigValidator _l1ConfigValidator;
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly Driver _driver;
     private readonly IL2Api _l2Api;
     private readonly OptimismCLP2P _p2p;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
-
+    private readonly CLChainSpecEngineParameters _engineParameters;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public OptimismCL(
@@ -52,6 +53,7 @@ public class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
 
         _logger = logManager.GetClassLogger();
+        _engineParameters = engineParameters;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _l2GenesisTimestamp = l2GenesisTimestamp;
         _timestamper = timestamper;
@@ -61,6 +63,8 @@ public class OptimismCL : IDisposable
 
         _decodingPipeline = new DecodingPipeline(_logger);
         _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, engineParameters, _decodingPipeline, _logger);
+
+        _l1ConfigValidator = new L1ConfigValidator(ethApi, logManager);
 
         ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, _logger);
@@ -89,6 +93,15 @@ public class OptimismCL : IDisposable
     {
         try
         {
+            bool isL1ConfigValid = await _l1ConfigValidator.Validate(
+                _engineParameters.L1ChainId!.Value,
+                _engineParameters.L1GenesisNumber!.Value,
+                _engineParameters.L1GenesisHash!);
+            if (!isL1ConfigValid)
+            {
+                throw new InvalidOperationException("Invalid L1 config");
+            }
+
             await _executionEngineManager.Initialize();
 
             L2Block? finalized = await _l2Api.GetFinalizedBlock();
