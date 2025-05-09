@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text;
-using Nethermind.Cli;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
@@ -16,14 +15,14 @@ using Org.BouncyCastle.Utilities.Encoders;
 namespace SendBlobs;
 internal class FundsDistributor
 {
-    private readonly INodeManager _nodeManager;
+    private readonly IJsonRpcClient _rpcClient;
     private readonly ulong _chainId;
     private readonly string? _keyFilePath;
     private readonly ILogManager _logManager;
 
-    public FundsDistributor(INodeManager nodeManager, ulong chainId, string? keyFilePath, ILogManager logManager)
+    public FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? keyFilePath, ILogManager logManager)
     {
-        _nodeManager = nodeManager ?? throw new ArgumentNullException(nameof(nodeManager));
+        _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
         _chainId = chainId;
         _keyFilePath = keyFilePath;
         _logManager = logManager;
@@ -40,21 +39,21 @@ internal class FundsDistributor
     /// <exception cref="AccountException"></exception>
     public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
-        string? balanceString = await _nodeManager.Post("eth_getBalance", distributeFrom.Address, "latest");
+        string? balanceString = await _rpcClient.Post<string>("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
             throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
-        string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
+        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
         if (nonceString is null)
             throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
 
-        string? gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+        string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
         UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
 
         string? maxPriorityFeePerGasRes;
         UInt256 maxPriorityFeePerGas = maxPriorityFee;
         if (maxPriorityFee == 0)
         {
-            maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+            maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
             maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
         }
 
@@ -99,10 +98,10 @@ internal class FundsDistributor
             {
                 if (maxFee == 0)
                 {
-                    gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+                    gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
                     gasPrice = HexConvert.ToUInt256(gasPriceRes);
 
-                    maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                    maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
                     maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
                 }
 
@@ -118,7 +117,7 @@ internal class FundsDistributor
                 string txRlp = Hex.ToHexString(txDecoder
                     .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-                string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+                string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
                 if (result is not null)
                     txHash.Add(result);
 
@@ -151,10 +150,10 @@ internal class FundsDistributor
 
         foreach (var signer in privateSigners)
         {
-            string? balanceString = await _nodeManager.Post("eth_getBalance", signer.Address, "latest");
+            string? balanceString = await _rpcClient.Post<string>("eth_getBalance", signer.Address, "latest");
             if (balanceString is null)
                 continue;
-            string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", signer.Address, "latest");
+            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", signer.Address, "latest");
             if (nonceString is null)
                 continue;
 
@@ -162,13 +161,13 @@ internal class FundsDistributor
 
             ulong nonce = HexConvert.ToUInt64(nonceString);
 
-            string? gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+            string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
             UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
 
             UInt256 maxPriorityFeePerGas = maxPriorityFee;
             if (maxPriorityFee == 0)
             {
-                string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
                 maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
             }
 
@@ -193,7 +192,7 @@ internal class FundsDistributor
             string txRlp = Hex.ToHexString(txDecoder
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-            string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+            string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
             if (result is not null)
                 txHashes.Add(result);
         }

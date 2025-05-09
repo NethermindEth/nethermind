@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Processing
                 remove => txPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            public virtual TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
                 // We start with high number as don't want to resize too much
@@ -90,7 +90,6 @@ namespace Nethermind.Consensus.Processing
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
-                BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
