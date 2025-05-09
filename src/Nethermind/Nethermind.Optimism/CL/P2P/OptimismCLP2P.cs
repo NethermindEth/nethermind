@@ -93,7 +93,7 @@ public class OptimismCLP2P : IDisposable
             .BuildServiceProvider();
     }
 
-    private async void OnMessage(byte[] msg, CancellationToken token)
+    private void OnMessage(byte[] msg, CancellationToken token)
     {
         try
         {
@@ -104,7 +104,7 @@ public class OptimismCLP2P : IDisposable
                 {
                     return;
                 }
-                await _blocksP2PMessageChannel.Writer.WriteAsync(payload, token);
+                _blocksP2PMessageChannel.Writer.TryWrite(payload);
             }
             else
             {
@@ -128,7 +128,7 @@ public class OptimismCLP2P : IDisposable
                 if ((ulong)payload.BlockNumber <= _headNumber)
                 {
                     // Old payload. skip
-                    return;
+                    continue;
                 }
 
                 if (_headNumber is not null)
