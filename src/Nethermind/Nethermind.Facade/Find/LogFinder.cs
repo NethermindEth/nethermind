@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -10,7 +11,9 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
@@ -31,6 +34,7 @@ namespace Nethermind.Facade.Find
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
+        private readonly ILogIndexStorage? _logIndexStorage;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,
@@ -38,6 +42,7 @@ namespace Nethermind.Facade.Find
             IBloomStorage? bloomStorage,
             ILogManager? logManager,
             IReceiptsRecovery? receiptsRecovery,
+            ILogIndexStorage? logIndexStorage,
             int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -45,6 +50,7 @@ namespace Nethermind.Facade.Find
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _logIndexStorage = logIndexStorage;
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
@@ -87,6 +93,9 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (filter.UseIndex && CanUseLogIndex(filter, fromBlock, toBlock))
+                return FilterLogsUsingIndex(filter, fromBlock, toBlock, cancellationToken);
+
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
             bool useBloom = shouldUseBloom && canUseBloom;
@@ -103,7 +112,7 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
+            Hash256? FindBlockHash(long blockNumber, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
@@ -163,6 +172,11 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
+        private bool CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            return _logIndexStorage != null && !filter.AcceptsAnyBlock && toBlock.Number <= _logIndexStorage.GetLastKnownBlockNumber();
+        }
+
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
         {
             // method is designed for convenient debugging
@@ -188,6 +202,128 @@ namespace Nethermind.Facade.Find
             return true;
         }
 
+        private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken)
+        {
+            if (_logIndexStorage == null)
+                throw new InvalidOperationException("Log index storage is not provided.");
+
+            ConcurrentDictionary<Address, List<int>> byAddress = null;
+            if (filter.AddressFilter.Address is { } address)
+            {
+                byAddress = new() { [address] = null };
+            }
+            else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
+            {
+                byAddress = new();
+                byAddress.AddRange(addresses.Select(a => KeyValuePair.Create(a.Value, (List<int>)null)));
+            }
+
+            ConcurrentDictionary<Hash256, List<int>> byTopic = null;
+            foreach (Hash256 topic in filter.TopicsFilter.Topics)
+            {
+                byTopic ??= new();
+                byTopic[topic] = null;
+            }
+
+            Enumerable.Empty<object>()
+                .Union(byAddress?.Keys ?? Enumerable.Empty<Address>())
+                .Union(byTopic?.Keys ?? Enumerable.Empty<Hash256>())
+                .AsParallel() // TODO utilize canRunParallel
+                .ForAll(x =>
+                {
+                    if (x is Address addr)
+                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock).ToList();
+                    if (x is Hash256 tpc)
+                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
+                });
+
+            HashSet<int> blockNumbers = null;
+            if (byAddress is not null)
+            {
+                blockNumbers = [.. byAddress.Values.SelectMany(x => x)];
+            }
+
+            if (byTopic is not null)
+            {
+                HashSet<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+                if (blockNumbers is null)
+                    blockNumbers = [.. topicNumbers];
+                else
+                    blockNumbers.IntersectWith(topicNumbers);
+            }
+
+            // TODO: merge sorted lists (or enumerables) instead of sorting HashSet?
+            return blockNumbers?.Order() ?? Enumerable.Empty<int>();
+        }
+
+        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
+            CancellationToken cancellationToken)
+        {
+            // TODO: merge common code with FilterLogsWithBloomsIndex
+
+            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
+                var blockHash = _blockFinder.FindBlockHash(blockNumber);
+                if (blockHash is null)
+                {
+                    if (_logger.IsError)
+                        _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                }
+
+                return blockHash;
+            }
+
+            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            {
+                try
+                {
+                    foreach (var blockNumber in GetBlockNumbersFor(f, @from, to, cancellationToken))
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        yield return blockNumber;
+
+                        // TODO: is this needed?
+                        // if (++count >= _maxBlockDepth)
+                        //     break;
+                    }
+                }
+                finally
+                {
+                    if (runParallel)
+                    {
+                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
+                    }
+
+                    Interlocked.Decrement(ref ParallelExecutions);
+                }
+            }
+
+            // we want to support one parallel eth_getLogs call for maximum performance
+            // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
+            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
+            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
+            bool canRunParallel = parallelLock == 0;
+
+            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel, cancellationToken);
+
+            if (canRunParallel)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
+                filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
+                    .AsOrdered() // we want to keep block order
+                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
+            }
+
+            return filterBlocks
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
+        }
+
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
@@ -210,7 +346,7 @@ namespace Nethermind.Facade.Find
                 ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {

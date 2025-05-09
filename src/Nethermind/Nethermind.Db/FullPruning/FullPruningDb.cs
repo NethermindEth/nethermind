@@ -90,6 +90,11 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
+        }
+
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
         {
             db.Set(key, value, flags);
@@ -310,6 +315,11 @@ namespace Nethermind.Db.FullPruning
                 _writeBatch.Set(key, value, flags);
                 _db.Duplicate(_clonedWriteBatch, key, value, flags);
             }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                throw new NotSupportedException("Merging is not supported by this implementation.");
+            }
         }
 
         public void Tune(ITunableDb.TuneType type)
@@ -318,6 +328,16 @@ namespace Nethermind.Db.FullPruning
             {
                 tunableDb.Tune(type);
             }
+        }
+
+        public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+        {
+            return _currentDb.GetIterator(isTailing);
+        }
+
+        public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+        {
+            return _currentDb.GetIterator(ref options);
         }
     }
 }
