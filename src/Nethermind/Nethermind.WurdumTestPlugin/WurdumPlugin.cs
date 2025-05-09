@@ -28,6 +28,7 @@ public class WurdumPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public bool Enabled => chainSpec.SealEngineType == WurdumChainSpecEngineParameters.WurdumEngineName;
 
     private INethermindApi? _api;
+    private WurdumRpcTxSource? _txSource;
 
     public IEnumerable<StepInfo> GetSteps()
     {
@@ -37,6 +38,7 @@ public class WurdumPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
+        _txSource = new WurdumRpcTxSource(_api.LogManager.GetClassLogger<WurdumRpcTxSource>());
         return Task.CompletedTask;
     }
 
@@ -45,8 +47,9 @@ public class WurdumPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+        ArgumentNullException.ThrowIfNull(_txSource);
 
-        WurdumRpcModuleFactory rpcModuleFactory = new(_api.ManualBlockProductionTrigger, _api.ChainSpec, _api.LogManager.GetClassLogger<WurdumRpcModule>());
+        WurdumRpcModuleFactory rpcModuleFactory = new(_api.ManualBlockProductionTrigger, _txSource, _api.ChainSpec, _api.LogManager.GetClassLogger<WurdumRpcModule>());
         _api!.RpcModuleProvider.Register(new BoundedModulePool<IWurdumRpcModule>(rpcModuleFactory, 1, 30000));
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
@@ -70,6 +73,7 @@ public class WurdumPlugin(ChainSpec chainSpec) : IConsensusPlugin
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.TxPool);
         StepDependencyException.ThrowIfNull(_api.TransactionComparerProvider);
+        StepDependencyException.ThrowIfNull(_txSource);
 
         _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
             _api.WorldStateManager,
@@ -87,7 +91,7 @@ public class WurdumPlugin(ChainSpec chainSpec) : IConsensusPlugin
         var producerEnv = _api.BlockProducerEnvFactory.Create();
 
         return new PostMergeBlockProducer(
-            new WurdumRpcTxSource(),
+            _txSource,
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
             producerEnv.ReadOnlyStateProvider,

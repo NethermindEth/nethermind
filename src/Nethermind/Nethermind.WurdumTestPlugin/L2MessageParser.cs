@@ -13,7 +13,7 @@ namespace Nethermind.WurdumTestPlugin;
 
 public static class L2MessageParser
 {
-    public static List<Transaction> ParseL2Transactions(L1IncomingMessage message, ulong chainId, ILogger logger)
+    public static IReadOnlyList<Transaction> ParseL2Transactions(L1IncomingMessage message, ulong chainId, ILogger logger)
     {
         if (message.L2Msg.Length > ArbitrumConstants.MaxL2MessageSize)
         {

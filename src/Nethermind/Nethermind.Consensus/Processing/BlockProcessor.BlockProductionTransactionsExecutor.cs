@@ -129,6 +129,8 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock)
             {
+                Callstack.LogCallStack();
+
                 AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
 
                 if (args.Action != TxAction.Add)
@@ -149,6 +151,8 @@ namespace Nethermind.Consensus.Processing
                         args.Set(TxAction.Skip, result.Error!);
                     }
                 }
+
+                _logger.Info($"Transaction {currentTx.ToShortString()} processed with result {args.Action} and reason {args.Reason}.");
 
                 return args.Action;
 

@@ -90,8 +90,6 @@ public class JsonRpcService : IJsonRpcService
     {
         JsonElement providedParameters = request.Params;
 
-        _logger.Info(providedParameters.ToString());
-
         LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;

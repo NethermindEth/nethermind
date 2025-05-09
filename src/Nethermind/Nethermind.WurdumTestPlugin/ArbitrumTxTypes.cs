@@ -66,6 +66,8 @@ public static class ArbitrumConstants
     public static readonly ulong HeartbeatsDisabledAt = 1660003200; // Unix timestamp
 }
 
+public interface IArbitrumNativeTransaction;
+
 public record ArbitrumUnsignedTx(
     ulong ChainId,
     Address From,
@@ -75,7 +77,7 @@ public record ArbitrumUnsignedTx(
     Address? To,
     UInt256 Value,
     ReadOnlyMemory<byte> Data // Calldata
-);
+) : IArbitrumNativeTransaction;
 
 public record ArbitrumContractTx(
     ulong ChainId,
@@ -86,7 +88,7 @@ public record ArbitrumContractTx(
     Address? To,
     UInt256 Value,
     ReadOnlyMemory<byte> Data // Calldata
-);
+) : IArbitrumNativeTransaction;
 
 public record ArbitrumDepositTx(
     ulong ChainId,
@@ -94,7 +96,7 @@ public record ArbitrumDepositTx(
     Address From, // L1 sender
     Address To, // L2 recipient
     UInt256 Value
-);
+) : IArbitrumNativeTransaction;
 
 public record ArbitrumSubmitRetryableTx(
     ulong ChainId,
@@ -110,12 +112,7 @@ public record ArbitrumSubmitRetryableTx(
     UInt256 MaxSubmissionFee,
     Address FeeRefundAddr,
     ReadOnlyMemory<byte> RetryData
-);
-
-public class ArbitrumTransaction<T>(T inner) : Transaction
-{
-    public T Inner { get; } = inner;
-}
+) : IArbitrumNativeTransaction;
 
 public record ArbitrumInternalTx(
     ulong ChainId,
@@ -124,4 +121,17 @@ public record ArbitrumInternalTx(
     ulong BatchNumber,
     ulong BatchDataGas,
     UInt256 L1BaseFee
-);
+) : IArbitrumNativeTransaction;
+
+public interface IArbitrumTransaction
+{
+    IArbitrumNativeTransaction GetInner();
+}
+
+public class ArbitrumTransaction<T>(T inner) : Transaction, IArbitrumTransaction
+    where T : IArbitrumNativeTransaction
+{
+    public T Inner { get; } = inner;
+
+    public IArbitrumNativeTransaction GetInner() => Inner;
+}

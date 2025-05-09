@@ -25,9 +25,9 @@ public interface IWurdumRpcModule : IRpcModule
     Task<ResultWrapper<WurdumMessageResult>> arbitrum_digestMessage(MessageParams parameters);
 }
 
-public class WurdumRpcModuleFactory(IManualBlockProductionTrigger trigger, ChainSpec chainSpec, ILogger logger) : IRpcModuleFactory<IWurdumRpcModule>
+public class WurdumRpcModuleFactory(IManualBlockProductionTrigger trigger, WurdumRpcTxSource txSource, ChainSpec chainSpec, ILogger logger) : IRpcModuleFactory<IWurdumRpcModule>
 {
-    public IWurdumRpcModule Create() => new WurdumRpcModule(trigger, chainSpec, logger);
+    public IWurdumRpcModule Create() => new WurdumRpcModule(trigger, txSource, chainSpec, logger);
 }
 
 public record WurdumMessageResult(Hash256 BlockHash, Hash256 SendRoot); // SendRoot is a merkle root of states sent to L1
@@ -58,12 +58,13 @@ public record L1IncomingMessageHeader(
     [property: JsonPropertyName("baseFeeL1")] UInt256 BaseFeeL1
 );
 
-public class WurdumRpcModule(IManualBlockProductionTrigger trigger, ChainSpec chainSpec, ILogger logger) : IWurdumRpcModule
+public class WurdumRpcModule(IManualBlockProductionTrigger trigger, WurdumRpcTxSource txSource, ChainSpec chainSpec, ILogger logger) : IWurdumRpcModule
 {
     public async Task<ResultWrapper<WurdumMessageResult>> arbitrum_digestMessage(MessageParams parameters)
     {
         var transactions = L2MessageParser.ParseL2Transactions(parameters.Message.Message, chainSpec.ChainId, logger);
-        _ = transactions;
+
+        txSource.InjectTransactions(transactions);
 
         var block = await trigger.BuildBlock();
         return block is null
