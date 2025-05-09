@@ -5,6 +5,7 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
@@ -43,6 +44,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPeerManager _peerManager;
     private readonly IPAddress _externalIp;
+    private readonly Dictionary<Multiaddress, ISession> _sessions = new();
 
     private PubsubRouter? _router;
     private ILocalPeer? _localPeer;
@@ -204,7 +206,8 @@ public class OptimismCLP2P : IDisposable
             ExecutionPayloadV3? response = null;
             foreach (Multiaddress peer in _peerManager.GetPeers())
             {
-                ISession? remotePeer = await TryDialPeer(peer, token);
+                ISession? remotePeer;
+                if (!_sessions.TryGetValue(peer, out remotePeer)) remotePeer = await TryDialPeer(peer, token);
                 response = await TryRequestPayload(remotePeer, payloadNumber, expectedHash, token);
                 if (response is not null)
                 {
@@ -318,6 +321,7 @@ public class OptimismCLP2P : IDisposable
                 if (session is not null)
                 {
                     if (_logger.IsInfo) _logger.Info($"Adding active peer {multiaddress}");
+                    _sessions[multiaddress] = session;
                     _peerManager.AddActivePeer(multiaddress);
                 }
                 else
