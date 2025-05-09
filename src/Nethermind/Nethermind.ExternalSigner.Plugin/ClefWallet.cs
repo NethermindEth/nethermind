@@ -157,7 +157,7 @@ namespace Nethermind.ExternalSigner.Plugin
             string? signed = rpcClient.Post<string>(
                 "account_signData",
                 "text/plain",
-                address,                
+                address,
                 message).GetAwaiter().GetResult();
             if (signed is null) ThrowInvalidOperationSignFailed();
             return new Signature(Bytes.FromHexString(signed));

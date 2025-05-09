@@ -12,7 +12,7 @@ namespace Nethermind.ExternalSigner.Plugin;
 
 public class ClefSigner : IHeaderSigner, ISignerStore
 {
-    
+
     private readonly ClefWallet _clefWallet;
 
     private ClefSigner(ClefWallet clefWallet, Address author)
