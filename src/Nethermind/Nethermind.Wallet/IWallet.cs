@@ -20,7 +20,6 @@ namespace Nethermind.Wallet
         Signature Sign(Hash256 message, Address address, SecureString passphrase = null);
         Signature Sign(Hash256 message, Address address);
         Address[] GetAccounts();
-
         void Sign(Transaction tx, ulong chainId)
         {
             Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
@@ -31,6 +30,12 @@ namespace Nethermind.Wallet
             }
 
             tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * chainId : (ulong)(tx.Signature.RecoveryId + 27);
+        }
+        Signature SignMessage(byte[] message, Address address)
+        {
+            const string signatureTemplate = "\x19"+"Ethereum Signed Message:\n{0}{1}";
+            string signatureText = string.Format(signatureTemplate, message.Length, message);
+            return Sign(Keccak.Compute(signatureText), address);
         }
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;

@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Serialization.Rlp;
@@ -13,6 +14,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Security;
+using System.Text;
+using System.Text.Unicode;
 
 namespace Nethermind.ExternalSigner.Plugin
 {
@@ -110,7 +113,7 @@ namespace Nethermind.ExternalSigner.Plugin
         }
 
         /// <summary>
-        /// Sends a <see cref="Transaction"/> for signing to clef. <paramref name="chainId"/> will be ignored by clef.
+        /// Sends a <see cref="TransactionForRpc"/> for signing to clef. <paramref name="chainId"/> has to match what clef is configured with.
         /// </summary>
         /// <param name="transaction"></param>
         /// <param name="chainId"></param>
@@ -143,8 +146,21 @@ namespace Nethermind.ExternalSigner.Plugin
                 "account_signTransaction",
                 transactionForRpc).GetAwaiter().GetResult();
             if (signed is null || signed.Tx is null) ThrowInvalidOperationSignFailed();
-            
+
             transaction.Signature = new Signature(signed.Tx!.R!.Value, signed.Tx!.S!.Value, (ulong)signed.Tx!.V!);
+        }
+
+        public Signature SignMessage(byte[] message, Address address)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+
+            string? signed = rpcClient.Post<string>(
+                "account_signData",
+                "text/plain",
+                address,                
+                message).GetAwaiter().GetResult();
+            if (signed is null) ThrowInvalidOperationSignFailed();
+            return new Signature(Bytes.FromHexString(signed));
         }
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null)
