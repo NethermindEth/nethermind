@@ -53,6 +53,11 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4, v4);
             #endregion
+
+            #region Osaka
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.IsEip7594Enabled, false);
+            #endregion
         }
 
         return _capabilities;

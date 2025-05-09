@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -205,6 +206,15 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
             => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+
+
+        public bool TryGetBlobAndProofV2(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[][]? cellProofs)
+            => _blobTransactions.TryGetBlobAndProofV2(blobVersionedHash, out blob, out cellProofs);
+
+        public int GetBlobCounts(byte[][] blobVersionedHashes)
+            => _blobTransactions.GetBlobCounts(blobVersionedHashes);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
@@ -470,6 +480,8 @@ namespace Nethermind.TxPool
                 TraceTx(tx, handlingOptions, startBroadcast);
             }
 
+            TryConvertProofVersion(tx);
+
             TxFilteringState state = new(tx, _accounts);
             AcceptTxResult accepted;
 
@@ -510,15 +522,24 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void AddPendingDelegations(Transaction tx)
+        private void TryConvertProofVersion(Transaction tx)
         {
-            if (tx.HasAuthorizationList)
+            if (_txPoolConfig.ProofsTranslationEnabled
+                && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
+                && _headInfo.CurrentProofVersion == ProofVersion.V1)
             {
-                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                List<byte[]> cellProofs = new List<byte[]>(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+
+                foreach (byte[] blob in wrapper.Blobs)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                    byte[] cellProofsOfOneBlob = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
+                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
+                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
+                    cellProofs.AddRange(cellProofsSeparated);
                 }
+
+                wrapper.Proofs = cellProofs.ToArray();
+                wrapper.Version = ProofVersion.V1;
             }
         }
 
@@ -609,6 +630,18 @@ namespace Nethermind.TxPool
             Metrics.TransactionCount = _transactions.Count;
             Metrics.BlobTransactionCount = _blobTransactions.Count;
             return AcceptTxResult.Accepted;
+        }
+
+        private void AddPendingDelegations(Transaction tx)
+        {
+            if (tx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                }
+            }
         }
 
         private void RemovePendingDelegations(Transaction transaction)

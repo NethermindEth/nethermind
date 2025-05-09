@@ -1,22 +1,27 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CkzgLib;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool.Collections;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
@@ -450,6 +455,49 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_allow_to_replace_blob_tx_by_the_one_with_network_wrapper_in_higher_version()
+        {
+            // start with Cancun
+            OverridableReleaseSpec releaseSpec = new OverridableReleaseSpec(Cancun.Instance);
+            IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+            specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
+
+            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+            _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 },
+                specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction firstTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = false })
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction secondTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+
+            // switch to Osaka
+            releaseSpec = new OverridableReleaseSpec(Osaka.Instance);
+            specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
+
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+            _txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx).Should().BeTrue();
+            returnedFirstTx.Should().BeNull();
+            returnedSecondTx.Should().BeEquivalentTo(secondTx);
+        }
+
+        [Test]
         public void should_discard_tx_when_data_gas_cost_cause_overflow([Values(false, true)] bool supportsBlobs)
         {
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory }, GetCancunSpecProvider());
@@ -662,30 +710,32 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] blobTxs = new Transaction[poolSize * 2];
 
+            IBlobProofsManager blobProofsManager = IBlobProofsManager.For(ProofVersion.V1);
+
             // adding 2x more txs than pool capacity. First half will be evicted
             for (int i = 0; i < poolSize * 2; i++)
             {
                 EnsureSenderBalance(TestItem.Addresses[i], UInt256.MaxValue);
 
                 blobTxs[i] = Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields()
+                    .WithShardBlobTxTypeAndFields(isMempoolTx: !uniqueBlobs)
                     .WithMaxFeePerGas(1.GWei() + (UInt256)i)
                     .WithMaxPriorityFeePerGas(1.GWei() + (UInt256)i)
                     .WithMaxFeePerBlobGas(1000.Wei() + (UInt256)i)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
 
                 // making blobs unique. Otherwise, all txs have the same blob
-                if (uniqueBlobs
-                    && blobTxs[i].NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                if (uniqueBlobs)
                 {
-                    wrapper.Blobs[0] = new byte[Ckzg.BytesPerBlob];
-                    wrapper.Blobs[0][0] = (byte)(i % 256);
+                    byte[] blobs = new byte[Ckzg.BytesPerBlob];
+                    blobs[0] = (byte)(i % 256);
 
-                    KzgPolynomialCommitments.KzgifyBlob(
-                        wrapper.Blobs[0],
-                        wrapper.Commitments[0],
-                        wrapper.Proofs[0],
-                        blobTxs[i].BlobVersionedHashes[0].AsSpan());
+                    var networkWrapper = blobProofsManager.AllocateWrapper(blobs);
+                    blobProofsManager.ComputeProofsAndCommitments(networkWrapper);
+                    byte[][] hashes = blobProofsManager.ComputeHashes(networkWrapper);
+
+                    blobTxs[i].NetworkWrapper = networkWrapper;
+                    blobTxs[i].BlobVersionedHashes = hashes;
                 }
 
                 blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();
@@ -774,6 +824,106 @@ namespace Nethermind.TxPool.Test
             blobPool.BlobIndex.Count.Should().Be(1);
             blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
             values.Count.Should().Be(poolSize / 2);
+        }
+
+        [Test]
+        public void should_add_blob_tx_in_eip7594_form_and_return_when_requested([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool hasTxCellProofs, [Values(true, false)] bool isOsakaActivated)
+        {
+            // tx is valid if:
+            // - osaka is activated and there are cell proofs
+            // - osaka is not activated and there is old proof
+            bool isTxValid = !(isOsakaActivated ^ hasTxCellProofs);
+
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+
+            _txPool = CreatePool(txPoolConfig,
+                isOsakaActivated ? GetOsakaSpecProvider() : GetCancunSpecProvider(),
+                txStorage: blobTxStorage);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = hasTxCellProofs })
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+            result.Should().Be(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
+            blobTxReturned.Should().BeEquivalentTo(isTxValid ? blobTxAdded : null);
+
+            if (isTxValid)
+            {
+                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1);
+                wrapper.Version.Should().Be(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0);
+
+                blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
+                if (isPersistentStorage)
+                {
+                    blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
+                        .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                        .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                }
+            }
+        }
+
+        [Test]
+        public void should_convert_blob_proofs_to_cell_proofs_if_enabled([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool isOsakaActivated, [Values(true, false)] bool isConversionEnabled)
+        {
+            // tx has old version of proofs, so is valid if osaka is not activated or conversion is enabled
+            bool isTxValid = !isOsakaActivated || isConversionEnabled;
+
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                Size = 10,
+                ProofsTranslationEnabled = isConversionEnabled
+            };
+            BlobTxStorage blobTxStorage = new();
+
+            _txPool = CreatePool(txPoolConfig,
+                isOsakaActivated ? GetOsakaSpecProvider() : GetCancunSpecProvider(),
+                txStorage: blobTxStorage);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // update head and set correct current proof version
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+            result.Should().Be(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
+            blobTxReturned.Should().BeEquivalentTo(isTxValid ? blobTxAdded : null);
+
+            if (isTxValid)
+            {
+                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                wrapper.Proofs.Length.Should().Be(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1);
+                wrapper.Version.Should().Be(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0);
+
+                blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
+                if (isPersistentStorage)
+                {
+                    blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
+                        .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                        .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                }
+            }
         }
 
         private Transaction GetBlobTx(PrivateKey sender)
