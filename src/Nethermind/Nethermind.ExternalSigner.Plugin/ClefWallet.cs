@@ -139,7 +139,7 @@ namespace Nethermind.ExternalSigner.Plugin
                 default:
                     throw new NotImplementedException($"Cannot send unknown tx type '{transaction.Type}'");
             }
-            (string? raw, LegacyTransactionForRpc tx) signed = rpcClient.Post<(string? raw, LegacyTransactionForRpc tx)>(
+            SignTransactionResponse? signed = rpcClient.Post<SignTransactionResponse>(
                 "account_signTransaction",
                 transactionForRpc).GetAwaiter().GetResult();
             if (signed is null || signed.Tx is null) ThrowInvalidOperationSignFailed();
