@@ -15,8 +15,8 @@ public interface IL1ConfigValidator
     /// Validates the L1 chain configuration against expected parameters
     /// </summary>
     /// <param name="expectedChainId">The expected L1 chain ID</param>
-    /// <param name="expectedGenesisNumber">The expected L1 genesis block number</param>
-    /// <param name="expectedGenesisHash">The expected L1 genesis block hash</param>
+    /// <param name="genesisNumber">The genesis block number in L1</param>
+    /// <param name="expectedGenesisHash">The expected block hash of the genesis block in L1</param>
     /// <returns>True if validation passes, false otherwise</returns>
-    Task<bool> Validate(ulong expectedChainId, ulong expectedGenesisNumber, Hash256 expectedGenesisHash);
+    Task<bool> Validate(ulong expectedChainId, ulong genesisNumber, Hash256 expectedGenesisHash);
 }
