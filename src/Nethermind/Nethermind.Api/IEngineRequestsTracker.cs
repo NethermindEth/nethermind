@@ -8,16 +8,3 @@ public interface IEngineRequestsTracker
     void OnForkchoiceUpdatedCalled();
     void OnNewPayloadCalled();
 }
-
-public class NullEngineRequestsTracker : IEngineRequestsTracker
-{
-    public static readonly NullEngineRequestsTracker Instance = new();
-
-    public void OnForkchoiceUpdatedCalled()
-    {
-    }
-
-    public void OnNewPayloadCalled()
-    {
-    }
-}
