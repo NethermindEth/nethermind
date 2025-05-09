@@ -111,7 +111,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         await Task.WhenAll(workers.AsSpan());
 
         using AccumulatorCalculator calculator = new();
-        foreach (var valueTuple in blockHashes)
+        foreach (var valueTuple in blockHashes.AsSpan())
         {
             calculator.Add(valueTuple.Item1, valueTuple.Item2);
         }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using CkzgLib;
 using FluentAssertions;
 using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
@@ -483,7 +484,7 @@ public class TxValidatorTests
             .SignedAndResolved();
 
         Transaction tx = txBuilder.TestObject;
-        ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob + 1];
+        ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs[0] = new byte[Ckzg.BytesPerBlob + 1];
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
@@ -500,7 +501,7 @@ public class TxValidatorTests
             .SignedAndResolved();
 
         Transaction tx = txBuilder.TestObject;
-        ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0] = new byte[Ckzg.Ckzg.BytesPerCommitment + 1];
+        ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0] = new byte[Ckzg.BytesPerCommitment + 1];
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
@@ -517,7 +518,7 @@ public class TxValidatorTests
             .SignedAndResolved();
 
         Transaction tx = txBuilder.TestObject;
-        ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0] = new byte[Ckzg.Ckzg.BytesPerProof + 1];
+        ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0] = new byte[Ckzg.BytesPerProof + 1];
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);

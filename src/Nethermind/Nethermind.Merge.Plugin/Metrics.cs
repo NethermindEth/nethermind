@@ -34,10 +34,10 @@ namespace Nethermind.Merge.Plugin
 
         [GaugeMetric]
         [Description("Number of responses to engine_getBlobsV1 with all requested blobs")]
-        public static int NumberOfGetBlobsSuccesses { get; set; }
+        public static int GetBlobsRequestsSuccessTotal { get; set; }
 
         [GaugeMetric]
         [Description("Number of responses to engine_getBlobsV1 without all requested blobs")]
-        public static int NumberOfGetBlobsFailures { get; set; }
+        public static int GetBlobsRequestsFailureTotal { get; set; }
     }
 }
