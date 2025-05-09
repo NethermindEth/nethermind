@@ -44,7 +44,6 @@ public class OptimismCLP2P : IDisposable
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPeerManager _peerManager;
     private readonly IPAddress _externalIp;
-    private readonly Dictionary<Multiaddress, ISession> _sessions = new();
 
     private PubsubRouter? _router;
     private ILocalPeer? _localPeer;
@@ -206,8 +205,7 @@ public class OptimismCLP2P : IDisposable
             ExecutionPayloadV3? response = null;
             foreach (Multiaddress peer in _peerManager.GetPeers())
             {
-                ISession? remotePeer;
-                if (!_sessions.TryGetValue(peer, out remotePeer)) remotePeer = await TryDialPeer(peer, token);
+                ISession? remotePeer = await TryDialPeer(peer, token);
                 response = await TryRequestPayload(remotePeer, payloadNumber, expectedHash, token);
                 if (response is not null)
                 {
@@ -216,7 +214,11 @@ public class OptimismCLP2P : IDisposable
                     break;
                 }
 
-                if (remotePeer is not null) await remotePeer.DisconnectAsync();
+                if (remotePeer is not null)
+                {
+                    await remotePeer.DisconnectAsync();
+                }
+                if (_logger.IsWarn) _logger.Warn($"Unable to get Payload from peer {peer}");
                 _peerManager.DecreaseRating(peer);
             }
 
@@ -321,7 +323,6 @@ public class OptimismCLP2P : IDisposable
                 if (session is not null)
                 {
                     if (_logger.IsInfo) _logger.Info($"Adding active peer {multiaddress}");
-                    _sessions[multiaddress] = session;
                     _peerManager.AddActivePeer(multiaddress);
                 }
                 else
@@ -338,7 +339,7 @@ public class OptimismCLP2P : IDisposable
         }
 
 
-        if (_logger.IsInfo) _logger.Info($"Started P2P: {address}");
+        if (_logger.IsInfo) _logger.Info($"CL P2P is started");
         await MainLoop(token);
     }
 

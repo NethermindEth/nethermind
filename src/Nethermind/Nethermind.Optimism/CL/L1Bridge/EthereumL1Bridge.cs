@@ -81,7 +81,7 @@ public class EthereumL1Bridge : IL1Bridge
         }
         finally
         {
-            if (_logger.IsInfo) _logger.Info("Driver is shutting down.");
+            if (_logger.IsInfo) _logger.Info("L1 bridge is shutting down.");
         }
     }
 
