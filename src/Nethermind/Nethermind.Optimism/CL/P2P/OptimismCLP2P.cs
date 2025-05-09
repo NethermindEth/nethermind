@@ -160,7 +160,7 @@ public class OptimismCLP2P : IDisposable
 
                 if (_blockValidator.IsBlockNumberPerHeightLimitReached(payload) is not ValidityStatus.Valid)
                 {
-                    return;
+                    continue;
                 }
 
                 if (await _executionEngineManager.ProcessNewP2PExecutionPayload(payload))
