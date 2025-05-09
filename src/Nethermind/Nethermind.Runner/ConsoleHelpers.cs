@@ -162,7 +162,7 @@ public sealed class LineInterceptingTextWriter : TextWriter
     {
         lock (_recentMessages)
         {
-            if (_recentMessages.Count > 100)
+            if (_recentMessages.Count >= 100)
             {
                 _recentMessages.Dequeue();
             }
