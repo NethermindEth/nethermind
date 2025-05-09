@@ -19,6 +19,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -55,6 +56,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
+    private InclusionListTxSource? _inclusionListTxSource = null;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -92,6 +94,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
             _blockFinalizationManager = new ManualBlockFinalizationManager();
+            _inclusionListTxSource = new InclusionListTxSource(_api.SpecProvider.ChainId);
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
@@ -252,6 +255,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.TxPool);
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.StateReader);
+            ArgumentNullException.ThrowIfNull(_api.TransactionComparerProvider);
             ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
@@ -288,6 +292,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
+            TxPoolTxSourceFactory txPoolTxSourceFactory = new(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _blocksConfig, _api.LogManager);
+            TxPoolTxSource txPoolTxSource = txPoolTxSourceFactory.Create();
+
             IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
             IMergeSyncController beaconSync = _api.Context.Resolve<IMergeSyncController>();
             IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
@@ -304,6 +311,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _invalidChainTracker,
                     beaconSync,
                     _api.LogManager,
+                    _api.SpecProvider.ChainId,
                     TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
                     _api.Config<IReceiptConfig>().StoreReceipts);
 
@@ -339,6 +347,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
+                new GetInclusionListTransactionsHandler(_api.BlockTree, txPoolTxSource),
+                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, mergeConfig), _api.LogManager),
                 _api.LogManager);

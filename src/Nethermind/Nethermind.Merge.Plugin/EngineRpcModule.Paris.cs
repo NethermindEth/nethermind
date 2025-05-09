@@ -64,6 +64,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
+        executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
         if (!executionPayload.ValidateFork(_specProvider))
         {

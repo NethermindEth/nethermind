@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 
@@ -32,7 +32,7 @@ public class TaikoExecutionPayload : ExecutionPayload
         _ => 1
     };
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
     {
         if (Withdrawals is null && Transactions is null)
         {

@@ -20,6 +20,11 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token) =>
             suggestedBlocks.ToArray();
 
+        public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
         public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing
         {
             add { }
