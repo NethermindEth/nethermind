@@ -67,17 +67,7 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
-            if (HasInvalidZeroBloom(txReceipt))
-            {
-                txReceipt.Bloom = null;
-            }
-
             return txReceipt;
-        }
-
-        private static bool HasInvalidZeroBloom(TxReceipt item)
-        {
-            return ReferenceEquals(item.Bloom, Bloom.Empty) && item.Logs.Length > 0;
         }
 
         private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
