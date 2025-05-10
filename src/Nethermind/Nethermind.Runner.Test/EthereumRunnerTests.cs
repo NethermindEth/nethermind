@@ -39,6 +39,8 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
@@ -250,6 +252,22 @@ public class EthereumRunnerTests
             api.Context.Resolve<IRpcModuleProvider>();
             api.Context.Resolve<IMessageSerializationService>();
 
+            // A root registration should not have both keyed and unkeyed registration. This is confusing and may
+            // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
+            // or put them in an unambiguous container class.
+            Dictionary<Type, object> keyedTypes = new();
+            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            {
+                if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
+                foreach (var registrationsService in registrations.Services)
+                {
+                    if (registrationsService is KeyedService keyedService)
+                    {
+                        keyedTypes.TryAdd(keyedService.ServiceType, keyedService.ServiceKey);
+                    }
+                }
+            }
+
             // The following types should not have a global unnamed singleton registration. This is because
             // They are ambiguous by nature. Eg: For `IProtectedPrivateKey`, is it signer key or node key?
             // Consider wrapping them in an type that is clearly global eg: `IWorldStateManager.GlobalWorldState`
@@ -257,11 +275,15 @@ public class EthereumRunnerTests
             HashSet<Type> bannedTypeForRootScope =
             [
                 typeof(IWorldState),
+                typeof(ITransactionProcessor),
+                typeof(IVirtualMachine),
+                typeof(IDb),
                 typeof(IBlockProcessor),
                 typeof(IBlockchainProcessor),
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(string),
             ];
 
             foreach (var registrations in api.Context.ComponentRegistry.Registrations)
@@ -274,6 +296,10 @@ public class EthereumRunnerTests
                         if (bannedTypeForRootScope.Contains(typedService.ServiceType))
                         {
                             Assert.Fail($"{typedService.ServiceType} has a root registration. This is likely a bug.");
+                        }
+                        if (keyedTypes.TryGetValue(typedService.ServiceType, out var key))
+                        {
+                            Assert.Fail($"{typedService.ServiceType} has an unkeyed and keyed ({key}) root registration at the same time. This is likely a bug.");
                         }
                     }
                 }
