@@ -12,8 +12,8 @@ public interface IL2Api
 {
     Task<L2Block> GetBlockByNumber(ulong number);
     Task<L2Block> GetHeadBlock();
-    Task<L2Block> GetFinalizedBlock();
-    Task<L2Block> GetSafeBlock();
+    Task<L2Block?> GetFinalizedBlock();
+    Task<L2Block?> GetSafeBlock();
 
     Task<ForkchoiceUpdatedV1Result> ForkChoiceUpdatedV3(
         Hash256 headHash, Hash256 finalizedHash, Hash256 safeHash, OptimismPayloadAttributes? payloadAttributes = null);

@@ -39,4 +39,5 @@ public readonly struct L1Transaction
     public Address? From { get; init; }
     public Address? To { get; init; }
     public byte[][]? BlobVersionedHashes { get; init; }
+    public byte[]? Input { get; init; }
 }

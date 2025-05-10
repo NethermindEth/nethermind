@@ -12,11 +12,11 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public class DecodingPipeline(ILogger logger) : IDecodingPipeline
 {
-    private readonly Channel<byte[]> _inputChannel = Channel.CreateBounded<byte[]>(9);
+    private readonly Channel<DaDataSource> _inputChannel = Channel.CreateBounded<DaDataSource>(9);
     private readonly Channel<BatchV1> _outputChannel = Channel.CreateBounded<BatchV1>(3);
     private readonly IFrameQueue _frameQueue = new FrameQueue(logger);
 
-    public ChannelWriter<byte[]> DaDataWriter => _inputChannel.Writer;
+    public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<BatchV1> DecodedBatchesReader => _outputChannel.Reader;
 
     public async Task Run(CancellationToken token)
@@ -25,12 +25,21 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
         while (!token.IsCancellationRequested)
         {
             buffer.Clear();
-            var blob = await _inputChannel.Reader.ReadAsync(token);
+            var daData = await _inputChannel.Reader.ReadAsync(token);
 
             try
             {
-                var read = BlobDecoder.DecodeBlob(blob, buffer.Span);
-                foreach (var frame in FrameDecoder.DecodeFrames(buffer[..read]))
+                Memory<byte> decodedData;
+                if (daData.DataType == DaDataType.Blob)
+                {
+                    var read = BlobDecoder.DecodeBlob(daData.Data, buffer.Span);
+                    decodedData = buffer[..read];
+                }
+                else
+                {
+                    decodedData = daData.Data;
+                }
+                foreach (var frame in FrameDecoder.DecodeFrames(decodedData))
                 {
                     var batches = _frameQueue.ConsumeFrame(frame);
                     if (batches is not null)
