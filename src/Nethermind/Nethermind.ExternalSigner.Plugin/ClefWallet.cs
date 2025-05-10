@@ -121,27 +121,7 @@ namespace Nethermind.ExternalSigner.Plugin
         {
             ArgumentNullException.ThrowIfNull(transaction);
 
-            TransactionForRpc transactionForRpc;
-            switch (transaction.Type)
-            {
-                case TxType.Legacy:
-                    transactionForRpc = new LegacyTransactionForRpc(transaction);
-                    break;
-                case TxType.AccessList:
-                    transactionForRpc = new AccessListTransactionForRpc(transaction);
-                    break;
-                case TxType.EIP1559:
-                    transactionForRpc = new EIP1559TransactionForRpc(transaction);
-                    break;
-                case TxType.Blob:
-                    transactionForRpc = new BlobTransactionForRpc(transaction);
-                    break;
-                case TxType.SetCode:
-                    transactionForRpc = new SetCodeTransactionForRpc(transaction);
-                    break;
-                default:
-                    throw new NotImplementedException($"Cannot send unknown tx type '{transaction.Type}'");
-            }
+            TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
             SignTransactionResponse? signed = rpcClient.Post<SignTransactionResponse>(
                 "account_signTransaction",
                 transactionForRpc).GetAwaiter().GetResult();

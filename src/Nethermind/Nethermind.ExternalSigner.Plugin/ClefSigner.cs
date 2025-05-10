@@ -62,7 +62,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
         Address[] accounts = clefWallet.GetAccounts();
         if (accounts.Length == 0) throw new InvalidOperationException("Remote signer has not been configured with any signers.");
         return blockAuthorAccount is not null
-            ? accounts.Any(a => a.Bytes.SequenceEqual(blockAuthorAccount.Bytes))
+            ? accounts.Any(a => a == blockAuthorAccount)
                 ? blockAuthorAccount
                 : throw new InvalidOperationException($"Remote signer cannot sign for {blockAuthorAccount}.")
             : accounts[0];

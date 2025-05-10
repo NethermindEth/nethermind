@@ -33,8 +33,7 @@ namespace Nethermind.Wallet
         }
         Signature SignMessage(byte[] message, Address address)
         {
-            const string signatureTemplate = "\x19" + "Ethereum Signed Message:\n{0}{1}";
-            string signatureText = string.Format(signatureTemplate, message.Length, message);
+            string signatureText = $"{"\x19"}Ethereum Signed Message:\n{message.Length}{message}";
             return Sign(Keccak.Compute(signatureText), address);
         }
         event EventHandler<AccountLockedEventArgs> AccountLocked;
