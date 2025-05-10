@@ -32,15 +32,16 @@ public class SnapProtocolHandlerTests
     {
         public ISession Session { get; set; } = Substitute.For<ISession>();
 
-        private IMessageSerializationService _messageSerializationService;
+        private IMessageSerializationService? _messageSerializationService;
         public IMessageSerializationService MessageSerializationService
         {
             get
             {
                 if (_messageSerializationService is null)
                 {
-                    _messageSerializationService = new MessageSerializationService();
-                    _messageSerializationService.Register(new AccountRangeMessageSerializer());
+                    _messageSerializationService = new MessageSerializationService(
+                        SerializerInfo.Create(new AccountRangeMessageSerializer())
+                    );
                 }
 
                 return _messageSerializationService;

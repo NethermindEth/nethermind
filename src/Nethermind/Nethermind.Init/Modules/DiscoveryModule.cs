@@ -12,6 +12,8 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
@@ -25,7 +27,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
     {
         builder
             // Enr discovery uses DNS to get some bootnodes.
-            // TODO: Node source to discovery 4 feeder.
             .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
             {
                 // I do not use the key here -> API is broken - no sense to use the node signer here
@@ -95,6 +96,19 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 networkConfig.Bootnodes = discoveryConfig.Bootnodes;
                 return networkConfig;
             })
+
+            // Serializers
+            // The `IPrivateKeyGenerator` here is not exactly a `generator`. It is used to pass the exact same
+            // private key to the discovery message serializer to sign the message.
+            .AddKeyedSingleton<IPrivateKeyGenerator>(IProtectedPrivateKey.NodeKey, ctx => new SameKeyGenerator(ctx.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey).Unprotect()))
+            .AddSingleton<INodeIdResolver, NodeIdResolver>()
+            .AddMessageSerializer<PingMsg, PingMsgSerializer>()
+            .AddMessageSerializer<PongMsg, PongMsgSerializer>()
+            .AddMessageSerializer<FindNodeMsg, FindNodeMsgSerializer>()
+            .AddMessageSerializer<NeighborsMsg, NeighborsMsgSerializer>()
+            .AddMessageSerializer<EnrRequestMsg, EnrRequestMsgSerializer>()
+            .AddMessageSerializer<EnrResponseMsg, EnrResponseMsgSerializer>()
+
             ;
 
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -17,17 +18,22 @@ namespace Nethermind.Network.Test.Builders
     public class SerializationBuilder : BuilderBase<IMessageSerializationService>
     {
         private readonly ITimestamper _timestamper;
+        private List<SerializerInfo> _serializers = new();
 
         public SerializationBuilder(ITimestamper timestamper = null)
         {
             _timestamper = timestamper ?? Timestamper.Default;
-            TestObject = new MessageSerializationService();
         }
 
         public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
         {
-            TestObject.Register(serializer);
+            _serializers.Add(SerializerInfo.Create(serializer));
             return this;
+        }
+
+        protected override void BeforeReturn()
+        {
+            TestObject = new MessageSerializationService(_serializers);
         }
 
         public SerializationBuilder WithEncryptionHandshake()
