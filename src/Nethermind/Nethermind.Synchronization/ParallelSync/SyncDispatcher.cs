@@ -184,6 +184,10 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
             }
+            catch (TimeoutException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer}");
+            }
             catch (OperationCanceledException)
             {
                 if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");

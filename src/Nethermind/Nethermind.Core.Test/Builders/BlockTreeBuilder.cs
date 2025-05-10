@@ -20,6 +20,7 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -251,6 +252,7 @@ namespace Nethermind.Core.Test.Builders
                 .WithNumber(blockIndex + 1)
                 .WithParent(parent)
                 .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
                 .WithBeneficiary(beneficiary);
 
             if (_stateRoot != null)
