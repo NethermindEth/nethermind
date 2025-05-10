@@ -4,8 +4,10 @@
 using System;
 using System.Security;
 using System.Security.Cryptography;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
@@ -33,7 +35,8 @@ namespace Nethermind.Wallet
         }
         Signature SignMessage(byte[] message, Address address)
         {
-            string signatureText = $"{"\x19"}Ethereum Signed Message:\n{message.Length}{message}";
+            string m = Encoding.UTF8.GetString(message);
+            string signatureText = $"\u0019Ethereum Signed Message:\n{m.Length}{m}";
             return Sign(Keccak.Compute(signatureText), address);
         }
         event EventHandler<AccountLockedEventArgs> AccountLocked;

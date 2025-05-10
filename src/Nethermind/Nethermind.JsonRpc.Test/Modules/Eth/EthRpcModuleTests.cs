@@ -5,11 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using FluentAssertions.Json;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
@@ -32,12 +34,14 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -1433,6 +1437,27 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_sign_recover_correct_address()
+    {
+        using Context ctx = await Context.Create();
+
+        const string message = "Hello world";
+
+        string hexMessage = Encoding.UTF8.GetBytes(message).ToHexString(true);
+        //Address is auto-generated in WalletExtensions.SetupTestAccounts
+        const string keyAddress = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
+        string serialized = await ctx.Test.TestEthRpc("eth_sign", keyAddress, hexMessage);
+
+        JsonRpcResponse<string> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<string>>(serialized)!;
+
+        Hash256 signatureHash = Keccak.Compute($"\u0019Ethereum Signed Message:\n{message.Length}{message}");
+
+        Address recovered = new EthereumEcdsa(1).RecoverAddress(new Signature(response.Result), signatureHash)!;
+
+        Assert.That(recovered, Is.EqualTo(new Address(keyAddress)));
     }
 
     public class AllowNullAuthorizationTuple : AuthorizationTuple
