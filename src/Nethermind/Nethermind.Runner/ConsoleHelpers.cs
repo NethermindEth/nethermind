@@ -63,22 +63,16 @@ public static class ConsoleHelpers
 }
 
 
-public sealed class LineInterceptingTextWriter : TextWriter
+public sealed class LineInterceptingTextWriter(TextWriter underlyingWriter) : TextWriter
 {
     // Event raised every time a full line ending with Environment.NewLine is written
     public event EventHandler<string>? LineWritten;
 
     // The "real" underlying writer (i.e., the original Console.Out)
-    private readonly TextWriter _underlyingWriter;
+    private readonly TextWriter _underlyingWriter = underlyingWriter ?? throw new ArgumentNullException(nameof(underlyingWriter));
 
     // Buffer used to accumulate written data until we detect a new line
-    private readonly StringBuilder _buffer;
-
-    public LineInterceptingTextWriter(TextWriter underlyingWriter)
-    {
-        _underlyingWriter = underlyingWriter ?? throw new ArgumentNullException(nameof(underlyingWriter));
-        _buffer = new StringBuilder();
-    }
+    private readonly StringBuilder _buffer = new StringBuilder();
 
     // You must override Encoding, even if just forwarding
     public override Encoding Encoding => _underlyingWriter.Encoding;
@@ -157,7 +151,7 @@ public sealed class LineInterceptingTextWriter : TextWriter
         }
     }
 
-    Queue<string> _recentMessages = new(capacity: 100);
+    private readonly Queue<string> _recentMessages = new(capacity: 100);
     private void OnLineWritten(string line)
     {
         lock (_recentMessages)
