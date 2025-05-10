@@ -12,6 +12,15 @@ namespace Nethermind.Serialization.Rlp
     [Rlp.Decoder(RlpDecoderKey.Trie)]
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
     {
+        private readonly bool _includeBloom;
+
+        public ReceiptMessageDecoder() : this(includeBloom: true) { }
+
+        protected ReceiptMessageDecoder(bool includeBloom)
+        {
+            _includeBloom = includeBloom;
+        }
+
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Span<byte> span = rlpStream.PeekNextItem();
@@ -55,7 +64,10 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
             }
 
-            txReceipt.Bloom = ctx.DecodeBloom();
+            if (_includeBloom)
+            {
+                txReceipt.Bloom = ctx.DecodeBloom();
+            }
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -70,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -79,7 +91,11 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
+
+            if (_includeBloom)
+            {
+                contentLength += Rlp.LengthOf(item.Bloom);
+            }
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
@@ -174,7 +190,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.Encode(item.GasUsedTotal);
-            rlpStream.Encode(item.Bloom);
+
+            if (_includeBloom)
+            {
+                rlpStream.Encode(item.Bloom);
+            }
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;

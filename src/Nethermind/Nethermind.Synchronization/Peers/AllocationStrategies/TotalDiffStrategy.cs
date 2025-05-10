@@ -14,19 +14,12 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
     public class TotalDiffStrategy : IPeerAllocationStrategy
     {
-        public enum TotalDiffSelectionType
-        {
-            Better = 1,
-            AtLeastTheSame = 0,
-            CanBeSlightlyWorse = -1
-        }
-
         private readonly IPeerAllocationStrategy _strategy;
-        private readonly TotalDiffSelectionType _selectionType;
+        private readonly StrategySelectionType _selectionType;
 
-        public TotalDiffStrategy(IPeerAllocationStrategy strategy, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
+        public TotalDiffStrategy(IPeerAllocationStrategy strategy, StrategySelectionType selectionType = StrategySelectionType.Better)
         {
-            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int)selectionType, typeof(TotalDiffSelectionType));
+            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int)selectionType, typeof(StrategySelectionType));
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _selectionType = selectionType;
         }
@@ -44,12 +37,12 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             UInt256 currentDiff = currentDiffOrNull.Value;
             switch (_selectionType)
             {
-                case TotalDiffSelectionType.Better:
+                case StrategySelectionType.Better:
                     currentDiff += UInt256.One;
                     break;
-                case TotalDiffSelectionType.AtLeastTheSame:
+                case StrategySelectionType.AtLeastTheSame:
                     break;
-                case TotalDiffSelectionType.CanBeSlightlyWorse:
+                case StrategySelectionType.CanBeSlightlyWorse:
                     UInt256 lastBlockDiff = blockTree.BestSuggestedHeader?.Difficulty ?? 0;
                     if (currentDiff >= lastBlockDiff)
                     {

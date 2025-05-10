@@ -12,7 +12,8 @@ namespace Nethermind.Synchronization.SnapSync
     {
 
         private static readonly IPeerAllocationStrategy DefaultStrategy =
-            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap");
+            // TODO: use TotalDiffStrategy in non-merge chains?
+            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new LastBlockStrategy(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), StrategySelectionType.CanBeSlightlyWorse), "snap");
 
         public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

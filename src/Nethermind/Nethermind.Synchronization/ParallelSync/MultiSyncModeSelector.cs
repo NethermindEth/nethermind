@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -151,6 +152,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     newModes = shouldBeInUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
+
+                    if (_syncPeerPool.AllPeers.Any(p => p.HeadNumber > 0))
+                    {
+                        var x = ReloadDataFromPeers();
+                    }
                 }
                 // to avoid expensive checks we make this simple check at the beginning
                 else
@@ -560,14 +566,14 @@ namespace Nethermind.Synchronization.ParallelSync
         private static bool ShouldBeInDisconnectedMode(Snapshot best)
         {
             return !best.IsInUpdatingPivot &&
-                   !best.IsInFastBodies &&
-                   !best.IsInFastHeaders &&
-                   !best.IsInFastReceipts &&
-                   !best.IsInFastSync &&
-                   !best.IsInFullSync &&
-                   !best.IsInStateSync &&
-                   // maybe some more sophisticated heuristic?
-                   best.Peer.TotalDifficulty.IsZero;
+                !best.IsInFastBodies &&
+                !best.IsInFastHeaders &&
+                !best.IsInFastReceipts &&
+                !best.IsInFastSync &&
+                !best.IsInFullSync &&
+                !best.IsInStateSync &&
+                // maybe some more sophisticated heuristic?
+                best.Peer.TotalDifficulty.IsZero && best.Peer.Block == 0;
         }
 
         private bool ShouldBeInStateSyncMode(Snapshot best)

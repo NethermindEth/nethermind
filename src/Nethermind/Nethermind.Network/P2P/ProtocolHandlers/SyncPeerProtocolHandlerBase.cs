@@ -43,6 +43,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected ISyncServer SyncServer { get; }
         protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
 
+        public abstract bool AlwaysNotifyOfNewBlock { get; }
+
         public long HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
 

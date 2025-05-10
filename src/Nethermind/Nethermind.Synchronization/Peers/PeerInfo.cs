@@ -42,6 +42,8 @@ namespace Nethermind.Synchronization.Peers
 
         public Hash256 HeadHash => SyncPeer.HeadHash;
 
+        public bool AlwaysNotifyOfNewBlock => SyncPeer.AlwaysNotifyOfNewBlock;
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)
         {
