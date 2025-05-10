@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -924,7 +925,7 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        ITrieStore fullTrieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
+        ITrieStore fullTrieStore = TestTrieStoreFactory.Build(new MemDb(), NullLogManager.Instance);
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);

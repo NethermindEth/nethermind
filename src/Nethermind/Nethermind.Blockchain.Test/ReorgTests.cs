@@ -13,6 +13,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -38,7 +39,7 @@ public class ReorgTests
     public void Setup()
     {
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;

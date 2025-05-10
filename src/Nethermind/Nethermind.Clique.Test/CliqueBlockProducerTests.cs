@@ -89,7 +89,7 @@ public class CliqueBlockProducerTests
 
             ISpecProvider specProvider = SepoliaSpecProvider.Instance;
 
-            var trieStore = new TrieStore(stateDb, nodeLogManager);
+            var trieStore = TestTrieStoreFactory.Build(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
