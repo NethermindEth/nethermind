@@ -193,7 +193,7 @@ public class TrieNodeTests
         decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
         Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
-        Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
+        Assert.That(decodedTiniest.Key.Equals(ctx.TiniestLeaf.Key), "key");
     }
 
     [Test]
@@ -230,8 +230,7 @@ public class TrieNodeTests
         decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
         Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
-        Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
-            "key");
+        Assert.That(decodedTiniest.Key.Equals(ctx.TiniestLeaf.Key), "key");
     }
 
     [Test]
@@ -239,7 +238,7 @@ public class TrieNodeTests
     {
         Context ctx = new();
         TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 5 };
+        trieNode.Key = NibblePath.Single(5);
         trieNode.SetChild(0, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
@@ -256,7 +255,7 @@ public class TrieNodeTests
     public void Can_set_and_get_children_using_indexer()
     {
         TrieNode tiniest = new(NodeType.Leaf);
-        tiniest.Key = new byte[] { 5 };
+        tiniest.Key = NibblePath.Single(5);
         tiniest.Value = new byte[] { 10 };
 
         TrieNode trieNode = new(NodeType.Branch);
