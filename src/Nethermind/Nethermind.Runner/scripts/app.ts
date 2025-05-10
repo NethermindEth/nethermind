@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 import * as d3 from 'd3';
-import Convert = require('ansi-to-html');
 import { formatDuration } from './format';
 import { sparkline, Datum } from './sparkline';
 import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionReceipt, Peer } from './types';
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
-import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo, getNodeType } from './utilities';
+import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo, getNodeType, formatEth } from './utilities';
 import { createRollingBoxPlot } from './boxPlot'
 import { updatePieChart } from './peerPie'
+import { getMethod, getTxType, getToAddress } from './txParser'
+import { LogWindow } from './logWindow';
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -26,7 +27,6 @@ const version = document.getElementById('version') as HTMLElement;
 
 const upTime = document.getElementById('upTime') as HTMLElement;
 const network = document.getElementById('network') as HTMLElement;
-const nodeLog = document.getElementById('nodeLog') as HTMLElement;
 const headBlock = document.getElementById('headBlock') as HTMLElement;
 const safeBlock = document.getElementById('safeBlock') as HTMLElement;
 const finalizedBlock = document.getElementById('finalizedBlock') as HTMLElement;
@@ -83,7 +83,6 @@ const boxPlotEGP = createRollingBoxPlot(
   36 // Keep up to 36 blocks
 );
 
-const ansiConvert = new Convert();
 
 // We reuse these arrays for the sparkline. The length = 60 means we store 60 historical points.
 let seriesHashes: Datum[] = [];
@@ -215,7 +214,12 @@ function updateTxPool(txPool: TxPool) {
   lastHashesReceived = currentHashesReceived;
 }
 
+const logWindow = new LogWindow(document.getElementById('nodeLog'));
+
 const sse = new EventSource("/data/events");
+
+sse.addEventListener("log", (e) => logWindow.receivedLog(e));
+
 sse.addEventListener("nodeData", (e) => {
   const data = JSON.parse(e.data) as NodeData;
 
@@ -381,15 +385,7 @@ sse.addEventListener("system", (e) => {
   sparkline(sparkMemory, seriesMemory, 150, 100, 60);
 });
 
-let logs: string[] = [];
-sse.addEventListener("log", (e) => {
-  const data = JSON.parse(e.data) as string[];
-  for (let entry of data) {
-    const html = ansiConvert.toHtml(entry);
-    if (logs.length > 100) { logs.shift(); }
-    logs.push(html);
-  }
-});
+
 
 let lastFrameTime: number = 0;
 let frameDelta: number = 0;
@@ -400,35 +396,10 @@ function newFrame() {
   const frameTime = performance.now();
   frameDelta = frameTime - lastFrameTime;
 
-  appendLogs();
+  logWindow.appendLogs();
   appendTx();
 
   lastFrameTime = frameTime;
-}
-function appendLogs() {
-  if (logs.length > 0) {
-    let scroll = false;
-    if (nodeLog.scrollHeight < 500 || nodeLog.scrollTop < nodeLog.scrollHeight - 500) {
-      scroll = true;
-    }
-    const frag = document.createDocumentFragment();
-    for (let i = 0; i < logs.length; i++) {
-      const newEntry = document.createElement('div');
-      newEntry.innerHTML = logs[i];
-      frag.appendChild(newEntry);
-    }
-    logs = [];
-    nodeLog.appendChild(frag);
-    let rows = nodeLog.childElementCount;
-    while (rows > 250) {
-      nodeLog.firstChild.remove();
-      rows--;
-    }
-
-    if (scroll) {
-      window.setTimeout(scrollLogs, 17);
-    }
-  }
 }
 
 let lastTxBlock = "";
@@ -476,132 +447,23 @@ function appendTx() {
   }
 }
 
-function getTxType(type: number): string {
-  switch (type) {
-    case 0: return "Legacy";
-    case 1: return "AccessList";
-    case 2: return "Eip1559";
-    case 3: return "Blob";
-    case 4: return "SetCode";
-    case 5: return "TxCreate";
-    default: return "Unknown";
-  }
-}
-function getMethod(type: string): string {
-  switch (type) {
-    case "0x095ea7b3": return "approve";
-    case "0xa9059cbb": return "transfer";
-    case "0x23b872dd": return "transferFrom";
-    case "0xd0e30db0": return "deposit";
-    case "0xe8e33700": // addLiquidity(0xe8e33700)
-    case "0xf305d719": return "addLiquidity"; // addLiquidityETH(0xf305d719)
-    case "0xbaa2abde": // removeLiquidity(0xbaa2abde)
-    case "0x02751cec": // removeLiquidityETH(0x02751cec)
-    case "0xaf2979eb": // removeLiquidityETHSupportingFeeOnTransferTokens(0xaf2979eb)
-    case "0xded9382a": // removeLiquidityETHWithPermit(0xded9382a)
-    case "0x5b0d5984": // removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(0x5b0d5984)
-    case "0x2195995c": return "removeLiquidity"; // removeLiquidityWithPermit(0x2195995c)
-    case "0xfb3bdb41": // swapETHForExactTokens(0xfb3bdb41)
-    case "0x7ff36ab5": // swapExactETHForTokens(0x7ff36ab5)
-    case "0xb6f9de95": // swapExactETHForTokensSupportingFeeOnTransferTokens(0xb6f9de95)
-    case "0x18cbafe5": // swapExactTokensForETH(0x18cbafe5)
-    case "0x791ac947": // swapExactTokensForETHSupportingFeeOnTransferTokens(0x791ac947)
-    case "0x38ed1739": // swapExactTokensForTokens(0x38ed1739)
-    case "0x5c11d795": // swapExactTokensForTokensSupportingFeeOnTransferTokens(0x5c11d795)
-    case "0x4a25d94a": // swapTokensForExactETH(0x4a25d94a)
-    case "0x5f575529": // swap(0x5f575529)
-    case "0x6b68764c": // swapUsingGasToken (0x6b68764c)
-    case "0x845a101f": // swap (0x845a101f)
-    case "0x8803dbee": return "swap"; // swapTokensForExactTokens(0x8803dbee)
-    case "0x24856bc3": // execute (0x24856bc3)
-    case "0x3593564c": return "dex"; // execute (0x3593564c)
-    case "0x": return "ETH transfer";
-    default: return type;
-  }
-}
-function getToAddress(to: string): string {
-  switch (to) {
-    case "0xdac17f958d2ee523a2206206994597c13d831ec7": return "usdt"; // mainnet
-    case "0x4ecaba5870353805a9f068101a40e0f32ed605c6": return "usdt"; // Gnosis
-    case "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": return "usdc"; // mainnet
-    case "0xddafbb505ad214d7b80b1f830fccc89b60fb7a83": return "usdc"; // Gnosis
-    case "0x6b175474e89094c44da98b954eedeac495271d0f": return "dai"; // mainnet
-    case "0x44fa8e6f47987339850636f88629646662444217": return "dai"; // Gnosis
-    case "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": return "weth"; // mainnet
-    case "0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1": return "weth"; // Gnosis
-    case "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": return "uniswap v2"; // mainnet
-    case "0x66a9893cc07d91d95644aedd05d03f95e1dba8af": return "uniswap v4"; // mainnet
-    case "0x2f848984984d6c3c036174ce627703edaf780479": return "xen minter"; // mainnet
-    case "0x0a252663dbcc0b073063d6420a40319e438cfa59": return "xen" // mainnet
-    case "0x881d40237659c251811cec9c364ef91dc08d300c": return "metamask" // mainnet
-    default: return to;
-  }
-}
-
 requestAnimationFrame(newFrame);
-function scrollLogs() {
-  nodeLog.scrollTop = nodeLog.scrollHeight;
-}
 // On window resize
 window.addEventListener('resize', () => {
   resize();
 });
 
 function resize() {
-    boxPlotEGP.resize();
+  boxPlotEGP.resize();
+  logWindow.resize();
 
-    var bodyRect = document.body.getBoundingClientRect(), elemRect = nodeLog.getBoundingClientRect();
+  const txLog = document.getElementById("txLog");
+  const bodyRect = document.body.getBoundingClientRect(), elemRect = txLog.getBoundingClientRect();
 
-    var offset = elemRect.top - bodyRect.top;
-    var height = window.innerHeight - offset - 16;
+  const offset = elemRect.top - bodyRect.top;
+  const height = window.innerHeight - offset - 16;
 
-    if (height > 0) {
-        nodeLog.style.height = `${height}px`;
-        document.getElementById("txLog").style.height = `${height}px`;
-    }
-}
-
-/**
- * Formats a number (wei) into a string with the largest possible unit
- * (ETH, GWEI, or WEI) and up to 4 decimal digits.
- *
- * @param weiValue - The numeric value in wei (e.g., from parseInt(tx.value, 16)).
- * @returns The value formatted as a string with the appropriate unit.
- */
-function formatEth(weiValue: number): string {
-  // 1 ETH = 1e18 wei
-  const WEI_IN_ETH = 1e18;
-  // 1 GWEI = 1e9 wei
-  const WEI_IN_GWEI = 1e9;
-
-  let result: string;
-  if (weiValue == 0) result = "-";
-  else if (weiValue >= 100_000_000_000_000) {
-    // Convert wei to ETH
-    const ethValue = weiValue / WEI_IN_ETH;
-    result = `${trimDecimals(ethValue, 4)} ETH`;
-  } else if (weiValue >= 100_000) {
-    // Convert wei to GWEI
-    const gweiValue = weiValue / WEI_IN_GWEI;
-    result = `${trimDecimals(gweiValue, 4)} GWEI`;
-  } else {
-    // Value is small enough to stay in wei
-    result = `${weiValue} WEI`;
+  if (height > 0) {
+    txLog.style.height = `${height}px`;
   }
-
-  return result;
-}
-
-/**
- * Helper to trim a numeric value to a max of `decimals` decimal digits,
- * removing trailing zeroes after the decimal point.
- *
- * @param value - The number to trim.
- * @param decimals - Max number of decimal digits allowed.
- */
-function trimDecimals(value: number, decimals: number): string {
-  // toFixed will limit the decimal places, but may produce trailing zeros
-  const fixed = value.toFixed(decimals);
-  // Remove trailing zeros and the decimal point if not needed
-  return fixed.replace(/(\.\d*?[1-9])0+$/g, '$1').replace(/\.0+$/, '');
 }

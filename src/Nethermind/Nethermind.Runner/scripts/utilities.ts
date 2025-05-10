@@ -310,3 +310,48 @@ const clientTypes = [
 export function getNodeType(clientType: number) {
   return clientTypes[clientType] || "Unknown";
 }
+
+/**
+ * Helper to trim a numeric value to a max of `decimals` decimal digits,
+ * removing trailing zeroes after the decimal point.
+ *
+ * @param value - The number to trim.
+ * @param decimals - Max number of decimal digits allowed.
+ */
+function trimDecimals(value: number, decimals: number): string {
+  // toFixed will limit the decimal places, but may produce trailing zeros
+  const fixed = value.toFixed(decimals);
+  // Remove trailing zeros and the decimal point if not needed
+  return fixed.replace(/(\.\d*?[1-9])0+$/g, '$1').replace(/\.0+$/, '');
+}
+
+/**
+ * Formats a number (wei) into a string with the largest possible unit
+ * (ETH, GWEI, or WEI) and up to 4 decimal digits.
+ *
+ * @param weiValue - The numeric value in wei (e.g., from parseInt(tx.value, 16)).
+ * @returns The value formatted as a string with the appropriate unit.
+ */
+export function formatEth(weiValue: number): string {
+  // 1 ETH = 1e18 wei
+  const WEI_IN_ETH = 1e18;
+  // 1 GWEI = 1e9 wei
+  const WEI_IN_GWEI = 1e9;
+
+  let result: string;
+  if (weiValue == 0) result = "-";
+  else if (weiValue >= 100_000_000_000_000) {
+    // Convert wei to ETH
+    const ethValue = weiValue / WEI_IN_ETH;
+    result = `${trimDecimals(ethValue, 4)} ETH`;
+  } else if (weiValue >= 100_000) {
+    // Convert wei to GWEI
+    const gweiValue = weiValue / WEI_IN_GWEI;
+    result = `${trimDecimals(gweiValue, 4)} GWEI`;
+  } else {
+    // Value is small enough to stay in wei
+    result = `${weiValue} WEI`;
+  }
+
+  return result;
+}
