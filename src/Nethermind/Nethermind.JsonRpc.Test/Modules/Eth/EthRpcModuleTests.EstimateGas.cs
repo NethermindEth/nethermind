@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -98,12 +98,10 @@ public partial class EthRpcModuleTests
             transaction, "0x0", optimize.ToString().ToLower());
 
         transaction.AccessList = test.JsonSerializer.Deserialize<AccessListForRpc>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
-        string serializedEstimateGas =
-            await test.TestEthRpc("eth_estimateGas", transaction, "0x0");
+        string serializedEstimateGas = await test.TestEthRpc("eth_estimateGas", transaction, "0x0");
 
         var gasUsedEstimateGas = JToken.Parse(serializedEstimateGas).Value<string>("result");
-        var gasUsedCreateAccessList =
-            JToken.Parse(serializedCreateAccessList).SelectToken("result.gasUsed")?.Value<string>();
+        var gasUsedCreateAccessList = JToken.Parse(serializedCreateAccessList).SelectToken("result.gasUsed")?.Value<string>();
 
         var gasUsedAccessList = (long)Bytes.FromHexString(gasUsedCreateAccessList!).ToUInt256();
         var gasUsedEstimate = (long)Bytes.FromHexString(gasUsedEstimateGas!).ToUInt256();

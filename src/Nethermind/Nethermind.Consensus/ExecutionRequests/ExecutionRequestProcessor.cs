@@ -1,10 +1,10 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System;
-using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -15,6 +15,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
+using System;
+using System.Linq;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
@@ -35,6 +37,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
         GasPrice = UInt256.Zero,
+        IsSystemCall = true,
     };
 
     private readonly Transaction _consolidationTransaction = new()
@@ -45,6 +48,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
         GasPrice = UInt256.Zero,
+        IsSystemCall = true,
     };
 
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
@@ -61,10 +65,28 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         using ArrayPoolList<byte[]> requests = new(3);
 
-        ProcessDeposits(receipts, spec, requests);
-        ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
-        ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
-        block.ExecutionRequests = requests.ToArray();
+        try
+        {
+            ProcessDeposits(receipts, spec, requests);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(ex.Message));
+        }
+
+        if (spec.WithdrawalRequestsEnabled)
+        {
+            ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
+                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
+        }
+
+        if (spec.ConsolidationRequestsEnabled)
+        {
+            ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
+                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+        }
+
+        block.ExecutionRequests = [.. requests];
         block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
@@ -125,31 +147,31 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests)
+    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests,
+        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
-        bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
-
-        int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
-
-        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled) || !state.AccountExists(contractAddress))
-            return;
+        if (!state.HasCode(contractAddress))
+        {
+            throw new InvalidBlockException(block, contractEmptyError);
+        }
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header, spec), tracer);
+        _transactionProcessor.Execute(systemTx, new BlockExecutionContext(block.Header, spec), tracer);
+
+        if (tracer.StatusCode == StatusCode.Failure)
+        {
+            throw new InvalidBlockException(block, contractFailedError);
+        }
 
         if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
         {
             return;
         }
 
-        int validLength = tracer.ReturnValue.Length - (tracer.ReturnValue.Length % requestsByteSize);
-
-        if (validLength == 0) return;
-
-        Span<byte> buffer = stackalloc byte[validLength + 1];
-        buffer[0] = isWithdrawalRequests ? (byte)ExecutionRequestType.WithdrawalRequest : (byte)ExecutionRequestType.ConsolidationRequest;
-        tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.Slice(1));
-        requests.Add(buffer.ToArray());
+        byte[] buffer = new byte[tracer.ReturnValue.Length + 1];
+        buffer[0] = (byte)type;
+        tracer.ReturnValue.AsSpan().CopyTo(buffer.AsSpan(1));
+        requests.Add(buffer);
     }
 }
