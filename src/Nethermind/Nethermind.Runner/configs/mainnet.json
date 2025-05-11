@@ -35,9 +35,5 @@
   },
   "Merge": {
     "Enabled": true
-  },
-  "Mining":{
-        "Enabled": true,
-    "Signer": "http://localhost:8550"
   }
 }
