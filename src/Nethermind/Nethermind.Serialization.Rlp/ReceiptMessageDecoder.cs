@@ -12,13 +12,14 @@ namespace Nethermind.Serialization.Rlp
     [Rlp.Decoder(RlpDecoderKey.Trie)]
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
     {
-        private readonly bool _includeBloom;
+        // For eth/69 or later
+        private readonly bool _eth69;
 
-        public ReceiptMessageDecoder() : this(includeBloom: true) { }
+        public ReceiptMessageDecoder() : this(eth69: false) { }
 
-        protected ReceiptMessageDecoder(bool includeBloom)
+        protected ReceiptMessageDecoder(bool eth69)
         {
-            _includeBloom = includeBloom;
+            _eth69 = eth69;
         }
 
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -46,7 +47,11 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.TxType = (TxType)ctx.ReadByte();
             }
 
-            _ = ctx.ReadSequenceLength();
+            if (!_eth69)
+            {
+                _ = ctx.ReadSequenceLength();
+            }
+
             byte[] firstItem = ctx.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
@@ -64,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
             }
 
-            if (_includeBloom)
+            if (!_eth69)
             {
                 txReceipt.Bloom = ctx.DecodeBloom();
             }
@@ -92,7 +97,7 @@ namespace Nethermind.Serialization.Rlp
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
 
-            if (_includeBloom)
+            if (!_eth69)
             {
                 contentLength += Rlp.LengthOf(item.Bloom);
             }
@@ -129,7 +134,9 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
-            int receiptPayloadLength = Rlp.LengthOfSequence(Total);
+            int receiptPayloadLength = _eth69
+                ? Total
+                : Rlp.LengthOfSequence(Total);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = item.TxType != TxType.Legacy
@@ -162,7 +169,9 @@ namespace Nethermind.Serialization.Rlp
             }
 
             (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
-            int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
+            int sequenceLength = _eth69
+                ? totalContentLength
+                : Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
@@ -176,7 +185,11 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.WriteByte((byte)item.TxType);
             }
 
-            rlpStream.StartSequence(totalContentLength);
+            if (!_eth69)
+            {
+                rlpStream.StartSequence(totalContentLength);
+            }
+
             if (!item.SkipStateAndStatusInRlp)
             {
                 if (isEip658Receipts)
@@ -191,7 +204,7 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.Encode(item.GasUsedTotal);
 
-            if (_includeBloom)
+            if (!_eth69)
             {
                 rlpStream.Encode(item.Bloom);
             }
