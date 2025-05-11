@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-import * as d3 from 'd3';
 import {
   formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName,
   getNetworkLogo, getNodeType, formatEth, formatDuration, format, formatDec
 } from './format';
 import { sparkline, Datum } from './sparkline';
-import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionReceipt, Peer } from './types';
+import { NodeData, INode, TxPool, ForkChoice, System, TransactionReceipt, Peer } from './types';
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
 import { createRollingBoxPlot } from './boxPlot'
@@ -142,7 +141,6 @@ function updateTxPool(txPool: TxPool) {
     addCapped(seriesBlock, { t: nowMs, v: currentBlock - lastBlock });
   }
 
-
   if (!document.hidden) {
     if (!txPoolNodes) {
       return;
@@ -151,9 +149,9 @@ function updateTxPool(txPool: TxPool) {
     txPoolFlow.update(txPoolNodes, txPool);
 
     // Update numeric indicators
-    updateText(txPoolValue, d3.format(',.0f')(txPool.pooledTx));
-    updateText(blobTxPoolValue, d3.format(',.0f')(txPool.pooledBlobTx));
-    updateText(totalValue, d3.format(',.0f')(txPool.pooledTx + txPool.pooledBlobTx));
+    updateText(txPoolValue, format(txPool.pooledTx));
+    updateText(blobTxPoolValue, format(txPool.pooledBlobTx));
+    updateText(totalValue, format(txPool.pooledTx + txPool.pooledBlobTx));
 
     if (lastNow !== 0) {
       // Update the sparkline for each type
