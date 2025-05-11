@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
@@ -119,6 +120,14 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
     private void Handle(BlockRangeUpdateMessage blockRangeUpdate)
     {
+        if (blockRangeUpdate.EarliestBlock > blockRangeUpdate.LatestBlock)
+        {
+            Disconnect(
+                DisconnectReason.InvalidBlockRangeUpdate,
+                $"BlockRangeUpdate with earliest ({blockRangeUpdate.EarliestBlock}) > latest ({blockRangeUpdate.LatestBlock})."
+            );
+        }
+
         _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
         HeadNumber = blockRangeUpdate.LatestBlock;
         HeadHash = blockRangeUpdate.LatestBlockHash;
@@ -156,6 +165,9 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     {
         if (_earliestBlockUpdate <= earliestBlock && _latestBlockUpdate + LatestBlockFrequency > latestBlock)
             return;
+
+        if (earliestBlock > latestBlock)
+            throw new ArgumentException($"Earliest block ({earliestBlock}) greater than latest ({latestBlock}) in BlockRangeUpdate.");
 
         _earliestBlockUpdate = Math.Min(_earliestBlockUpdate, earliestBlock);
         _latestBlockUpdate = Math.Max(_latestBlockUpdate, latestBlock);
