@@ -85,6 +85,7 @@
     </None>
     <None Remove="keystore\**" />
     <None Remove="scripts\boxPlot.ts" />
+    <None Remove="scripts\gasInfo.ts" />
     <None Remove="scripts\treeMap.ts" />
     <None Remove="scripts\txParser.ts" />
     <None Remove="scripts\types.ts" />
@@ -105,6 +106,7 @@
 
   <ItemGroup>
     <TypeScriptCompile Include="scripts\boxPlot.ts" />
+    <TypeScriptCompile Include="scripts\gasInfo.ts" />
     <TypeScriptCompile Include="scripts\logWindow.ts" />
     <TypeScriptCompile Include="scripts\peerPie.ts" />
     <TypeScriptCompile Include="scripts\treeMap.ts" />

@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 import * as d3 from 'd3';
-import { formatDuration } from './format';
+import {
+  formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName,
+  getNetworkLogo, getNodeType, formatEth, formatDuration, format, formatDec
+} from './format';
 import { sparkline, Datum } from './sparkline';
 import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionReceipt, Peer } from './types';
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
-import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo, getNodeType, formatEth } from './utilities';
 import { createRollingBoxPlot } from './boxPlot'
 import { updatePieChart } from './peerPie'
 import { getMethod, getTxType, getToAddress } from './txParser'
 import { LogWindow } from './logWindow';
+import { updateText } from './utilities';
+import { GasInfo } from './gasInfo';
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -41,13 +45,6 @@ const sparkMemory = document.getElementById('sparkMemory') as HTMLElement;
 const memory = document.getElementById('memory') as HTMLElement;
 const maxMemory = document.getElementById('maxMemory') as HTMLElement;
 
-const minGas = document.getElementById('minGas') as HTMLElement;
-const medianGas = document.getElementById('medianGas') as HTMLElement;
-const aveGas = document.getElementById('aveGas') as HTMLElement;
-const maxGas = document.getElementById('maxGas') as HTMLElement;
-const gasLimit = document.getElementById('gasLimit') as HTMLElement;
-const gasLimitDelta = document.getElementById('gasLimitDelta') as HTMLElement;
-
 const blockExtraData = document.getElementById('blockExtraData') as HTMLElement;
 const blockGasUsed = document.getElementById('blockGasUsed') as HTMLElement;
 const blockGasLimit = document.getElementById('blockGasLimit') as HTMLElement;
@@ -55,26 +52,6 @@ const blockBlockSize = document.getElementById('blockBlockSize') as HTMLElement;
 const blockTimestamp = document.getElementById('blockTimestamp') as HTMLElement;
 const blockTransactions = document.getElementById('blockTransactions') as HTMLElement;
 const blockBlobs = document.getElementById('blockBlobs') as HTMLElement;
-
-//const ridgeDataLength = createRidgelinePlot(
-//  d3.select('#ridgeline-dataLength'),
-//  (d) => Math.log10( d.dataLength )// numeric field in the TxReceipt
-//);
-
-//const ridgeValue = createRidgelinePlot(
-//  d3.select('#ridgeline-value'),
-//  (d) => Math.log10(parseInt(d.value, 16) / 1000000000000000000) // parse from hex
-//);
-
-//const ridgeGasUsed = createRidgelinePlot(
-//  d3.select('#ridgeline-gasUsed'),
-//  (d) => Math.log10(parseInt(d.gasUsed, 16))
-//);
-
-//const ridgeEffectiveGasPrice = createRidgelinePlot(
-//  d3.select('#ridgeline-effectiveGasPrice'),
-//  (d) => Math.log10(parseInt(d.effectiveGasPrice, 16) / 1000000000)
-//);
 
 // Create a rolling box plot instance for effectiveGasPrice
 const boxPlotEGP = createRollingBoxPlot(
@@ -109,19 +86,9 @@ function addCapped(array: Datum[], datum: Datum) {
   }
 }
 
-function updateText(element: HTMLElement, value: string): void {
-  if (element.innerText !== value) {
-    // Don't update the DOM if the value is the same
-    element.innerText = value;
-  }
-}
-
 // Initialize the Sankey flow
 const txPoolFlow = new TxPoolFlow('#txPoolFlow');
 
-// Number format
-const format = d3.format(',.0f');
-const formatDec = d3.format(',.1f');
 
 let txPoolNodes: INode[] = null;
 /**
@@ -214,11 +181,13 @@ function updateTxPool(txPool: TxPool) {
   lastHashesReceived = currentHashesReceived;
 }
 
-const logWindow = new LogWindow(document.getElementById('nodeLog'));
+const logWindow = new LogWindow("nodeLog");
+const gasInfo = new GasInfo("minGas", "medianGas", "aveGas", "maxGas", "gasLimit", "gasLimitDelta");
 
 const sse = new EventSource("/data/events");
 
 sse.addEventListener("log", (e) => logWindow.receivedLog(e));
+sse.addEventListener("processed", (e) => gasInfo.parseEvent(e));
 
 sse.addEventListener("nodeData", (e) => {
   const data = JSON.parse(e.data) as NodeData;
@@ -242,20 +211,6 @@ sse.addEventListener("txLinks", (e) => {
   if (document.hidden) return;
   const data = JSON.parse(e.data) as TxPool;
   updateTxPool(data);
-});
-let lastGasLimit = 30_000_000;
-sse.addEventListener("processed", (e) => {
-  if (document.hidden) return;
-  const data = JSON.parse(e.data) as Processed;
-
-  updateText(minGas, data.minGas.toFixed(2));
-  updateText(medianGas, data.medianGas.toFixed(2));
-  updateText(aveGas, data.aveGas.toFixed(2));
-  updateText(maxGas, data.maxGas.toFixed(2));
-  updateText(gasLimit, format(data.gasLimit));
-  updateText(gasLimitDelta, data.gasLimit > lastGasLimit ? '👆' : data.gasLimit < lastGasLimit ? '👇' : '👈');
-
-  lastGasLimit = data.gasLimit;
 });
 
 let lastBlockTime: number = 0;

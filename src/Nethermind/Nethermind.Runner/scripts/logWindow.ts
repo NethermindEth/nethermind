@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 import Convert = require('ansi-to-html');
 
@@ -6,8 +8,8 @@ export class LogWindow {
   private readonly ansiConvert = new Convert();
   private logs: string[] = [];
 
-  constructor(nodeLog: HTMLElement) {
-    this.nodeLog = nodeLog;
+  constructor(logElement: string) {
+    this.nodeLog = document.getElementById(logElement);
   }
 
   receivedLog(e) {
