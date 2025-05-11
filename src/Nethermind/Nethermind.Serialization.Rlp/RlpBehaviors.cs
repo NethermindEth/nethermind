@@ -31,5 +31,11 @@ public enum RlpBehaviors
     /// </summary>
     InMempoolForm = 64,
     ExcludeHashes = 128,
-    All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping | InMempoolForm | ExcludeHashes,
+
+    /// <summary>
+    /// Used by ReceiptMessageDecoder to skip serializing state and status for receipt root calculation.
+    /// </summary>
+    SkipStateAndStatusInRlp = 256,
+
+    All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping | InMempoolForm | ExcludeHashes | SkipStateAndStatusInRlp,
 }
