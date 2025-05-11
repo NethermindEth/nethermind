@@ -9,6 +9,9 @@ ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 
+RUN apt-get install -y nodejs
+
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \

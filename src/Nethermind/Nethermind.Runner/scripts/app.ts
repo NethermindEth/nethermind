@@ -350,14 +350,14 @@ function newFrame() {
   frameDelta = frameTime - lastFrameTime;
 
   logWindow.appendLogs();
-  appendTx();
+  appendTxs();
 
   lastFrameTime = frameTime;
 }
 
 let lastTxBlock = "";
 let evenTx = true;
-function appendTx() {
+function appendTxs() {
   if (txsToAdd.length === 0) return;
 
   let maxTxToAdd = Math.min(Math.round(lastBlockTxs * ((performance.now() - lastBlockTime) / blockDelta)) - (lastBlockTxs - txsToAdd.length), txsToAdd.length);
