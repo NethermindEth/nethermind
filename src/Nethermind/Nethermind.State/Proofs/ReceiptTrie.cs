@@ -20,7 +20,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
     private readonly IRlpStreamDecoder<TReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TReceipt> receipts, IRlpStreamDecoder<TReceipt> trieDecoder, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TReceipt> receipts, IRlpStreamDecoder<TReceipt> trieDecoder, RlpBehaviors additionalBehaviors = RlpBehaviors.None, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -29,14 +29,14 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
 
         if (receipts.Length > 0)
         {
-            Initialize(receipts, spec);
+            Initialize(receipts, spec, additionalBehaviors);
             UpdateRootHash();
         }
     }
 
-    private void Initialize(ReadOnlySpan<TReceipt> receipts, IReceiptSpec spec)
+    private void Initialize(ReadOnlySpan<TReceipt> receipts, IReceiptSpec spec, RlpBehaviors additionalBehaviors = RlpBehaviors.None)
     {
-        RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
+        RlpBehaviors behavior = ((spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping) | additionalBehaviors;
         int key = 0;
 
         foreach (TReceipt? receipt in receipts)
@@ -51,16 +51,16 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
 
     protected override void Initialize(ReadOnlySpan<TReceipt> list) => throw new NotSupportedException();
 
-    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TReceipt> receipts, int index, IRlpStreamDecoder<TReceipt> decoder)
+    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TReceipt> receipts, int index, IRlpStreamDecoder<TReceipt> decoder, RlpBehaviors additionalBehaviors = RlpBehaviors.None)
     {
         using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4);
-        return new ReceiptTrie<TReceipt>(spec, receipts, decoder, canBuildProof: true, cappedArrayPool).BuildProof(index);
+        return new ReceiptTrie<TReceipt>(spec, receipts, decoder, additionalBehaviors, canBuildProof: true, cappedArrayPool).BuildProof(index);
     }
 
-    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TReceipt> txReceipts, IRlpStreamDecoder<TReceipt> decoder)
+    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TReceipt> txReceipts, IRlpStreamDecoder<TReceipt> decoder, RlpBehaviors additionalBehaviors = RlpBehaviors.None)
     {
         using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4);
-        Hash256 receiptsRoot = new ReceiptTrie<TReceipt>(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool).RootHash;
+        Hash256 receiptsRoot = new ReceiptTrie<TReceipt>(receiptSpec, txReceipts, decoder, additionalBehaviors, bufferPool: cappedArrayPool).RootHash;
         return receiptsRoot;
     }
 }
