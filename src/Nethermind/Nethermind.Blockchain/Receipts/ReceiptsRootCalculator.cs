@@ -17,23 +17,15 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {
-        Hash256 SkipStateAndStatusReceiptsRoot()
+        Hash256 CalculateSkipStateAndStatusReceiptsRoot()
         {
-            receipts.SetSkipStateAndStatusInRlp(true);
-            try
-            {
-                return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
-            }
-            finally
-            {
-                receipts.SetSkipStateAndStatusInRlp(false);
-            }
+            return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder, RlpBehaviors.SkipStateAndStatusInRlp);
         }
 
         Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
         if (!spec.ValidateReceipts && receiptsRoot != suggestedRoot)
         {
-            var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();
+            var skipStateAndStatusReceiptsRoot = CalculateSkipStateAndStatusReceiptsRoot();
             if (skipStateAndStatusReceiptsRoot == suggestedRoot)
             {
                 return skipStateAndStatusReceiptsRoot;
