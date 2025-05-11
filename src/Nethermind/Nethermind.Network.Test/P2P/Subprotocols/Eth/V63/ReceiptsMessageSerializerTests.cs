@@ -17,10 +17,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptsMessageSerializerTests
 {
-    private static void Test(TxReceipt[][]? txReceipts)
+    private static void Test(TxReceipt[][]? txReceipts, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
-        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance, rlpBehaviors);
         var serialized = serializer.Serialize(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
@@ -59,7 +59,7 @@ public class ReceiptsMessageSerializerTests
                             Assert.That(deserialized.TxReceipts[i][j].ContractAddress, Is.Null, $"receipts[{i}][{j}].ContractAddress");
                             Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
                             Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
-                            if (!txReceipts[i][j].SkipStateAndStatusInRlp)
+                            if ((rlpBehaviors & RlpBehaviors.SkipStateAndStatusInRlp) != RlpBehaviors.SkipStateAndStatusInRlp)
                             {
                                 Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
                                 Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
@@ -82,11 +82,7 @@ public class ReceiptsMessageSerializerTests
     public void Roundtrip_with_IgnoreOutputs()
     {
         TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
-        foreach (TxReceipt[] receipts in data)
-        {
-            receipts.SetSkipStateAndStatusInRlp(true);
-        }
-        Test(data);
+        Test(data, RlpBehaviors.SkipStateAndStatusInRlp);
     }
 
     [Test]
