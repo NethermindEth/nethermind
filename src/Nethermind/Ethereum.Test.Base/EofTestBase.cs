@@ -14,7 +14,7 @@ namespace Ethereum.Test.Base
     {
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static ILogger _logger = _logManager.GetClassLogger();
-        
+
         [SetUp]
         public void Setup()
         {
