@@ -68,6 +68,8 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         {
             ValueHash256 nodeHash = nodeHashProvider.GetHash(node);
             seen.TryAdd(nodeHash, node);
+
+            if (nodeHash == _currentNodeIdAsHash) continue;
             queryQueue.Enqueue((nodeHash, node), nodeHash);
 
             yield return node;

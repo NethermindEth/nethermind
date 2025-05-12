@@ -35,12 +35,6 @@ public class KademliaNodeSource(
         int duplicated = 0;
         int total = 0;
 
-        void handler(object? _, Node addedNode)
-        {
-            _writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
-            ch.Writer.TryWrite(addedNode);
-        }
-
         async Task DiscoverAsync(PublicKey target)
         {
             if (_logger.IsDebug) _logger.Debug($"Looking up {target}");
@@ -117,7 +111,7 @@ public class KademliaNodeSource(
 
         try
         {
-            kademlia.OnNodeAdded += handler;
+            kademlia.OnNodeAdded += Handler;
 
             await foreach (Node node in ch.Reader.ReadAllAsync(token))
             {
@@ -127,7 +121,15 @@ public class KademliaNodeSource(
         finally
         {
             await discoverTask;
-            kademlia.OnNodeAdded -= handler;
+            kademlia.OnNodeAdded -= Handler;
+        }
+
+        yield break;
+
+        void Handler(object? _, Node addedNode)
+        {
+            _writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
+            ch.Writer.TryWrite(addedNode); // Ignore if channel full
         }
     }
 }
