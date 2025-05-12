@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/taiko-hekla.json",
-    "GenesisHash": "0x1f5554042aa50dc0712936ae234d8803b80b84251f85d074756a2f391896e109",
+    "GenesisHash": "0xe3dad0f877e94bb4dc662c416fe28f8f1a8a289a9ba1e8b2eb189ec279477302",
     "BaseDbPath": "nethermind_db/taiko-hekla",
     "LogFileName": "taiko-hekla.logs.txt",
     "DisableGcOnNewPayload": false
@@ -19,6 +19,8 @@
   },
   "JsonRpc": {
     "Enabled": true,
-    "EnginePort": 8551
+    "EnginePort": 8551,
+    "WebSocketsPort": 8545
+    
   }
 }

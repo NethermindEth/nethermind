@@ -100,7 +100,7 @@
     },
     "Taiko Hekla": {
       "commandName": "Project",
-      "commandLineArgs": "-c taiko-hekla --data-dir .data",
+      "commandLineArgs": "-c D:/temp/taiko-holesky.cfg.json --data-dir D:/temp/data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

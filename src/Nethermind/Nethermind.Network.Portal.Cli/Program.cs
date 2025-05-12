@@ -37,11 +37,11 @@ using Lantern.Discv5.Rlp;
 using System.Text;
 #pragma warning disable CS0219 // Variable is assigned but its value is never used
 
-int localPort = 30304;
+int localPort = 30307;
 IPAddress localIPAddress = IPAddress.Any;
 
 EthereumJsonSerializer json = new();
-var trin = "enr:-JS4QP-LPN7KyeBC1x0IUDgua0-AdQyeAlr7mgbaG2ceyKqMIESTDaH1yvwuyQ6etcWUJOCBYR_6M_es0mOU3GGTcMCEZ4EQT2OKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgiMx";
+//var trin = "enr:-JS4QP-LPN7KyeBC1x0IUDgua0-AdQyeAlr7mgbaG2ceyKqMIESTDaH1yvwuyQ6etcWUJOCBYR_6M_es0mOU3GGTcMCEZ4EQT2OKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgiMx";
 
 TaskCompletionSource tcs = new();
 
@@ -83,7 +83,7 @@ registry.RegisterEntry("v4", (b) => new RawEntry("v4", b));
 registry.RegisterEntry("opstack", (b) => new RawEntry("opstack", b));
 
 EnrFactory enrFactory = new(registry);
-var s = $"{enrFactory.CreateFromString(trin, identityVerifier):ea}";
+//var s = $"{enrFactory.CreateFromString(trin, identityVerifier):ea}";
 
 IPAddress heh = NetworkInterface.GetAllNetworkInterfaces()!
 .Where(i => i.Name == "eth0" ||
@@ -113,13 +113,32 @@ await _connections.BindAsync(bootstrap, localPort);
 await tcs.Task;
 
 _logger.Warn($"Discv5 IP address: {Shared.Ip!.MapToIPv4()}:{Shared.Port}");
+string[] bootNodesStr =
+[
+    "enr:-JO4QI9lFgGspzKDiOmTEaP1Ez5hLThk6zScLG5mjdqzNJfkGvd1XiNBDsNFnR0QPGCf-kfgtIvIYiGm3g9TDvCrQj-EZ-rUN2OJdCA5OTVkNzRigmlkgnY0gmlwhIuxtT2Jc2VjcDI1NmsxoQNPooMJZYkKoadCUn59GK3z24a2wqVPnzYywEcn0g_MxYN1ZHCCIzE",
+    // Trin bootstrap nodes",
+    //"enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg"
+
+    //// Fluffy bootstrap nodes",
+    //"enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+    //"enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
+    //"enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
+    //"enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+
+    //// Ultralight bootstrap nodes",
+    //"enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
+    //"enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
+    //"enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
+    //"enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
+];
+
 
 EnrBuilder enrBuilder = new EnrBuilder()
     .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
-    .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
     .WithEntry("c", new RawEntry("c", "n"u8.ToArray()))
-    .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
+    .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
     .WithEntry(EnrEntryKey.Ip, new EntryIp(Shared.Ip!.MapToIPv4()))
+    .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
     .WithEntry(EnrEntryKey.Udp, new EntryUdp(Shared.Port));
 
 IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
@@ -128,53 +147,144 @@ IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
         UdpPort = localPort
     })
     .WithSessionOptions(_sessionOptions)
-    .WithTableOptions(new TableOptions([]))
+    .WithTableOptions(new TableOptions(bootNodesStr))
     .WithEnrBuilder(enrBuilder)
     .WithEnrEntryRegistry(registry)
     .WithLoggerFactory(new NethermindLoggerFactory(SimpleConsoleLogManager.Instance, true))
     .WithServices(s =>
     {
-        NettyDiscoveryV5Handler.Register(s);
         s
+        .AddSingleton<NettyDiscoveryV5Handler>(handler)
+        .AddSingleton<IUdpConnection>(handler)
         .ConfigurePortalNetworkCommonServices()
         .ConfigureLanternPortalAdapter();
     });
 
 //var _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, port);
-IDiscv5Protocol proto = discv5Builder.Build();
+IDiscv5Protocol _discv5Protocol = discv5Builder.Build();
 
 IServiceProvider _serviceProvider = discv5Builder.GetServiceProvider();
 
+var d = _serviceProvider.GetRequiredService<IUdpConnection>();
+
+_logger.Warn($"My enr: {_discv5Protocol.SelfEnr}");
+
+await _discv5Protocol.InitAsync();
 
 
-_logger.Warn($"My enr: {proto.SelfEnr}");
+//await Task.Delay(1000);
+//await foreach (IEnr node in DiscoverNodes(default))
+//{
+//    Console.ForegroundColor = ConsoleColor.Green;
+//    Console.WriteLine(node);
+//    Console.ForegroundColor = ConsoleColor.White;
+//}
 
-await proto.InitAsync();
-string[] bootNodesStr =
-[
-    ////Trin bootstrap nodes
-    ////trin,
-    //"enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
-    //"enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
-    //"enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
 
-    ////Fluffy bootstrap nodes
-    //"enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
-    //"enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
-    //"enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
-    //"enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+//async IAsyncEnumerable<IEnr> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
+//{
+//    Channel<IEnr> channel = Channel.CreateBounded<IEnr>(1);
 
-    ////Ultralight bootstrap nodes
-    //"enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
-    ////"enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
-    //"enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
-    //"enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
+//    async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+//    {
+//        static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
+//        {
+//            const int WiderDistanceRange = 3;
 
-    //"enr:-Ii4QFAIi3_aJfuHapjnVCfDh4BgHqND2PVTBncv1iPELQj-egf71SVrLVWpZtNcwVSOmtu3wHwoIwjT2zOCUi2ykR-CGSdjZoJpZIJ2NIJpcITCIStZiXNlY3AyNTZrMaEDMOi5OBRftLAQpfK2gN5L0CPAeEnd9FTLQBRkYR191bWDdWRwgiOM",
-    //"enr:-Ii4QLyPY1f3EpQjww8I31V2knEsYTllk74hGXsK5-tCuViPDLvCzFuozVJpM_t0oc9RXXTOJ0YmD1ON5Lqe1KcajSGCEodjZoJpZIJ2NIJpcITCIStNiXNlY3AyNTZrMaECDNlp0U6kzM_snZBXWnv-JXk1IwzWJP5e8lbfb6RjxOyDdWRwgiOM",
-    //"enr:-Ii4QHoeGc7ytlq4V2gq77U9Uyqn2FhVx8abdFDskl-7n0LXbnD4iaADqGYMCDjKszALBFxOACMC9pdnl6kDBr_GjlmCFB9jZoJpZIJ2NIJpcITCISsliXNlY3AyNTZrMaECNiZslK14i4CFMYBHGxPkH_Z3VWsdf3Zg0K5t2QunMR-DdWRwgiOM",
-    "enr:-Ii4QADcN5hwh2ezIyWq2iCt4kkRocrahpiAsWhsq_RqffYpKDHa22w267lOyMActkcVhQq2ZP1ok09zWwHxPhFsbLWCFcdjZoJpZIJ2NIJpcITCISsuiXNlY3AyNTZrMaECc52FNY8CKrp0Ie4LFvh1BQJc6wkI03WU3GQSzQP14TWDdWRwgiOM"
-];
+//            int[] distances = new int[WiderDistanceRange];
+//            distances[0] = TableUtility.Log2Distance(srcNodeId, destNodeId);
+
+//            for (int n = 1, i = 1; n < WiderDistanceRange; i++)
+//            {
+//                if (distances[0] - i > 0)
+//                {
+//                    distances[n++] = distances[0] - i;
+//                }
+//                if (distances[0] + i <= 256)
+//                {
+//                    distances[n++] = distances[0] + i;
+//                }
+//            }
+
+//            return distances;
+//        }
+
+//        Queue<IEnr> nodesToCheck = new(startingNode);
+//        HashSet<IEnr> checkedNodes = [];
+
+//        while (!token.IsCancellationRequested)
+//        {
+//            if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+//            {
+//                return;
+//            }
+
+//            await channel.Writer.WriteAsync(newEntry!, token);
+
+//            if (!checkedNodes.Add(newEntry))
+//            {
+//                continue;
+//            }
+
+//            IEnumerable<IEnr>? newNodesFound = (await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)))?.Where(x => !checkedNodes.Contains(x));
+
+//            if (newNodesFound is not null)
+//            {
+//                foreach (IEnr? node in newNodesFound)
+//                {
+//                    nodesToCheck.Enqueue(node);
+//                }
+//            }
+//        }
+//    }
+
+//    IEnumerable<IEnr> GetStartingNodes() => bootNodesStr.Select(x => enrFactory.CreateFromString(x, new IdentityVerifierV4()));
+//    Random random = new();
+
+//    const int RandomNodesToLookupCount = 3;
+
+//    Task discoverTask = Task.Run(async () =>
+//    {
+//        byte[] randomNodeId = new byte[32];
+//        while (!token.IsCancellationRequested)
+//        {
+//            try
+//            {
+//                List<Task> discoverTasks = new List<Task>();
+//                discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+
+//                for (int i = 0; i < RandomNodesToLookupCount; i++)
+//                {
+//                    random.NextBytes(randomNodeId);
+//                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
+//                }
+
+//                await Task.WhenAll(discoverTasks);
+//            }
+//            catch (Exception ex)
+//            {
+//                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
+//            }
+//        }
+//    });
+
+//    try
+//    {
+//        await foreach (IEnr node in channel.Reader.ReadAllAsync(token))
+//        {
+//            yield return node;
+//        }
+//    }
+//    finally
+//    {
+//        await discoverTask;
+//    }
+//}
+
+_logger.Warn($"Ready discv5");
+
+
+
 IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
 
 IServiceProvider historyNetworkServiceProvider = _serviceProvider.CreateHistoryNetworkServiceProviderWithRpc(historyNetworkBootnodes);
@@ -187,7 +297,10 @@ IKademlia<IEnr>? kad = historyNetworkServiceProvider.GetService<IKademlia<IEnr>>
 IPortalHistoryNetwork net = historyNetworkServiceProvider.GetService<IPortalHistoryNetwork>()!;
 
 
+
 _logger.Warn($"Ready");
+
+Console.ReadLine();
 
 int h = 0, b = 0, r = 0;
 
@@ -568,12 +681,11 @@ class SocketDatagramChannel2 : SocketDatagramChannel
             this.Socket.Bind(localAddress);
             this.CacheLocalAddress();
 
-            EndPoint handMadeStunAddr = IPEndPoint.Parse("139.177.181.61:9003");
-            // EndPoint handMadeStunAddr = IPEndPoint.Parse("127.0.0.1:9003");
-            //Thread.Sleep(100);
+            EndPoint handMadeStunAddr = IPEndPoint.Parse("139.177.181.61:9004");
+
             Socket.SendTo(new[] { (byte)0x42 }, handMadeStunAddr);
             byte[] buf = new byte[1280];
-            Thread.Sleep(130);
+            Thread.Sleep(370);
 
             Socket.ReceiveFrom(buf, ref handMadeStunAddr);
             Shared.Ip = new IPAddress(buf[0..4]);
