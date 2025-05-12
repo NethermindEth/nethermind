@@ -249,12 +249,16 @@ public class KademliaDiscv4Adapter(
 
         PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
         Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, _processCancellationToken);
-        if (nodes.Length > 12)
+        if (nodes.Length <= 12)
         {
-            // some issue with large neighbour message. Too large, and its larger than the default mtu 1280.
-            nodes = nodes.Slice(0, 12).ToArray();
+            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
         }
-        await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
+        else
+        {
+            // Split into two because the size of message when nodes is > 12 is larger than mtu size.
+            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]));
+            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..]));
+        }
     }
 
     private async Task HandlePing(Node node, PingMsg ping)

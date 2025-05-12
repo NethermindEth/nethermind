@@ -17,7 +17,7 @@ public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
     public bool Handle(DiscoveryMsg msg)
     {
         NeighborsMsg neighborsMsg = (NeighborsMsg)msg;
-        if (_current.Length >= k || _current.Length + neighborsMsg.Nodes.Length > k) return false;
+        if (_current.Length >= k || _current.Length + neighborsMsg.Nodes.Count > k) return false;
 
         _current = _current.Concat(neighborsMsg.Nodes).ToArray();
         if (_current.Length == k)
