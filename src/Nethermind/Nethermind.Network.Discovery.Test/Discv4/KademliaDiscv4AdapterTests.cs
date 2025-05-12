@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -16,6 +17,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -38,6 +40,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private Node _testNode = null!;
         private PublicKey _testPublicKey = null!;
 
+        private IMessageSerializationService _receiverSerializationManager;
+        private IPEndPoint _receiverHost;
+        private Node _receiver;
+
         [SetUp]
         public void Setup()
         {
@@ -54,6 +60,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _timestamper = Substitute.For<ITimestamper>();
             _timestamper.UnixTime.Returns(new UnixTime(new DateTime(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc)));
             _msgSender = Substitute.For<IMsgSender>();
+
+            _receiverHost = IPEndPoint.Parse("192.168.1.2");
+            _receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            SerializationBuilder builder = new SerializationBuilder();
+            builder.WithDiscovery(TestItem.PrivateKeyB);
+            _receiverSerializationManager = builder.TestObject;
+
 
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademliaMessageReceiver<PublicKey, Node>>(() => _kademliaMessageReceiver),
@@ -77,26 +90,26 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(5000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
         {
-            var receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
-
             _msgSender
                 .When(x => x.SendMsg(Arg.Any<PingMsg>()))
                 .Do(ci =>
                 {
                     var sent = (PingMsg)ci[0]!;
-                    sent.FarPublicKey = TestItem.PublicKeyA;
-                    sent.Mdc = new byte[32]; // Normally set by serializer
+                    var buffer = _receiverSerializationManager.ZeroSerialize(sent);
+                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+
                     var pong = new PongMsg(
-                        receiver.Address,
+                        msg.FarPublicKey!,
                         _timestamper.UnixTime.SecondsLong + 1,
                         sent.Mdc!);
+                    pong.FarAddress = _receiverHost;
                     Task.Run(() => _adapter.OnIncomingMsg(pong));
                 });
 
-            await _adapter.Ping(receiver, token);
+            await _adapter.Ping(_receiver, token);
 
             await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m =>
-                m.FarAddress!.Equals(receiver.Address)));
+                m.FarAddress!.Equals(_receiver.Address)));
         }
 
         [Test]
@@ -232,7 +245,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m =>
                 m.FarAddress!.Equals(_testNode.Address) &&
-                m.Nodes.Length == expectedNodes.Length));
+                m.Nodes.Count == expectedNodes.Length));
         }
 
         [Test]
