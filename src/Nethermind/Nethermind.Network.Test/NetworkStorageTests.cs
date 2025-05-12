@@ -6,12 +6,11 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -40,18 +39,6 @@ public class NetworkStorageTests
     private TempPath _tempDir;
     private INetworkStorage _storage;
 
-    private INodeLifecycleManager CreateLifecycleManager(Node node)
-    {
-        INodeLifecycleManager manager = Substitute.For<INodeLifecycleManager>();
-        manager.ManagedNode.Returns(node);
-        manager.NodeStats.Returns(new NodeStatsLight(node)
-        {
-            CurrentPersistedNodeReputation = node.Port
-        });
-
-        return manager;
-    }
-
     [Test]
     public void Can_store_discovery_nodes()
     {
@@ -67,9 +54,10 @@ public class NetworkStorageTests
             new Node(TestItem.PublicKeyE, "192.1.1.5", 3445)
         };
 
-        var managers = nodes.Select(CreateLifecycleManager).ToArray();
+        INodeStatsManager nodeStatsManager = new NodeStatsManager(new TimerFactory(), LimboLogs.Instance);
+
         DateTime utcNow = DateTime.UtcNow;
-        var networkNodes = managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation(utcNow))).ToArray();
+        var networkNodes = nodes.Select(x => new NetworkNode(x.Id, x.Host, x.Port, nodeStatsManager.GetOrAdd(x).NewPersistedNodeReputation(utcNow))).ToArray();
 
 
         _storage.StartBatch();
@@ -77,13 +65,13 @@ public class NetworkStorageTests
         _storage.Commit();
 
         persistedNodes = _storage.GetPersistedNodes();
-        foreach (INodeLifecycleManager manager in managers)
+        foreach (Node manager in nodes)
         {
-            NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
+            NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.Id));
             Assert.That(persistedNode, Is.Not.Null);
-            Assert.That(persistedNode.Port, Is.EqualTo(manager.ManagedNode.Port));
-            Assert.That(persistedNode.Host, Is.EqualTo(manager.ManagedNode.Host));
-            Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation()));
+            Assert.That(persistedNode.Port, Is.EqualTo(manager.Port));
+            Assert.That(persistedNode.Host, Is.EqualTo(manager.Host));
+            Assert.That(persistedNode.Reputation, Is.EqualTo(nodeStatsManager.GetOrAdd(manager).CurrentNodeReputation()));
         }
 
         _storage.StartBatch();
@@ -91,20 +79,20 @@ public class NetworkStorageTests
         _storage.Commit();
 
         persistedNodes = _storage.GetPersistedNodes();
-        foreach (INodeLifecycleManager manager in managers.Take(1))
+        foreach (Node manager in nodes.Take(1))
         {
-            NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
+            NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.Id));
             Assert.That(persistedNode, Is.Null);
         }
 
         utcNow = DateTime.UtcNow;
-        foreach (INodeLifecycleManager manager in managers.Skip(1))
+        foreach (Node manager in nodes.Skip(1))
         {
-            NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
+            NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.Id));
             Assert.That(persistedNode, Is.Not.Null);
-            Assert.That(persistedNode.Port, Is.EqualTo(manager.ManagedNode.Port));
-            Assert.That(persistedNode.Host, Is.EqualTo(manager.ManagedNode.Host));
-            Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation(utcNow)));
+            Assert.That(persistedNode.Port, Is.EqualTo(manager.Port));
+            Assert.That(persistedNode.Host, Is.EqualTo(manager.Host));
+            Assert.That(persistedNode.Reputation, Is.EqualTo(nodeStatsManager.GetOrAdd(manager).CurrentNodeReputation(utcNow)));
         }
     }
 
