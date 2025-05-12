@@ -770,7 +770,7 @@ namespace Nethermind.Trie.Test
         {
             foreach (var trieStoreConfigurations in CreateTrieStoreConfigurations())
             {
-                yield return new (trieStoreConfigurations, 128, 128, 8);
+                yield return new(trieStoreConfigurations, 128, 128, 8);
             }
         }
 
