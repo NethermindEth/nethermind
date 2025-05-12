@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -33,7 +34,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = new TrieStore(new MemDb(), LimboLogs.Instance);
+            _store = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
             (_inputStateTree, _inputStorageTree, _storage) = TestItem.Tree.GetTrees(_store);
         }
 

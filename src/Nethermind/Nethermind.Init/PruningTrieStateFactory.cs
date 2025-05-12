@@ -125,12 +125,7 @@ public class PruningTrieStateFactory(
 
             pruningStrategy = Prune
                 .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-                .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
-                // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
-                // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
-                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
-                .WithDirtyNodeShardCount(pruningConfig.DirtyNodeShardBit)
-                .KeepingLastNState(pruningConfig.PruningBoundary);
+                .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB());
         }
         else
         {
@@ -144,6 +139,7 @@ public class PruningTrieStateFactory(
             mainNodeStorage,
             pruningStrategy,
             persistenceStrategy,
+            pruningConfig,
             logManager);
 
         ITrieStore mainWorldTrieStore = trieStore;
@@ -157,6 +153,7 @@ public class PruningTrieStateFactory(
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 mainWorldTrieStore,
+                mainNodeStorage,
                 codeDb,
                 logManager,
                 preBlockCaches,
