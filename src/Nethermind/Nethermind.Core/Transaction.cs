@@ -257,8 +257,6 @@ namespace Nethermind.Core
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
 
-        public bool IsSystemCall { get; set; } = false;
-
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
             public Transaction Create()
@@ -336,6 +334,13 @@ namespace Nethermind.Core
     public class SystemTransaction : Transaction
     {
         private new const long GasLimit = 30_000_000L;
+    }
+
+    /// <summary>
+    /// System call like transaction that is to be executed by the node without including in the block.
+    /// </summary>
+    public class SystemCall : Transaction
+    {
     }
 
     /// <summary>

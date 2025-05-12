@@ -29,7 +29,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private readonly ITransactionProcessor _transactionProcessor;
 
-    private readonly Transaction _withdrawalTransaction = new()
+    private readonly SystemCall _withdrawalTransaction = new()
     {
         Value = UInt256.Zero,
         Data = Array.Empty<byte>(),
@@ -37,10 +37,9 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
         GasPrice = UInt256.Zero,
-        IsSystemCall = true,
     };
 
-    private readonly Transaction _consolidationTransaction = new()
+    private readonly SystemCall _consolidationTransaction = new()
     {
         Value = UInt256.Zero,
         Data = Array.Empty<byte>(),
@@ -48,7 +47,6 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
         GasPrice = UInt256.Zero,
-        IsSystemCall = true,
     };
 
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
@@ -65,14 +63,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         using ArrayPoolList<byte[]> requests = new(3);
 
-        try
-        {
-            ProcessDeposits(receipts, spec, requests);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(ex.Message));
-        }
+        ProcessDeposits(block, receipts, spec, requests);
 
         if (spec.WithdrawalRequestsEnabled)
         {
@@ -90,7 +81,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
-    private void ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
+    private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
     {
         if (!spec.DepositsEnabled)
             return;
@@ -111,7 +102,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
                         Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
-                        DecodeDepositRequest(log, depositRequestBuffer);
+                        DecodeDepositRequest(block, log, depositRequestBuffer);
                         depositRequests.AddRange(depositRequestBuffer.ToArray());
                     }
                 }
@@ -122,9 +113,18 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             requests.Add(depositRequests.ToArray());
     }
 
-    private void DecodeDepositRequest(LogEntry log, Span<byte> buffer)
+    private void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
     {
-        object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
+        object[] result = null;
+        try
+        {
+            result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
+        }
+        catch (Exception e) when (e is AbiException or OverflowException)
+        {
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message));
+        }
+
         int offset = 0;
 
         foreach (var item in result)
@@ -136,14 +136,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             }
             else
             {
-                throw new InvalidOperationException("Decoded ABI result contains non-byte array elements.");
+                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout("Decoded ABI result contains non-byte array elements."));
             }
         }
 
         // make sure the flattened result is of the correct size
         if (offset != ExecutionRequestExtensions.DepositRequestsBytesSize)
         {
-            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes.");
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes."));
         }
     }
 
