@@ -20,6 +20,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Specs;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -94,6 +95,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 new DiscoveryConfig(),
                 _kademliaConfig,
                 _selfNodeRecord,
+                Substitute.For<INodeStatsManager>(),
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),
                 _logManager

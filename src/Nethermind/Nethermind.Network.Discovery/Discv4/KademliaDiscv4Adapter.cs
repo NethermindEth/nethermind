@@ -13,6 +13,7 @@ using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
 using Prometheus;
@@ -26,6 +27,7 @@ public class KademliaDiscv4Adapter(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     NodeRecord selfNodeRecord,
+    INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
@@ -191,6 +193,7 @@ public class KademliaDiscv4Adapter(
                 }
             }
 
+            RecordStatsForOutgoingMsg(node, msg);
             await sender.SendMsg(msg);
         }
     }
@@ -279,6 +282,56 @@ public class KademliaDiscv4Adapter(
     private Counter _unhandledDiscoveryMesssage =
         Prometheus.Metrics.CreateCounter("unhandled_disc_message", "Unhaandled", "type");
 
+    private void RecordStatsForIncomingMsg(Node node, DiscoveryMsg msg)
+    {
+        switch (msg.MsgType)
+        {
+            case MsgType.Ping:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
+                break;
+            case MsgType.FindNode:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
+                break;
+            case MsgType.EnrRequest:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
+                break;
+            case MsgType.Neighbors:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
+                break;
+            case MsgType.Pong:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
+                break;
+            case MsgType.EnrResponse:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
+                break;
+        }
+    }
+
+    private void RecordStatsForOutgoingMsg(Node node, DiscoveryMsg msg)
+    {
+        switch (msg.MsgType)
+        {
+            case MsgType.Ping:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
+                break;
+            case MsgType.FindNode:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeOut);
+                break;
+            case MsgType.EnrRequest:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestOut);
+                break;
+            case MsgType.Neighbors:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
+                break;
+            case MsgType.Pong:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
+                break;
+            case MsgType.EnrResponse:
+                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
+                break;
+        }
+    }
+
     public async Task OnIncomingMsg(DiscoveryMsg msg)
     {
         try
@@ -286,6 +339,7 @@ public class KademliaDiscv4Adapter(
             if (_logger.IsTrace) _logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
             Node node = new(msg.FarPublicKey, msg.FarAddress);
+            RecordStatsForIncomingMsg(node, msg);
 
             if (HandleViaMessageHandlers(node, msg))
             {
