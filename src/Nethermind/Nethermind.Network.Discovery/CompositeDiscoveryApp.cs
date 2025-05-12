@@ -145,15 +145,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
     private void InitDiscoveryV4(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
     {
-        NodeIdResolver nodeIdResolver = new(_ethereumEcdsa);
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
-        IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
-            _serializationService,
-            _ethereumEcdsa,
-            privateKeyProvider,
-            nodeIdResolver);
-
-        msgSerializersProvider.RegisterDiscoverySerializers();
 
         // ToDo: DiscoveryDB is registered outside dbProvider - bad
         SimpleFilePublicKeyDb discoveryDb = new(

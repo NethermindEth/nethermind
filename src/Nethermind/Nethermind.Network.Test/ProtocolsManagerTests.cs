@@ -87,7 +87,13 @@ public class ProtocolsManagerTests
             _txPool = Substitute.For<ITxPool>();
             _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _discoveryApp = Substitute.For<IDiscoveryApp>();
-            _serializer = new MessageSerializationService();
+
+            _serializer = new MessageSerializationService(
+                SerializerInfo.Create(new HelloMessageSerializer()),
+                SerializerInfo.Create(new StatusMessageSerializer()),
+                SerializerInfo.Create(new DisconnectMessageSerializer())
+                );
+
             _rlpxHost = Substitute.For<IRlpxHost>();
             _rlpxHost.LocalPort.Returns(_localPort);
             _rlpxHost.LocalNodeId.Returns(TestItem.PublicKeyA);
@@ -119,10 +125,6 @@ public class ProtocolsManagerTests
                 new NetworkConfig(),
                 Substitute.For<IWorldStateManager>(),
                 LimboLogs.Instance);
-
-            _serializer.Register(new HelloMessageSerializer());
-            _serializer.Register(new StatusMessageSerializer());
-            _serializer.Register(new DisconnectMessageSerializer());
         }
 
         public Context CreateIncomingSession()
