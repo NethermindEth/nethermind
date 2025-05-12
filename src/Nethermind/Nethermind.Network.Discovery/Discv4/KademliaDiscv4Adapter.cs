@@ -209,6 +209,7 @@ public class KademliaDiscv4Adapter(
         token = cts.Token;
 
         PingMsg msg = new PingMsg(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address);
+        msg.EnrSequence = selfNodeRecord.EnrSequence; // optional and does not seems to be used anywhere.
 
         _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, msg, token);
     }
