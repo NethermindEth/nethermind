@@ -93,10 +93,14 @@ public class OptimismCL : IDisposable
     {
         try
         {
+            ArgumentNullException.ThrowIfNull(_engineParameters.L1ChainId);
+            ArgumentNullException.ThrowIfNull(_engineParameters.L1GenesisNumber);
+            ArgumentNullException.ThrowIfNull(_engineParameters.L1GenesisHash);
+
             bool isL1ConfigValid = await _l1ConfigValidator.Validate(
-                _engineParameters.L1ChainId!.Value,
-                _engineParameters.L1GenesisNumber!.Value,
-                _engineParameters.L1GenesisHash!);
+                _engineParameters.L1ChainId.Value,
+                _engineParameters.L1GenesisNumber.Value,
+                _engineParameters.L1GenesisHash);
             if (!isL1ConfigValid)
             {
                 throw new InvalidOperationException("Invalid L1 config");
