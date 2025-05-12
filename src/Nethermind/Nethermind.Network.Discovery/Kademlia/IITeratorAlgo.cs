@@ -25,6 +25,7 @@ public interface IITeratorAlgo<TNode>
     IAsyncEnumerable<TNode> Lookup(
         ValueHash256 target,
         int minResult,
+        int alpha,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     );

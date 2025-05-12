@@ -32,6 +32,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
     public async IAsyncEnumerable<TNode> Lookup(
         ValueHash256 targetHash,
         int minResult,
+        int alpha,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         [EnumeratorCancellation] CancellationToken token
     ) {
@@ -80,7 +81,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             }
         }
 
-        Task[] worker = Enumerable.Range(0, config.Alpha).Select((i) => Task.Run(async () =>
+        Task[] worker = Enumerable.Range(0, alpha).Select((i) => Task.Run(async () =>
         {
             var writer = outChan.Writer;
             while (!finished)
@@ -132,7 +133,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                             continue;
                         }
 
-                        Interlocked.Increment(ref minResult);
+                        Interlocked.Increment(ref totalResult);
                         await writer.WriteAsync(neighbour, cts.Token);
 
                         using McsLock.Disposable _ = queueLock.Acquire();

@@ -21,9 +21,15 @@ public class DiscV4KademliaModule(NodeRecord selfNodeRecord, PublicKey masterNod
             .AddSingleton<IKeyOperator<PublicKey, Node>, NodeNodeHashProvider>()
             .AddSingleton(selfNodeRecord)
             .AddSingleton<KademliaNodeSource>()
-            .AddSingleton(new KademliaConfig<Node>()
+            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
                 CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true),
+                KSize = discoveryConfig.BucketSize,
+                Alpha = discoveryConfig.Concurrency,
+                Beta = discoveryConfig.BitsPerHop,
+
+                LookupFindNeighbourHardTimout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout), // TODO: This seems very low.
+                RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PongTimeout),
                 BootNodes = bootNodes
             })
             .AddSingleton<IKademliaMessageSender<PublicKey, Node>, KademliaDiscv4Adapter>();

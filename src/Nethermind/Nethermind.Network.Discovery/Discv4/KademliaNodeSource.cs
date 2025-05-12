@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
+using Prometheus;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
@@ -23,6 +24,9 @@ public class KademliaNodeSource(
 {
     ILogger _logger = logManager.GetClassLogger();
 
+    private Counter _discoverRound = Prometheus.Metrics.CreateCounter("kademlia_discover_rounds", "discovery rounds");
+    private Counter _discoverPingResult = Prometheus.Metrics.CreateCounter("kademlia_discover_ping", "discovery rounds", "result");
+
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
         if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
@@ -33,6 +37,7 @@ public class KademliaNodeSource(
 
         async Task DiscoverAsync(PublicKey target)
         {
+            _discoverRound.Inc();
             if (_logger.IsDebug) _logger.Debug($"Looking up {target}");
             bool anyFound = false;
             int count = 0;
@@ -40,14 +45,16 @@ public class KademliaNodeSource(
             ValueHash256 targetHash = target.Hash;
             Func<Node, CancellationToken, Task<Node[]>> lookupOp = (nextNode, token) =>
                 discv4Adapter.FindNeighbours(nextNode, target, token);
-            await foreach (var node in lookup2.Lookup(targetHash, 128, lookupOp!, token))
+            await foreach (var node in lookup2.Lookup(targetHash, 128, 1, lookupOp!, token))
             {
                 try
                 {
                     await discv4Adapter.Ping(node, token);
+                    _discoverPingResult.WithLabels("ok").Inc();
                 }
                 catch (OperationCanceledException)
                 {
+                    _discoverPingResult.WithLabels("timeout").Inc();
                     continue;
                 }
 

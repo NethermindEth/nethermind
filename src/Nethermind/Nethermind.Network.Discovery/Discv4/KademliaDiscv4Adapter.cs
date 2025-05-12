@@ -15,12 +15,14 @@ using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NonBlocking;
+using Prometheus;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
 public class KademliaDiscv4Adapter(
     Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
     INetworkConfig networkConfig,
+    IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     NodeRecord selfNodeRecord,
     ITimestamper timestamper,
@@ -43,12 +45,11 @@ public class KademliaDiscv4Adapter(
     public NodeFilter NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
-
     private readonly ConcurrentDictionary<ValueHash256, TaskCompletionSource<object>> _awaitingPongToNode = new(); // This is for waiting to send pong in attempt to authenticate.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _outgoingBondDeadline = new(1024 * 10, "outgoing_bond_deadline");
 
-    private readonly LruCache<ValueHash256, DateTimeOffset> _incomingBondDeadline = new(1024 * 10, "incoming_bond_deadline");
-    private readonly ConcurrentDictionary<ValueHash256, long> _authenticatedRequestFailure = new(); // TODO: To lru cache
+    private readonly LruCache<ValueHash256, DateTimeOffset> _outgoingBondDeadline = new(discoveryConfig.MaxNodeLifecycleManagersCount, "outgoing_bond_deadline");
+    private readonly LruCache<ValueHash256, DateTimeOffset> _incomingBondDeadline = new(discoveryConfig.MaxNodeLifecycleManagersCount, "incoming_bond_deadline");
+    private readonly LruCache<ValueHash256, long> _authenticatedRequestFailure = new(discoveryConfig.MaxNodeLifecycleManagersCount, "authenticated_request_failure");
     private readonly CancellationToken _processCancellationToken = processExitSource.Token;
 
     #region Authentication and utils
@@ -88,7 +89,7 @@ public class KademliaDiscv4Adapter(
 
         bool TooManyFailure()
         {
-            return _authenticatedRequestFailure.TryGetValue(node.IdHash, out long failedFinedNodes) && failedFinedNodes > AuthenticatedRequestFailureLimit;
+            return _authenticatedRequestFailure.TryGet(node.IdHash, out long failedFinedNodes) && failedFinedNodes > AuthenticatedRequestFailureLimit;
         }
     }
 
@@ -115,12 +116,16 @@ public class KademliaDiscv4Adapter(
                 // Well.... maybe we already bonded, we just forgot about it....
                 _outgoingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + BondTimeout);
             }
-            _authenticatedRequestFailure[node.IdHash] = 0;
+
+            _authenticatedRequestFailure.Set(node.IdHash, 0);
             return resp;
         }
         catch (OperationCanceledException)
         {
-            _authenticatedRequestFailure.Increment(node.IdHash);
+            _authenticatedRequestFailure.Set(node.IdHash,
+                _authenticatedRequestFailure.TryGet(node.IdHash, out long current)
+                    ? current + 1
+                    : 1);
 
             throw;
         }
@@ -269,6 +274,9 @@ public class KademliaDiscv4Adapter(
         await SendMessage(node, msg);
     }
 
+    private Counter _unhandledDiscoveryMesssage =
+        Prometheus.Metrics.CreateCounter("unhandled_disc_message", "Unhaandled", "type");
+
     public async Task OnIncomingMsg(DiscoveryMsg msg)
     {
         try
@@ -284,12 +292,12 @@ public class KademliaDiscv4Adapter(
 
             switch (msgType)
             {
-                case MsgType.Neighbors:
-                    break;
-                case MsgType.Pong:
-                    break;
                 case MsgType.Ping:
                     PingMsg ping = (PingMsg)msg;
+                    if (!ValidatePingAddress(ping!))
+                    {
+                        return;
+                    }
                     await HandlePing(node, ping);
                     break;
                 case MsgType.FindNode:
@@ -298,7 +306,10 @@ public class KademliaDiscv4Adapter(
                 case MsgType.EnrRequest:
                     await HandleEnrRequest(node, (EnrRequestMsg)msg);
                     break;
+                case MsgType.Neighbors:
+                case MsgType.Pong:
                 case MsgType.EnrResponse:
+                    _unhandledDiscoveryMesssage.WithLabels(msgType.ToString()).Inc();
                     break;
                 default:
                     if (_logger.IsError) _logger.Error($"Unsupported msgType: {msgType}");
@@ -313,6 +324,17 @@ public class KademliaDiscv4Adapter(
         {
             if (_logger.IsError) _logger.Error("Error during msg handling", e);
         }
+    }
+
+    private bool ValidatePingAddress(PingMsg msg)
+    {
+        if (msg.DestinationAddress is null || msg.FarAddress is null)
+        {
+            if (_logger.IsError) _logger.Error($"Received a ping message with empty address, message: {msg}");
+            return false;
+        }
+
+        return true;
     }
 
     private bool HandleViaMessageHandlers(Node node, DiscoveryMsg msg)
