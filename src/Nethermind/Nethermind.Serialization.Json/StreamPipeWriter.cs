@@ -243,11 +243,13 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private void ReturnSegmentUnsynchronized(BufferSegment segment)
     {
+        /*
         segment.Reset();
         if (_bufferSegmentPool.Count < MaxSegmentPoolSize)
         {
             _bufferSegmentPool.Push(segment);
         }
+        */
     }
 
     /// <inheritdoc />
