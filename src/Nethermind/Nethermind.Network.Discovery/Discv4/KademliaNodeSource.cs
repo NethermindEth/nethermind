@@ -7,25 +7,21 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
-using Prometheus;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.Discv4;
 
+// TODO: Unit test, remove metric
 public class KademliaNodeSource(
     IKademlia<PublicKey, Node> kademlia,
-    IITeratorAlgo<Node> _lookup2,
+    IITeratorAlgo<Node> lookup2,
     KademliaDiscv4Adapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     ILogManager logManager
 )
 {
     ILogger _logger = logManager.GetClassLogger();
-
-    private Counter _kademliaDiscoveredNodes = Prometheus.Metrics.CreateCounter("kademlia_discovered_nodes", "Discovered");
-    private Counter _kademliaDiscoveredNodeStatus = Prometheus.Metrics.CreateCounter("kademlia_discovered_nodes_status", "Discovered", "status");
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -44,7 +40,7 @@ public class KademliaNodeSource(
             ValueHash256 targetHash = target.Hash;
             Func<Node, CancellationToken, Task<Node[]>> lookupOp = (nextNode, token) =>
                 discv4Adapter.FindNeighbours(nextNode, target, token);
-            await foreach (var node in _lookup2.Lookup(targetHash, 128, lookupOp!, token))
+            await foreach (var node in lookup2.Lookup(targetHash, 128, lookupOp!, token))
             {
                 try
                 {
@@ -52,11 +48,9 @@ public class KademliaNodeSource(
                 }
                 catch (OperationCanceledException)
                 {
-                    _kademliaDiscoveredNodeStatus.WithLabels("ping_timeout").Inc();
                     continue;
                 }
 
-                _kademliaDiscoveredNodeStatus.WithLabels("ok").Inc();
                 anyFound = true;
                 count++;
                 total++;
@@ -65,7 +59,6 @@ public class KademliaNodeSource(
                     duplicated++;
                     continue;
                 }
-                _kademliaDiscoveredNodes.Inc();
                 await ch.Writer.WriteAsync(node, token);
             }
 
