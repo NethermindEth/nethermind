@@ -12,16 +12,6 @@ namespace Nethermind.Serialization.Rlp
     [Rlp.Decoder(RlpDecoderKey.Trie)]
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
     {
-        // For eth/69 or later
-        private readonly bool _eth69;
-
-        public ReceiptMessageDecoder() : this(eth69: false) { }
-
-        protected ReceiptMessageDecoder(bool eth69)
-        {
-            _eth69 = eth69;
-        }
-
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Span<byte> span = rlpStream.PeekNextItem();
@@ -47,11 +37,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.TxType = (TxType)ctx.ReadByte();
             }
 
-            if (!_eth69)
-            {
-                _ = ctx.ReadSequenceLength();
-            }
-
+            _ = ctx.ReadSequenceLength();
             byte[] firstItem = ctx.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
@@ -69,10 +55,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
             }
 
-            if (!_eth69)
-            {
-                txReceipt.Bloom = ctx.DecodeBloom();
-            }
+            txReceipt.Bloom = ctx.DecodeBloom();
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -87,7 +70,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -96,11 +79,7 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-
-            if (!_eth69)
-            {
-                contentLength += Rlp.LengthOf(item.Bloom);
-            }
+            contentLength += Rlp.LengthOf(item.Bloom);
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
@@ -134,9 +113,7 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
-            int receiptPayloadLength = _eth69
-                ? Total
-                : Rlp.LengthOfSequence(Total);
+            int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = item.TxType != TxType.Legacy
@@ -169,9 +146,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
-            int sequenceLength = _eth69
-                ? totalContentLength
-                : Rlp.LengthOfSequence(totalContentLength);
+            int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
@@ -185,11 +160,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.WriteByte((byte)item.TxType);
             }
 
-            if (!_eth69)
-            {
-                rlpStream.StartSequence(totalContentLength);
-            }
-
+            rlpStream.StartSequence(totalContentLength);
             if (!item.SkipStateAndStatusInRlp)
             {
                 if (isEip658Receipts)
@@ -203,11 +174,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.Encode(item.GasUsedTotal);
-
-            if (!_eth69)
-            {
-                rlpStream.Encode(item.Bloom);
-            }
+            rlpStream.Encode(item.Bloom);
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;
