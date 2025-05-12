@@ -341,7 +341,7 @@ namespace Nethermind.Benchmarks.Store
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+                Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
@@ -369,7 +369,7 @@ namespace Nethermind.Benchmarks.Store
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+                Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
@@ -401,7 +401,7 @@ namespace Nethermind.Benchmarks.Store
         {
             TrieStore trieStore = _largeUncommittedFullTree = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
+                Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
