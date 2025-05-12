@@ -31,9 +31,10 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _session = Substitute.For<ISession>();
-            _serializer = new MessageSerializationService();
-            _serializer.Register(new HelloMessageSerializer());
-            _serializer.Register(new PingMessageSerializer());
+            _serializer = new MessageSerializationService(
+                SerializerInfo.Create(new HelloMessageSerializer()),
+                SerializerInfo.Create(new PingMessageSerializer())
+            );
         }
 
         [TearDown]
