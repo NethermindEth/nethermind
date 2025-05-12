@@ -32,7 +32,6 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
     public async IAsyncEnumerable<TNode> Lookup(
         ValueHash256 targetHash,
         int minResult,
-        int alpha,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         [EnumeratorCancellation] CancellationToken token
     ) {
@@ -48,21 +47,13 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             Hash256XorUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        McsLock queueLock = new McsLock();
         PriorityQueue<(ValueHash256, TNode), ValueHash256> queryQueue = new(comparer);
-
-        Channel<TNode> outChan = Channel.CreateBounded<TNode>(1);
-
-        // Used for fast worker wake up when queue is empty
-        TaskCompletionSource roundComplete = new TaskCompletionSource(token);
-        int queryingTask = 0;
 
         // Used to determine if the worker should stop
         ValueHash256 bestNodeId = ValueKeccak.Zero;
         int closestNodeRound = 0;
         int currentRound = 0;
         int totalResult = 0;
-        bool finished = false;
 
         // Check internal table first
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, null))
@@ -70,7 +61,6 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             ValueHash256 nodeHash = nodeHashProvider.GetHash(node);
             seen.TryAdd(nodeHash, node);
 
-            if (nodeHash == _currentNodeIdAsHash) continue;
             queryQueue.Enqueue((nodeHash, node), nodeHash);
 
             yield return node;
@@ -81,101 +71,74 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             }
         }
 
-        Task[] worker = Enumerable.Range(0, alpha).Select((i) => Task.Run(async () =>
+        while (true)
         {
-            var writer = outChan.Writer;
-            while (!finished)
+            token.ThrowIfCancellationRequested();
+            if (!queryQueue.TryDequeue(out (ValueHash256 hash, TNode node) toQuery, out ValueHash256 hash256))
             {
-                token.ThrowIfCancellationRequested();
-                if (!TryGetNodeToQuery(out (ValueHash256 hash, TNode node)? toQuery))
-                {
-                    if (queryingTask > 0)
-                    {
-                        // Need to wait for all querying tasks first here.
-                        await Task.WhenAny(roundComplete.Task, Task.Delay(100, token));
-                        continue;
-                    }
+                // No node to query and running query.
+                if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
+                yield break;
+            }
 
-                    // No node to query and running query.
-                    if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
-                    break;
+            if (SameAsSelf(toQuery.node)) continue;
+
+            queried.TryAdd(toQuery.hash, toQuery.node);
+            if (_logger.IsTrace) _logger.Trace($"Query {toQuery.node} at round {currentRound}");
+
+            TNode[]? neighbours = await WrappedFindNeighbourOp(toQuery.node);
+            if (neighbours == null || neighbours?.Length == 0)
+            {
+                if (_logger.IsTrace) _logger.Trace("Empty result");
+                continue;
+            }
+
+            int queryIgnored = 0;
+            int seenIgnored = 0;
+            foreach (TNode neighbour in neighbours!)
+            {
+                ValueHash256 neighbourHash = nodeHashProvider.GetHash(neighbour);
+
+                // Already queried, we ignore
+                if (queried.ContainsKey(neighbourHash))
+                {
+                    queryIgnored++;
+                    continue;
                 }
 
-                Interlocked.Increment(ref queryingTask);
-                try
+                // When seen already dont record
+                if (!seen.TryAdd(neighbourHash, neighbour))
                 {
-                    queried.TryAdd(toQuery.Value.hash, toQuery.Value.node);
-                    if (_logger.IsTrace) _logger.Trace($"Query {toQuery.Value.node} at round {currentRound}, isself {SameAsSelf(toQuery.Value.node)}");
-                    TNode[]? neighbours = await WrappedFindNeighbourOp(toQuery.Value.node);
-                    if (neighbours == null || neighbours?.Length == 0)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Empty result");
-                        continue;
-                    }
-
-                    int queryIgnored = 0;
-                    int seenIgnored = 0;
-                    foreach (TNode neighbour in neighbours!)
-                    {
-                        ValueHash256 neighbourHash = nodeHashProvider.GetHash(neighbour);
-
-                        // Already queried, we ignore
-                        if (queried.ContainsKey(neighbourHash))
-                        {
-                            queryIgnored++;
-                            continue;
-                        }
-
-                        // When seen already dont record
-                        if (!seen.TryAdd(neighbourHash, neighbour))
-                        {
-                            seenIgnored++;
-                            continue;
-                        }
-
-                        Interlocked.Increment(ref totalResult);
-                        await writer.WriteAsync(neighbour, cts.Token);
-
-                        using McsLock.Disposable _ = queueLock.Acquire();
-                        bool foundBetter = comparer.Compare(neighbourHash, bestNodeId) < 0;
-                        queryQueue.Enqueue((neighbourHash, neighbour), neighbourHash);
-
-                        // If found a better node, reset closes node round.
-                        // This causes `ShouldStopDueToNoBetterResult` to return false.
-                        if (closestNodeRound < currentRound && foundBetter)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Found better neighbour {neighbour} at round {currentRound}.");
-                            bestNodeId = neighbourHash;
-                            closestNodeRound = currentRound;
-                        }
-                    }
-                    if (_logger.IsTrace) _logger.Trace($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
-
-                    if (ShouldStopDueToNoBetterResult())
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
-                        break;
-                    }
+                    seenIgnored++;
+                    continue;
                 }
-                finally
+
+                Interlocked.Increment(ref totalResult);
+                yield return neighbour;
+
+                bool foundBetter = comparer.Compare(neighbourHash, bestNodeId) < 0;
+                queryQueue.Enqueue((neighbourHash, neighbour), neighbourHash);
+
+                // If found a better node, reset closes node round.
+                // This causes `ShouldStopDueToNoBetterResult` to return false.
+                if (closestNodeRound < currentRound && foundBetter)
                 {
-                    Interlocked.Decrement(ref queryingTask);
-                    if (roundComplete.TrySetResult()) roundComplete = new TaskCompletionSource(token);
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Found better neighbour {neighbour} at round {currentRound}.");
+                    bestNodeId = neighbourHash;
+                    closestNodeRound = currentRound;
                 }
             }
 
-            outChan.Writer.TryComplete();
-        }, token)).ToArray();
+            if (_logger.IsTrace)
+                _logger.Trace($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
 
-        await foreach (var node in outChan.Reader.ReadAllAsync(token))
-        {
-            yield return node;
+            if (ShouldStopDueToNoBetterResult())
+            {
+                if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                break;
+            }
         }
-
-        // When any of the worker is finished, we consider the whole query as done.
-        // This prevent this operation from hanging on a timed out request
-        await Task.WhenAny(worker);
-        finished = true;
 
         if (_logger.IsTrace) _logger.Trace("Lookup operation finished.");
         yield break;
@@ -204,21 +167,6 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                 if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
                 return null;
             }
-        }
-
-        bool TryGetNodeToQuery([NotNullWhen(true)] out (ValueHash256, TNode)? toQuery)
-        {
-            using McsLock.Disposable _ = queueLock.Acquire();
-            if (queryQueue.Count == 0)
-            {
-                toQuery = default;
-                // No more node to query.
-                // Note: its possible that there are other worker currently which may add to bestSeen.
-                return false;
-            }
-
-            toQuery = queryQueue.Dequeue();
-            return true;
         }
 
         bool ShouldStopDueToNoBetterResult()

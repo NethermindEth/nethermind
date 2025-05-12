@@ -45,7 +45,7 @@ public class KademliaNodeSource(
             ValueHash256 targetHash = target.Hash;
             Func<Node, CancellationToken, Task<Node[]>> lookupOp = (nextNode, token) =>
                 discv4Adapter.FindNeighbours(nextNode, target, token);
-            await foreach (var node in lookup2.Lookup(targetHash, 128, 1, lookupOp!, token))
+            await foreach (var node in lookup2.Lookup(targetHash, 128, lookupOp!, token))
             {
                 try
                 {
