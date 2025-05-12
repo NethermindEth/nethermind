@@ -301,13 +301,17 @@ public class KademliaDiscv4Adapter(
                 case MsgType.EnrResponse:
                     break;
                 default:
-                    _logger.Error($"Unsupported msgType: {msgType}");
+                    if (_logger.IsError) _logger.Error($"Unsupported msgType: {msgType}");
                     return;
             }
         }
+        catch (TaskCanceledException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Error during msg handling. {e}");
+        }
         catch (Exception e)
         {
-            _logger.Error("Error during msg handling", e);
+            if (_logger.IsError) _logger.Error("Error during msg handling", e);
         }
     }
 
