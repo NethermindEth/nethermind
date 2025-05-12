@@ -265,10 +265,7 @@ public class KademliaDiscv4Adapter(
     {
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
         await kademliaMessageReceiver.Value.Ping(node, _processCancellationToken);
-        // Generate MDC hash from the ping message
-        Rlp requestRlp = Rlp.Encode(Rlp.Encode(ping.ExpirationTime));
-        byte[] mdc = Keccak.Compute(requestRlp.Bytes).Bytes.ToArray();
-        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), mdc);
+        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
         await SendMessage(node, msg);
     }
 

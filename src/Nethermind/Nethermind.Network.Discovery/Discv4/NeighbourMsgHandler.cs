@@ -17,9 +17,14 @@ public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
     public bool Handle(DiscoveryMsg msg)
     {
         NeighborsMsg neighborsMsg = (NeighborsMsg)msg;
-        if (_current.Length >= k || _current.Length + neighborsMsg.Nodes.Count > k) return false;
 
-        _current = _current.Concat(neighborsMsg.Nodes).ToArray();
+        while (true)
+        {
+            Node[] current = _current;
+            if (current.Length >= k || current.Length + neighborsMsg.Nodes.Count > k) return false;
+            if (Interlocked.CompareExchange(ref _current, _current.Concat(neighborsMsg.Nodes).ToArray(), current) == current) break;
+        }
+
         if (_current.Length == k)
         {
             TaskCompletionSource.TrySetResult(_current);
