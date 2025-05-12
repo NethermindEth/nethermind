@@ -258,9 +258,4 @@ public class NodeRecord
             throw new Exception("Cannot encode a node record with an empty signature.");
         }
     }
-
-    public string NodeRecordString()
-    {
-        return string.Join(",", Entries.Select((e) => $"{e.Key}:{e.Value}"));
-    }
 }
