@@ -32,10 +32,8 @@ public class KademliaDiscv4Adapter(
     ILogManager logManager
 ): IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
 {
-    private static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     private readonly TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
-    private const int AuthenticatedRequestFailureLimit = 5;
     /// <summary>
     /// This is the value set by other clients based on real network tests.
     /// </summary>
@@ -44,21 +42,25 @@ public class KademliaDiscv4Adapter(
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
     public IMsgSender? MsgSender { get; set; }
     public NodeFilter NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
+    private readonly CancellationToken _processCancellationToken = processExitSource.Token;
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
 
-    private readonly LruCache<ValueHash256, DateTimeOffset> _outgoingBondDeadline = new(discoveryConfig.MaxNodeLifecycleManagersCount, "outgoing_bond_deadline");
-    private readonly LruCache<ValueHash256, DateTimeOffset> _incomingBondDeadline = new(discoveryConfig.MaxNodeLifecycleManagersCount, "incoming_bond_deadline");
-    private readonly LruCache<ValueHash256, long> _authenticatedRequestFailure = new(discoveryConfig.MaxNodeLifecycleManagersCount, "authenticated_request_failure");
-    private readonly CancellationToken _processCancellationToken = processExitSource.Token;
+    private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
 
     #region Authentication and utils
 
-    private async Task<bool> EnsureOutgoingMessageBondedPeer(Node node, CancellationToken token)
+    private NodeSession GetSession(Node node)
     {
-        var hasBonded = _outgoingBondDeadline.TryGet(node.IdHash, out DateTimeOffset bondDeadline)
-                     && bondDeadline > DateTimeOffset.Now;
-        if (hasBonded && !TooManyFailure()) return true;
+        if (_sessions.TryGet(node.IdHash, out var session)) return session;
+        session = new NodeSession(nodeStatsManager.GetOrAdd(node));
+        _sessions.Set(node.IdHash, session);
+        return session;
+    }
+
+    private async Task EnsureOutgoingMessageBondedPeer(Node node, NodeSession nodeSession, CancellationToken token)
+    {
+        if (nodeSession is { HasReceivedPing: true, NotTooManyFailure: true }) return;
 
         if (_logger.IsTrace) _logger.Trace($"Ensure session for node {node}");
         await Ping(node, token);
@@ -67,48 +69,20 @@ public class KademliaDiscv4Adapter(
         await Task.Delay(_waitAfterPongTimeout, token);
 
         if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
-
-        return true;
-
-        bool TooManyFailure()
-        {
-            return _authenticatedRequestFailure.TryGet(node.IdHash, out long failedFinedNodes) && failedFinedNodes > AuthenticatedRequestFailureLimit;
-        }
     }
 
-    private async Task EnsureIncomingMessageBondedPeer(Node node, CancellationToken token)
+    private async Task<T> RunAuthenticatedRequest<T>(Node node, NodeSession session, Func<CancellationToken, Task<T>> callRequest, CancellationToken token)
     {
-        if (_incomingBondDeadline.TryGet(node.IdHash, out DateTimeOffset safeUntil) && safeUntil > DateTimeOffset.Now)
-        {
-            return;
-        }
-
-        // If we're here, the node is not safe, so we'll send a ping to verify
-        await Ping(node, token);
-        _incomingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + BondTimeout);
-    }
-
-    private async Task<T> RunAuthenticatedRequest<T>(Node node, Func<CancellationToken, Task<T>> callRequest, CancellationToken token)
-    {
-        bool shouldBeBonded = await EnsureOutgoingMessageBondedPeer(node, token);
+        await EnsureOutgoingMessageBondedPeer(node, session, token);
         try
         {
             T resp = await callRequest(token);
-            if (!shouldBeBonded)
-            {
-                // Well.... maybe we already bonded, we just forgot about it....
-                _outgoingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + BondTimeout);
-            }
-
-            _authenticatedRequestFailure.Set(node.IdHash, 0);
+            session.ResetAuthenticatedRequestFailure();
             return resp;
         }
         catch (OperationCanceledException)
         {
-            _authenticatedRequestFailure.Set(node.IdHash,
-                _authenticatedRequestFailure.TryGet(node.IdHash, out long current)
-                    ? current + 1
-                    : 1);
+            session.OnAuthenticatedRequestFailure();
 
             throw;
         }
@@ -142,13 +116,14 @@ public class KademliaDiscv4Adapter(
         MsgType msgType,
         ITaskCompleter<T> messageHandler,
         Node receiver,
+        NodeSession session,
         DiscoveryMsg msg,
         CancellationToken token
     ) {
         await using CancellationTokenRegistration unregister = token.RegisterToCompletionSource(messageHandler.TaskCompletionSource);
         AddMessageHandler(msgType, receiver.IdHash, messageHandler);
 
-        await SendMessage(receiver, msg);
+        await SendMessage(session, msg);
         try
         {
             return await messageHandler.TaskCompletionSource.Task;
@@ -160,16 +135,11 @@ public class KademliaDiscv4Adapter(
     }
 
 
-    private async Task SendMessage(Node node, DiscoveryMsg msg)
+    private async Task SendMessage(NodeSession session, DiscoveryMsg msg)
     {
         if (MsgSender is { } sender)
         {
-            if (msg is PongMsg pong)
-            {
-                _outgoingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + BondTimeout);
-            }
-
-            RecordStatsForOutgoingMsg(node, msg);
+            session.RecordStatsForOutgoingMsg(msg);
             await sender.SendMsg(msg);
         }
     }
@@ -191,7 +161,11 @@ public class KademliaDiscv4Adapter(
         PingMsg msg = new PingMsg(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address);
         msg.EnrSequence = selfNodeRecord.EnrSequence; // optional and does not seems to be used anywhere.
 
-        _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, msg, token);
+        NodeSession session = GetSession(receiver);
+
+        _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
+
+        session.OnPongReceived();
     }
 
     public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
@@ -199,11 +173,12 @@ public class KademliaDiscv4Adapter(
         using var cts = token.CreateChildTokenSource(_requestTimeout);
         token = cts.Token;
 
-        return await RunAuthenticatedRequest(receiver, async token =>
+        NodeSession session = GetSession(receiver);
+        return await RunAuthenticatedRequest(receiver, session, async token =>
         {
             FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), target.Bytes);
 
-            return await CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, msg, token);
+            return await CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, token);
         }, token);
     }
 
@@ -212,100 +187,70 @@ public class KademliaDiscv4Adapter(
         using var cts = token.CreateChildTokenSource(_requestTimeout);
         token = cts.Token;
 
-        return await RunAuthenticatedRequest(receiver, async token =>
+        NodeSession session = GetSession(receiver);
+        return await RunAuthenticatedRequest(receiver, session, async token =>
         {
             EnrRequestMsg msg = new EnrRequestMsg(receiver.Address, CalculateExpirationTime());
 
-            return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(), receiver, msg, token);
+            return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(), receiver, session, msg, token);
         }, token);
     }
 
-    private async Task HandleEnrRequest(Node node, EnrRequestMsg msg)
+    private Counter _rejectedIncomingMessage =
+        Prometheus.Metrics.CreateCounter("rejected_incoming_message", "Unhaandled", "type");
+
+    private async Task HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg)
     {
-        await EnsureIncomingMessageBondedPeer(node, _processCancellationToken);
+        if (!session.HasReceivedPong)
+        {
+            _rejectedIncomingMessage.WithLabels(msg.MsgType.ToString()).Inc();
+            if (_logger.IsDebug) _logger.Debug($"Rejecting enr request from unbonded peer {node}");
+            return;
+        }
 
         Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
-        await SendMessage(node, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)));
+        await SendMessage(session, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)));
     }
 
-    private async Task HandleFindNode(Node node, FindNodeMsg msg)
+    private async Task HandleFindNode(Node node, NodeSession session, FindNodeMsg msg)
     {
-        await EnsureIncomingMessageBondedPeer(node, _processCancellationToken);
+        if (!session.HasReceivedPong)
+        {
+            _rejectedIncomingMessage.WithLabels(msg.MsgType.ToString()).Inc();
+            if (_logger.IsDebug) _logger.Debug($"Rejecting findNode request from unbonded peer {node}");
+            return;
+        }
 
         PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
         Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, _processCancellationToken);
         if (nodes.Length <= 12)
         {
-            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
         }
         else
         {
             // Split into two because the size of message when nodes is > 12 is larger than mtu size.
-            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]));
-            await SendMessage(node, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..]));
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]));
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..]));
         }
     }
 
-    private async Task HandlePing(Node node, PingMsg ping)
+    private async Task HandlePing(Node node, NodeSession session, PingMsg ping)
     {
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
         await kademliaMessageReceiver.Value.Ping(node, _processCancellationToken);
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
-        await SendMessage(node, msg);
+        session.OnPingReceived();
+        await SendMessage(session, msg);
+
+        if (session.HasReceivedPong)
+        {
+            await Ping(node, _processCancellationToken);
+        }
     }
 
     private Counter _unhandledDiscoveryMesssage =
         Prometheus.Metrics.CreateCounter("unhandled_disc_message", "Unhaandled", "type");
-
-    private void RecordStatsForIncomingMsg(Node node, DiscoveryMsg msg)
-    {
-        switch (msg.MsgType)
-        {
-            case MsgType.Ping:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
-                break;
-            case MsgType.FindNode:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
-                break;
-            case MsgType.EnrRequest:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
-                break;
-            case MsgType.Neighbors:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
-                break;
-            case MsgType.Pong:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
-                break;
-            case MsgType.EnrResponse:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
-                break;
-        }
-    }
-
-    private void RecordStatsForOutgoingMsg(Node node, DiscoveryMsg msg)
-    {
-        switch (msg.MsgType)
-        {
-            case MsgType.Ping:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
-                break;
-            case MsgType.FindNode:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeOut);
-                break;
-            case MsgType.EnrRequest:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestOut);
-                break;
-            case MsgType.Neighbors:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
-                break;
-            case MsgType.Pong:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
-                break;
-            case MsgType.EnrResponse:
-                nodeStatsManager.GetOrAdd(node).AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
-                break;
-        }
-    }
 
     public async Task OnIncomingMsg(DiscoveryMsg msg)
     {
@@ -314,7 +259,8 @@ public class KademliaDiscv4Adapter(
             if (_logger.IsTrace) _logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
             Node node = new(msg.FarPublicKey, msg.FarAddress);
-            RecordStatsForIncomingMsg(node, msg);
+            NodeSession session = GetSession(node);
+            session.RecordStatsForIncomingMsg(msg);
 
             if (HandleViaMessageHandlers(node, msg))
             {
@@ -329,13 +275,13 @@ public class KademliaDiscv4Adapter(
                     {
                         return;
                     }
-                    await HandlePing(node, ping);
+                    await HandlePing(node, session, ping);
                     break;
                 case MsgType.FindNode:
-                    await HandleFindNode(node, (FindNodeMsg)msg);
+                    await HandleFindNode(node, session, (FindNodeMsg)msg);
                     break;
                 case MsgType.EnrRequest:
-                    await HandleEnrRequest(node, (EnrRequestMsg)msg);
+                    await HandleEnrRequest(node, session, (EnrRequestMsg)msg);
                     break;
                 case MsgType.Neighbors:
                 case MsgType.Pong:
