@@ -226,19 +226,28 @@ public class EthereumL1Bridge : IL1Bridge
     public async Task ProcessUntilHead(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Deriving blocks after restart");
-        while (!token.IsCancellationRequested)
+        try
         {
             L1Block newHead = await GetFinalized(token);
-            ulong newHeadNumber = newHead.Number;
-            if (newHeadNumber == _currentHead.Number)
+            while (!token.IsCancellationRequested && newHead.Number != _currentHead.Number)
             {
-                return;
+                await BuildUp(_currentHead.Number, newHead.Number, token);
+                await ProcessBlock(newHead, token);
+
+                _currentHead = BlockId.FromL1Block(newHead);
+                newHead = await GetFinalized(token);
             }
-
-            await BuildUp(_currentHead.Number, newHeadNumber, token);
-            await ProcessBlock(newHead, token);
-
-            _currentHead = BlockId.FromL1Block(newHead);
         }
+        catch (OperationCanceledException)
+        {
+
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Exception during L1 block processing. {e}");
+            throw;
+        }
+
+        if (_logger.IsInfo) _logger.Info("L1 bridge reached current head");
     }
 }
