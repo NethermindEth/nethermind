@@ -892,7 +892,7 @@ namespace Nethermind.Trie.Test.Pruning
             var readOnlyRlp = readOnlyNode.FullRlp;
             readOnlyRlp.Should().BeEquivalentTo(origRlp);
 
-            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
+            readOnlyNode.Key.Should().Be(originalNode.Key);
         }
 
         private long ExpectedPerNodeKeyMemorySize => (_scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;

@@ -217,7 +217,7 @@ public class TrieNodeTests
     {
         Context ctx = new();
         TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 5 };
+        trieNode.Key = NibblePath.Single(5);
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         TreePath emptyPath = TreePath.Empty;
@@ -299,7 +299,7 @@ public class TrieNodeTests
         Context ctx = new();
         TrieNode trieNode = new(NodeType.Extension);
         trieNode[0] = ctx.HeavyLeaf;
-        trieNode.Key = new byte[] { 5 };
+        trieNode.Key = NibblePath.Single(5);
         TreePath emptyPath = TreePath.Empty;
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
@@ -314,7 +314,7 @@ public class TrieNodeTests
         Context ctx = new();
         TrieNode trieNode = new(NodeType.Extension);
         trieNode[0] = ctx.TiniestLeaf;
-        trieNode.Key = new byte[] { 5 };
+        trieNode.Key = NibblePath.Single(5);
         TreePath emptyPath = TreePath.Empty;
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
@@ -576,7 +576,7 @@ public class TrieNodeTests
     {
         Context ctx = new();
         TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 1 };
+        trieNode.Key = NibblePath.Single(1);
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
@@ -587,7 +587,7 @@ public class TrieNodeTests
     {
         Context ctx = new();
         TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 1 };
+        trieNode.Key = NibblePath.Single(1);
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
@@ -771,7 +771,7 @@ public class TrieNodeTests
     {
         TrieNode child = new(NodeType.Leaf);
         child.Value = Bytes.FromHexString("a");
-        child.Key = Bytes.FromHexString("b");
+        child.Key = NibblePath.Single(0xb);
         TreePath emptyPath = TreePath.Empty;
         child.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
         child.IsPersisted = true;
