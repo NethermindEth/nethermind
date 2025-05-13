@@ -11,15 +11,15 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public int Concurrency { get; set; } = 3;
 
-    public int BitsPerHop { get; set; } = 8;
+    public int BitsPerHop { get; set; } = 2;
 
     public int MaxDiscoveryRounds { get; set; } = 8;
 
     public int EvictionCheckInterval { get; set; } = 75;
 
-    public int SendNodeTimeout { get; set; } = 500;
+    public int SendNodeTimeout { get; set; } = 5000;
 
-    public int PongTimeout { get; set; } = 1000 * 15;
+    public int PongTimeout { get; set; } = 1000 * 5;
 
     public int BootnodePongTimeout { get; set; } = 1000 * 100;
 

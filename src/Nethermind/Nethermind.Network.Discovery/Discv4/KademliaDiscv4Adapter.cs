@@ -4,7 +4,6 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -35,7 +34,6 @@ public class KademliaDiscv4Adapter(
 {
     private static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     private readonly TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
-    private readonly TimeSpan _tryAuthenticatedTimeout = TimeSpan.FromSeconds(2);
     private readonly TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
     private const int AuthenticatedRequestFailureLimit = 5;
     /// <summary>
@@ -48,7 +46,6 @@ public class KademliaDiscv4Adapter(
     public NodeFilter NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
-    private readonly ConcurrentDictionary<ValueHash256, TaskCompletionSource<object>> _awaitingPongToNode = new(); // This is for waiting to send pong in attempt to authenticate.
 
     private readonly LruCache<ValueHash256, DateTimeOffset> _outgoingBondDeadline = new(discoveryConfig.MaxNodeLifecycleManagersCount, "outgoing_bond_deadline");
     private readonly LruCache<ValueHash256, DateTimeOffset> _incomingBondDeadline = new(discoveryConfig.MaxNodeLifecycleManagersCount, "incoming_bond_deadline");
@@ -59,36 +56,19 @@ public class KademliaDiscv4Adapter(
 
     private async Task<bool> EnsureOutgoingMessageBondedPeer(Node node, CancellationToken token)
     {
-        if (_outgoingBondDeadline.TryGet(node.IdHash, out DateTimeOffset bondDeadline)
-            && bondDeadline > DateTimeOffset.Now
-            && !TooManyFailure()) return true;
+        var hasBonded = _outgoingBondDeadline.TryGet(node.IdHash, out DateTimeOffset bondDeadline)
+                     && bondDeadline > DateTimeOffset.Now;
+        if (hasBonded && !TooManyFailure()) return true;
 
         if (_logger.IsTrace) _logger.Trace($"Ensure session for node {node}");
-        using var cts = token.CreateChildTokenSource(_tryAuthenticatedTimeout);
-        token = cts.Token;
-        TaskCompletionSource<object> pongCts = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using CancellationTokenRegistration unregister = token.RegisterToCompletionSource(pongCts);
-        try
-        {
-            _awaitingPongToNode.TryAdd(node.IdHash, pongCts);
-            await Ping(node, token);
-            await pongCts.Task;
-            await Task.Delay(_waitAfterPongTimeout, token); // Give some time for peer to process pong.
+        await Ping(node, token);
+        // We send them ping. But expect that eventually they send back another a ping so that we can pong.
+        // Give some time for peer to process pong. Such is the logic from geth codebase.
+        await Task.Delay(_waitAfterPongTimeout, token);
 
-            if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
+        if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
 
-            return true;
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Node {node} timeout trying to trigger pong.");
-
-            return false;
-        }
-        finally
-        {
-            _awaitingPongToNode.TryRemove(node.IdHash, out _);
-        }
+        return true;
 
         bool TooManyFailure()
         {
@@ -187,10 +167,6 @@ public class KademliaDiscv4Adapter(
             if (msg is PongMsg pong)
             {
                 _outgoingBondDeadline.Set(node.IdHash, DateTimeOffset.Now + BondTimeout);
-                if (_awaitingPongToNode.TryGetValue(node.IdHash, out TaskCompletionSource<object>? completionSource))
-                {
-                    completionSource.TrySetResult(new object());
-                }
             }
 
             RecordStatsForOutgoingMsg(node, msg);
@@ -227,8 +203,7 @@ public class KademliaDiscv4Adapter(
         {
             FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), target.Bytes);
 
-            // TODO: 16 is configurable
-            return await CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(16), receiver, msg, token);
+            return await CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, msg, token);
         }, token);
     }
 

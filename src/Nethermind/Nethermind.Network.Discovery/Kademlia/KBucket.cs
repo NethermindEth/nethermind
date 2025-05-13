@@ -13,6 +13,7 @@ public class KBucket<TNode> where TNode : notnull
     private DoubleEndedLru<TNode> _replacement;
 
     public int Count => _items.Count;
+
     private TNode[] _cachedArray = Array.Empty<TNode>();
 
     public KBucket(int k)

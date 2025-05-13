@@ -402,4 +402,17 @@ public class KBucketTree<TKey, TNode>: IRoutingTable<TNode> where TNode : notnul
     }
 
     public event EventHandler<TNode>? OnNodeAdded;
+
+    public int Size
+    {
+        get
+        {
+            int total = 0;
+            foreach (var iterateBucket in IterateBuckets())
+            {
+                total += iterateBucket.Bucket.Count;
+            }
+            return total;
+        }
+    }
 }

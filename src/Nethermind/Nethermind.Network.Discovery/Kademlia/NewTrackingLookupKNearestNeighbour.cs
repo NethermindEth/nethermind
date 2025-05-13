@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -8,7 +9,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
 using NonBlocking;
+using Prometheus;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -32,9 +35,12 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
     public async IAsyncEnumerable<TNode> Lookup(
         ValueHash256 targetHash,
         int minResult,
+        int maxNonProgressingRound,
+        int maxRounds,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         [EnumeratorCancellation] CancellationToken token
-    ) {
+    )
+    {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using var cts = token.CreateChildTokenSource();
@@ -113,7 +119,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                     continue;
                 }
 
-                Interlocked.Increment(ref totalResult);
+                totalResult++;
                 yield return neighbour;
 
                 bool foundBetter = comparer.Compare(neighbourHash, bestNodeId) < 0;
@@ -133,7 +139,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             if (_logger.IsTrace)
                 _logger.Trace($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
 
-            if (ShouldStopDueToNoBetterResult())
+            if (ShouldStop())
             {
                 if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
                 break;
@@ -148,31 +154,35 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.CancelAfter(_findNeighbourHardTimeout);
 
+            Stopwatch sw = Stopwatch.StartNew();
             try
             {
                 // targetHash is implied in findNeighbourOp
                 TNode[]? ret = await findNeighbourOp(node, cts.Token);
+                _findNeighbourRate.WithLabels("ok").Inc();
                 nodeHealthTracker.OnIncomingMessageFrom(node);
 
                 return ret;
             }
             catch (OperationCanceledException)
             {
+                _findNeighbourRate.WithLabels("timout").Inc();
                 nodeHealthTracker.OnRequestFailed(node);
                 return null;
             }
             catch (Exception e)
             {
+                _findNeighbourRate.WithLabels("failed").Inc();
                 nodeHealthTracker.OnRequestFailed(node);
                 if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
                 return null;
             }
         }
 
-        bool ShouldStopDueToNoBetterResult()
+        bool ShouldStop()
         {
-            int round = Interlocked.Increment(ref currentRound);
-            if (totalResult >= minResult && round - closestNodeRound >= (config.Alpha*2))
+            int round = ++currentRound;
+            if (totalResult >= minResult && round - closestNodeRound >= maxNonProgressingRound)
             {
                 // No closer node for more than or equal to _alpha*2 round.
                 // Assume exit condition
@@ -183,7 +193,14 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                 return true;
             }
 
+            if (round >= maxRounds)
+            {
+                return true;
+            }
+
             return false;
         }
     }
+
+    private Counter _findNeighbourRate = Prometheus.Metrics.CreateCounter("lookup_find_neighbour_status", "", "status");
 }
