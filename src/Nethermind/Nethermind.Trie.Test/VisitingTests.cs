@@ -183,6 +183,11 @@ public class VisitingTests
             {
                 return this;
             }
+
+            public PathGatheringContext Add(NibblePath path)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         public bool IsFullDbScan => true;
@@ -208,7 +213,7 @@ public class VisitingTests
 
         public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node)
         {
-            PathGatheringContext context = nodeContext.Add(node.Key!);
+            PathGatheringContext context = nodeContext.Add(node.Key);
             _paths.Enqueue(context.Nibbles);
         }
 

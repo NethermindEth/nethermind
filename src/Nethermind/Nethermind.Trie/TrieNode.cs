@@ -494,7 +494,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                (NibblePath key, bool isLeaf) = NibblePath.FromBytes(rlpStream.DecodeByteArraySpan());
+                (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(rlpStream.DecodeByteArraySpan());
                 if (isLeaf)
                 {
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();

@@ -181,12 +181,12 @@ public class TreePathTests
     {
         TreePath path = TreePath.Empty;
 
-        using (path.ScopedAppend(new byte[] { 1, 2, 3, 4 }))
+        using (path.ScopedAppend(NibblePath.FromNibbles([1, 2, 3, 4])))
         {
             path.Length.Should().Be(4);
             path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
 
-            using (path.ScopedAppend(new byte[] { 5, 6, 7 }))
+            using (path.ScopedAppend(NibblePath.FromNibbles([5, 6, 7])))
             {
                 path.Length.Should().Be(7);
                 path.Path.ToString().Should().Be("0x1234567000000000000000000000000000000000000000000000000000000000");

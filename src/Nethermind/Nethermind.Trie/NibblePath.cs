@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie;
 
@@ -109,6 +111,12 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public byte this[int index] => throw new NotImplementedException("NOT IMPLEMENTED YET");
 
+    public Hash256 AsHash()
+    {
+        Debug.Assert((_data![0] & OddFlag) == 0);
+        return new Hash256(_data.AsSpan(PreambleLength));
+    }
+
     public bool Equals(NibblePath other)
     {
         return other._data.AsSpan().SequenceEqual(_data.AsSpan());
@@ -118,7 +126,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public static NibblePath FromNibbles(ReadOnlySpan<byte> nibbles)
     {
-        var bytes = new byte[nibbles.Length / 2 + PreambleLength ];
+        var bytes = new byte[nibbles.Length / 2 + PreambleLength];
 
         if (nibbles.Length % 2 != 0)
         {
@@ -134,10 +142,15 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         return new NibblePath(bytes);
     }
 
+    public static NibblePath FromRaw(ReadOnlySpan<byte> bytes)
+    {
+        throw new NotImplementedException();
+    }
+
     /// <summary>
     /// Parses the Ethereum encoded data into a pair of <see cref="NibblePath"/> and <see cref="bool"/>.
     /// </summary>
-    public static (NibblePath key, bool isLeaf) FromBytes(ReadOnlySpan<byte> bytes)
+    public static (NibblePath key, bool isLeaf) FromRlpBytes(ReadOnlySpan<byte> bytes)
     {
         bool isEven = (bytes[0] & OddFlag) == 0;
         bool isLeaf = bytes[0] >= 32;
@@ -259,5 +272,11 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         {
             throw new NotImplementedException();
         }
+    }
+
+    public static NibblePath FromHexString(string hex)
+    {
+        throw new NotImplementedException();
+        // Bytes.FromHexString(hex)
     }
 }

@@ -622,7 +622,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
+            a.Key = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             MemDb memDb = new();
@@ -672,7 +672,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = Bytes.FromHexString("abc");
+            a.Key = NibblePath.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode b = new(NodeType.Leaf, new byte[1]);
@@ -722,10 +722,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Will_combine_same_storage()
         {
-            byte[] storage1Nib = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
-            storage1Nib[0] = 0;
-            byte[] storage2Nib = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
-            storage2Nib[0] = 1;
+            var start = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
+
+            NibblePath storage1Nib = start.SliceFrom(1).PrependWith(0);
+            NibblePath storage2Nib = start.SliceFrom(1).PrependWith(1);
 
             TrieNode storage1 = new(NodeType.Leaf, new byte[32]);
             TreePath emptyPath = TreePath.Empty;
@@ -763,12 +763,12 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (fullTrieStore.BeginBlockCommit(1))
             {
-                using (ICommitter committer = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage1Nib))).BeginCommit(storage1))
+                using (ICommitter committer = fullTrieStore.GetTrieStore(storage1Nib.AsHash()).BeginCommit(storage1))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
                 }
 
-                using (ICommitter committer = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage2Nib))).BeginCommit(storage2))
+                using (ICommitter committer = fullTrieStore.GetTrieStore(storage2Nib.AsHash()).BeginCommit(storage2))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage2));
                 }
@@ -789,10 +789,10 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(7, branch)) { }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, branch)) { }
 
-            storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().NotBeNull();
-            storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
+            storage.Get(null, TreePath.FromNibble([0]), a.Keccak).Should().NotBeNull();
+            storage.Get(storage1Nib.AsHash(), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
-            fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().BeTrue();
+            fullTrieStore.IsNodeCached(storage1Nib.AsHash(), TreePath.Empty, storage1.Keccak).Should().BeTrue();
         }
 
         [TestCase(true)]
@@ -866,7 +866,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
+            node.Key = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
             TreePath emptyPath = TreePath.Empty;
             node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 

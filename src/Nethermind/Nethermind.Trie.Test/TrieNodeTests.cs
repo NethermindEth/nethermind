@@ -328,8 +328,8 @@ public class TrieNodeTests
     {
         ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
         TrieVisitContext context = new();
-        TrieNode ignore = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("ccc"), Array.Empty<byte>());
-        TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ignore);
+        TrieNode ignore = TrieNodeFactory.CreateLeaf(NibblePath.FromHexString("ccc"), Array.Empty<byte>());
+        TrieNode node = TrieNodeFactory.CreateExtension(NibblePath.FromHexString("aa"), ignore);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -357,7 +357,7 @@ public class TrieNodeTests
         TrieVisitContext context = new();
         Account account = new(100);
         AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(NibblePath.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -372,7 +372,7 @@ public class TrieNodeTests
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
         AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(NibblePath.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -387,7 +387,7 @@ public class TrieNodeTests
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
         AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(NibblePath.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -402,7 +402,7 @@ public class TrieNodeTests
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
         AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(NibblePath.FromHexString("aa"), decoder.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -416,7 +416,7 @@ public class TrieNodeTests
         Context ctx = new();
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
-        TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ctx.AccountLeaf);
+        TrieNode node = TrieNodeFactory.CreateExtension(NibblePath.FromHexString("aa"), ctx.AccountLeaf);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -528,7 +528,7 @@ public class TrieNodeTests
     {
         TrieNode node = new(NodeType.Branch);
         TrieNode randomTrieNode = new(NodeType.Leaf);
-        randomTrieNode.Key = new byte[] { 1, 2, 3 };
+        randomTrieNode.Key = NibblePath.FromNibbles([1, 2, 3]);
         randomTrieNode.Value = new byte[] { 1, 2, 3 };
         for (int i = 0; i < 16; i++)
         {
@@ -692,7 +692,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
         Assert.Throws<InvalidOperationException>(
-            () => trieNode.Key = Bytes.FromHexString("aaa"));
+            () => trieNode.Key = NibblePath.FromHexString("aaa"));
     }
 
     [Test]
@@ -711,7 +711,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        trieNode.Key = Bytes.FromHexString("abcd");
+        trieNode.Key = NibblePath.FromHexString("abcd");
         TreePath emptyPath = TreePath.Empty;
         trieNode.RlpEncode(NullTrieStore.Instance, ref emptyPath);
     }
@@ -758,7 +758,7 @@ public class TrieNodeTests
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
         TrieNode trieNode = new(NodeType.Extension);
         trieNode.SetChild(0, child);
-        trieNode.Key = Bytes.FromHexString("abcd");
+        trieNode.Key = NibblePath.FromHexString("abcd");
         TreePath emptyPath = TreePath.Empty;
         trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
 
@@ -778,7 +778,7 @@ public class TrieNodeTests
 
         TrieNode trieNode = new(NodeType.Extension);
         trieNode.SetChild(0, child);
-        trieNode.Key = Bytes.FromHexString("abcd");
+        trieNode.Key = NibblePath.FromHexString("abcd");
         trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
 
         trieNode.PrunePersistedRecursively(2);
@@ -859,12 +859,12 @@ public class TrieNodeTests
     public void Batch_not_db_regression()
     {
         TrieNode child = new(NodeType.Leaf);
-        child.Key = Bytes.FromHexString("abc");
+        child.Key = NibblePath.FromHexString("abc");
         child.Value = new byte[200];
         child.Seal();
 
         TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = Bytes.FromHexString("000102030506");
+        trieNode.Key = NibblePath.FromHexString("000102030506");
         trieNode.SetChild(0, child);
         trieNode.Seal();
 
@@ -927,14 +927,14 @@ public class TrieNodeTests
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
-        leaf1.Key = Bytes.FromHexString("abc");
+        leaf1.Key = NibblePath.FromHexString("abc");
         leaf1.Value = new byte[111];
         TreePath emptyPath = TreePath.Empty;
         leaf1.ResolveKey(trieStore, ref emptyPath, false);
         leaf1.Seal();
 
         TrieNode leaf2 = new(NodeType.Leaf);
-        leaf2.Key = Bytes.FromHexString("abd");
+        leaf2.Key = NibblePath.FromHexString("abd");
         leaf2.Value = new byte[222];
         leaf2.ResolveKey(trieStore, ref emptyPath, false);
         leaf2.Seal();
@@ -972,7 +972,7 @@ public class TrieNodeTests
         for (int i = 0; i < 16; i++)
         {
             TrieNode randomTrieNode = new(NodeType.Leaf);
-            randomTrieNode.Key = new byte[] { (byte)i, 2, 3 };
+            randomTrieNode.Key = NibblePath.FromNibbles([(byte)i, 2, 3 ]);
             randomTrieNode.Value = new byte[] { 1, 2, 3 };
             node.SetChild(i, randomTrieNode);
         }
@@ -998,17 +998,17 @@ public class TrieNodeTests
         public Context()
         {
             TiniestLeaf = new TrieNode(NodeType.Leaf);
-            TiniestLeaf.Key = new byte[] { 5 };
+            TiniestLeaf.Key = NibblePath.Single( 5 );
             TiniestLeaf.Value = new byte[] { 10 };
 
             HeavyLeaf = new TrieNode(NodeType.Leaf);
-            HeavyLeaf.Key = new byte[20];
+            HeavyLeaf.Key = NibblePath.FromRaw(new byte[20]);
             HeavyLeaf.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
 
             Account account = new(100);
             AccountDecoder decoder = new();
             AccountLeaf = TrieNodeFactory.CreateLeaf(
-                Bytes.FromHexString("bbb"),
+                NibblePath.FromHexString("bbb"),
                 decoder.Encode(account).Bytes);
         }
     }

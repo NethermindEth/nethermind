@@ -50,7 +50,7 @@ public class NibblePathTests
     public void Decode_gives_correct_output_when_even(bool expectedFlag, byte nibble1, byte nibble2, byte byte1,
         byte byte2)
     {
-        (NibblePath key, bool isLeaf) = NibblePath.FromBytes(new[] { byte1, byte2 });
+        (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(new[] { byte1, byte2 });
         Assert.That(isLeaf, Is.EqualTo(expectedFlag));
         Assert.That(key.Length, Is.EqualTo(2));
         Assert.That(key[0], Is.EqualTo(nibble1));
@@ -61,7 +61,7 @@ public class NibblePathTests
     [TestCase(true, (byte)3, (byte)51)]
     public void Decode_gives_correct_output_when_one(bool expectedFlag, byte nibble1, byte byte1)
     {
-        (NibblePath key, bool isLeaf) = NibblePath.FromBytes(new[] { byte1 });
+        (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(new[] { byte1 });
 
         Assert.That(isLeaf, Is.EqualTo(expectedFlag));
         Assert.That(key.Length, Is.EqualTo(1));
@@ -73,7 +73,7 @@ public class NibblePathTests
     public void Decode_gives_correct_output_when_odd(bool expectedFlag, byte nibble1, byte nibble2, byte nibble3,
         byte byte1, byte byte2)
     {
-        (NibblePath key, bool isLeaf) = NibblePath.FromBytes(new[] { byte1, byte2 });
+        (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(new[] { byte1, byte2 });
         Assert.That(isLeaf, Is.EqualTo(expectedFlag));
         Assert.That(key.Length, Is.EqualTo(3));
         Assert.That(key[0], Is.EqualTo(nibble1));
