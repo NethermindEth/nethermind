@@ -56,6 +56,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     /// </summary>
     private const byte OddFlag = 0x10;
 
+    private const byte OddFlagShift = 4;
+
     /// <summary>
     /// The leaf flag of the Ethereum encoding.
     /// </summary>
@@ -65,6 +67,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     private const int PreambleLength = 1;
     private const int NibblesPerByte = 2;
+    private const int NibbleShift = 8 / NibblesPerByte;
+    private const int NibbleMask = 15;
 
     /// <summary>
     /// A set of single nibble Hex Prefixes.
@@ -109,7 +113,23 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public string ToHexString(bool skipLeadingZeros ) => throw new NotImplementedException("NOT IMPLEMENTED YET");
 
-    public byte this[int index] => throw new NotImplementedException("NOT IMPLEMENTED YET");
+    public byte this[int index]
+    {
+        get
+        {
+            int odd = (_data[0] & OddFlag) >> OddFlagShift;
+            byte b = _data[(index + 2 - odd) / 2];
+
+            // byte is two nibbles
+            // for an odd path, and an odd index, take higher nibble
+            // for an odd path, and an even index, take lower nibble
+            // for an even path, and an even index, take higher nibble
+            // for an even path, and an odd index, take lower nibble
+            var h = 1- ((index & 1) ^ odd);
+
+            return (byte)((b >> (h * NibbleShift)) & NibbleMask);
+        }
+    }
 
     public Hash256 AsHash()
     {
@@ -193,9 +213,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         public readonly byte Length;
 
         private const int OddBit = 1;
-        private const int NibblePerByte = 2;
-        private const int NibbleShift = 8 / NibblePerByte;
-        private const int NibbleMask = 15;
+
 
         public static Ref Empty => default;
 
