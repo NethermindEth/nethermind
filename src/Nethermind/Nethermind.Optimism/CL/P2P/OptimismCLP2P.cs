@@ -152,9 +152,16 @@ public class OptimismCLP2P : IDisposable
 
                     foreach (var missingPayload in missingPayloads.AsEnumerable().Reverse())
                     {
-                        if ((ulong)missingPayload.BlockNumber > _headNumber && await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
+                        if ((ulong)missingPayload.BlockNumber <= _headNumber)
+                        {
+                            break;
+                        }
+                        if (await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
                         {
                             _headNumber = (ulong)missingPayload.BlockNumber;
+                        }
+                        else
+                        {
                             break;
                         }
                     }
