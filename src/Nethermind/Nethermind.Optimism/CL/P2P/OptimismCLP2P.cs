@@ -19,6 +19,7 @@ using Multiformats.Address;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -42,12 +43,11 @@ public class OptimismCLP2P : IDisposable
     private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
-    private readonly IPeerManager _peerManager;
     private readonly IPAddress _externalIp;
-    private readonly Dictionary<Multiaddress, ISession> _sessions = new();
+    private readonly Random _random = new();
 
     private PubsubRouter? _router;
-    private ILocalPeer? _localPeer;
+    private LocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
     private PeerStore? _peerStore;
 
@@ -68,7 +68,6 @@ public class OptimismCLP2P : IDisposable
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
-        _peerManager = new PeerManager(_logger);
         _externalIp = externalIp;
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
@@ -135,27 +134,35 @@ public class OptimismCLP2P : IDisposable
 
                 if (_headNumber is not null)
                 {
-                    ulong numberOfMissingPayloads = (ulong)payload.BlockNumber - _headNumber.Value - 1;
-                    ExecutionPayloadV3?[] missingPayloads = new ExecutionPayloadV3[numberOfMissingPayloads];
+                    List<ExecutionPayloadV3> missingPayloads = new();
                     Hash256 previousParentHash = payload.ParentHash;
                     // Rollback missing payloads
-                    for (ulong i = numberOfMissingPayloads; i > 0; i--)
+                    for (ulong i = (ulong)payload.BlockNumber - 1; i > _headNumber.Value; i--)
                     {
-                        ulong payloadNumber = _headNumber.Value + i;
-                        ExecutionPayloadV3? missingPayload = await RequestPayload(payloadNumber, previousParentHash, token);
+                        ExecutionPayloadV3? missingPayload = await RequestPayload(i, previousParentHash, token);
                         if (missingPayload is null)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {payloadNumber}");
+                            if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {i}");
                             break;
                         }
-                        missingPayloads[i - 1] = missingPayload;
+                        previousParentHash = missingPayload.ParentHash;
+                        missingPayloads.Add(missingPayload);
+                        await UpdateHead();
                     }
 
-                    foreach (var missingPayload in missingPayloads)
+                    foreach (var missingPayload in missingPayloads.AsEnumerable().Reverse())
                     {
-                        if (missingPayload is not null && await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
+                        if ((ulong)missingPayload.BlockNumber <= _headNumber)
+                        {
+                            break;
+                        }
+                        if (await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
                         {
                             _headNumber = (ulong)missingPayload.BlockNumber;
+                        }
+                        else
+                        {
+                            break;
                         }
                     }
                 }
@@ -178,17 +185,31 @@ public class OptimismCLP2P : IDisposable
         }
     }
 
+    private async Task UpdateHead()
+    {
+        ulong? currentFinalized = await _executionEngineManager.GetCurrentFinalizedBlockNumber();
+        if (_headNumber is not null && currentFinalized > _headNumber)
+        {
+            _headNumber = (ulong)currentFinalized;
+        }
+    }
+
     private async Task<ExecutionPayloadV3?> TryRequestPayload
-        (ISession? session, ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
+        (ISession session, ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
     {
         try
         {
             using CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
-            if (session is null) return null;
             ExecutionPayloadV3? payload =
                 await session.DialAsync<PayloadByNumberProtocol, ulong, ExecutionPayloadV3?>(payloadNumber, cancellationTokenSource.Token);
-            if (payload is null || payload.BlockHash != expectedHash) return null;
+            if (payload is not null && payload.BlockHash != expectedHash)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Requested P2P Payload hash mismatch. Expected {expectedHash}, got {payload.BlockHash}. Number: {payloadNumber}");
+                return null;
+            }
             return payload;
         }
         catch (Exception e)
@@ -204,20 +225,14 @@ public class OptimismCLP2P : IDisposable
         try
         {
             ExecutionPayloadV3? response = null;
-            foreach (Multiaddress peer in _peerManager.GetPeers())
+            foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
             {
-                ISession? remotePeer;
-                if (!_sessions.TryGetValue(peer, out remotePeer)) remotePeer = await TryDialPeer(peer, token);
-                response = await TryRequestPayload(remotePeer, payloadNumber, expectedHash, token);
+                response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
                 if (response is not null)
                 {
-                    _peerManager.IncreaseRating(peer);
-                    await remotePeer!.DisconnectAsync();
                     break;
                 }
-
-                if (remotePeer is not null) await remotePeer.DisconnectAsync();
-                _peerManager.DecreaseRating(peer);
+                if (_logger.IsWarn) _logger.Warn($"Unable to get Payload from peer {peer.RemoteAddress}");
             }
 
             if (response is null)
@@ -280,21 +295,6 @@ public class OptimismCLP2P : IDisposable
         return true;
     }
 
-    private async Task<ISession?> TryDialPeer(Multiaddress remotePeer, CancellationToken token)
-    {
-        try
-        {
-            using CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
-            return await _localPeer!.DialAsync(remotePeer, cancellationTokenSource.Token);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Unable to Dial peer {remotePeer}. Exception: {e.Message}");
-            return null;
-        }
-    }
-
     public async Task Run(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
@@ -302,7 +302,7 @@ public class OptimismCLP2P : IDisposable
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
         string hostIp = _config.ClP2PHost ?? _externalIp.ToString();
         string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
-        _localPeer = peerFactory.Create(new Identity());
+        _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
@@ -316,29 +316,16 @@ public class OptimismCLP2P : IDisposable
             foreach (var multiaddress in _staticPeerList)
             {
                 _peerStore.Discover([multiaddress]);
-
-                ISession? session = await TryDialPeer(multiaddress, token);
-                if (session is not null)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Adding active peer {multiaddress}");
-                    _sessions[multiaddress] = session;
-                    _peerManager.AddActivePeer(multiaddress);
-                }
-                else
-                {
-                    _peerManager.AddInactivePeer(multiaddress);
-                }
-
-                if (session is not null) await session.DisconnectAsync();
             }
         }
         catch (Exception e)
         {
-            _logger.Error($"{e}");
+            if (_logger.IsError) _logger.Error($"Exception during CL P2P initialization: {e}");
+            throw;
         }
 
 
-        if (_logger.IsInfo) _logger.Info($"Started P2P: {address}");
+        if (_logger.IsInfo) _logger.Info("CL P2P is started");
         await MainLoop(token);
     }
 

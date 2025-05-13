@@ -28,9 +28,9 @@ public partial class ForwardHeaderProviderTests
     [TestCase(16L, 32L, 32, 32, 3, 32)]
     [TestCase(16L, 32L, 32, 29, 3, 29)]
     [TestCase(16L, 32L, 0, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, 32, SyncBatchSize.Max * 8 - 16L, 3, 130)]
+    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
+    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
+    [TestCase(16L, SyncBatchSizeMax * 8, 32, SyncBatchSizeMax * 8 - 16L, 3, 130)]
     public async Task Merge_Happy_path(long beaconPivot, long headNumber, int threshold, long insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
     {
         int notSyncedTreeStartingBlockNumber = 3;

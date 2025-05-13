@@ -22,43 +22,51 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
     public async Task Run(CancellationToken token)
     {
         var buffer = new Memory<byte>(new byte[BlobDecoder.MaxBlobDataSize]);
-        while (!token.IsCancellationRequested)
+        try
         {
-            buffer.Clear();
-            var daData = await _inputChannel.Reader.ReadAsync(token);
-
-            try
+            while (!token.IsCancellationRequested)
             {
-                Memory<byte> decodedData;
-                if (daData.DataType == DaDataType.Blob)
+                buffer.Clear();
+                var daData = await _inputChannel.Reader.ReadAsync(token);
+
+                try
                 {
-                    var read = BlobDecoder.DecodeBlob(daData.Data, buffer.Span);
-                    decodedData = buffer[..read];
-                }
-                else
-                {
-                    decodedData = daData.Data;
-                }
-                foreach (var frame in FrameDecoder.DecodeFrames(decodedData))
-                {
-                    var batches = _frameQueue.ConsumeFrame(frame);
-                    if (batches is not null)
+                    Memory<byte> decodedData;
+                    if (daData.DataType == DaDataType.Blob)
                     {
-                        foreach (var batch in batches)
+                        var read = BlobDecoder.DecodeBlob(daData.Data, buffer.Span);
+                        decodedData = buffer[..read];
+                    }
+                    else
+                    {
+                        decodedData = daData.Data;
+                    }
+
+                    foreach (var frame in FrameDecoder.DecodeFrames(decodedData))
+                    {
+                        var batches = _frameQueue.ConsumeFrame(frame);
+                        if (batches is not null)
                         {
-                            await _outputChannel.Writer.WriteAsync(batch, token);
+                            foreach (var batch in batches)
+                            {
+                                await _outputChannel.Writer.WriteAsync(batch, token);
+                            }
                         }
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception e)
+                {
+                    if (logger.IsWarn) logger.Warn($"Unhandled exception in decoding pipeline: {e}");
+                }
             }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception e)
-            {
-                if (logger.IsWarn) logger.Warn($"Unhandled exception in decoding pipeline: {e}");
-            }
+        }
+        finally
+        {
+            if (logger.IsInfo) logger.Info($"Decoding pipeline is shutting down.");
         }
     }
 }

@@ -33,6 +33,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Facade;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
@@ -61,7 +62,7 @@ public class ParityStyleTracerTests
 
         MemDb stateDb = new();
         MemDb codeDb = new();
-        ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
+        ITrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance).AsReadOnly();
         WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
         _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 

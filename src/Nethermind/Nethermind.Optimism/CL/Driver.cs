@@ -62,7 +62,7 @@ public class Driver : IDisposable
                     _logger.Info($"Got batch for processing. Blocks from {firstBlockNumber} to {lastBlockNumber}");
                 if (lastBlockNumber <= _currentDerivedBlock)
                 {
-                    if (_logger.IsInfo) _logger.Info("Got old batch. Skipping");
+                    if (_logger.IsInfo) _logger.Info("Old batch. Skipping");
                     continue;
                 }
 
@@ -95,7 +95,12 @@ public class Driver : IDisposable
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Unhandled exception in Driver: {e}");
+            if (_logger.IsWarn && e is not OperationCanceledException)
+                _logger.Warn($"Unhandled exception in Driver: {e}");
+        }
+        finally
+        {
+            if (_logger.IsInfo) _logger.Info("Driver is shutting down.");
         }
     }
 

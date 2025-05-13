@@ -54,21 +54,34 @@ public class EthereumL1Bridge : IL1Bridge
     public async Task Run(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting L1Bridge");
-        while (!token.IsCancellationRequested)
+        try
         {
-            L1Block newHead = await GetFinalized(token);
-            ulong newHeadNumber = newHead.Number;
-            if (newHeadNumber == _currentHead.Number)
+            while (!token.IsCancellationRequested)
             {
-                await Task.Delay(L1SlotTimeMilliseconds, token);
-                continue;
+                L1Block newHead = await GetFinalized(token);
+                ulong newHeadNumber = newHead.Number;
+                if (newHeadNumber == _currentHead.Number)
+                {
+                    await Task.Delay(L1SlotTimeMilliseconds, token);
+                    continue;
+                }
+
+                await BuildUp(_currentHead.Number, newHeadNumber, token);
+                await ProcessBlock(newHead, token);
+
+                _currentHead = BlockId.FromL1Block(newHead);
+
+                await Task.Delay(L1EpochTimeMilliseconds, token);
             }
-            await BuildUp(_currentHead.Number, newHeadNumber, token);
-            await ProcessBlock(newHead, token);
-
-            _currentHead = BlockId.FromL1Block(newHead);
-
-            await Task.Delay(L1EpochTimeMilliseconds, token);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn && e is not OperationCanceledException)
+                _logger.Warn($"Unhandled exception in L1Bridge: {e}");
+        }
+        finally
+        {
+            if (_logger.IsInfo) _logger.Info("L1 bridge is shutting down.");
         }
     }
 
@@ -213,19 +226,28 @@ public class EthereumL1Bridge : IL1Bridge
     public async Task ProcessUntilHead(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Deriving blocks after restart");
-        while (!token.IsCancellationRequested)
+        try
         {
             L1Block newHead = await GetFinalized(token);
-            ulong newHeadNumber = newHead.Number;
-            if (newHeadNumber == _currentHead.Number)
+            while (!token.IsCancellationRequested && newHead.Number != _currentHead.Number)
             {
-                return;
+                await BuildUp(_currentHead.Number, newHead.Number, token);
+                await ProcessBlock(newHead, token);
+
+                _currentHead = BlockId.FromL1Block(newHead);
+                newHead = await GetFinalized(token);
             }
-
-            await BuildUp(_currentHead.Number, newHeadNumber, token);
-            await ProcessBlock(newHead, token);
-
-            _currentHead = BlockId.FromL1Block(newHead);
         }
+        catch (OperationCanceledException)
+        {
+
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Exception during L1 block processing. {e}");
+            throw;
+        }
+
+        if (_logger.IsInfo) _logger.Info("L1 bridge reached current head");
     }
 }
