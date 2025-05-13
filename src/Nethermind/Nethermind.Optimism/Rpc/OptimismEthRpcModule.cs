@@ -251,7 +251,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                     txIndex: index);
                 if (transactionModel is DepositTransactionForRpc depositTx)
                 {
-                    OptimismTxReceipt? receipt = (OptimismTxReceipt?)receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
+                    OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false) as OptimismTxReceipt;
                     depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
                 }
 
