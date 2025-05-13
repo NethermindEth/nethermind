@@ -150,7 +150,7 @@ public class OptimismCLP2P : IDisposable
                         await UpdateHead();
                     }
 
-                    foreach (var missingPayload in missingPayloads.AsEnumerable().Reverse())
+                    foreach (var missingPayload in missingPayloads.AsEnumerable())
                     {
                         if ((ulong)missingPayload.BlockNumber <= _headNumber)
                         {
