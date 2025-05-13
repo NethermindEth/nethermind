@@ -119,37 +119,9 @@ namespace Nethermind.Trie
             return nibbles;
         }
 
-        public static byte[] ToPackedByteArray(this Nibble[] nibbles)
-        {
-            int oddity = nibbles.Length % 2;
-            byte[] bytes = new byte[nibbles.Length / 2 + oddity];
-            for (int i = oddity; i < bytes.Length - oddity; i++)
-            {
-                bytes[i] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
-            }
-
-            if (oddity == 1)
-            {
-                bytes[0] = ToByte(0, nibbles[0]);
-            }
-
-            return bytes;
-        }
-
         public static byte ToByte(Nibble highNibble, Nibble lowNibble)
         {
             return (byte)(((byte)highNibble << 4) | (byte)lowNibble);
-        }
-
-        public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
-        {
-            byte[] bytes = new byte[nibbles.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
-            }
-
-            return bytes;
         }
 
         public static byte[] CompactToHexEncode(byte[] compactPath)
@@ -182,26 +154,7 @@ namespace Nethermind.Trie
             return result;
         }
 
-        public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)
-        {
-            int oddity = nibbles.Length % 2;
-            byte[] bytes = new byte[nibbles.Length / 2 + 1];
-            for (int i = 0; i < bytes.Length - 1; i++)
-            {
-                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
-            }
-
-            if (oddity == 1)
-            {
-                bytes[0] = ToByte(1, nibbles[0]);
-            }
-
-            return bytes;
-        }
-
-        public static byte[] EncodePath(ReadOnlySpan<byte> input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
-
-        public static byte[] ToCompactHexEncoding(TreePath nibbles)
+        private static byte[] ToCompactHexEncoding(TreePath nibbles)
         {
             int oddity = nibbles.Length % 2;
             byte[] bytes = new byte[nibbles.Length / 2 + 1];
@@ -220,7 +173,7 @@ namespace Nethermind.Trie
 
         public static byte[] EncodePath(TreePath input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
 
-        public static byte[] ToBytes(TreePath nibbles)
+        private static byte[] ToBytes(TreePath nibbles)
         {
             byte[] bytes = new byte[nibbles.Length / 2];
             for (int i = 0; i < bytes.Length; i++)

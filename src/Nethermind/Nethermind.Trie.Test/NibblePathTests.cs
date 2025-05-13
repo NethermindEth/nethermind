@@ -80,24 +80,4 @@ public class NibblePathTests
         Assert.That(key[1], Is.EqualTo(nibble2));
         Assert.That(key[2], Is.EqualTo(nibble3));
     }
-
-    // According to: https://ethereum.github.io/yellowpaper/paper.pdf#appendix.C
-    // Leaf flag (t) is omitted
-    [TestCase(new byte[] { 1, 2, 3, 4 }, new byte[] { 0, 1 * 16 + 2, 3 * 16 + 4 })]
-    [TestCase(new byte[] { 1, 2, 3 }, new byte[] { 16 + 1, 2 * 16 + 3 })]
-    public void Compact_hex_encoding_correct_output(byte[] nibbles, byte[] bytes)
-    {
-        byte[] result = Nibbles.ToCompactHexEncoding(nibbles);
-        Assert.That(bytes, Is.EqualTo(result).AsCollection);
-    }
-
-    // Just pack nibbles to bytes
-    [Test]
-    public void Nibbles_to_bytes_correct_output()
-    {
-        byte[] nibbles = Enumerable.Repeat((byte)1, 64).ToArray();
-        byte[] bytes = Enumerable.Repeat((byte)17, 32).ToArray();
-        byte[] result = Nibbles.ToBytes(nibbles);
-        Assert.That(bytes, Is.EqualTo(result).AsCollection);
-    }
 }
