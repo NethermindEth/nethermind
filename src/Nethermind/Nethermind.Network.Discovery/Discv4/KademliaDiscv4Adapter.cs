@@ -7,7 +7,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
@@ -33,17 +32,17 @@ public class KademliaDiscv4Adapter(
 {
     private readonly TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
+
     /// <summary>
     /// This is the value set by other clients based on real network tests.
     /// </summary>
     private const int ExpirationTimeInSeconds = 20;
 
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
+    private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
     public IMsgSender? MsgSender { get; set; }
-    private readonly CancellationToken _processCancellationToken = processExitSource.Token;
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
-
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
 
     #region Authentication and utils
@@ -121,7 +120,7 @@ public class KademliaDiscv4Adapter(
         await using CancellationTokenRegistration unregister = token.RegisterToCompletionSource(messageHandler.TaskCompletionSource);
         AddMessageHandler(msgType, receiver.IdHash, messageHandler);
 
-        await SendMessage(session, msg);
+        await SendMessage(session, msg, token);
         try
         {
             return await messageHandler.TaskCompletionSource.Task;
@@ -133,10 +132,11 @@ public class KademliaDiscv4Adapter(
     }
 
 
-    private async Task SendMessage(NodeSession session, DiscoveryMsg msg)
+    private async Task SendMessage(NodeSession session, DiscoveryMsg msg, CancellationToken token)
     {
         if (MsgSender is { } sender)
         {
+            await _outboundRateLimiter.WaitAsync(token);
             session.RecordStatsForOutgoingMsg(msg);
             await sender.SendMsg(msg);
         }
@@ -195,7 +195,7 @@ public class KademliaDiscv4Adapter(
     private Counter _rejectedIncomingMessage =
         Prometheus.Metrics.CreateCounter("rejected_incoming_message", "Unhaandled", "type");
 
-    private async Task HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg)
+    private async Task HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
         if (!session.HasReceivedPong)
         {
@@ -205,10 +205,10 @@ public class KademliaDiscv4Adapter(
         }
 
         Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
-        await SendMessage(session, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)));
+        await SendMessage(session, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)), token);
     }
 
-    private async Task HandleFindNode(Node node, NodeSession session, FindNodeMsg msg)
+    private async Task HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
     {
         if (!session.HasReceivedPong)
         {
@@ -218,30 +218,30 @@ public class KademliaDiscv4Adapter(
         }
 
         PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
-        Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, _processCancellationToken);
+        Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, token);
         if (nodes.Length <= 12)
         {
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes));
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token);
         }
         else
         {
             // Split into two because the size of message when nodes is > 12 is larger than mtu size.
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]));
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..]));
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]), token);
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..]), token);
         }
     }
 
-    private async Task HandlePing(Node node, NodeSession session, PingMsg ping)
+    private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
-        await kademliaMessageReceiver.Value.Ping(node, _processCancellationToken);
+        await kademliaMessageReceiver.Value.Ping(node, token);
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
         session.OnPingReceived();
-        await SendMessage(session, msg);
+        await SendMessage(session, msg, token);
 
         if (session.HasReceivedPong)
         {
-            await Ping(node, _processCancellationToken);
+            await Ping(node, token);
         }
     }
 
@@ -263,6 +263,7 @@ public class KademliaDiscv4Adapter(
                 return;
             }
 
+            CancellationToken token = processExitSource.Token;
             switch (msgType)
             {
                 case MsgType.Ping:
@@ -271,13 +272,13 @@ public class KademliaDiscv4Adapter(
                     {
                         return;
                     }
-                    await HandlePing(node, session, ping);
+                    await HandlePing(node, session, ping, token);
                     break;
                 case MsgType.FindNode:
-                    await HandleFindNode(node, session, (FindNodeMsg)msg);
+                    await HandleFindNode(node, session, (FindNodeMsg)msg, token);
                     break;
                 case MsgType.EnrRequest:
-                    await HandleEnrRequest(node, session, (EnrRequestMsg)msg);
+                    await HandleEnrRequest(node, session, (EnrRequestMsg)msg, token);
                     break;
                 case MsgType.Neighbors:
                 case MsgType.Pong:
