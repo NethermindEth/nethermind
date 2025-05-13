@@ -90,7 +90,7 @@ public class ExecutionEngineManager(
             {
                 case PayloadStatus.Invalid:
                     {
-                        if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
+                        if (logger.IsWarn) logger.Warn($"Invalid P2P payload. {executionPayload}");
                         return P2PPayloadStatus.Invalid;
                     }
                 case PayloadStatus.Valid:
@@ -105,8 +105,8 @@ public class ExecutionEngineManager(
                     }
                 case PayloadStatus.Syncing:
                     {
-                        if (logger.IsTrace) logger.Trace($"Syncing. {executionPayload}");
-                        return P2PPayloadStatus.Syncing;
+                        if (logger.IsInfo) logger.Info($"New Payload Syncing. {executionPayload}");
+                        break;
                     }
             }
 
