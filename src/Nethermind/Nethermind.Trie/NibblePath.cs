@@ -198,7 +198,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     {
         Debug.Assert(_data != null);
         _data.CopyTo(destination);
-        destination[0] = (byte)(isLeaf ? LeafFlag : 0);
+        destination[0] = (byte)((isLeaf ? LeafFlag : 0) |  destination[0]);
     }
 
     public int CommonPrefixLength(NibblePath other)
