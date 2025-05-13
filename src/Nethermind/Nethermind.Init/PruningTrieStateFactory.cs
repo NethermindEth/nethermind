@@ -88,7 +88,7 @@ public class PruningTrieStateFactory(
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
         {
-            persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval); // TODO: this should be based on time
             if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
             {
                 PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);

@@ -715,31 +715,88 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyD).ToArray().Should().BeEquivalentTo(_longLeaf1);
         }
 
-        // [TestCase(256, 128, 128, 32)]
-        [TestCase(128, 128, 8, 8)]
-        // [TestCase(4, 16, 4, 4)]
+        public record TrieStoreConfigurations(
+            long dirtyNodeSize,
+            int PersistEveryN,
+            int LookupLimit,
+            bool TrackPastKeys
+        )
+        {
+            public TrieStore CreateTrieStore()
+            {
+                IPruningStrategy pruneStrategy = dirtyNodeSize == -1
+                    ? No.Pruning
+                    : Prune.WhenCacheReaches(dirtyNodeSize);
+
+                return TestTrieStoreFactory.Build(
+                    new MemDb(),
+                    pruneStrategy,
+                    Persist.EveryNBlock(PersistEveryN),
+                    new PruningConfig()
+                    {
+                        TrackPastKeys = TrackPastKeys,
+                        PruningBoundary = LookupLimit,
+                    },
+                    LimboLogs.Instance);
+            }
+            public override string ToString()
+            {
+                return (
+                    $"persistEveryN: {PersistEveryN}, " +
+                    $"lookup: {LookupLimit}");
+            }
+
+            public bool IsMissingAccountExpected(int depth)
+            {
+                if (TrackPastKeys)
+                {
+                    return depth > LookupLimit;
+                }
+                else
+                {
+                    return depth % PersistEveryN != 0;
+                }
+            }
+        }
+
+        private static IEnumerable<TrieStoreConfigurations> CreateTrieStoreConfigurations()
+        {
+            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, false);
+            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, true);
+            yield return new TrieStoreConfigurations(-1, 1, 8, false);
+        }
+
+        private static IEnumerable<(TrieStoreConfigurations, int, int, int)> FuzzAccountScenarios()
+        {
+            foreach (var trieStoreConfigurations in CreateTrieStoreConfigurations())
+            {
+                yield return new(trieStoreConfigurations, 128, 128, 8);
+            }
+        }
+
+        [TestCaseSource(nameof(FuzzAccountScenarios))]
+        [Repeat(10)]
         public void Fuzz_accounts(
+            (TrieStoreConfigurations trieStoreConfig,
             int accountsCount,
             int blocksCount,
-            int uniqueValuesCount,
-            int lookupLimit)
+            int uniqueValuesCount) test)
         {
+            (TrieStoreConfigurations trieStoreConfig, int accountsCount, int blocksCount, int uniqueValuesCount) = test;
+
             string fileName = Path.GetTempFileName();
-            //string fileName = "C:\\Temp\\fuzz.txt";
             _logger.Info(
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
                 $"values: {uniqueValuesCount}, " +
-                $"lookup: {lookupLimit} into file {fileName}");
+                $"{trieStoreConfig} into file {fileName}");
 
             using FileStream fileStream = new(fileName, FileMode.Create);
             using StreamWriter streamWriter = new(fileStream);
 
             Queue<Hash256> rootQueue = new();
 
-            MemDb memDb = new();
-
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            using TrieStore trieStore = trieStoreConfig.CreateTrieStore();
             StateTree patriciaTree = new(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
@@ -794,9 +851,6 @@ namespace Nethermind.Trie.Test
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
 
-            streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-            _logger.Info($"DB size: {memDb.Keys.Count}");
-
             int verifiedBlocks = 0;
 
             while (rootQueue.TryDequeue(out Hash256 currentRoot))
@@ -811,32 +865,40 @@ namespace Nethermind.Trie.Test
 
                     _logger.Info($"Verified positive {verifiedBlocks}");
                 }
-                catch (Exception ex)
+                catch (MissingTrieNodeException)
                 {
-                    if (verifiedBlocks % lookupLimit == 0)
-                    {
-                        throw new InvalidDataException(ex.ToString());
-                    }
-                    else
-                    {
-                        _logger.Info($"Verified negative {verifiedBlocks}");
-                    }
+                    if (!trieStoreConfig.IsMissingAccountExpected(blocksCount - verifiedBlocks))
+                        throw;
+
+                    _logger.Info($"Verified negative {verifiedBlocks}");
                 }
 
                 verifiedBlocks++;
             }
         }
 
-        // [TestCase(256, 128, 128, 32)]
-        // [TestCase(128, 128, 8, 8)]
-        [TestCase(4, 16, 4, 4, null)]
+        private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int uniqueValuesCount, int? seed)> FuzzAccountsWithReorganizationsScenarios()
+        {
+            foreach (var trieStoreConfiguration in CreateTrieStoreConfigurations())
+            {
+                yield return (trieStoreConfiguration, 4, 16, 4, null);
+            }
+        }
+
+        [TestCaseSource(nameof(FuzzAccountsWithReorganizationsScenarios))]
         public void Fuzz_accounts_with_reorganizations(
+            (TrieStoreConfigurations trieStoreConfig,
             int accountsCount,
             int blocksCount,
             int uniqueValuesCount,
-            int lookupLimit,
-            int? seed)
+            int? seed) scenario)
         {
+            (TrieStoreConfigurations trieStoreConfig,
+                int accountsCount,
+                int blocksCount,
+                int uniqueValuesCount,
+                int? seed) = scenario;
+
             int usedSeed = seed ?? _random.Next(int.MaxValue);
             _random = new Random(usedSeed);
 
@@ -847,7 +909,7 @@ namespace Nethermind.Trie.Test
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
                 $"values: {uniqueValuesCount}, " +
-                $"lookup: {lookupLimit} into file {fileName}");
+                $"{trieStoreConfig} into file {fileName}");
 
             using FileStream fileStream = new(fileName, FileMode.Create);
             using StreamWriter streamWriter = new(fileStream);
@@ -855,9 +917,7 @@ namespace Nethermind.Trie.Test
             Queue<Hash256> rootQueue = new();
             Stack<Hash256> rootStack = new();
 
-            MemDb memDb = new();
-
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            using TrieStore trieStore = trieStoreConfig.CreateTrieStore();
             PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
@@ -939,9 +999,6 @@ namespace Nethermind.Trie.Test
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
 
-            streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-            _logger.Info($"DB size: {memDb.Keys.Count}");
-
             int verifiedBlocks = 0;
 
             rootQueue.Clear();
@@ -965,34 +1022,42 @@ namespace Nethermind.Trie.Test
 
                     _logger.Info($"Verified positive {verifiedBlocks}");
                 }
-                catch (Exception ex)
+                catch (MissingTrieNodeException)
                 {
-                    if (verifiedBlocks % lookupLimit == 0)
+                    if (!trieStoreConfig.IsMissingAccountExpected(blocksCount - verifiedBlocks))
                     {
-                        throw new InvalidDataException(ex.ToString());
+                        throw;
                     }
-                    else
-                    {
-                        _logger.Info($"Verified negative {verifiedBlocks} (which is ok on block {verifiedBlocks})");
-                    }
+
+                    _logger.Info($"Verified negative {verifiedBlocks} (which is ok on block {verifiedBlocks})");
                 }
 
                 verifiedBlocks++;
             }
         }
 
-        [TestCase(96, 192, 96, 1541344441)]
-        [TestCase(128, 256, 128, 988091870)]
-        [TestCase(128, 256, 128, 2107374965)]
-        [TestCase(128, 256, 128, null)]
-        [TestCase(4, 16, 4, 1242692908)]
-        [TestCase(8, 32, 8, 1543322391)]
+        private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int? seed)> FuzzAccountsWithStorageScenarios()
+        {
+            foreach (var trieStoreConfiguration in CreateTrieStoreConfigurations())
+            {
+                yield return (trieStoreConfiguration, 96, 192, 1541344441);
+                yield return (trieStoreConfiguration, 128, 2568, 988091870);
+                yield return (trieStoreConfiguration, 128, 2568, 2107374965);
+                yield return (trieStoreConfiguration, 128, 2568, null);
+                yield return (trieStoreConfiguration, 4, 16, 1242692908);
+                yield return (trieStoreConfiguration, 8, 32, 1543322391);
+            }
+        }
+
+        [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
         public void Fuzz_accounts_with_storage(
+            (TrieStoreConfigurations trieStoreConfigurations,
             int accountsCount,
             int blocksCount,
-            int lookupLimit,
-            int? seed)
+            int? seed) scenario)
         {
+            (TrieStoreConfigurations trieStoreConfigurations, int accountsCount, int blocksCount, int? seed) = scenario;
+
             int usedSeed = seed ?? _random.Next(int.MaxValue);
             _random = new Random(usedSeed);
             _logger.Info($"RANDOM SEED {usedSeed}");
@@ -1002,16 +1067,14 @@ namespace Nethermind.Trie.Test
             _logger.Info(
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
-                $"lookup: {lookupLimit} into file {fileName}");
+                $"{trieStoreConfigurations} into file {fileName}");
 
             using FileStream fileStream = new(fileName, FileMode.Create);
             using StreamWriter streamWriter = new(fileStream);
 
             Queue<Hash256> rootQueue = new();
 
-            MemDb memDb = new();
-
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            using TrieStore trieStore = trieStoreConfigurations.CreateTrieStore();
             WorldState stateProvider = new WorldState(trieStore, new MemDb(), _logManager);
 
             Account[] accounts = new Account[accountsCount];
@@ -1095,9 +1158,6 @@ namespace Nethermind.Trie.Test
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
 
-            streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-            _logger.Info($"DB size: {memDb.Keys.Count}");
-
             int verifiedBlocks = 0;
 
             while (rootQueue.TryDequeue(out Hash256 currentRoot))
@@ -1118,16 +1178,14 @@ namespace Nethermind.Trie.Test
 
                     _logger.Info($"Verified positive {verifiedBlocks}");
                 }
-                catch (Exception ex)
+                catch (MissingTrieNodeException)
                 {
-                    if (verifiedBlocks % lookupLimit == 0)
+                    if (!trieStoreConfigurations.IsMissingAccountExpected(blocksCount - verifiedBlocks))
                     {
-                        throw new InvalidDataException(ex.ToString());
+                        throw;
                     }
-                    else
-                    {
-                        _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
-                    }
+
+                    _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
                 }
 
                 verifiedBlocks++;
