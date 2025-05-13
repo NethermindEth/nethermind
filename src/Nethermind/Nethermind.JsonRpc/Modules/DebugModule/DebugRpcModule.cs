@@ -81,7 +81,7 @@ public class DebugRpcModule : IDebugRpcModule
         {
             return GetFailureResult<GethLikeTxTrace, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
-        
+
         if (!HasStateForBlock(_blockchainBridge, searchResult.Object!))
         {
             return GetStateFailureResult<GethLikeTxTrace>(searchResult.Object!);
@@ -320,7 +320,7 @@ public class DebugRpcModule : IDebugRpcModule
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
             return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(header!);
-        }   
+        }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
