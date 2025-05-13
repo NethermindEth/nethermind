@@ -18,6 +18,7 @@ using Multiformats.Address;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -42,6 +43,7 @@ public class OptimismCLP2P : IDisposable
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPAddress _externalIp;
+    private readonly Random _random = new();
 
     private PubsubRouter? _router;
     private LocalPeer? _localPeer;
@@ -206,7 +208,7 @@ public class OptimismCLP2P : IDisposable
         try
         {
             ExecutionPayloadV3? response = null;
-            foreach (ISession peer in _localPeer!.Sessions.ToList())
+            foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
             {
                 response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
                 if (response is not null)
