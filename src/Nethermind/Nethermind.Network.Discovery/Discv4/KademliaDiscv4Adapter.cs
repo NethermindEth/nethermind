@@ -21,6 +21,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 // TODO: Hard rate limit.
 public class KademliaDiscv4Adapter(
     Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
+    Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     NodeRecord selfNodeRecord,
@@ -30,8 +31,10 @@ public class KademliaDiscv4Adapter(
     ILogManager logManager
 ): IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
 {
-    private readonly TimeSpan _requestTimeout = TimeSpan.FromSeconds(10);
-    private readonly TimeSpan _waitAfterPongTimeout = TimeSpan.FromMilliseconds(500);
+    private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
+    private readonly TimeSpan _pingTimeout = TimeSpan.FromSeconds(1);
+    private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
     /// This is the value set by other clients based on real network tests.
@@ -47,7 +50,7 @@ public class KademliaDiscv4Adapter(
 
     #region Authentication and utils
 
-    private NodeSession GetSession(Node node)
+    public NodeSession GetSession(Node node)
     {
         if (_sessions.TryGet(node.IdHash, out var session)) return session;
         session = new NodeSession(nodeStatsManager.GetOrAdd(node));
@@ -63,7 +66,7 @@ public class KademliaDiscv4Adapter(
         await Ping(node, token);
         // We send them ping. But expect that eventually they send back another a ping so that we can pong.
         // Give some time for peer to process pong. Such is the logic from geth codebase.
-        await Task.Delay(_waitAfterPongTimeout, token);
+        await Task.Delay(_waitAfterPongDelay, token);
 
         if (_logger.IsTrace) _logger.Trace($"Node {node} pong sent.");
     }
@@ -125,6 +128,11 @@ public class KademliaDiscv4Adapter(
         {
             return await messageHandler.TaskCompletionSource.Task;
         }
+        catch (OperationCanceledException)
+        {
+            nodeHealthTracker.Value.OnRequestFailed(receiver);
+            throw;
+        }
         finally
         {
             RemoveMessageHandler(msgType, receiver.IdHash, messageHandler);
@@ -151,7 +159,7 @@ public class KademliaDiscv4Adapter(
 
     public async Task Ping(Node receiver, CancellationToken token)
     {
-        using var cts = token.CreateChildTokenSource(_requestTimeout);
+        using var cts = token.CreateChildTokenSource(_pingTimeout);
         token = cts.Token;
 
         PingMsg msg = new PingMsg(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address);
@@ -159,6 +167,7 @@ public class KademliaDiscv4Adapter(
 
         NodeSession session = GetSession(receiver);
 
+        session.OnPingSent();
         _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
 
         session.OnPongReceived();
@@ -166,12 +175,12 @@ public class KademliaDiscv4Adapter(
 
     public async Task<Node[]> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {
-        using var cts = token.CreateChildTokenSource(_requestTimeout);
-        token = cts.Token;
-
         NodeSession session = GetSession(receiver);
         return await RunAuthenticatedRequest(receiver, session, async token =>
         {
+            using var cts = token.CreateChildTokenSource(_findNeighbourTimeout);
+            token = cts.Token;
+
             FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), target.Bytes);
 
             return await CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, token);
@@ -180,12 +189,12 @@ public class KademliaDiscv4Adapter(
 
     public async Task<EnrResponseMsg> SendEnrRequest(Node receiver, CancellationToken token)
     {
-        using var cts = token.CreateChildTokenSource(_requestTimeout);
-        token = cts.Token;
-
         NodeSession session = GetSession(receiver);
         return await RunAuthenticatedRequest(receiver, session, async token =>
         {
+            using var cts = token.CreateChildTokenSource(_requestEnrTimeout);
+            token = cts.Token;
+
             EnrRequestMsg msg = new EnrRequestMsg(receiver.Address, CalculateExpirationTime());
 
             return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(), receiver, session, msg, token);
@@ -260,6 +269,7 @@ public class KademliaDiscv4Adapter(
 
             if (HandleViaMessageHandlers(node, msg))
             {
+                nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                 return;
             }
 
