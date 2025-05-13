@@ -79,12 +79,12 @@ public class DebugRpcModule : IDebugRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(searchResult, _debugBridge.HaveNotSyncedHeadersYet() && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+            return GetFailureResult<GethLikeTxTrace, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
         
         if (!HasStateForBlock(_blockchainBridge, searchResult.Object!))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"No state available for block {searchResult.Object!.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<GethLikeTxTrace>(searchResult.Object!);
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -106,13 +106,13 @@ public class DebugRpcModule : IDebugRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(searchResult, _debugBridge.HaveNotSyncedHeadersYet() && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+            return GetFailureResult<GethLikeTxTrace, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<GethLikeTxTrace>(header!);
         }
 
         // default to previous block gas if unspecified
@@ -140,13 +140,13 @@ public class DebugRpcModule : IDebugRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(new BlockParameter(blockhash));
         if (searchResult.IsError)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(searchResult, _debugBridge.HaveNotSyncedHeadersYet() && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+            return GetFailureResult<GethLikeTxTrace, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<GethLikeTxTrace>(header!);
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -166,13 +166,13 @@ public class DebugRpcModule : IDebugRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(searchResult, _debugBridge.HaveNotSyncedHeadersYet() && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+            return GetFailureResult<GethLikeTxTrace, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<GethLikeTxTrace>(header!);
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -199,7 +199,7 @@ public class DebugRpcModule : IDebugRpcModule
         BlockHeader header = block.Header;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<GethLikeTxTrace>(header!);
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -219,7 +219,7 @@ public class DebugRpcModule : IDebugRpcModule
         BlockHeader header = block.Header;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<GethLikeTxTrace>(header!);
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -249,7 +249,7 @@ public class DebugRpcModule : IDebugRpcModule
         BlockHeader header = block.Header;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(header!);
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -280,13 +280,13 @@ public class DebugRpcModule : IDebugRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockNumber);
         if (searchResult.IsError)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(searchResult, _debugBridge.HaveNotSyncedHeadersYet() && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+            return GetFailureResult<IReadOnlyCollection<GethLikeTxTrace>, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(header!);
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -313,13 +313,13 @@ public class DebugRpcModule : IDebugRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(searchResult, _debugBridge.HaveNotSyncedHeadersYet() && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+            return GetFailureResult<IReadOnlyCollection<GethLikeTxTrace>, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return GetStateFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(header!);
         }   
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -512,4 +512,11 @@ public class DebugRpcModule : IDebugRpcModule
         return new SimulateTxExecutor<GethLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
     }
+
+    private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary)
+        where TSearch : class =>
+        ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+
+    private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
+        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 }
