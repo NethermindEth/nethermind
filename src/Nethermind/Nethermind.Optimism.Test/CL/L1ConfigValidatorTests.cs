@@ -49,7 +49,7 @@ public class L1ConfigValidatorTests
         var validator = new L1ConfigValidator(ethApi, logManager);
 
         ethApi.GetChainId().Returns(Task.FromResult((ulong)actualChainId));
-        ethApi.GetBlockByNumber(genesisNumber, false).Returns(Task.FromResult<L1Block?>(new L1Block { Hash = actualGenesisHash }));
+        ethApi.GetBlockByNumber(genesisNumber, true).Returns(Task.FromResult<L1Block?>(new L1Block { Hash = actualGenesisHash }));
 
         bool result = await validator.Validate((ulong)expectedChainId, genesisNumber, expectedGenesisHash);
         result.Should().Be(isValid);
