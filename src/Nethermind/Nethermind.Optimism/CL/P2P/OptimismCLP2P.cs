@@ -226,7 +226,7 @@ public class OptimismCLP2P : IDisposable
         try
         {
             ExecutionPayloadV3? response = null;
-            foreach (ISession peer in _localPeer!.Sessions.ToList())
+            foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
             {
                 response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
                 if (response is not null)
