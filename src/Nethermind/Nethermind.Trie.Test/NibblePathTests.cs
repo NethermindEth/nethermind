@@ -3,6 +3,8 @@
 
 using System;
 using System.Linq;
+using FluentAssertions;
+using Lantern.Discv5.WireProtocol.Packet.Handlers;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -26,7 +28,7 @@ public class NibblePathTests
         NibblePath path = NibblePath.FromNibbles([nibble1, nibble2, nibble3]);
         Span<byte> output = stackalloc byte[2];
 
-        path.EncodeTo(output,flag);
+        path.EncodeTo(output, flag);
 
         Assert.That(output[0], Is.EqualTo(byte1));
         Assert.That(output[1], Is.EqualTo(byte2));
@@ -39,7 +41,7 @@ public class NibblePathTests
         NibblePath path = NibblePath.FromNibbles([nibble1, nibble2]);
         Span<byte> output = stackalloc byte[2];
 
-        path.EncodeTo(output,flag);
+        path.EncodeTo(output, flag);
 
         Assert.That(output[0], Is.EqualTo(byte1));
         Assert.That(output[1], Is.EqualTo(byte2));
@@ -79,5 +81,52 @@ public class NibblePathTests
         Assert.That(key[0], Is.EqualTo(nibble1));
         Assert.That(key[1], Is.EqualTo(nibble2));
         Assert.That(key[2], Is.EqualTo(nibble3));
+    }
+
+    [TestCase(new byte[] { 1 })]
+    [TestCase(new byte[] { 1, 2 })]
+    [TestCase(new byte[] { 1, 2, 3 })]
+    [TestCase(new byte[] { 1, 2, 3, 4 })]
+    public void Prepend_nibble(byte[] nibbles)
+    {
+        const byte added = 9;
+
+        var path = NibblePath.FromNibbles(nibbles);
+
+        var prepended = path.PrependWith(added);
+
+        prepended.Length.Should().Be(nibbles.Length + 1);
+        prepended[0].Should().Be(added);
+
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            prepended[i + 1].Should().Be(nibbles[i]);
+        }
+    }
+
+    [TestCase(new byte[] { 1 }, new byte[] { 2, 3 })]
+    [TestCase(new byte[] { 1, 2 }, new byte[] { 3 })]
+    [TestCase(new byte[] { 1, 2, 3, 4 }, new byte[] { 5, 6, 7 })]
+    [TestCase(new byte[] { 1, 2 }, new byte[] { 3, 4 })]
+    [TestCase(new byte[] { 1 }, new byte[] { 2 })]
+    [TestCase(new byte[] { 1, 2, 3 }, new byte[] { 4, 5, 6 })]
+    public void Concat(byte[] a, byte[] b)
+    {
+        var pathA = NibblePath.FromNibbles(a);
+        var pathB = NibblePath.FromNibbles(b);
+
+        var concatenated = pathA.Concat(pathB);
+
+        concatenated.Length.Should().Be(pathA.Length + pathB.Length);
+
+        for (int i = 0; i < a.Length; i++)
+        {
+            concatenated[i].Should().Be(a[i], $"@{i}");
+        }
+
+        for (int i = 0; i < b.Length; i++)
+        {
+            concatenated[i + a.Length].Should().Be(b[i]);
+        }
     }
 }

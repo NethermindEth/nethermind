@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie;
 
@@ -46,8 +45,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     /// </summary>
     public int ByteLength => _data?.Length ?? 0;
 
-    public int Length =>
-        (_data!.Length - PreambleLength) * NibblesPerByte + ((_data[0] & OddFlag) == OddFlag ? 1 : 0);
+    public int Length => (_data!.Length - PreambleLength) * NibblesPerByte + ((_data[0] & OddFlag) >> OddFlagShift);
 
     public bool IsNull => _data is null;
 
@@ -97,21 +95,87 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public NibblePath Concat(NibblePath other)
     {
-        throw new NotImplementedException("NOT IMPLEMENTED YET");
+        byte[] data;
+
+        if (other.IsOdd == false)
+        {
+            // even, a simple case of appending one to another
+            data = new byte[_data!.Length + other.Length - PreambleLength];
+
+            // Copy other first, so that the first byte is overwritten underneath
+            other._data!.CopyTo(data, _data.Length - PreambleLength);
+            _data.CopyTo(data, 0);
+            return new NibblePath(data);
+        }
+
+        Debug.Assert(other.IsOdd, "The other is odd");
+
+        var shift = IsOdd ? 0 : 1;
+        // In both cases: even+odd and odd+odd the following will be used
+        data = new byte[_data.Length + other._data.Length - shift];
+
+        // Copy other first, so that the first byte is overwritten underneath
+        other._data!.CopyTo(data, _data.Length - shift);
+
+        // Mix in the last one
+        ref var last = ref data[_data.Length - shift];
+        last = (byte)((last & NibbleMask) | ((_data[^1] & NibbleMask) << NibbleShift));
+
+        // The last one is take care of. It's an even number of nibbles to move. Move byte by byte
+        var length = Length / 2;
+        for (var i = 0; i < length; i++)
+        {
+            data[i + 1] = (byte)(((_data[i] & NibbleMask) << NibbleShift) |
+                                 ((_data[i + 1] >> NibbleShift) & NibbleMask));
+        }
+
+        if (IsOdd == false)
+        {
+            // even & odd, the first byte should be set to odd
+            data[0] = (byte)(OddFlag | ((_data[1] >> NibbleShift) & NibbleMask));
+        }
+
+        return new NibblePath(data);
     }
 
     public NibblePath PrependWith(byte nibble)
     {
-        throw new NotImplementedException("NOT IMPLEMENTED YET");
+        byte[] bytes;
+
+        if (IsOdd)
+        {
+            // odd
+            bytes = new byte[_data!.Length + 1];
+            _data.CopyTo(bytes, 1);
+            bytes[1] = (byte)((_data[0] & ~OddFlag) | // remove oddity
+                              (nibble << NibbleShift)); // or with nibble
+        }
+        else
+        {
+            // even, squeeze in
+            bytes = new byte[_data!.Length];
+            _data.CopyTo(bytes, 0);
+            bytes[0] = (byte)(OddFlag | nibble);
+        }
+
+        return new NibblePath(bytes);
     }
 
-    public NibblePath SliceTo(int end) => throw new NotImplementedException("NOT IMPLEMENTED YET");
+    private bool IsOdd => (_data[0] & OddFlag) == OddFlag;
 
-    public NibblePath SliceFrom(int start) => throw new NotImplementedException("NOT IMPLEMENTED YET");
+    public NibblePath SliceTo(int end) => Slice(0, end);
 
-    public NibblePath Slice(int from, int length) => throw new NotImplementedException();
+    public NibblePath SliceFrom(int start) => Slice(start, Length - start);
 
-    public string ToHexString(bool skipLeadingZeros ) => throw new NotImplementedException("NOT IMPLEMENTED YET");
+    public NibblePath Slice(int from, int length)
+    {
+        throw new NotImplementedException();
+    }
+
+    public string ToHexString(bool skipLeadingZeros)
+    {
+        throw new NotImplementedException("NOT IMPLEMENTED YET");
+    }
 
     public byte this[int index]
     {
@@ -125,8 +189,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             // for an odd path, and an even index, take lower nibble
             // for an even path, and an even index, take higher nibble
             // for an even path, and an odd index, take lower nibble
-            var h = 1- ((index & 1) ^ odd);
-
+            var h = 1 - ((index & 1) ^ odd);
             return (byte)((b >> (h * NibbleShift)) & NibbleMask);
         }
     }
@@ -146,7 +209,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public static NibblePath FromNibbles(ReadOnlySpan<byte> nibbles)
     {
-        var bytes = new byte[nibbles.Length / 2 + PreambleLength];
+        var bytes = new byte[GetRequiredArraySize(nibbles.Length)];
 
         if (nibbles.Length % 2 != 0)
         {
@@ -162,9 +225,13 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         return new NibblePath(bytes);
     }
 
+    private static int GetRequiredArraySize(int nibbleCount) => nibbleCount / 2 + PreambleLength;
+
     public static NibblePath FromRaw(ReadOnlySpan<byte> bytes)
     {
-        throw new NotImplementedException();
+        byte[] data = new byte[bytes.Length + PreambleLength];
+        bytes.CopyTo(data.AsSpan(1));
+        return new NibblePath(data);
     }
 
     /// <summary>
@@ -198,7 +265,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     {
         Debug.Assert(_data != null);
         _data.CopyTo(destination);
-        destination[0] = (byte)((isLeaf ? LeafFlag : 0) |  destination[0]);
+        destination[0] = (byte)((isLeaf ? LeafFlag : 0) | destination[0]);
     }
 
     public int CommonPrefixLength(NibblePath other)
@@ -217,7 +284,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public static Ref Empty => default;
 
-        public Ref(in ReadOnlySpan<byte> rawKey) : this (rawKey, 0, rawKey.Length * 2)
+        public Ref(in ReadOnlySpan<byte> rawKey) : this(rawKey, 0, rawKey.Length * 2)
         {
         }
 
