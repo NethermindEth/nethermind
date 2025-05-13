@@ -22,7 +22,6 @@ namespace Nethermind.Network.Discovery.Discv4;
 // TODO: Hard rate limit.
 public class KademliaDiscv4Adapter(
     Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
-    INetworkConfig networkConfig,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     NodeRecord selfNodeRecord,
@@ -41,7 +40,6 @@ public class KademliaDiscv4Adapter(
 
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
     public IMsgSender? MsgSender { get; set; }
-    public NodeFilter NodesFilter = new((networkConfig?.MaxActivePeers * 4) ?? 200);
     private readonly CancellationToken _processCancellationToken = processExitSource.Token;
 
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
@@ -148,8 +146,6 @@ public class KademliaDiscv4Adapter(
     {
         return ExpirationTimeInSeconds + timestamper.UnixTime.SecondsLong;
     }
-
-
 
     #endregion
 

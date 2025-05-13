@@ -242,12 +242,6 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
-            if (!_discv4Adapter.NodesFilter.Set(networkNode.HostIp))
-            {
-                // Already seen this node ip recently
-                continue;
-            }
-
             Node node;
             try
             {
@@ -263,6 +257,7 @@ public class DiscoveryApp : IDiscoveryApp
 
             try
             {
+                // If when it receive Pong, it should automatically add to routing table if not full.
                 await _discv4Adapter.Ping(node, cancellationToken);
             }
             catch (OperationCanceledException)

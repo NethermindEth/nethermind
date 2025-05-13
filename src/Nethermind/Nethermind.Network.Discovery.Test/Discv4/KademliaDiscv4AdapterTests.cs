@@ -91,7 +91,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademliaMessageReceiver<PublicKey, Node>>(() => _kademliaMessageReceiver),
-                _networkConfig,
                 new DiscoveryConfig(),
                 _kademliaConfig,
                 _selfNodeRecord,
