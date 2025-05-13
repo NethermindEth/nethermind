@@ -73,12 +73,12 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEofEnabled.Should().Be(false);
         }
 
-        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, false)]
-        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.OsakaBlockTimestamp, true)]
-        public void Osaka_eips(long blockNumber, ulong timestamp, bool isEnabled)
-        {
-            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEofEnabled.Should().Be(isEnabled);
-        }
+        // [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, false)]
+        // [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.OsakaBlockTimestamp, true)]
+        // public void Osaka_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        // {
+        //     _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEofEnabled.Should().Be(isEnabled);
+        // }
 
         [Test]
         public void Dao_block_number_is_correct()

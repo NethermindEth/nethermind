@@ -29,6 +29,8 @@ namespace Nethermind.Consensus.Processing
             IBlockTracer blockTracer,
             CancellationToken token = default);
 
+        bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options);
+
         /// <summary>
         /// Fired when a branch is being processed.
         /// </summary>
@@ -51,6 +53,7 @@ namespace Nethermind.Consensus.Processing
 
         public interface IBlockTransactionsExecutor
         {
+            bool IsTransactionInBlock(Transaction tx);
             TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         }

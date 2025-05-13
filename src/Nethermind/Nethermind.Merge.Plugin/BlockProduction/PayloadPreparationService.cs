@@ -11,10 +11,13 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -45,7 +48,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     private readonly TimeSpan _timePerSlot;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
-    protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+    protected readonly ConcurrentDictionary<string, PayloadStore> _payloadStorage = new();
 
     public PayloadPreparationService(
         PostMergeBlockProducer blockProducer,
@@ -115,35 +118,47 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts) =>
-        _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
-            (id, currentContext) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts, bool force = false)
+        => _payloadStorage.AddOrUpdate(payloadId,
+            id =>
             {
-                if (cts.IsCancellationRequested)
+                CancellationTokenSource cancellationTokenSource = new();
+                PayloadStore store = new()
                 {
-                    // If cancelled, return previous
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
-                    return currentContext;
-                }
+                    Id = id,
+                    Header = parentHeader,
+                    PayloadAttributes = payloadAttributes,
+                    ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
+                    StartDateTime = startDateTime,
+                    CurrentBestBlock = currentBestBlock,
+                    CurrentBestBlockFees = currentBlockFees,
+                    BuildCount = 1,
+                    CancellationTokenSource = cancellationTokenSource
+                };
+                return store;
+            },
+            (id, store) =>
+            {
+                var currentContext = store.ImprovementContext;
                 if (!currentContext.ImprovementTask.IsCompleted)
                 {
-                    // If there is payload improvement and its not yet finished leave it be
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
-                    return currentContext;
+                    if (force)
+                    {
+                        store.CancellationTokenSource?.Cancel();
+                        store.CancellationTokenSource?.TryReset();
+                    }
+                    else
+                    {
+                        // if there is payload improvement and its not yet finished leave it be
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
+                        return store;
+                    }
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
-                if (!cts.IsCancellationRequested)
-                {
-                    currentContext.Dispose();
-                    return newContext;
-                }
-                else
-                {
-                    newContext.Dispose();
-                    return currentContext;
-                }
+                store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource ?? cts);
+                store.BuildCount++;
+                currentContext.Dispose();
+                return store;
             });
 
 
@@ -299,16 +314,18 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         try
         {
             if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
-            foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+            foreach (KeyValuePair<string, PayloadStore> payload in _payloadStorage)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                IBlockImprovementContext improvementContext = payload.Value.ImprovementContext;
+                if (improvementContext.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {improvementContext.CurrentBestBlock?.Timestamp}");
 
-                    if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                    if (_payloadStorage.TryRemove(payload.Key, out PayloadStore? store))
                     {
-                        context.Dispose();
+                        store.CancellationTokenSource?.CancelAndDispose();
+                        store.ImprovementContext.Dispose();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -370,8 +387,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
-        if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
+        if (_payloadStorage.TryGetValue(payloadId, out PayloadStore? store))
         {
+            var blockContext = store.ImprovementContext;
             using (blockContext)
             {
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
@@ -406,6 +424,48 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
 
         return null;
+    }
+
+    public void ForceRebuildPayload(string payloadId)
+    {
+        if (_payloadStorage.TryGetValue(payloadId, out PayloadStore? store))
+        {
+            ImproveBlock(payloadId, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrentBestBlockFees, store.CancellationTokenSource!, true);
+        }
+    }
+
+    // for testing
+    internal PayloadStore? GetPayloadStore(string payloadId)
+        => _payloadStorage.GetValueOrDefault(payloadId);
+
+    protected internal class PayloadStore : IEquatable<PayloadStore>
+    {
+        public required string Id { get; init; }
+        public required BlockHeader Header { get; init; }
+        public required PayloadAttributes PayloadAttributes { get; init; }
+        public required IBlockImprovementContext ImprovementContext { get; set; }
+        public required DateTimeOffset StartDateTime { get; init; }
+        public required Block CurrentBestBlock { get; init; }
+        public UInt256 CurrentBestBlockFees { get; init; } = UInt256.Zero;
+        public uint BuildCount { get; set; }
+        public CancellationTokenSource? CancellationTokenSource { get; init; }
+
+        public bool Equals(PayloadStore? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Id == other.Id;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj is null) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((PayloadStore)obj);
+        }
+
+        public override int GetHashCode() => Id.GetHashCode();
     }
 
     public void Dispose()
