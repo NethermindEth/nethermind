@@ -485,7 +485,7 @@ public static class ContainerBuilderExtensions
         return builder
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
             // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
+            .AddSingleton<TrieStore>(ctx => TestTrieStoreFactory.Build(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
             .Bind<IPruningTrieStore, TrieStore>()
             .AddSingleton<IWorldStateManager>(ctx =>
             {
