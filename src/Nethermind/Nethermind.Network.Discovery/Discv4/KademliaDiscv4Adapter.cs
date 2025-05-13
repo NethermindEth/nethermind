@@ -239,7 +239,7 @@ public class KademliaDiscv4Adapter(
         session.OnPingReceived();
         await SendMessage(session, msg, token);
 
-        if (session.HasReceivedPong)
+        if (!session.HasReceivedPong)
         {
             await Ping(node, token);
         }
