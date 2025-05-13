@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
@@ -13,14 +14,22 @@ namespace Nethermind.Core.Crypto
 {
     public class Signature : MemoryManager<byte>, IEquatable<Signature>
     {
+        public const int Length = 65;
+
         public const int VOffset = 27;
-        private Vector512<byte> _signature;
+
+        private readonly byte[] _signature = new byte[Length];
+
+        ref readonly Vector512<byte> Vector => ref Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetArrayDataReference(_signature));
 
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, 64);
+            ArgumentOutOfRangeException.ThrowIfNegative(recoveryId);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(recoveryId, byte.MaxValue);
 
-            bytes.CopyTo(Bytes);
+            bytes.CopyTo(_signature);
+            _signature[64] = (byte)recoveryId;
             V = (ulong)recoveryId + VOffset;
         }
 
@@ -28,7 +37,7 @@ namespace Nethermind.Core.Crypto
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, 65);
 
-            bytes[..64].CopyTo(Bytes);
+            bytes.CopyTo(_signature);
             V = bytes[64];
         }
 
@@ -36,7 +45,7 @@ namespace Nethermind.Core.Crypto
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(v, (ulong)VOffset);
 
-            Span<byte> span = Bytes;
+            Span<byte> span = _signature;
             r.CopyTo(span.Slice(32 - r.Length, r.Length));
             s.CopyTo(span.Slice(64 - s.Length, s.Length));
             V = v;
@@ -57,7 +66,8 @@ namespace Nethermind.Core.Crypto
             : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
-        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _signature, 1));
+        public Span<byte> Bytes => _signature.AsSpan(0, 64);
+
         public override Memory<byte> Memory => CreateMemory(64);
 
         public ulong V { get; set; }
@@ -72,16 +82,8 @@ namespace Nethermind.Core.Crypto
         public ReadOnlySpan<byte> SAsSpan => Bytes.Slice(32, 32);
 
         [Todo("Change signature to store 65 bytes and just slice it for normal Bytes.")]
-        public byte[] BytesWithRecovery
-        {
-            get
-            {
-                var result = new byte[65];
-                Bytes.CopyTo(result);
-                result[64] = RecoveryId;
-                return result;
-            }
-        }
+        public ReadOnlySpan<byte> BytesWithRecovery => _signature.AsSpan();
+
 
         public override string ToString()
         {
@@ -93,7 +95,7 @@ namespace Nethermind.Core.Crypto
         {
             if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
-            return _signature == other._signature && V == other.V;
+            return Vector == other.Vector && V == other.V;
         }
 
         public override bool Equals(object? obj)

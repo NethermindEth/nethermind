@@ -197,7 +197,9 @@ namespace Nethermind.AuRa.Test
                 .TestObject;
 
             Hash256 hash = block.CalculateHash(RlpBehaviors.ForSealing);
-            block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
+            if (block.AuRaSignature is null)
+                block.AuRaSignature = new byte[Signature.Length];
+            _wallet.Sign(hash, signedAddress).BytesWithRecovery.CopyTo(block.AuRaSignature);
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 
             return _sealValidator.ValidateSeal(block, false);

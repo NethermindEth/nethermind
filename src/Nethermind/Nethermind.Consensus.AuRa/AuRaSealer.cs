@@ -61,7 +61,9 @@ namespace Nethermind.Consensus.AuRa
 
             Hash256 headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
             Signature signature = _signer.Sign(headerHash);
-            block.Header.AuRaSignature = signature.BytesWithRecovery;
+            if (block.Header.AuRaSignature is null)
+                block.Header.AuRaSignature = new byte[Signature.Length];
+            signature.BytesWithRecovery.CopyTo(block.Header.AuRaSignature);
 
             return block;
         }
