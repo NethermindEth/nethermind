@@ -146,6 +146,7 @@ public class OptimismCLP2P : IDisposable
                             if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {payloadNumber}");
                             break;
                         }
+                        previousParentHash = missingPayload.ParentHash;
                         missingPayloads[i - 1] = missingPayload;
                     }
 
@@ -190,7 +191,7 @@ public class OptimismCLP2P : IDisposable
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"Requested P2P Payload hash missmatch. Expected {expectedHash}, got {payload.BlockHash}. Number: {payloadNumber}");
+                        $"Requested P2P Payload hash mismatch. Expected {expectedHash}, got {payload.BlockHash}. Number: {payloadNumber}");
                 return null;
             }
             return payload;
