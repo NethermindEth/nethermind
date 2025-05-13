@@ -216,6 +216,10 @@ public class ExecutionEngineManager(
 
         return true;
     }
+    public Task<ulong?> GetCurrentFinalizedBlockNumber()
+    {
+        return Task.FromResult(_currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null);
+    }
 
     private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();
     public Task OnELSynced => _elSyncedTaskCompletionSource.Task;

@@ -5,6 +5,7 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
@@ -133,26 +134,25 @@ public class OptimismCLP2P : IDisposable
 
                 if (_headNumber is not null)
                 {
-                    ulong numberOfMissingPayloads = (ulong)payload.BlockNumber - _headNumber.Value - 1;
-                    ExecutionPayloadV3?[] missingPayloads = new ExecutionPayloadV3[numberOfMissingPayloads];
+                    List<ExecutionPayloadV3> missingPayloads = new();
                     Hash256 previousParentHash = payload.ParentHash;
                     // Rollback missing payloads
-                    for (ulong i = numberOfMissingPayloads; i > 0; i--)
+                    for (ulong i = (ulong)payload.BlockNumber - 1; i > _headNumber.Value; i--)
                     {
-                        ulong payloadNumber = _headNumber.Value + i;
-                        ExecutionPayloadV3? missingPayload = await RequestPayload(payloadNumber, previousParentHash, token);
+                        ExecutionPayloadV3? missingPayload = await RequestPayload(i, previousParentHash, token);
                         if (missingPayload is null)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {payloadNumber}");
+                            if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {i}");
                             break;
                         }
                         previousParentHash = missingPayload.ParentHash;
-                        missingPayloads[i - 1] = missingPayload;
+                        missingPayloads.Add(missingPayload);
+                        await UpdateHead();
                     }
 
-                    foreach (var missingPayload in missingPayloads)
+                    foreach (var missingPayload in missingPayloads.AsEnumerable().Reverse())
                     {
-                        if (missingPayload is not null && await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
+                        if ((ulong)missingPayload.BlockNumber > _headNumber && await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload))
                         {
                             _headNumber = (ulong)missingPayload.BlockNumber;
                             break;
@@ -175,6 +175,15 @@ public class OptimismCLP2P : IDisposable
                 if (_logger.IsError && e is not OperationCanceledException and not ChannelClosedException)
                     _logger.Error("Unhandled exception in Optimism CL P2P:", e);
             }
+        }
+    }
+
+    private async Task UpdateHead()
+    {
+        ulong? currentFinalized = await _executionEngineManager.GetCurrentFinalizedBlockNumber();
+        if (_headNumber is not null && currentFinalized > _headNumber)
+        {
+            _headNumber = (ulong)currentFinalized;
         }
     }
 
