@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
@@ -18,7 +17,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 public class KademliaNodeSource(
     IKademlia<PublicKey, Node> kademlia,
     IRoutingTable<Node> routingTable,
-    IITeratorAlgo<Node> lookup2,
+    IIteratorNodeLookup lookup2,
     KademliaDiscv4Adapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     ILogManager logManager
@@ -29,8 +28,6 @@ public class KademliaNodeSource(
     private Counter _discoverRound = Prometheus.Metrics.CreateCounter("kademlia_discover_rounds", "discovery rounds");
     private Counter _discoverPingResult = Prometheus.Metrics.CreateCounter("kademlia_discover_ping", "discovery rounds", "result");
     private Gauge _kademliaSize = Prometheus.Metrics.CreateGauge("kademlia_routing_table_size", "discovery rounds", "result");
-
-    private LruCache<ValueHash256, DateTimeOffset> _unreacheableNodes = new(10000, "");
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -47,29 +44,15 @@ public class KademliaNodeSource(
             bool anyFound = false;
             int count = 0;
 
-            ValueHash256 targetHash = target.Hash;
-            Func<Node, CancellationToken, Task<Node[]>> lookupOp = async (nextNode, token) =>
+            await foreach (var node in lookup2.Lookup(target, token))
             {
-                if (_unreacheableNodes.TryGet(nextNode.IdHash, out var lastAttempt) &&
-                    lastAttempt + TimeSpan.FromMinutes(5) > DateTimeOffset.Now)
+                if (!discv4Adapter.GetSession(node).HasReceivedPong)
                 {
-                    return [];
-                }
-
-                try
-                {
-                    return await discv4Adapter.FindNeighbours(nextNode, target, token);
-                }
-                catch (OperationCanceledException)
-                {
-                    _unreacheableNodes.Set(nextNode.IdHash, DateTimeOffset.Now);
-                    throw;
-                }
-            };
-            await foreach (var node in lookup2.Lookup(targetHash, 128, 3, 5, lookupOp!, token))
-            {
-                if (routingTable.GetByHash(node.IdHash) is null)
-                {
+                    if (discv4Adapter.GetSession(node).HasTriedPingRecently)
+                    {
+                        // Tried ping before and did not receive a response
+                        continue;
+                    }
                     try
                     {
                         await discv4Adapter.Ping(node, token);

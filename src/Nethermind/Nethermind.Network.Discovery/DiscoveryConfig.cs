@@ -17,7 +17,7 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public int EvictionCheckInterval { get; set; } = 75;
 
-    public int SendNodeTimeout { get; set; } = 5000;
+    public int SendNodeTimeout { get; set; } = 500;
 
     public int PongTimeout { get; set; } = 1000 * 5;
 

@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Network.Discovery.Discv4;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -27,7 +28,7 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
 
                 return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
-            .AddSingleton<IITeratorAlgo<TNode>, NewaTrackingLookupKNearestNeighbour<TNode>>()
+            .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
             .AddSingleton<IRoutingTable<TNode>, KBucketTree<TKey, TNode>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
     }

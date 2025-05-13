@@ -7,18 +7,19 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-internal record NodeSession(INodeStats NodeStats)
+public record NodeSession(INodeStats NodeStats)
 {
     private static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     private const int AuthenticatedRequestFailureLimit = 5;
     private long AuthenticatedRequestFailureCount { get; set; }
     private DateTimeOffset LastPongReceived { get; set; } = DateTimeOffset.MinValue;
     private DateTimeOffset LastPingReceived { get; set; } = DateTimeOffset.MinValue;
+    private DateTimeOffset LastPingSent { get; set; } = DateTimeOffset.MinValue;
 
     public bool HasReceivedPing => LastPingReceived + BondTimeout > DateTimeOffset.UtcNow;
     public bool NotTooManyFailure => AuthenticatedRequestFailureCount <= AuthenticatedRequestFailureLimit;
     public bool HasReceivedPong => LastPongReceived + BondTimeout > DateTimeOffset.UtcNow;
-
+    public bool HasTriedPingRecently => LastPingSent + TimeSpan.FromMinutes(10) > DateTimeOffset.UtcNow;
     public void ResetAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount = 0;
     public void OnAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount++;
 
@@ -73,5 +74,10 @@ internal record NodeSession(INodeStats NodeStats)
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
                 break;
         }
+    }
+
+    public void OnPingSent()
+    {
+        LastPingSent = DateTimeOffset.UtcNow;
     }
 }

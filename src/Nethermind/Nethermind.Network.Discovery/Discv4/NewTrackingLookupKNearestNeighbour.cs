@@ -2,58 +2,66 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Threading;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 using NonBlocking;
 using Prometheus;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Network.Discovery.Discv4;
 
-public class NewaTrackingLookupKNearestNeighbour<TNode>(
-    IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
-    KademliaConfig<TNode> kademliaConfig,
-    INodeHealthTracker<TNode> nodeHealthTracker,
-    KademliaConfig<TNode> config,
-    ILogManager logManager) : IITeratorAlgo<TNode> where TNode : notnull
+/// <summary>
+/// Special lookup made specially for DiscV4 as the standard lookup is too slow or unnecessarily parallelized.
+/// Instead of returning k closest node, it just returns the nodes that it found along the way and stopped early.
+/// This is useful for node discovery as trying to get the k closest node is not completely necessary, as the main goal
+/// is to reach all node. The lookup is not parallelized as it is expected to be parallelized at a higher level with
+/// each worker having different target to look into.
+/// </summary>
+public class IteratorNodeLookup(
+    IRoutingTable<Node> routingTable,
+    KademliaConfig<Node> kademliaConfig,
+    KademliaDiscv4Adapter discv4Adapter,
+    ILogManager logManager) : IIteratorNodeLookup
 {
-    private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewaTrackingLookupKNearestNeighbour<TNode>>();
-    private readonly ValueHash256 _currentNodeIdAsHash = nodeHashProvider.GetHash(kademliaConfig.CurrentNodeId);
+    private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup>();
+    private readonly ValueHash256 _currentNodeIdAsHash = kademliaConfig.CurrentNodeId.IdHash;
 
-    private bool SameAsSelf(TNode node)
+    // Small lru of unreachable nodes, prevent retrying. Pretty effective, although does not improve discovery overall.
+    private readonly LruCache<ValueHash256, DateTimeOffset> _unreacheableNodes = new(256, "");
+
+    // The maximum round per lookup. Higher means that it will 'see' deeper into the network, but come at a latency
+    // cost of trying many node for increasingly lower new node.
+    private const int MaxRounds = 3;
+
+    // These two dont come into effect as MaxRounds is low.
+    private const int MaxNonProgressingRound = 3;
+    private const int MinResult = 128;
+
+    private bool SameAsSelf(Node node)
     {
-        return nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
+        return node.IdHash == _currentNodeIdAsHash;
     }
 
-    public async IAsyncEnumerable<TNode> Lookup(
-        ValueHash256 targetHash,
-        int minResult,
-        int maxNonProgressingRound,
-        int maxRounds,
-        Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
-        [EnumeratorCancellation] CancellationToken token
-    )
+    public async IAsyncEnumerable<Node> Lookup(PublicKey target, [EnumeratorCancellation] CancellationToken token)
     {
+        ValueHash256 targetHash = target.Hash;
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using var cts = token.CreateChildTokenSource();
         token = cts.Token;
 
-        ConcurrentDictionary<ValueHash256, TNode> queried = new();
-        ConcurrentDictionary<ValueHash256, TNode> seen = new();
+        ConcurrentDictionary<ValueHash256, Node> queried = new();
+        ConcurrentDictionary<ValueHash256, Node> seen = new();
 
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(ValueHash256, TNode), ValueHash256> queryQueue = new(comparer);
+        PriorityQueue<(ValueHash256, Node), ValueHash256> queryQueue = new(comparer);
 
         // Used to determine if the worker should stop
         ValueHash256 bestNodeId = ValueKeccak.Zero;
@@ -62,9 +70,9 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         int totalResult = 0;
 
         // Check internal table first
-        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, null))
+        foreach (Node node in routingTable.GetKNearestNeighbour(targetHash, null))
         {
-            ValueHash256 nodeHash = nodeHashProvider.GetHash(node);
+            ValueHash256 nodeHash = node.IdHash;
             seen.TryAdd(nodeHash, node);
 
             queryQueue.Enqueue((nodeHash, node), nodeHash);
@@ -80,7 +88,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            if (!queryQueue.TryDequeue(out (ValueHash256 hash, TNode node) toQuery, out ValueHash256 hash256))
+            if (!queryQueue.TryDequeue(out (ValueHash256 hash, Node node) toQuery, out ValueHash256 hash256))
             {
                 // No node to query and running query.
                 if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
@@ -92,7 +100,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
             queried.TryAdd(toQuery.hash, toQuery.node);
             if (_logger.IsTrace) _logger.Trace($"Query {toQuery.node} at round {currentRound}");
 
-            TNode[]? neighbours = await WrappedFindNeighbourOp(toQuery.node);
+            Node[]? neighbours = await FindNeighbour(toQuery.node, target, token);
             if (neighbours == null || neighbours?.Length == 0)
             {
                 if (_logger.IsTrace) _logger.Trace("Empty result");
@@ -101,9 +109,9 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
 
             int queryIgnored = 0;
             int seenIgnored = 0;
-            foreach (TNode neighbour in neighbours!)
+            foreach (Node neighbour in neighbours!)
             {
-                ValueHash256 neighbourHash = nodeHashProvider.GetHash(neighbour);
+                ValueHash256 neighbourHash = neighbour.IdHash;
 
                 // Already queried, we ignore
                 if (queried.ContainsKey(neighbourHash))
@@ -149,40 +157,10 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
         if (_logger.IsTrace) _logger.Trace("Lookup operation finished.");
         yield break;
 
-        async Task<TNode[]?> WrappedFindNeighbourOp(TNode node)
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(_findNeighbourHardTimeout);
-
-            Stopwatch sw = Stopwatch.StartNew();
-            try
-            {
-                // targetHash is implied in findNeighbourOp
-                TNode[]? ret = await findNeighbourOp(node, cts.Token);
-                _findNeighbourRate.WithLabels("ok").Inc();
-                nodeHealthTracker.OnIncomingMessageFrom(node);
-
-                return ret;
-            }
-            catch (OperationCanceledException)
-            {
-                _findNeighbourRate.WithLabels("timout").Inc();
-                nodeHealthTracker.OnRequestFailed(node);
-                return null;
-            }
-            catch (Exception e)
-            {
-                _findNeighbourRate.WithLabels("failed").Inc();
-                nodeHealthTracker.OnRequestFailed(node);
-                if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
-                return null;
-            }
-        }
-
         bool ShouldStop()
         {
             int round = ++currentRound;
-            if (totalResult >= minResult && round - closestNodeRound >= maxNonProgressingRound)
+            if (totalResult >= MinResult && round - closestNodeRound >= MaxNonProgressingRound)
             {
                 // No closer node for more than or equal to _alpha*2 round.
                 // Assume exit condition
@@ -193,7 +171,7 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
                 return true;
             }
 
-            if (round >= maxRounds)
+            if (round >= MaxRounds)
             {
                 return true;
             }
@@ -203,4 +181,34 @@ public class NewaTrackingLookupKNearestNeighbour<TNode>(
     }
 
     private Counter _findNeighbourRate = Prometheus.Metrics.CreateCounter("lookup_find_neighbour_status", "", "status");
+
+    async Task<Node[]?> FindNeighbour(Node node, PublicKey target, CancellationToken token)
+    {
+        try
+        {
+            if (_unreacheableNodes.TryGet(node.IdHash, out var lastAttempt) &&
+                lastAttempt + TimeSpan.FromMinutes(5) > DateTimeOffset.Now)
+            {
+                return [];
+            }
+
+            Node[]? ret = await discv4Adapter.FindNeighbours(node, target, token);
+            _findNeighbourRate.WithLabels("ok").Inc();
+
+            return ret;
+        }
+        catch (OperationCanceledException)
+        {
+            _unreacheableNodes.Set(node.IdHash, DateTimeOffset.Now);
+            _findNeighbourRate.WithLabels("timout").Inc();
+            return null;
+        }
+        catch (Exception e)
+        {
+            _findNeighbourRate.WithLabels("failed").Inc();
+            if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
+            return null;
+        }
+    }
+
 }
