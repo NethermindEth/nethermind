@@ -49,12 +49,16 @@ public partial class DebugRpcModuleTests
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            blockchainBridge.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+
             var factory = new DebugModuleFactory(
                 blockchain.WorldStateManager,
                 blockchain.DbProvider,
                 blockchain.BlockTree,
                 blockchain.RpcConfig,
-                Substitute.For<IBlockchainBridge>(),
+                blockchainBridge,
                 new BlocksConfig().SecondsPerSlot,
                 blockchain.BlockValidator,
                 blockchain.BlockPreprocessorStep,
