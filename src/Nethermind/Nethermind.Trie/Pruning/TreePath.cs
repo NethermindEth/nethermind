@@ -250,6 +250,8 @@ public struct TreePath : IEquatable<TreePath>
         return (odd ? theNibbles[..Length] : theNibbles).ToArray();
     }
 
+    public NibblePath ToNibblePath(int from) => throw new NotImplementedException();
+
     public readonly string ToHexString()
     {
         string fromPath = Span.ToHexString();

@@ -1017,7 +1017,7 @@ namespace Nethermind.Trie
             }
 
             TrieNode originalNode = node;
-            NibblePath.Ref remaining = traverseContext.GetRemainingUpdatePath();
+            NibblePath.Ref remaining = traverseContext.GetRemainingUpdatePathRef();
 
             int extensionLength = remaining.CommonPrefixLength(node.Key);
             if (extensionLength == node.Key.Length)
@@ -1072,8 +1072,8 @@ namespace Nethermind.Trie
             }
             else
             {
-                NibblePath remainingPath = remaining.Slice(extensionLength + 1);
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath, in traverseContext.UpdateValue);
+                NibblePath.Ref remainingPath = remaining.Slice(extensionLength + 1);
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath.ToNibblePath(), in traverseContext.UpdateValue);
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -1118,8 +1118,8 @@ namespace Nethermind.Trie
             }
 
             int currentIndex = traverseContext.CurrentIndex + 1;
-            NibblePath leafPath = traverseContext.UpdatePath.Slice(currentIndex);
-            TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, in traverseContext.UpdateValue);
+            NibblePath.Ref leafPath = traverseContext.UpdatePath.Slice(currentIndex);
+            TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath.ToNibblePath(), in traverseContext.UpdateValue);
             ConnectNodes(leaf, in traverseContext);
 
             return ref traverseContext.UpdateValue;
@@ -1181,6 +1181,7 @@ namespace Nethermind.Trie
             }
 
             public NibblePath GetRemainingUpdatePath() => UpdatePath.Slice(CurrentIndex, RemainingUpdatePathLength);
+            public NibblePath.Ref GetRemainingUpdatePathRef() => UpdatePath.SliceRef(CurrentIndex, RemainingUpdatePathLength);
 
             public TraverseContext(scoped in TraverseContext context, int index)
             {

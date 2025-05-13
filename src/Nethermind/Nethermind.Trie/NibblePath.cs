@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 
 namespace Nethermind.Trie;
@@ -166,22 +168,72 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         destination[0] = (byte)(isLeaf ? LeafFlag : 0);
     }
 
+    public int CommonPrefixLength(NibblePath other)
+    {
+        throw new NotImplementedException();
+    }
 
     public readonly ref struct Ref
     {
-        public Ref(in ReadOnlySpan<byte> rawKey)
+        private readonly ref byte _span;
+        private readonly byte _odd;
+        public readonly byte Length;
+
+        private const int OddBit = 1;
+        private const int NibblePerByte = 2;
+        private const int NibbleShift = 8 / NibblePerByte;
+        private const int NibbleMask = 15;
+
+        public static Ref Empty => default;
+
+        public Ref(in ReadOnlySpan<byte> rawKey) : this (rawKey, 0, rawKey.Length * 2)
         {
         }
 
-        public byte this[int index] => throw new NotImplementedException();
-        public int Length  => throw new NotImplementedException();
+        [DebuggerStepThrough]
+        private Ref(ReadOnlySpan<byte> key, int nibbleFrom, int length)
+        {
+            _span = ref Unsafe.Add(ref MemoryMarshal.GetReference(key), nibbleFrom / 2);
+            _odd = (byte)(nibbleFrom & OddBit);
+            Length = (byte)length;
+        }
 
-        public NibblePath Slice(int from, int length)
+        private Ref(ref byte span, byte odd, byte length)
+        {
+            _span = ref span;
+            _odd = odd;
+            Length = length;
+        }
+
+        public byte this[int nibble] => GetAt(nibble);
+
+        public byte GetAt(int nibble) => (byte)((GetRefAt(nibble) >> GetShift(nibble)) & NibbleMask);
+
+        private int GetShift(int nibble) => (1 - ((nibble + _odd) & OddBit)) * NibbleShift;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ref byte GetRefAt(int nibble) => ref Unsafe.Add(ref _span, (nibble + _odd) / 2);
+
+        public NibblePath Slice(int start, int length)
         {
             throw new NotImplementedException();
         }
 
-        public NibblePath Slice(int from) => Slice(from, Length - from);
+        public Ref Slice(int start)
+        {
+            Debug.Assert(Length - start >= 0, "Path out of boundary");
+
+            if (Length - start == 0)
+                return Empty;
+
+            return new(ref Unsafe.Add(ref _span, (_odd + start) / 2), (byte)((start & 1) ^ _odd),
+                (byte)(Length - start));
+        }
+
+        public Ref SliceRef(int currentIndex, int remainingUpdatePathLength)
+        {
+            throw new NotImplementedException();
+        }
 
         public string ToHexString()
         {
@@ -194,6 +246,16 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         }
 
         public int CommonPrefixLength(NibblePath nodeKey)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Ref FromCompact(byte[] bytes)
+        {
+            throw new NotImplementedException();
+        }
+
+        public NibblePath ToNibblePath()
         {
             throw new NotImplementedException();
         }
