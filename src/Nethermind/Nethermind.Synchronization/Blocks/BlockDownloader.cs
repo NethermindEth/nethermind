@@ -21,10 +21,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
 using NonBlocking;
 
 namespace Nethermind.Synchronization.Blocks
@@ -44,6 +44,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly IFullStateFinder _fullStateFinder;
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
+        private readonly ISyncPeerPool _syncPeerPool;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -66,7 +67,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private readonly ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
-        private readonly ISyncPeerPool _syncPeerPool;
+        private SemaphoreSlim _requestLock = new(1);
 
         public BlockDownloader(
             IBlockTree? blockTree,
@@ -111,6 +112,19 @@ namespace Nethermind.Synchronization.Blocks
 
         public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
         {
+            await _requestLock.WaitAsync(cancellation);
+            try
+            {
+                return await DoPrepareRequest(options, fastSyncLag, cancellation);
+            }
+            finally
+            {
+                _requestLock.Release();
+            }
+        }
+
+        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        {
             bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
@@ -154,6 +168,19 @@ namespace Nethermind.Synchronization.Blocks
 
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
+
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
+                    {
+                        PeerInfo peer = entry.PeerInfo;
+                        if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+
+                        if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
+                        entry.RetryBlockRequest();
+
+                        // At this point, the chain is somehow invalid. `IForwardHeaderProvider` returned a chain whose block
+                        // is interpreted as invalid. `IForwardHeaderProvider` need to provide a different chain later on.
+                        return null;
+                    }
 
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
                     {
@@ -221,11 +248,11 @@ namespace Nethermind.Synchronization.Blocks
             BlockHeader parentHeader = headers[0];
             foreach (var blockHeader in headers.Skip(1))
             {
-                if (!_downloadRequests.TryGetValue(blockHeader.Hash!, out BlockEntry? entry))
+                BlockEntry? entry;
+                while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
-                    entry = new BlockEntry(parentHeader, blockHeader, null, null, null);
-                    _downloadRequests.TryAdd(blockHeader.Hash, entry);
+                    blockHeader.MaybeParent ??= new WeakReference<BlockHeader>(parentHeader);
+                    _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
                 }
                 parentHeader = blockHeader;
 
@@ -330,19 +357,17 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                // Note: For some magical reason, the `header` is not the same as `entry.Header`.
-                // This is important as `entry.Header.MaybeParent` need to be kept alive.
-                Block block = new Block(entry.Header, body);
-
-                if (!_blockValidator.ValidateSuggestedBlock(block, out string? errorMessage))
+                if (!BlockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block from {peer}, {errorMessage}");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
 
-                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryBlockRequest();
                     continue;
                 }
+
+                Block block = new Block(entry.Header, body);
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
                 entry.Block = block;

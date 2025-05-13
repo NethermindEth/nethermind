@@ -15,6 +15,7 @@ namespace Nethermind.Core.Extensions
 
         public static ArrayPoolList<T> ToPooledList<T>(this IEnumerable<T> enumerable, int count) => new(count, enumerable);
         public static ArrayPoolList<T> ToPooledList<T>(this IReadOnlyCollection<T> collection) => new(collection.Count, collection);
+        public static ArrayPoolList<T> ToPooledList<T>(this ReadOnlySpan<T> span) => new(span);
 
         public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> enumerable, Random rng, int maxSize = 100)
         {

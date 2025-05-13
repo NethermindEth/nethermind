@@ -30,7 +30,7 @@ public class OptimismTraceModuleFactory(
     ISpecProvider specProvider,
     IPoSSwitcher poSSwitcher,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
@@ -47,7 +47,7 @@ public class OptimismTraceModuleFactory(
         logManager)
 {
     protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) =>
-        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
+        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, costHelper, opSpecHelper);
 
     protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,

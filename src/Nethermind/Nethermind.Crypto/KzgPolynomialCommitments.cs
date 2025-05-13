@@ -6,6 +6,7 @@ using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -37,7 +38,7 @@ public static class KzgPolynomialCommitments
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
+        _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
 
         if (_ckzgSetup == IntPtr.Zero)
         {
@@ -54,7 +55,7 @@ public static class KzgPolynomialCommitments
     /// <exception cref="ArgumentException"></exception>
     public static bool TryComputeCommitmentHashV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
-        if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
+        if (commitment.Length != Ckzg.BytesPerCommitment)
         {
             return false;
         }
@@ -78,7 +79,7 @@ public static class KzgPolynomialCommitments
     {
         try
         {
-            return Ckzg.Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
+            return Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
@@ -92,7 +93,7 @@ public static class KzgPolynomialCommitments
         {
             try
             {
-                return Ckzg.Ckzg.VerifyBlobKzgProof(blobs[0], commitments[0], proofs[0], _ckzgSetup);
+                return Ckzg.VerifyBlobKzgProof(blobs[0], commitments[0], proofs[0], _ckzgSetup);
             }
             catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
             {
@@ -100,28 +101,28 @@ public static class KzgPolynomialCommitments
             }
         }
 
-        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
+        int length = blobs.Length * Ckzg.BytesPerBlob;
         byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
 
-        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
+        length = blobs.Length * Ckzg.BytesPerCommitment;
         byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
 
-        length = blobs.Length * Ckzg.Ckzg.BytesPerProof;
+        length = blobs.Length * Ckzg.BytesPerProof;
         byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> flatProofs = new(flatProofsArray, 0, length);
 
         for (int i = 0; i < blobs.Length; i++)
         {
-            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
-            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-            proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
+            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
+            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.BytesPerCommitment, Ckzg.BytesPerCommitment));
+            proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
         }
 
         try
         {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, blobs.Length,
+            return Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, blobs.Length,
                 _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
@@ -141,8 +142,8 @@ public static class KzgPolynomialCommitments
     /// </summary>
     public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
     {
-        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
-        Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
+        Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
+        Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
         TryComputeCommitmentHashV1(commitment, hashV1);
     }
 }

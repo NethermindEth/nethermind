@@ -116,6 +116,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
+            _api.SpecHelper,
             _api.LogManager,
             _api.Config<IBlocksConfig>());
     }
@@ -323,12 +324,14 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
-            .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
+            // Validators
+            .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
             ;

@@ -268,15 +268,7 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        /* rlpx */
         EciesCipher eciesCipher = new(_api.CryptoRandom);
-        Eip8MessagePad eip8Pad = new(_api.CryptoRandom);
-        _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-        _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-        _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
-        ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
-        _api.MessageSerializationService.Register(receiptsMessageSerializer);
-        _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
 
         HandshakeService encryptionHandshakeServiceA = new(
             _api.MessageSerializationService,

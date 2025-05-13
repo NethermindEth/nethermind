@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using CkzgLib;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using System.Linq;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -242,17 +243,17 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         {
             for (int i = 0; i < blobCount; i++)
             {
-                if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob)
+                if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob)
                 {
                     return TxErrorMessages.ExceededBlobSize;
                 }
 
-                if (wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
+                if (wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
                 {
                     return TxErrorMessages.ExceededBlobCommitmentSize;
                 }
 
-                if (wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                if (wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
                 {
                     return TxErrorMessages.InvalidBlobProofSize;
                 }
