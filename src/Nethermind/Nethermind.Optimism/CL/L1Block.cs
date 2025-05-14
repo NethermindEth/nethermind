@@ -52,4 +52,15 @@ public sealed record L1BlockRef
             Timestamp = blockInfo.Timestamp
         };
     }
+
+    public static L1BlockRef From(L1Block block)
+    {
+        return new L1BlockRef
+        {
+            Hash = block.Hash,
+            Number = block.Number,
+            ParentHash = block.ParentHash,
+            Timestamp = (ulong)block.Timestamp // TODO: Potential unsafe cast
+        };
+    }
 }
