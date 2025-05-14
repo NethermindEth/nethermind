@@ -526,7 +526,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public bool Equals(NibblePath other)
         {
-            if (other.Odd != _odd || other.Length != Length)
+            if (other.Length != Length)
                 return false;
 
             // TODO: potentially optimize
