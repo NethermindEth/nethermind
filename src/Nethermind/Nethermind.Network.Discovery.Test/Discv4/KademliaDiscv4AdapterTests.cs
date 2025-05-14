@@ -78,7 +78,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _networkConfig.MaxActivePeers.Returns(25);
             _kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _testNode };
 
-            _selfNodeRecord = CreateNodeRecord();;
+            _selfNodeRecord = CreateNodeRecord(); ;
 
             _logManager = LimboLogs.Instance;
             _timestamper = Substitute.For<ITimestamper>();
@@ -184,7 +184,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     Task.Run(() => _adapter.OnIncomingMsg(neighbors));
 
                     ArraySegment<Node> neighbours2 = expected[12..];
-                    var neighbors2 = new NeighborsMsg( _receiver.Address, _timestamper.UnixTime.SecondsLong + 1, neighbours2);
+                    var neighbors2 = new NeighborsMsg(_receiver.Address, _timestamper.UnixTime.SecondsLong + 1, neighbours2);
                     neighbors2 = AddReceiverFarAddress(neighbors2);
                     Task.Run(() => _adapter.OnIncomingMsg(neighbors2));
                 });

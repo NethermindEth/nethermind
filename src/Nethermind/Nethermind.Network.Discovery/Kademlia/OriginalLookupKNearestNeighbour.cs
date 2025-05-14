@@ -15,7 +15,7 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
     INodeHashProvider<TNode> nodeHashProvider,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager): ILookupAlgo<TNode> where TNode : notnull
+    ILogManager logManager) : ILookupAlgo<TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
     private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
@@ -25,7 +25,8 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
-    ) {
+    )
+    {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         Dictionary<ValueHash256, TNode> queried = new();
@@ -36,10 +37,10 @@ public class OriginalLookupKNearestNeighbour<TKey, TNode>(
             Hash256XorUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<TNode, ValueHash256> bestSeen = new (comparer);
+        PriorityQueue<TNode, ValueHash256> bestSeen = new(comparer);
 
         // Ordered by lowest distance. Will not get popped for next round, but will at final collection.
-        PriorityQueue<TNode, ValueHash256> bestSeenAllTime = new (comparer);
+        PriorityQueue<TNode, ValueHash256> bestSeenAllTime = new(comparer);
 
         ValueHash256 closestNodeHash = Hash256XorUtils.GetOppositeHash(targetHash);
         (ValueHash256 nodeHash, TNode node)[] roundQuery = routingTable.GetKNearestNeighbour(targetHash, default)

@@ -31,7 +31,7 @@ public class KademliaTests
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
             .AddSingleton<Kademlia<ValueHash256, ValueHash256>>();
-        
+
         var container = builder.Build();
         return container.Resolve<Kademlia<ValueHash256, ValueHash256>>();
     }
@@ -70,7 +70,7 @@ public class KademliaTests
             Beta = 0,
         });
 
-        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XorUtils.GetRandomHashAtDistance( ValueKeccak.Zero, 250) ).ToArray();
+        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XorUtils.GetRandomHashAtDistance(ValueKeccak.Zero, 250)).ToArray();
         foreach (ValueHash256 valueHash256 in testHashes[..10])
         {
             kad.AddOrRefresh(valueHash256);
@@ -163,7 +163,7 @@ public class KademliaTests
         kad.GetAllAtDistance(250).ToHashSet().Should().BeEquivalentTo(testHashes[10..].ToHashSet());
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>, IKeyOperator<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider : INodeHashProvider<ValueHash256>, IKeyOperator<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {

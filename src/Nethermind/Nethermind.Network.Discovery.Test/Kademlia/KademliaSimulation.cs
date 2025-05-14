@@ -22,7 +22,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 [TestFixture(false, 3, 0)]
 [TestFixture(true, 1, 0)]
 [TestFixture(true, 1, 4)]
-[TestFixture(true,  3, 0)]
+[TestFixture(true, 3, 0)]
 [TestFixture(true, 3, 4)]
 public class KademliaSimulation
 {
@@ -99,7 +99,7 @@ public class KademliaSimulation
             .Select(n => n.Hash)
             .ToHashSet()
             .Should()
-            .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash });
+            .BeEquivalentTo(new HashSet<ValueHash256>() { node1Hash });
 
         Kademlia<ValueHash256, TestNode> node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
@@ -113,7 +113,7 @@ public class KademliaSimulation
             .Select(n => n.Hash)
             .ToHashSet()
             .Should()
-            .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash, node2Hash, node3Hash });
+            .BeEquivalentTo(new HashSet<ValueHash256>() { node1Hash, node2Hash, node3Hash });
 
         (await node1.LookupNodesClosest(node3Hash, cts.Token, 1))
             .First().Hash
@@ -196,7 +196,7 @@ public class KademliaSimulation
         return val;
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode>, IKeyOperator<ValueHash256, TestNode>
+    private class ValueHashNodeHashProvider : INodeHashProvider<TestNode>, IKeyOperator<ValueHash256, TestNode>
     {
         public ValueHash256 GetHash(TestNode node)
         {
@@ -270,9 +270,9 @@ public class KademliaSimulation
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<Kademlia<ValueHash256, TestNode>>();
-            
+
             var container = builder.Build();
-            
+
             _nodes[nodeID] = container;
 
             return container.Resolve<Kademlia<ValueHash256, TestNode>>();

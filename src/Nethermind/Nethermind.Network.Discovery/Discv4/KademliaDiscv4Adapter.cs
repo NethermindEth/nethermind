@@ -29,7 +29,7 @@ public class KademliaDiscv4Adapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-): IKademliaDiscv4Adapter
+) : IKademliaDiscv4Adapter
 {
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
@@ -119,7 +119,8 @@ public class KademliaDiscv4Adapter(
         NodeSession session,
         DiscoveryMsg msg,
         CancellationToken token
-    ) {
+    )
+    {
         await using CancellationTokenRegistration unregister = token.RegisterToCompletionSource(messageHandler.TaskCompletionSource);
         AddMessageHandler(msgType, receiver.IdHash, messageHandler);
 

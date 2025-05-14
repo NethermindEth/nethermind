@@ -19,7 +19,7 @@ public interface IKademliaMessageSender<TKey, TNode>
 /// Application should call this class on incoming messages.
 /// </summary>
 /// <typeparam name="TNode"></typeparam>
-public interface IKademliaMessageReceiver<TKey, TNode>: IKademliaMessageSender<TKey, TNode>
+public interface IKademliaMessageReceiver<TKey, TNode> : IKademliaMessageSender<TKey, TNode>
 {
 }
 

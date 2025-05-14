@@ -11,7 +11,7 @@ internal interface IMessageHandler
 }
 
 
-internal interface ITaskCompleter<T>: IMessageHandler
+internal interface ITaskCompleter<T> : IMessageHandler
 {
     TaskCompletionSource<T> TaskCompletionSource { get; }
 }

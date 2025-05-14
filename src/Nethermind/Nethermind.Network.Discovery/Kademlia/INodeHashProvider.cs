@@ -20,7 +20,8 @@ public interface INodeHashProvider<in TNode>
     ValueHash256 GetHash(TNode node);
 }
 
-public interface IKeyOperator<TKey, in TNode> {
+public interface IKeyOperator<TKey, in TNode>
+{
     TKey GetKey(TNode node);
     ValueHash256 GetKeyHash(TKey key);
     TKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth);

@@ -22,7 +22,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
     INodeHashProvider<TNode> nodeHashProvider,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager): ILookupAlgo<TNode> where TNode : notnull
+    ILogManager logManager) : ILookupAlgo<TNode> where TNode : notnull
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
     private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
@@ -32,7 +32,8 @@ public class LookupKNearestNeighbour<TKey, TNode>(
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
-    ) {
+    )
+    {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -212,7 +213,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             using var _ = queueLock.Acquire();
 
             round = Interlocked.Increment(ref currentRound);
-            if (finalResult.Count >= k && round - closestNodeRound >= (config.Alpha*2))
+            if (finalResult.Count >= k && round - closestNodeRound >= (config.Alpha * 2))
             {
                 // No closer node for more than or equal to _alpha*2 round.
                 // Assume exit condition

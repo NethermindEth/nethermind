@@ -151,7 +151,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         ValueHash256? excludeHash = null;
         if (excluding != null) excludeHash = _nodeHashProvider.GetHash(excluding);
         ValueHash256 hash = _keyOperator.GetKeyHash(target);
-        return _routingTable.GetKNearestNeighbour(hash,  excludeHash, excludeSelf);
+        return _routingTable.GetKNearestNeighbour(hash, excludeHash, excludeSelf);
     }
 
     public event EventHandler<TNode> OnNodeAdded

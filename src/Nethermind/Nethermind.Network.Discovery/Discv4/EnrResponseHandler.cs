@@ -5,7 +5,8 @@ using Nethermind.Network.Discovery.Messages;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public class EnrResponseHandler : ITaskCompleter<EnrResponseMsg> {
+public class EnrResponseHandler : ITaskCompleter<EnrResponseMsg>
+{
     public TaskCompletionSource<EnrResponseMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public bool Handle(DiscoveryMsg msg)

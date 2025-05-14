@@ -8,7 +8,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public class KademliaKademliaMessageReceiver<TKey, TNode>(
     IKademlia<TKey, TNode> kademlia,
     INodeHealthTracker<TNode> healthTracker
-): IKademliaMessageReceiver<TKey, TNode> where TNode : notnull
+) : IKademliaMessageReceiver<TKey, TNode> where TNode : notnull
 {
     public Task Ping(TNode sender, CancellationToken token)
     {

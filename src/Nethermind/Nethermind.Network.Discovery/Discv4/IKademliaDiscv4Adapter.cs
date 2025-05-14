@@ -17,14 +17,14 @@ public interface IKademliaDiscv4Adapter : IKademliaMessageSender<PublicKey, Node
     /// Gets or sets the message sender used to send discovery messages.
     /// </summary>
     IMsgSender? MsgSender { get; set; }
-    
+
     /// <summary>
     /// Gets the session for a specific node.
     /// </summary>
     /// <param name="node">The node to get the session for.</param>
     /// <returns>The node session.</returns>
     NodeSession GetSession(Node node);
-    
+
     /// <summary>
     /// Sends an ENR request to a node and returns the response.
     /// </summary>

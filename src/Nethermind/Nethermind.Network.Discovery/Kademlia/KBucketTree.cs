@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucketTree<TKey, TNode>: IRoutingTable<TNode> where TNode : notnull
+public class KBucketTree<TKey, TNode> : IRoutingTable<TNode> where TNode : notnull
 {
     private class TreeNode
     {
@@ -351,8 +351,8 @@ public class KBucketTree<TKey, TNode>: IRoutingTable<TNode> where TNode : notnul
         }
 
         sb.AppendLine($"Node (Depth: {depth})");
-        LogTreeStructureRecursive(node.Left!, indent, false, depth+1, sb);
-        LogTreeStructureRecursive(node.Right!, indent, true, depth+1, sb);
+        LogTreeStructureRecursive(node.Left!, indent, false, depth + 1, sb);
+        LogTreeStructureRecursive(node.Right!, indent, true, depth + 1, sb);
     }
 
     private void LogTreeStatistics()
