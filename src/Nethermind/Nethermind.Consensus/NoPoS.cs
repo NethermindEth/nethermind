@@ -21,9 +21,8 @@ public class NoPoS : IPoSSwitcher
 
     public bool HasEverReachedTerminalBlock() => false;
 
-#pragma warning disable 67
-    public event EventHandler? TerminalBlockReached;
-#pragma warning restore 67
+    public event EventHandler TerminalBlockReached { add { } remove { } }
+    public event EventHandler Transitioned { add { } remove { } }
 
     public UInt256? TerminalTotalDifficulty => null;
     public UInt256? FinalTotalDifficulty => null;

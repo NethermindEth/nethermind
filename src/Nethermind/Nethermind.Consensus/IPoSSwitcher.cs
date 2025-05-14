@@ -29,6 +29,8 @@ namespace Nethermind.Consensus
         /// </remarks>
         UInt256? FinalTotalDifficulty { get; }
 
+        event EventHandler Transitioned;
+
         bool TransitionFinished { get; }
         public Hash256? ConfiguredTerminalBlockHash { get; }
 
