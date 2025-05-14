@@ -39,7 +39,13 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App([KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IIPResolver? ipResolver,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        [KeyFilter(DbNames.DiscV5Db)] IDb discoveryDb,
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 

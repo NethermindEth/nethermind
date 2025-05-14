@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
@@ -23,6 +24,8 @@ namespace Nethermind.Init.Modules;
 
 public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
+    private const string DiscoveryNodesDbPath = "discoveryNodes";
+
     protected override void Load(ContainerBuilder builder)
     {
         builder
@@ -118,7 +121,17 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         if (!initConfig.DiscoveryEnabled)
             builder.AddSingleton<IDiscoveryApp, NullDiscoveryApp>();
         else
-            builder.AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>();
+        {
+            builder
+                .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
+                .AddKeyedSingleton<IDb>(DbNames.DiscV5Db, (ctx) => new SimpleFilePublicKeyDb (
+                    "EnrDiscoveryDB",
+                    DiscoveryNodesDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                    ctx.Resolve<ILogManager>()))
+                .AddSingleton<DiscoveryV5App>()
+                ;
+        }
+
 
         if (!networkConfig.OnlyStaticPeers)
         {

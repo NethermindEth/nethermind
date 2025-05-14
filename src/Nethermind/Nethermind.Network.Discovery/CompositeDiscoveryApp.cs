@@ -9,7 +9,6 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -40,7 +39,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly ITimestamper _timestamper;
     private readonly ICryptoRandom? _cryptoRandom;
     private readonly INodeStatsManager _nodeStatsManager;
-    private readonly IIPResolver _ipResolver;
     private readonly IConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
 
@@ -54,7 +52,9 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         INodeRecordProvider nodeRecordProvider, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IChannelFactory? channelFactory = null
+        INodeStatsManager? nodeStatsManager,
+        Func<DiscoveryV5App> discoveryV5Factory,
+        IChannelFactory? channelFactory = null
     )
     {
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
@@ -67,7 +67,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _cryptoRandom = cryptoRandom;
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-        _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
         _channelFactory = channelFactory;
 
@@ -81,7 +80,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
         {
-            InitDiscoveryV5();
+            _v5 = discoveryV5Factory();
             allNodeSources.Add(_v5!);
         }
 
@@ -185,16 +184,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             discoveryConfig,
             _timestamper,
             _logManager);
-    }
-
-    private void InitDiscoveryV5()
-    {
-        SimpleFilePublicKeyDb discv5DiscoveryDb = new(
-            "EnrDiscoveryDB",
-            DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
-            _logManager);
-
-        _v5 = new DiscoveryV5App(_nodeKey, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
     }
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
