@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -14,6 +16,8 @@ namespace Nethermind.Blockchain.Filters.Topics
         public static readonly SequenceTopicsFilter AnyTopic = new();
 
         private readonly TopicExpression[] _expressions;
+
+        public ReadOnlyCollection<TopicExpression> Expressions => _expressions.AsReadOnly();
 
         public SequenceTopicsFilter(params TopicExpression[] expressions)
         {
@@ -97,6 +101,24 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             return result;
+        }
+
+        public override bool AcceptsAnyBlock => _expressions.Length == 0 || _expressions.All(e => e.AcceptsAnyBlock);
+
+        public override IEnumerable<Hash256> Topics => _expressions.SelectMany(e => e.Topics);
+
+        public override HashSet<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
+        {
+            HashSet<int> result = null;
+            foreach (TopicExpression expression in _expressions)
+            {
+                if (result == null)
+                    result = expression.FilterBlockNumbers(byTopic);
+                else
+                    result.IntersectWith(expression.FilterBlockNumbers(byTopic));
+            }
+
+            return result ?? [];
         }
 
         public bool Equals(SequenceTopicsFilter other) => _expressions.SequenceEqual(other._expressions);

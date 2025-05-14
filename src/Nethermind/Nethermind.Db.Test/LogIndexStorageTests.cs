@@ -1,0 +1,332 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Steps.Migrations;
+using Nethermind.Logging;
+using NUnit.Framework;
+
+namespace Nethermind.Db.Test
+{
+    [TestFixture(10, 100)]
+    [TestFixture(5, 200)]
+    [TestFixture(100, 100, Explicit = true)]
+    [TestFixture(100, 200, Explicit = true)]
+    public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
+    {
+        private readonly TestData _testData = GenerateTestData(new Random(42), batchCount, blocksPerBatch);
+
+        private ILogger _logger;
+        private string _dbPath = null!;
+        private ColumnsDb<LogIndexColumns> _columnsDb = null!;
+
+        private LogIndexStorage CreateLogIndexStorage(int ioParallelism = 16, int compactionDistance = 262_144,
+            ColumnsDb<LogIndexColumns>? columnsDb = null)
+        {
+            return new(columnsDb ?? _columnsDb, _logger, ioParallelism, compactionDistance);
+        }
+
+        [SetUp]
+        public void Setup()
+        {
+            _logger = LimboLogs.Instance.GetClassLogger();
+            _dbPath = GetType().Name;
+
+            if (Directory.Exists(_dbPath))
+            {
+                Directory.Delete(_dbPath, true);
+            }
+
+            Directory.CreateDirectory(_dbPath);
+
+            _columnsDb = new(
+                _dbPath,
+                new(DbNames.LogIndexStorage, DbNames.LogIndexStorage) { DeleteOnStart = true },
+                new DbConfig(),
+                LimboLogs.Instance,
+                Enum.GetValues<LogIndexColumns>()
+            );
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _columnsDb.Dispose();
+
+            if (Directory.Exists(_dbPath))
+                Directory.Delete(_dbPath, true);
+        }
+
+        [Combinatorial]
+        public async Task Set_Get_Test(
+            [Values(1, 8, 16)] int ioParallelism,
+            [Values(100, 200, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task SetMultiInstance_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            var half = _testData.Batches.Length / 2;
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches.Take(half));
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches.Skip(half));
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task RepeatedSet_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task RepeatedSetMultiInstance_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                VerifyReceipts(logIndexStorage, _testData);
+        }
+
+
+        [Combinatorial]
+        public async Task Set_NewInstance_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+                VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
+        public async Task Set_ConcurrentGet_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            using var getCancellation = new CancellationTokenSource();
+            var token = getCancellation.Token;
+
+            var getThreads = new[]
+            {
+                new Thread(() => GetBlockNumbersLoop(new Random(42), logIndexStorage, _testData, token)),
+                new Thread(() => GetBlockNumbersLoop(new Random(4242), logIndexStorage, _testData, token)),
+                new Thread(() => GetBlockNumbersLoop(new Random(424242), logIndexStorage, _testData, token)),
+            };
+            getThreads.ForEach(t => t.Start());
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            await getCancellation.CancelAsync();
+            getThreads.ForEach(t => t.Join());
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        private static TestData GenerateTestData(Random random, int batchCount, int blocksPerBatch)
+        {
+            var testData = new TestData(batchCount, blocksPerBatch);
+
+            var blocksCount = batchCount * blocksPerBatch;
+            var addresses = Enumerable.Repeat(0, blocksCount / 5)
+                .Select(_ => new Address(random.NextBytes(Address.Size)))
+                .ToArray();
+            var topics = Enumerable.Repeat(0, addresses.Length * 10)
+                .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
+                .ToArray();
+
+            // Generate batches
+            var blockNum = 0;
+            foreach (var batch in testData.Batches)
+            {
+                for (var i = 0; i < batch.Length; i++)
+                {
+                    batch[i] = new(blockNum++, GenerateReceipts(random, addresses, topics));
+                }
+            }
+
+            foreach (var blockReceipts in testData.Batches)
+            foreach (var (blockNumber, txReceipts) in blockReceipts)
+            foreach (var txReceipt in txReceipts)
+            foreach (var log in txReceipt.Logs!)
+            {
+                var addressMap = testData.AddressMap.GetOrAdd(log.Address, _ => []);
+                addressMap.Add(blockNumber);
+
+                foreach (var topic in log.Topics)
+                {
+                    var topicMap = testData.TopicMap.GetOrAdd(topic, _ => []);
+                    topicMap.Add(blockNumber);
+                }
+            }
+
+            return testData;
+        }
+
+        private static TxReceipt[] GenerateReceipts(Random random, Address[] addresses, Hash256[] topics)
+        {
+            (int min, int max) logsPerBlock = (0, 200);
+            (int min, int max) logsPerTx = (0, 10);
+
+            var logs = Enumerable
+                .Repeat(0, random.Next(logsPerBlock.min, logsPerBlock.max + 1))
+                .Select(_ => Build.A.LogEntry
+                    .WithAddress(random.NextValue(addresses))
+                    .WithTopics(Enumerable
+                        .Repeat(0, random.Next(4))
+                        .Select(_ => random.NextValue(topics))
+                        .ToArray()
+                    ).TestObject
+                ).ToArray();
+
+            var receipts = new List<TxReceipt>();
+            for (var i = 0; i < logs.Length;)
+            {
+                var count = random.Next(logsPerTx.min, Math.Min(logsPerTx.max, logs.Length - i) + 1);
+                var range = i..(i + count);
+
+                receipts.Add(new() { Logs = logs[range] });
+                i = range.End.Value;
+            }
+
+            return receipts.ToArray();
+        }
+
+        private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches)
+        {
+            var timestamp = Stopwatch.GetTimestamp();
+            var totalStats = new SetReceiptsStats();
+            foreach (var batch in batches)
+            {
+                var stats = await logIndexStorage.SetReceiptsAsync(batch, false);
+                stats.Combine(DbOnTheRocks.CustomMergeOperators.GetAndResetStats());
+                totalStats.Combine(stats);
+            }
+
+            //totalStats.Combine(logIndexStorage.Compact());
+
+            // Log statistics
+            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)} in {Stopwatch.GetElapsedTime(timestamp)}:" +
+                $"\n\tTxs: +{totalStats.TxAdded:N0}" +
+                $"\n\tLogs: +{totalStats.LogsAdded:N0}" +
+                $"\n\tTopics: +{totalStats.TopicsAdded:N0}" +
+                "\n" +
+                $"\n\tWaiting batch: {totalStats.WaitingBatch}" +
+                $"\n\tKeys per batch: {totalStats.KeysCount:N0}" +
+                $"\n\tBuilding dictionary: {totalStats.BuildingDictionary}" +
+                $"\n\tProcessing: {totalStats.Processing}" +
+                $"\n\tMerge call: {totalStats.CallingMerge}" +
+                $"\n\tIn-memory merging: {totalStats.InMemoryMerging}" +
+                "\n" +
+                $"\n\tFlushing DBs: {totalStats.FlushingDbs}" +
+                $"\n\tCompacting DBs: {totalStats.CompactingDbs}" +
+                $"\n\tPost-merge processing: {totalStats.PostMergeProcessing.Execution}" +
+                $"\n\t\tDB getting: {totalStats.PostMergeProcessing.GettingValue}" +
+                $"\n\t\tCompressing: {totalStats.PostMergeProcessing.CompressingValue}" +
+                $"\n\t\tPutting: {totalStats.PostMergeProcessing.PuttingValues}" +
+                $"\n\t\tCompressed keys: {totalStats.PostMergeProcessing.CompressedAddressKeys:N0} address, {totalStats.PostMergeProcessing.CompressedTopicKeys:N0} topic" +
+                $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndexStorage))}");
+        }
+
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData, int? maxBlock = null)
+        {
+            maxBlock ??= int.MaxValue;
+
+            foreach (var (address, expectedNums) in testData.AddressMap)
+            {
+                Assert.That(
+                    logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue),
+                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock))
+                );
+            }
+
+            foreach (var (topic, expectedNums) in testData.TopicMap)
+            {
+                Assert.That(
+                    logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue),
+                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock))
+                );
+            }
+        }
+
+        private static void GetBlockNumbersLoop(Random random, ILogIndexStorage logIndexStorage, TestData testData,
+            CancellationToken cancellationToken)
+        {
+            var addresses = testData.AddressMap.Keys.ToArray();
+            var topics = testData.TopicMap.Keys.ToArray();
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var address = random.NextValue(addresses);
+                logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue);
+
+                var topic = random.NextValue(topics);
+                logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue);
+            }
+        }
+
+        private class TestData
+        {
+            public readonly BlockReceipts[][] Batches;
+            public readonly Dictionary<Address, HashSet<int>> AddressMap = new();
+            public readonly Dictionary<Hash256, HashSet<int>> TopicMap = new();
+
+            public TestData(int batchCount, int blocksPerBatch)
+            {
+                Batches = new BlockReceipts[batchCount][];
+
+                for (var i = 0; i < Batches.Length; i++)
+                    Batches[i] = new BlockReceipts[blocksPerBatch];
+            }
+
+            public override string ToString() => $"{Batches.Length} * {Batches[0].Length} blocks";
+        }
+    }
+}
