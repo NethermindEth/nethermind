@@ -539,4 +539,15 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             return true;
         }
     }
+
+    public bool Equals(ReadOnlySpan<byte> nibbles)
+    {
+        // TODO: optimize
+        return FromNibbles(nibbles).Equals(this);
+    }
+
+    public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
+    {
+        throw new NotImplementedException();
+    }
 }

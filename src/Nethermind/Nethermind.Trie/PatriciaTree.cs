@@ -949,7 +949,7 @@ namespace Nethermind.Trie
 
             ref readonly CappedArray<byte> shorterPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
             ref readonly CappedArray<byte> longerPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
-            if (Bytes.AreEqual(shorterPath, node.Key))
+            if (node.Key.Equals(shorterPath))
             {
                 shorterPathValue = ref node.ValueRef;
                 longerPathValue = ref traverseContext.UpdateValue;
@@ -1041,7 +1041,7 @@ namespace Nethermind.Trie
             TrieNode originalNode = node;
             ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
 
-            int extensionLength = remaining.CommonPrefixLength(node.Key);
+            int extensionLength = node.Key.CommonPrefixLength(remaining);
             if (extensionLength == node.Key.Length)
             {
                 if (traverseContext.IsUpdate)
