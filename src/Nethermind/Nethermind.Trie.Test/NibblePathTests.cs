@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using FluentAssertions;
 using Lantern.Discv5.WireProtocol.Packet.Handlers;
+using Nethermind.Core.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -137,5 +138,53 @@ public class NibblePathTests
     public void ToHexString(byte[] nibbles, string expected)
     {
         NibblePath.FromNibbles(nibbles).ToHexString().Should().Be(expected);
+    }
+
+    private static readonly byte[] OddNibbles = [0xA, 0xB, 0xC, 0xD, 0xE];
+
+    [TestCase(0, 5)]
+    [TestCase(1, 4)]
+    [TestCase(1, 3)]
+    [TestCase(1, 2)]
+    [TestCase(1, 1)]
+    [TestCase(2, 3)]
+    [TestCase(2, 2)]
+    [TestCase(2, 1)]
+    [TestCase(3, 2)]
+    [TestCase(3, 1)]
+    [TestCase(4, 1)]
+    public void Slice_odd(int start, int length)
+    {
+        Assert_Slice(start, length, OddNibbles);
+    }
+
+    private static readonly byte[] EvenNibbles = [0xA, 0xB, 0xC, 0xD, 0xE, 0xF];
+
+    [TestCase(0, 6)]
+    [TestCase(1, 5)]
+    [TestCase(1, 4)]
+    [TestCase(1, 3)]
+    [TestCase(1, 2)]
+    [TestCase(1, 1)]
+    [TestCase(2, 4)]
+    [TestCase(2, 3)]
+    [TestCase(2, 2)]
+    [TestCase(2, 1)]
+    [TestCase(3, 3)]
+    [TestCase(3, 2)]
+    [TestCase(3, 1)]
+    [TestCase(4, 2)]
+    [TestCase(4, 1)]
+    public void Slice_even(int start, int length)
+    {
+        Assert_Slice(start, length, EvenNibbles);
+    }
+
+    private static void Assert_Slice(int start, int length, byte[] nibbles)
+    {
+        var expected = NibblePath.FromNibbles(nibbles.AsSpan(start, length));
+        var actual = NibblePath.FromNibbles(nibbles).Slice(start, length);
+
+        actual.Equals(expected).Should().BeTrue();
     }
 }

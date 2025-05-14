@@ -178,14 +178,38 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     }
 
     private bool IsOdd => (_data[0] & OddFlag) == OddFlag;
+    private byte Odd => (byte)((_data[0] & OddFlag) >> OddFlagShift);
 
-    public NibblePath SliceTo(int end) => Slice(0, end);
-
-    public NibblePath SliceFrom(int start) => Slice(start, Length - start);
-
+    /// <remarks>
+    /// The slice will be used mostly by the <see cref="NodeType.Extension"/> and usually should be quite short.
+    /// </remarks>
     public NibblePath Slice(int from, int length)
     {
-        throw new NotImplementedException();
+        if (length == 1)
+        {
+            return Single(this[from]);
+        }
+
+        var size = GetRequiredArraySize(length);
+        byte[] data = GC.AllocateUninitializedArray<byte>(size);
+
+        if (length % 2 != 0)
+        {
+            // odd
+            data[0] = (byte)(OddFlag | this[from]);
+            from++;
+            length--;
+        }
+
+        // This part should be really unlikely to happen. Extensions are not long.
+        Debug.Assert(length % 2 == 0);
+
+        for (int i = 0; i < length; i += 2)
+        {
+            data[i / 2 + PreambleLength] = (byte)((this[from + i] << 4) + this[from + i + 1]);
+        }
+
+        return new NibblePath(data);
     }
 
     public string ToHexString()
@@ -298,9 +322,11 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         destination[0] = (byte)((isLeaf ? LeafFlag : 0) | destination[0]);
     }
 
-    public int CommonPrefixLength(NibblePath other)
+    public static NibblePath FromHexString(string hex)
     {
+
         throw new NotImplementedException();
+        // Bytes.FromHexString(hex)
     }
 
     public readonly ref struct Ref
@@ -311,11 +337,17 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         private const int OddBit = 1;
 
-
         public static Ref Empty => default;
 
         public Ref(in ReadOnlySpan<byte> rawKey) : this(rawKey, 0, rawKey.Length * 2)
         {
+        }
+
+        public static implicit operator Ref(NibblePath path)
+        {
+            byte odd = path.Odd;
+            // If odd, do not add the offset, on even, add 1.
+            return new Ref(ref Unsafe.Add(ref path._data[0], 1 - odd), odd, (byte)path.Length);
         }
 
         [DebuggerStepThrough]
@@ -342,11 +374,6 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ref byte GetRefAt(int nibble) => ref Unsafe.Add(ref _span, (nibble + _odd) / 2);
 
-        public NibblePath Slice(int start, int length)
-        {
-            throw new NotImplementedException();
-        }
-
         public Ref Slice(int start)
         {
             Debug.Assert(Length - start >= 0, "Path out of boundary");
@@ -358,14 +385,30 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 (byte)(Length - start));
         }
 
-        public Ref SliceRef(int currentIndex, int remainingUpdatePathLength)
+        public Ref Slice(int start, int length)
         {
-            throw new NotImplementedException();
+            Debug.Assert(start + length <= Length, "Cannot slice the NibblePath beyond its Length");
+            return new(ref Unsafe.Add(ref _span, (_odd + start) / 2),
+                (byte)((start & 1) ^ _odd), (byte)length);
         }
 
         public string ToHexString()
         {
-            throw new NotImplementedException();
+            const int prefixLength = 2;
+
+            // TODO: optimize
+            Span<char> chars = stackalloc char[Length + prefixLength];
+
+            chars[0] = '0';
+            chars[1] = 'x';
+
+            for (int i = 0; i < Length; i++)
+            {
+                var v = this[i];
+                chars[i + prefixLength] = (char)(v < 10 ? '0' + v : 'a' + v - 10);
+            }
+
+            return new string(chars);
         }
 
         public NibblePath ToPath()
@@ -373,25 +416,54 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             throw new NotImplementedException();
         }
 
-        public int CommonPrefixLength(NibblePath nodeKey)
+        public int CommonPrefixLength(in Ref other)
         {
-            throw new NotImplementedException();
+            var min = Math.Min(other.Length, Length);
+            var i = 0;
+
+            for (; i < min; i++)
+            {
+                if (GetAt(i) != other.GetAt(i))
+                    break;
+            }
+
+            return i;
         }
 
-        public static Ref FromCompact(byte[] bytes)
+        public int CommonPrefixLength(NibblePath other)
         {
-            throw new NotImplementedException();
+            var min = Math.Min(other.Length, Length);
+            var i = 0;
+
+            for (; i < min; i++)
+            {
+                if (GetAt(i) != other[i])
+                    break;
+            }
+
+            return i;
         }
+
+        public static Ref FromCompact(byte[] bytes) => FromRlpBytes(bytes).key;
 
         public NibblePath ToNibblePath()
         {
             throw new NotImplementedException();
         }
-    }
 
-    public static NibblePath FromHexString(string hex)
-    {
-        throw new NotImplementedException();
-        // Bytes.FromHexString(hex)
+        public NibblePath ToNibblePathFrom(int start)
+        {
+            throw new NotImplementedException();
+        }
+
+        public NibblePath ToNibblePathTo(int extensionLength)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool Equals(NibblePath other)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

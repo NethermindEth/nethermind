@@ -724,8 +724,8 @@ namespace Nethermind.Trie.Test.Pruning
         {
             var start = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
 
-            NibblePath storage1Nib = start.SliceFrom(1).PrependWith(0);
-            NibblePath storage2Nib = start.SliceFrom(1).PrependWith(1);
+            NibblePath storage1Nib = start[1..].PrependWith(0);
+            NibblePath storage2Nib = start[1..].PrependWith(1);
 
             TrieNode storage1 = new(NodeType.Leaf, new byte[32]);
             TreePath emptyPath = TreePath.Empty;
