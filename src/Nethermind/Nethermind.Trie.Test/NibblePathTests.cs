@@ -24,7 +24,7 @@ public class NibblePathTests
     public void Encode_gives_correct_output_when_odd(bool flag, byte nibble1, byte nibble2, byte nibble3,
         byte byte1, byte byte2)
     {
-        NibblePath path = NibblePath.FromNibbles([nibble1, nibble2, nibble3]);
+        var path = NibblePath.FromNibbles([nibble1, nibble2, nibble3]);
         Span<byte> output = stackalloc byte[2];
 
         path.EncodeTo(output, flag);
@@ -37,7 +37,7 @@ public class NibblePathTests
     [TestCase(true, (byte)3, (byte)7, (byte)32, (byte)55)]
     public void Encode_gives_correct_output_when_even(bool flag, byte nibble1, byte nibble2, byte byte1, byte byte2)
     {
-        NibblePath path = NibblePath.FromNibbles([nibble1, nibble2]);
+        var path = NibblePath.FromNibbles([nibble1, nibble2]);
         Span<byte> output = stackalloc byte[2];
 
         path.EncodeTo(output, flag);
@@ -221,5 +221,26 @@ public class NibblePathTests
         {
             path[i].Should().Be(nibbles[i]);
         }
+    }
+
+
+    [TestCase(0, 6)]
+    [TestCase(1, 5)]
+    [TestCase(1, 4)]
+    [TestCase(1, 3)]
+    [TestCase(2, 4)]
+    [TestCase(2, 3)]
+    [TestCase(2, 2)]
+    [TestCase(2, 1)]
+    [TestCase(3, 3)]
+    [TestCase(3, 2)]
+    [TestCase(3, 1)]
+    public void Slice(int from, int length)
+    {
+        NibblePath.ByRef path = NibblePath.ByRef.FromNibbles(EvenNibbles, stackalloc byte[6]);
+        NibblePath expected = NibblePath.FromNibbles(EvenNibbles.AsSpan(from, length));
+        NibblePath actual = path.Slice(from, length);
+
+        actual.Equals(expected).Should().BeTrue();
     }
 }

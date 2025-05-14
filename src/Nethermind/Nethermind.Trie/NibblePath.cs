@@ -482,9 +482,9 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             var sliceSize = GetRequiredArraySize(length);
             var data = GC.AllocateArray<byte>(sliceSize);
 
-            if (start % 2 == 0)
+            if (start + length == Length)
             {
-                // The slice is aligned the same way as this path.
+                // The slice is aligned the same way as this path, ending at the same place
                 ReadOnlySpan<byte> toCopy = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _data, size - sliceSize), sliceSize);
                 toCopy.CopyTo(data);
 
