@@ -26,6 +26,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
@@ -72,7 +73,7 @@ public class BlockchainBridgeTests
         _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
         _specProvider = MainnetSpecProvider.Instance;
 
-        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
         IOverridableWorldScope overridableWorldScope = worldStateManager.CreateOverridableWorldScope();
 
         IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
@@ -207,7 +208,7 @@ public class BlockchainBridgeTests
     [TestCase(0)]
     public void Bridge_head_is_correct(long headNumber)
     {
-        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
         IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
         OverridableTxProcessingEnv processingEnv = new(
             worldStateManager.CreateOverridableWorldScope(),

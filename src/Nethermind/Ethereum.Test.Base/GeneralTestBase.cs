@@ -61,7 +61,7 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
-            TestContext.Out.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             EofValidator.Logger = _logger;
@@ -175,14 +175,7 @@ namespace Ethereum.Test.Base
 
             if (differences.Count > 0)
             {
-                TestContext.Out.WriteLine();
-                TestContext.Out.WriteLine("Differences from expected");
-                TestContext.Out.WriteLine();
-
-                foreach (string difference in differences)
-                {
-                    TestContext.Out.WriteLine(difference);
-                }
+                _logger.Info($"\nDifferences from expected\n{string.Join("\n", differences)}");
             }
 
             //            Assert.Zero(differences.Count, "differences");

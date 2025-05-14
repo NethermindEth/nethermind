@@ -45,14 +45,6 @@ public class WorldStateManager : IWorldStateManager
         _lastNStateRootTracker = lastNStateRootTracker;
     }
 
-    public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
-    {
-        IPruningTrieStore trieStore = new TrieStore(dbProvider.StateDb, logManager);
-        IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
-
-        return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
-    }
-
     public IWorldState GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
@@ -102,7 +94,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
     {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
+        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);
     }
 
