@@ -360,12 +360,6 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public override string ToString() => ToHexString();
 
-    public bool Equals(ReadOnlySpan<byte> nibbles)
-    {
-        // TODO: optimize
-        return FromNibbles(nibbles).Equals(this);
-    }
-
     public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
     {
         throw new NotImplementedException();
@@ -383,7 +377,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         }
 
         public static implicit operator ByRef(NibblePath d) => default;
-        public int Length { get; }
+        public int Length => _length;
 
         public static ByRef FromNibbles(scoped ReadOnlySpan<byte> nibbles, Span<byte> span)
         {
@@ -399,11 +393,37 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public NibblePath Slice(int start, int length) => throw new NotImplementedException();
 
-        public byte this [int index] => throw new NotImplementedException();
+        public byte this [int index]
+        {
+            get
+            {
+                ref var d = ref _data;
+
+                int odd = (d & OddFlag) >> OddFlagShift;
+
+                byte b = Unsafe.Add(ref d, (index + 2 - odd) / 2);
+
+                // byte is two nibbles
+                // for an odd path, and an odd index, take higher nibble
+                // for an odd path, and an even index, take lower nibble
+                // for an even path, and an even index, take higher nibble
+                // for an even path, and an odd index, take lower nibble
+                var h = 1 - ((index & 1) ^ odd);
+                return (byte)((b >> (h * NibbleShift)) & NibbleMask);
+            }
+        }
     }
 
     public bool Equals(scoped in ByRef shorterPath)
     {
         throw new NotImplementedException();
+    }
+
+    public void WriteNibblesTo(Span<byte> destination)
+    {
+        for (int i = 0; i < Length; i++)
+        {
+            destination[i] = this[i];
+        }
     }
 }
