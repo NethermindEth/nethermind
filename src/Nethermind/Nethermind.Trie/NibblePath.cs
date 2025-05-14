@@ -263,6 +263,28 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         return other._data.AsSpan().SequenceEqual(_data.AsSpan());
     }
 
+    public override bool Equals(object? obj)
+    {
+        if (obj is NibblePath other)
+        {
+            return Equals(other);
+        }
+
+        return false;
+    }
+
+    public override int GetHashCode()
+    {
+        return _data.Length switch
+        {
+            0 => 0,
+            1 => _data[0],
+            2 => Unsafe.ReadUnaligned<ushort>(ref _data[0]),
+            3 => Unsafe.ReadUnaligned<ushort>(ref _data[0]),
+            _ => Unsafe.ReadUnaligned<int>(ref _data[0]) ^ _data.Length,
+        };
+    }
+
     public static readonly NibblePath Empty = new([0]);
 
     public static NibblePath FromNibbles(ReadOnlySpan<byte> nibbles)
@@ -478,12 +500,19 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public NibblePath Slice(int start, int length)
         {
+            if (length == 1)
+            {
+                return Singles[this[start]];
+            }
+
             var size = GetRequiredArraySize(Length);
             var sliceSize = GetRequiredArraySize(length);
             var data = GC.AllocateArray<byte>(sliceSize);
 
             if (start + length == Length)
             {
+                // TODO: more cases can be handed that way, as long as there's the alignments of the oddity of the paths
+
                 // The slice is aligned the same way as this path, ending at the same place
                 ReadOnlySpan<byte> toCopy = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _data, size - sliceSize), sliceSize);
                 toCopy.CopyTo(data);
@@ -501,7 +530,21 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             }
             else
             {
-                throw new NotImplementedException();
+                if (length % 2 != 0)
+                {
+                    // odd
+                    data[0] = (byte)(OddFlag | this[start]);
+                    start++;
+                    length--;
+                }
+
+                // This part should be really unlikely to happen. Extensions are not long.
+                Debug.Assert(length % 2 == 0);
+
+                for (int i = 0; i < length; i += 2)
+                {
+                    data[i / 2 + PreambleLength] = (byte)((this[start + i] << 4) + this[start + i + 1]);
+                }
             }
 
             return new NibblePath(data);

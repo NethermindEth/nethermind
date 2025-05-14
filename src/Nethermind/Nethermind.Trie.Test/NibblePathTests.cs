@@ -235,10 +235,28 @@ public class NibblePathTests
     [TestCase(3, 3)]
     [TestCase(3, 2)]
     [TestCase(3, 1)]
-    public void Slice(int from, int length)
+    public void Ref_Slice_Even(int from, int length)
     {
         NibblePath.ByRef path = NibblePath.ByRef.FromNibbles(EvenNibbles, stackalloc byte[6]);
         NibblePath expected = NibblePath.FromNibbles(EvenNibbles.AsSpan(from, length));
+        NibblePath actual = path.Slice(from, length);
+
+        actual.Equals(expected).Should().BeTrue();
+    }
+
+    [TestCase(0, 5)]
+    [TestCase(1, 4)]
+    [TestCase(1, 3)]
+    [TestCase(1, 2)]
+    [TestCase(2, 3)]
+    [TestCase(2, 2)]
+    [TestCase(2, 1)]
+    [TestCase(3, 2)]
+    [TestCase(3, 1)]
+    public void Ref_Slice_Odd(int from, int length)
+    {
+        NibblePath.ByRef path = NibblePath.ByRef.FromNibbles(OddNibbles, stackalloc byte[6]);
+        NibblePath expected = NibblePath.FromNibbles(OddNibbles.AsSpan(from, length));
         NibblePath actual = path.Slice(from, length);
 
         actual.Equals(expected).Should().BeTrue();
