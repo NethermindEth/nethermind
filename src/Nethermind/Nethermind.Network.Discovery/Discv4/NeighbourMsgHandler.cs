@@ -34,7 +34,7 @@ public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
             // Some client (nethermind) only respond with one request.
             Task.Run(async () =>
             {
-                if (Interlocked.CompareExchange(ref _timeoutInitiated, !_timeoutInitiated, false) == false) return;
+                if (Interlocked.CompareExchange(ref _timeoutInitiated, !_timeoutInitiated, false)) return;
                 await Task.Delay(_secondRequestTimeout);
                 TaskCompletionSource.TrySetResult(_current);
             });

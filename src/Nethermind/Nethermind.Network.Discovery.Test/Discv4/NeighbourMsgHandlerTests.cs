@@ -33,152 +33,39 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public void Handle_should_return_true_when_processing_valid_message()
+        public async Task When_TotalNodesLessThanK_ThenDontFinish_UntilTimeout()
         {
-            // Arrange
             var nodes = CreateNodes(5);
             var msg = new NeighborsMsg(_farAddress, _expirationTime, nodes);
 
-            // Act
-            bool result = _handler.Handle(msg);
+            _handler.Handle(msg).Should().BeTrue();
+            _handler.TaskCompletionSource.Task.IsCompleted.Should().BeFalse();
 
-            // Assert
-            result.Should().BeTrue();
+            await _handler.TaskCompletionSource.Task;
         }
 
         [Test]
-        public void Handle_should_return_false_when_k_nodes_already_collected()
+        public void When_TotalNodesLessEqualToK_ThenFinishImmediately()
         {
-            // Arrange
-            // First, fill the handler with K nodes
-            var initialNodes = CreateNodes(K);
-            var initialMsg = new NeighborsMsg(_farAddress, _expirationTime, initialNodes);
-            _handler.Handle(initialMsg);
-
-            // Then try to add more nodes
-            var additionalNodes = CreateNodes(5);
-            var additionalMsg = new NeighborsMsg(_farAddress, _expirationTime, additionalNodes);
-
-            // Act
-            bool result = _handler.Handle(additionalMsg);
-
-            // Assert
-            result.Should().BeFalse();
-        }
-
-        [Test]
-        public void Handle_should_return_false_when_adding_more_than_k_nodes()
-        {
-            // Arrange
-            // First, fill the handler with K-1 nodes
-            var initialNodes = CreateNodes(K - 1);
-            var initialMsg = new NeighborsMsg(_farAddress, _expirationTime, initialNodes);
-            _handler.Handle(initialMsg);
-
-            // Then try to add more than 1 node
-            var additionalNodes = CreateNodes(2);
-            var additionalMsg = new NeighborsMsg(_farAddress, _expirationTime, additionalNodes);
-
-            // Act
-            bool result = _handler.Handle(additionalMsg);
-
-            // Assert
-            result.Should().BeFalse();
-        }
-
-        [Test]
-        public async Task TaskCompletionSource_should_complete_when_k_nodes_collected()
-        {
-            // Arrange
-            var nodes = CreateNodes(K);
+            var nodes = CreateNodes(8);
             var msg = new NeighborsMsg(_farAddress, _expirationTime, nodes);
 
-            // Act
-            _handler.Handle(msg);
-            
-            // Create a task that will complete when the TaskCompletionSource completes
-            Task<Node[]> task = _handler.TaskCompletionSource.Task;
-            
-            // Wait for the task to complete with a timeout
-            var completedTask = await Task.WhenAny(task, Task.Delay(100));
-
-            // Assert
-            completedTask.Should().Be(task);
-            task.IsCompleted.Should().BeTrue();
-            task.Result.Should().HaveCount(K);
-            task.Result.Should().BeEquivalentTo(nodes);
+            _handler.Handle(msg).Should().BeTrue();
+            _handler.Handle(msg).Should().BeTrue();
+            _handler.Handle(msg).Should().BeFalse();
+            _handler.TaskCompletionSource.Task.IsCompleted.Should().BeTrue();
         }
 
         [Test]
-        public async Task TaskCompletionSource_should_complete_after_timeout_when_less_than_k_nodes_collected()
+        public async Task When_TotalNodesDoesNotAddUp_DontTakeMessage()
         {
-            // Arrange
-            var nodes = CreateNodes(K - 5); // Less than K nodes
+            var nodes = CreateNodes(10);
             var msg = new NeighborsMsg(_farAddress, _expirationTime, nodes);
 
-            // Act
-            _handler.Handle(msg);
-            
-            // Create a task that will complete when the TaskCompletionSource completes
-            Task<Node[]> task = _handler.TaskCompletionSource.Task;
-            
-            // Wait for the task to complete with a timeout longer than the handler's timeout
-            var completedTask = await Task.WhenAny(task, Task.Delay(1500)); // Handler timeout is 1 second
-
-            // Assert
-            completedTask.Should().Be(task);
-            task.IsCompleted.Should().BeTrue();
-            task.Result.Should().HaveCount(K - 5);
-            task.Result.Should().BeEquivalentTo(nodes);
-        }
-
-        [Test]
-        public void Handle_should_accumulate_nodes_from_multiple_messages()
-        {
-            // Arrange
-            var firstBatch = CreateNodes(5);
-            var secondBatch = CreateNodes(5, 5); // Start from index 5 to create different nodes
-            
-            var firstMsg = new NeighborsMsg(_farAddress, _expirationTime, firstBatch);
-            var secondMsg = new NeighborsMsg(_farAddress, _expirationTime, secondBatch);
-
-            // Act
-            _handler.Handle(firstMsg);
-            _handler.Handle(secondMsg);
-            
-            // Assert
-            _handler.TaskCompletionSource.Task.Wait(100); // Give a small timeout for any async operations
-            var result = _handler.TaskCompletionSource.Task.Result;
-            
-            result.Should().HaveCount(10);
-            result.Should().Contain(firstBatch);
-            result.Should().Contain(secondBatch);
-        }
-
-        [Test]
-        public void Handle_should_only_initiate_timeout_once()
-        {
-            // Arrange
-            var firstBatch = CreateNodes(3);
-            var secondBatch = CreateNodes(3, 3); // Start from index 3 to create different nodes
-            
-            var firstMsg = new NeighborsMsg(_farAddress, _expirationTime, firstBatch);
-            var secondMsg = new NeighborsMsg(_farAddress, _expirationTime, secondBatch);
-
-            // Act
-            _handler.Handle(firstMsg); // This should initiate the timeout
-            Task.Delay(500).Wait(); // Wait a bit, but less than the timeout
-            _handler.Handle(secondMsg); // This should not initiate another timeout
-            
-            // Assert
-            // We can't directly test that the timeout is only initiated once,
-            // but we can verify that the nodes are accumulated correctly
-            Task.Delay(1500).Wait(); // Wait for the timeout to complete
-            var result = _handler.TaskCompletionSource.Task.Result;
-            
-            result.Should().HaveCount(6);
-            result.Should().Contain(firstBatch);
-            result.Should().Contain(secondBatch);
+            _handler.Handle(msg).Should().BeTrue();
+            _handler.Handle(msg).Should().BeFalse();
+            _handler.TaskCompletionSource.Task.IsCompleted.Should().BeFalse();
+            await _handler.TaskCompletionSource.Task;
         }
 
         private ArraySegment<Node> CreateNodes(int count, int startIndex = 0)
@@ -186,9 +73,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             var nodes = new Node[count];
             for (int i = 0; i < count; i++)
             {
-                // Create a 64-byte (128 hex chars) public key by padding with zeros
-                string hexString = $"0x{(i + startIndex).ToString().PadLeft(2, '0')}".PadRight(130, '0');
-                var publicKey = new PublicKey(hexString);
+                var publicKey = TestItem.PublicKeys[i];
                 nodes[i] = new Node(publicKey, $"192.168.1.{i + startIndex + 10}", 30303);
             }
             return new ArraySegment<Node>(nodes);

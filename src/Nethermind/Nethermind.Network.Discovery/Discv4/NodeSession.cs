@@ -10,8 +10,10 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
 {
-    private static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
-    private const int AuthenticatedRequestFailureLimit = 5;
+    public static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
+    public static readonly TimeSpan PingRetryTimeout = TimeSpan.FromMinutes(10);
+    public const int AuthenticatedRequestFailureLimit = 5;
+
     private long AuthenticatedRequestFailureCount { get; set; }
     private DateTimeOffset LastPongReceived { get; set; } = DateTimeOffset.MinValue;
     private DateTimeOffset LastPingReceived { get; set; } = DateTimeOffset.MinValue;
@@ -20,7 +22,7 @@ public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     public bool HasReceivedPing => LastPingReceived + BondTimeout > Timestamper.UtcNowOffset;
     public bool NotTooManyFailure => AuthenticatedRequestFailureCount <= AuthenticatedRequestFailureLimit;
     public bool HasReceivedPong => LastPongReceived + BondTimeout > Timestamper.UtcNowOffset;
-    public bool HasTriedPingRecently => LastPingSent + TimeSpan.FromMinutes(10) > Timestamper.UtcNowOffset;
+    public bool HasTriedPingRecently => LastPingSent + PingRetryTimeout > Timestamper.UtcNowOffset;
     public void ResetAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount = 0;
     public void OnAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount++;
 
