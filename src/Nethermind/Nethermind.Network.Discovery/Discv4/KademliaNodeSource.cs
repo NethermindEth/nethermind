@@ -47,7 +47,7 @@ public class KademliaNodeSource : IKademliaNodeSource
     {
         if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
         Channel<Node> ch = Channel.CreateBounded<Node>(64);
-        ConcurrentDictionary<ValueHash256, ValueHash256> _writtenNodes = new();
+        ConcurrentDictionary<ValueHash256, ValueHash256> writtenNodes = new();
         int duplicated = 0;
         int total = 0;
 
@@ -83,7 +83,7 @@ public class KademliaNodeSource : IKademliaNodeSource
                 anyFound = true;
                 count++;
                 total++;
-                if (!_writtenNodes.TryAdd(node.IdHash, node.IdHash))
+                if (!writtenNodes.TryAdd(node.IdHash, node.IdHash))
                 {
                     duplicated++;
                     continue;
@@ -113,6 +113,12 @@ public class KademliaNodeSource : IKademliaNodeSource
                 {
                     random.NextBytes(randomBytes);
                     await DiscoverAsync(new PublicKey(randomBytes));
+
+                    // Prevent high CPU when all node is not reachable due to network connectivity issue.
+                    if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1), token);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -121,12 +127,6 @@ public class KademliaNodeSource : IKademliaNodeSource
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-                }
-
-                // Prevent high CPU when all node is not reachable due to network connectivity issue.
-                if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(1), token);
                 }
             }
         })));
@@ -150,7 +150,7 @@ public class KademliaNodeSource : IKademliaNodeSource
 
         void Handler(object? _, Node addedNode)
         {
-            _writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
+            writtenNodes.TryAdd(addedNode.IdHash, addedNode.IdHash);
             ch.Writer.TryWrite(addedNode); // Ignore if channel full
         }
     }

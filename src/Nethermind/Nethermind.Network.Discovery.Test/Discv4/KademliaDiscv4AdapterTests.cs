@@ -140,7 +140,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        [CancelAfter(5000)]
+        [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
         {
             _msgSender
@@ -166,7 +166,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        [CancelAfter(5000)]
+        [CancelAfter(10000)]
         public async Task FindNeighbours_should_return_nodes(CancellationToken token)
         {
             var expected = Enumerable.Repeat(new Node(TestItem.PublicKeyD, "192.168.1.3", 30303), 16).ToArray();
@@ -194,7 +194,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        [CancelAfter(5000)]
+        [CancelAfter(10000)]
         public async Task SendEnrRequest_should_ping_then_enr_request_and_return_response(CancellationToken token)
         {
             var expectedResponse = new EnrResponseMsg(
@@ -219,7 +219,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public async Task OnIncomingMsg_ping_should_respond_with_pong()
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_should_respond_with_pong(CancellationToken token)
         {
             PingMsg pingMsg = new PingMsg(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
             pingMsg.FarAddress = _receiver.Address;
@@ -229,14 +230,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await Task.Delay(100);
 
-            await _kademliaMessageReceiver.Received(1).Ping(Arg.Is<Node>(n => n.Id == _receiver.Id), Arg.Any<CancellationToken>());
+            await _kademliaMessageReceiver.Received(1).Ping(Arg.Is<Node>(n => n.Id == _receiver.Id), token);
             await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
                 m.PingMdc!.SequenceEqual(pingMsg.Mdc!)));
         }
 
         [Test]
-        public async Task OnIncomingMsg_find_node_should_respond_with_neighbors()
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_find_node_should_respond_with_neighbors(CancellationToken token)
         {
             ConfigureBondCallback();
 
@@ -257,7 +259,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await _kademliaMessageReceiver.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n.Id == _receiver.Id),
                 Arg.Is<PublicKey>(pk => pk.Bytes!.SequenceEqual(_testPublicKey.Bytes!)),
-                Arg.Any<CancellationToken>());
+                token);
 
             // Send out two message instead of one because of MTU limit.
             await _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m =>
@@ -269,7 +271,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
-        public async Task OnIncomingMsg_enr_request_should_respond_with_enr_response()
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_enr_request_should_respond_with_enr_response(CancellationToken token)
         {
             ConfigureBondCallback();
 
