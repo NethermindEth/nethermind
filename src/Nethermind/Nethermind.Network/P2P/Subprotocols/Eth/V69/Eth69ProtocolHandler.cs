@@ -9,6 +9,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -153,7 +154,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = 0, // TODO: clarify
+            EarliestBlock = 0,
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };

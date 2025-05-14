@@ -121,7 +121,6 @@ namespace Nethermind.Synchronization.Blocks
                     return bestDiffPeer.Info;
                 }
             }
-            // TODO: is by-block comparison needed?
             else // by last block otherwise
             {
                 var bestPeerNumber = bestDiffPeer.Info.HeadNumber;

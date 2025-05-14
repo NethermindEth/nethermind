@@ -152,11 +152,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     newModes = shouldBeInUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
-
-                    if (_syncPeerPool.AllPeers.Any(p => p.HeadNumber > 0))
-                    {
-                        var x = ReloadDataFromPeers();
-                    }
                 }
                 // to avoid expensive checks we make this simple check at the beginning
                 else

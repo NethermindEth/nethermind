@@ -11,9 +11,10 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
+        // TODO: MergeStateSyncAllocationStrategyFactory should be used in non-merge chains
         private static readonly IPeerAllocationStrategy DefaultStrategy =
             new AllocationStrategy(
-                // TODO: use TotalDiffStrategy in non-merge chains?
+                // TODO: use TotalDiffStrategy in pre-merge chains
                 new LastBlockStrategy(
                     new BySpeedStrategy(TransferSpeedType.NodeData, true), StrategySelectionType.CanBeSlightlyWorse));
 
