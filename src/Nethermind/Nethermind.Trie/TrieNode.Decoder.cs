@@ -34,11 +34,10 @@ namespace Nethermind.Trie
 
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
-                Debug.Assert(item.Key is not null,
-                    "Extension key is null when encoding");
+                Debug.Assert(item.Key.IsNull == false, "Extension key should not be null when encoding");
 
-                byte[] hexPrefix = item.Key;
-                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                NibblePath key = item.Key;
+                int hexLength = key.ByteLength;
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
                     : null;
@@ -47,7 +46,7 @@ namespace Nethermind.Trie
                     ? stackalloc byte[StackallocByteThreshold]
                     : rentedBuffer)[..hexLength];
 
-                HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
+                key.EncodeTo(keyBytes, isLeaf: false);
 
                 int previousLength = item.AppendChildPath(ref path, 0);
                 TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
@@ -61,10 +60,9 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRentBuffer(totalLength);
-                Span<byte> destination = data.AsSpan();
-                int position = Rlp.StartSequence(destination, 0, contentLength);
-                position = Rlp.Encode(destination, position, keyBytes);
-
+                RlpStream rlpStream = data.AsRlpStream();
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(keyBytes);
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
@@ -77,11 +75,11 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
+                    rlpStream.Write(nodeRef.FullRlp.AsSpan());
                 }
                 else
                 {
-                    Rlp.Encode(destination, position, nodeRef.Keccak);
+                    rlpStream.Encode(nodeRef.Keccak);
                 }
 
                 return data;
@@ -92,13 +90,13 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
-                if (node.Key is null)
+                if (node.Key.IsNull)
                 {
                     ThrowNullKey(node);
                 }
 
-                byte[] hexPrefix = node.Key;
-                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                NibblePath key = node.Key;
+                int hexLength = key.ByteLength;
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
                     : null;
@@ -107,22 +105,20 @@ namespace Nethermind.Trie
                     ? stackalloc byte[StackallocByteThreshold]
                     : rentedBuffer)[..hexLength];
 
-                HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
+                key.EncodeTo(keyBytes, isLeaf: true);
+
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value.AsSpan());
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = pool.SafeRentBuffer(totalLength);
-                Span<byte> destination = data.AsSpan();
-                int position = Rlp.StartSequence(destination, 0, contentLength);
-                position = Rlp.Encode(destination, position, keyBytes);
-
+                RlpStream rlpStream = data.AsRlpStream();
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(keyBytes);
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-
-                Rlp.Encode(destination, position, node.Value);
-
+                rlpStream.Encode(node.Value.AsSpan());
                 return data;
             }
 

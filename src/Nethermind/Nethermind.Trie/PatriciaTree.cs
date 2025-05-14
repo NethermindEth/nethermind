@@ -929,7 +929,7 @@ namespace Nethermind.Trie
 
         private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
-            if (node.Key is null)
+            if (node.Key.IsNull)
             {
                 ThrowMissingPrefixException();
             }
