@@ -3,11 +3,13 @@
 
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -15,9 +17,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Enr;
 using Nethermind.Stats;
@@ -49,16 +49,20 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private IDiscoveryApp? _v4;
     private IDiscoveryApp? _v5;
     private INodeSource _compositeNodeSource = null!;
+    private readonly ILifetimeScope _rootLiffetimeScope;
+    private IProcessExitSource _processExitSource;
 
     public CompositeDiscoveryApp(
         [KeyFilter(IProtectedPrivateKey.NodeKey)]
         IProtectedPrivateKey? nodeKey,
+        ILifetimeScope rootLifetimeScope,
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IChannelFactory? channelFactory = null
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IProcessExitSource processExitSource, IChannelFactory? channelFactory = null
     )
     {
+        _rootLiffetimeScope = rootLifetimeScope;
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
         _networkConfig = networkConfig;
         _discoveryConfig = discoveryConfig;
@@ -71,6 +75,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
+        _processExitSource = processExitSource;
         _channelFactory = channelFactory;
 
         Initialize(nodeKey.PublicKey);
@@ -142,20 +147,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     {
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
 
-        NodeDistanceCalculator nodeDistanceCalculator = new(discoveryConfig);
-
-        NodeTable nodeTable = new(nodeDistanceCalculator, discoveryConfig, _networkConfig, _logManager);
-        EvictionManager evictionManager = new(nodeTable, _logManager);
-
-        NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
-            nodeTable,
-            evictionManager,
-            _nodeStatsManager,
-            selfNodeRecord,
-            discoveryConfig,
-            _timestamper,
-            _logManager);
-
         // ToDo: DiscoveryDB is registered outside dbProvider - bad
         SimpleFilePublicKeyDb discoveryDb = new(
             "DiscoveryDB",
@@ -166,31 +157,16 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             discoveryDb,
             _logManager);
 
-        DiscoveryManager discoveryManager = new(
-            nodeLifeCycleFactory,
-            nodeTable,
-            discoveryStorage,
-            discoveryConfig,
-            _networkConfig,
-            _logManager
-        );
-
-        NodesLocator nodesLocator = new(
-            nodeTable,
-            discoveryManager,
-            discoveryConfig,
-            _logManager);
-
         _v4 = new DiscoveryApp(
-            nodesLocator,
-            discoveryManager,
-            nodeTable,
+            selfNodeRecord,
+            _rootLiffetimeScope,
+            _nodeStatsManager,
             _serializationService,
-            _cryptoRandom,
             discoveryStorage,
             _networkConfig,
             discoveryConfig,
             _timestamper,
+            _processExitSource,
             _logManager);
 
         _v4.Initialize(_nodeKey.PublicKey);

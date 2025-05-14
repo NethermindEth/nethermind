@@ -61,5 +61,7 @@ namespace Nethermind.Network.Enr
         /// </summary>
         public const string Udp6 = "udp6";
         public static ReadOnlySpan<byte> Udp6U8 => "udp6"u8;
+
+        public static HashSet<string> KnownKeys = [Id, Eth, Ip, Ip6, Secp256K1, Tcp, Tcp6, Udp, Udp6];
     }
 }
