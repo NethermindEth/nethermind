@@ -11,7 +11,8 @@ public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
     private Node[] _current = Array.Empty<Node>();
     public TaskCompletionSource<Node[]> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private static readonly TimeSpan _secondRequestTimeout = TimeSpan.FromSeconds(1);
+    // The peer should send the two packet pretty much immediately. In any case, if the second packet is loss, its not a huge deal.
+    private static readonly TimeSpan _secondRequestTimeout = TimeSpan.FromMilliseconds(100);
     private bool _timeoutInitiated = false;
 
     public bool Handle(DiscoveryMsg msg)
@@ -31,7 +32,7 @@ public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
         }
         else
         {
-            // Some client (nethermind) only respond with one request.
+            // Some client (nethermind, besu) only respond with one request.
             Task.Run(async () =>
             {
                 if (Interlocked.CompareExchange(ref _timeoutInitiated, !_timeoutInitiated, false)) return;
