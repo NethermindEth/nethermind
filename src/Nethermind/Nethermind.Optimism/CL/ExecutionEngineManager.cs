@@ -217,7 +217,13 @@ public class ExecutionEngineManager(
     }
     public Task<ulong?> GetCurrentFinalizedBlockNumber()
     {
-        return Task.FromResult(_currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null);
+      await _semaphore.WaitAsync();
+      try {
+          return _currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null;
+      } finally
+      {
+          _semaphore.Release();
+      }
     }
 
     private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();
