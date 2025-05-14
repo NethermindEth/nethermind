@@ -118,7 +118,6 @@ public partial class EngineModuleTests
             .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(1) { block.Header }));
         SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(syncPeer), AllocationContexts.All);
-        alloc.AllocateBestPeer(new[] { new PeerInfo(syncPeer) }, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chain.SyncPeerPool
             .Allocate(
                 Arg.Any<IPeerAllocationStrategy>(),
@@ -166,7 +165,6 @@ public partial class EngineModuleTests
             .Throws(new TimeoutException());
 
         SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(syncPeer), AllocationContexts.All);
-        alloc.AllocateBestPeer(new[] { new PeerInfo(syncPeer) }, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chain.SyncPeerPool
             .Allocate(
                 Arg.Any<IPeerAllocationStrategy>(),

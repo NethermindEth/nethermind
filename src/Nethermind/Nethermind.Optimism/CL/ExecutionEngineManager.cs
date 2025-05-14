@@ -70,7 +70,7 @@ public class ExecutionEngineManager(
         }
     }
 
-    public async Task<bool> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayload)
+    public async Task<P2PPayloadStatus> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayload)
     {
         await _semaphore.WaitAsync();
         try
@@ -78,7 +78,7 @@ public class ExecutionEngineManager(
             if (_currentHead.Number >= (ulong)executionPayload.BlockNumber)
             {
                 if (logger.IsTrace) logger.Trace($"Got old P2P payload. Number: {executionPayload.BlockNumber}");
-                return true;
+                return P2PPayloadStatus.Valid;
             }
 
             if (logger.IsInfo)
@@ -90,22 +90,22 @@ public class ExecutionEngineManager(
             {
                 case PayloadStatus.Invalid:
                     {
-                        if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
-                        return false;
+                        if (logger.IsWarn) logger.Warn($"Invalid P2P payload. {executionPayload}");
+                        return P2PPayloadStatus.Invalid;
                     }
                 case PayloadStatus.Valid:
                     {
-                        if (logger.IsTrace) logger.Trace($"NewPayload Valid P2P payload. {executionPayload}");
+                        if (logger.IsInfo) logger.Info($"New Payload Valid. {executionPayload}");
                         break;
                     }
                 case PayloadStatus.Accepted:
                     {
-                        if (logger.IsTrace) logger.Trace($"Accepted P2P payload. {executionPayload}");
+                        if (logger.IsInfo) logger.Info($"New Payload Accepted. {executionPayload}");
                         break;
                     }
                 case PayloadStatus.Syncing:
                     {
-                        if (logger.IsTrace) logger.Trace($"Syncing P2P payload. {executionPayload}");
+                        if (logger.IsInfo) logger.Info($"New Payload Syncing. {executionPayload}");
                         break;
                     }
             }
@@ -117,7 +117,7 @@ public class ExecutionEngineManager(
                 case PayloadStatus.Invalid:
                     {
                         if (logger.IsWarn) logger.Warn($"Got invalid P2P payload. {executionPayload}");
-                        return false;
+                        return P2PPayloadStatus.Invalid;
                     }
                 case PayloadStatus.Valid:
                     {
@@ -129,21 +129,20 @@ public class ExecutionEngineManager(
                             _elSyncedTaskCompletionSource.SetResult();
                         }
 
-                        break;
-                    }
-                case PayloadStatus.Accepted:
-                    {
-                        if (logger.IsInfo) logger.Info($"FCU Accepted P2P payload. {executionPayload}");
-                        break;
+                        return P2PPayloadStatus.Valid;
                     }
                 case PayloadStatus.Syncing:
                     {
                         if (logger.IsInfo) logger.Info($"FCU Syncing P2P payload. {executionPayload}");
-                        break;
+                        return P2PPayloadStatus.Syncing;
+                    }
+                default:
+                    {
+                        if (logger.IsWarn)
+                            logger.Warn($"Unexpected Payload Status({fcuResult.PayloadStatus.Status}). While processing {executionPayload}");
+                        return P2PPayloadStatus.Invalid;
                     }
             }
-
-            return true;
         }
         finally
         {
@@ -216,9 +215,17 @@ public class ExecutionEngineManager(
 
         return true;
     }
-    public Task<ulong?> GetCurrentFinalizedBlockNumber()
+    public async Task<ulong?> GetCurrentFinalizedBlockNumber()
     {
-        return Task.FromResult(_currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null);
+        await _semaphore.WaitAsync();
+        try
+        {
+            return _currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();

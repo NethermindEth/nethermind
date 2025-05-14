@@ -130,7 +130,7 @@ public class OptimismCL : IDisposable
                 _driver.Reset(finalized.Number);
                 Task driverTask = _driver.Run(_cancellationTokenSource.Token);
                 await _l1Bridge.ProcessUntilHead(_cancellationTokenSource.Token);
-                _p2p.Reset((await _l2Api.GetFinalizedBlock())!.Number);
+                _p2p.Reset((await _l2Api.GetHeadBlock()).Number);
                 await Task.WhenAll(
                     _p2p.Run(_cancellationTokenSource.Token),
                     decodingPipelineTask,
