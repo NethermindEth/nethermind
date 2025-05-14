@@ -16,7 +16,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Prometheus;
 
 namespace Nethermind.Network
 {
@@ -285,20 +284,9 @@ namespace Nethermind.Network
                     await Task.Delay(1000, token);
                 }
 
-                int prevCount = PeerCount;
                 GetOrAdd(node);
-                if (PeerCount == prevCount)
-                {
-                    _addStates.WithLabels("duplicate").Inc();
-                }
-                else if (PeerCount > prevCount)
-                {
-                    _addStates.WithLabels("add").Inc();
-                }
             }
         }
-
-        private Counter _addStates = Prometheus.Metrics.CreateCounter("peer_pool_add", "add", "status");
 
         public async Task StopAsync()
         {
