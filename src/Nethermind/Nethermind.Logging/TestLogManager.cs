@@ -9,31 +9,23 @@ namespace Nethermind.Logging
     public class TestLogManager : ILogManager
     {
         public static readonly TestLogManager Instance = new TestLogManager();
-
-        private readonly LogLevel _level;
+        private readonly NUnitLogger _logger;
 
         public TestLogManager(LogLevel level = LogLevel.Info)
         {
-            _level = level;
+            _logger = new NUnitLogger(level);
         }
 
         public ILogger GetClassLogger(Type type) => GetClassLogger();
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(new NUnitLogger(_level));
+        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(_logger);
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
 
-        public class NUnitLogger : InterfaceLogger
+        private class NUnitLogger(LogLevel level) : InterfaceLogger
         {
-            private readonly LogLevel _level;
-
-            public NUnitLogger(LogLevel level)
-            {
-                _level = level;
-            }
-
             public void Info(string text)
             {
                 if (IsInfo)
@@ -80,15 +72,15 @@ namespace Nethermind.Logging
             public bool IsTrace => CheckLevel(LogLevel.Trace);
             public bool IsError => CheckLevel(LogLevel.Error);
 
-            private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
+            private bool CheckLevel(LogLevel logLevel) => level >= logLevel;
 
             private static void Log(string text, Exception ex = null)
             {
-                Console.WriteLine(text);
+                Console.Error.WriteLine(text);
 
                 if (ex is not null)
                 {
-                    Console.WriteLine(ex.ToString());
+                    Console.Error.WriteLine(ex.ToString());
                 }
             }
         }

@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -30,20 +29,26 @@ namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger = new(new NUnitLogger(LogLevel.Info));
-        private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
+        private static ILogger _logger;
+        private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
+
+        static GeneralStateTestBase()
+        {
+            _logManager ??= LimboLogs.Instance;
+            _logger = _logManager.GetClassLogger();
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+        }
 
         [SetUp]
         public void Setup()
         {
         }
 
-        static GeneralStateTestBase() => KzgPolynomialCommitments.InitializeAsync().Wait();
-
         protected static void Setup(ILogManager logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
+            _logger = _logManager.GetClassLogger();
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
@@ -53,7 +58,7 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
-            TestContext.Out.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             EofValidator.Logger = _logger;
@@ -167,13 +172,7 @@ namespace Ethereum.Test.Base
 
             if (differences.Count > 0)
             {
-                TestContext.Out.WriteLine();
-                TestContext.Out.WriteLine("Differences from expected");
-                TestContext.Out.WriteLine();
-            }
-            foreach (string difference in differences)
-            {
-                TestContext.Out.WriteLine(difference);
+                _logger.Info($"\nDifferences from expected\n{string.Join("\n", differences)}");
             }
 
             //            Assert.Zero(differences.Count, "differences");

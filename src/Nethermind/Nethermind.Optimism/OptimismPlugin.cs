@@ -116,6 +116,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
+            _api.SpecHelper,
             _api.LogManager,
             _api.Config<IBlocksConfig>());
     }
@@ -169,6 +170,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
+        ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
@@ -250,6 +252,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload
@@ -267,22 +270,24 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
+        StepDependencyException.ThrowIfNull(_api.IpResolver);
 
-        ICLConfig clConfig = _api.Config<ICLConfig>();
-        if (clConfig.Enabled)
+        IOptimismConfig config = _api.Config<IOptimismConfig>();
+        if (config.ClEnabled)
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(
                 _api.SpecProvider,
                 chainSpecEngineParameters,
-                clConfig,
+                config,
                 _api.EthereumJsonSerializer,
                 _api.EthereumEcdsa,
                 _api.Timestamper,
                 _api.ChainSpec.Genesis.Timestamp,
                 _api!.LogManager,
                 _api.OptimismEthRpcModule,
+                _api.IpResolver.ExternalIp,
                 opEngine);
             _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
             _api.DisposeStack.Push(_cl);
@@ -323,12 +328,14 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
-            .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
+            // Validators
+            .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
             ;
