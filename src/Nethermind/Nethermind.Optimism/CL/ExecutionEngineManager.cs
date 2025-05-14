@@ -215,15 +215,17 @@ public class ExecutionEngineManager(
 
         return true;
     }
-    public Task<ulong?> GetCurrentFinalizedBlockNumber()
+    public async Task<ulong?> GetCurrentFinalizedBlockNumber()
     {
-      await _semaphore.WaitAsync();
-      try {
-          return _currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null;
-      } finally
-      {
-          _semaphore.Release();
-      }
+        await _semaphore.WaitAsync();
+        try
+        {
+            return _currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();
