@@ -203,13 +203,13 @@ public class TestBlockchain : IDisposable
         if (finalSpec?.WithdrawalsEnabled is true)
         {
             state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-            state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
+            state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
         }
 
         if (finalSpec?.ConsolidationRequestsEnabled is true)
         {
             state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-            state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
+            state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
         }
 
         state.Commit(SpecProvider.GenesisSpec);

@@ -100,13 +100,13 @@ public class CliqueBlockProducerTests
             if (finalSpec.WithdrawalsEnabled)
             {
                 stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
             }
 
             if (finalSpec.ConsolidationRequestsEnabled)
             {
                 stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
             }
 
             stateProvider.Commit(testnetSpecProvider.GenesisSpec);
@@ -169,18 +169,18 @@ public class CliqueBlockProducerTests
             if (finalSpec.WithdrawalsEnabled)
             {
                 minerStateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                minerStateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                minerStateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
             }
 
             if (finalSpec.ConsolidationRequestsEnabled)
             {
                 minerStateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                minerStateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                minerStateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
             }
 
             minerStateProvider.Commit(testnetSpecProvider.GenesisSpec);
             minerStateProvider.CommitTree(0);
-            var x = minerStateProvider.GetCode(Eip7002Constants.WithdrawalRequestPredeployAddress);
+
             VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 

@@ -48,16 +48,16 @@ public class ReorgTests
         if (finalSpec.WithdrawalsEnabled)
         {
             stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.Code, specProvider.GenesisSpec);
+            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
         }
 
         if (finalSpec.ConsolidationRequestsEnabled)
         {
             stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.Code, specProvider.GenesisSpec);
+            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
         }
 
-        stateProvider.Commit(specProvider!.GenesisSpec);
+        stateProvider.Commit(specProvider.GenesisSpec);
         stateProvider.CommitTree(0);
 
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);

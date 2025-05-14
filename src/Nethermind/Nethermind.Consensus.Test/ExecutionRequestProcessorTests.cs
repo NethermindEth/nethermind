@@ -74,9 +74,9 @@ public class ExecutionProcessorTests
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
-        byte[] code = [1, 2, 3];
-        _stateProvider.InsertCode(eip7002Account, ValueKeccak.Compute(code), code, Prague.Instance);
-        _stateProvider.InsertCode(eip7251Account, ValueKeccak.Compute(code), code, Prague.Instance);
+
+        _stateProvider.InsertCode(eip7002Account, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+        _stateProvider.InsertCode(eip7251Account, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
