@@ -19,30 +19,15 @@ namespace Nethermind.Synchronization.Test.Mocks
         {
             get
             {
-                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, static () => new FirstFree(false));
+                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, static () => new FirstFree());
 
                 return _instance;
             }
         }
 
-
-        private static FirstFree? _replaceableInstance;
-        public static FirstFree ReplaceableInstance
+        private FirstFree()
         {
-            get
-            {
-                if (_replaceableInstance is null) LazyInitializer.EnsureInitialized(ref _replaceableInstance, static () => new FirstFree(true));
-
-                return _replaceableInstance;
-            }
         }
-
-        private FirstFree(bool canBeReplaced)
-        {
-            CanBeReplaced = canBeReplaced;
-        }
-
-        public bool CanBeReplaced { get; private set; }
 
         public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
