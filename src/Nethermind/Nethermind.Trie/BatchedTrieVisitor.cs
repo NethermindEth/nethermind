@@ -490,7 +490,8 @@ public class BatchedTrieVisitor<TNodeContext>
 
 public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
-    public EmptyContext Add(ReadOnlySpan<byte> nibblePath) => this;
+    public EmptyContext Add(NibblePath nibblePath) => this;
+
     public EmptyContext Add(byte nibble) => this;
     public EmptyContext AddStorage(in ValueHash256 storage) => this;
 }
@@ -503,7 +504,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
     {
     }
 
-    public TreePathContext Add(ReadOnlySpan<byte> nibblePath)
+    public TreePathContext Add(NibblePath nibblePath)
     {
         return new TreePathContext()
         {
@@ -540,7 +541,7 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
     {
     }
 
-    public TreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public TreePathContextWithStorage Add(NibblePath nibblePath)
     {
         return new TreePathContextWithStorage()
         {
@@ -574,7 +575,7 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
 /// </summary>
 public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
 {
-    public readonly NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public readonly NoopTreePathContextWithStorage Add(NibblePath nibblePath)
     {
         return this;
     }
@@ -598,8 +599,7 @@ public interface INodeContext<out TNodeContext>
     // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
-    TNodeContext Add(ReadOnlySpan<byte> nibblePath);
-    TNodeContext Add(NibblePath nibblePath) => throw new NotImplementedException();
+    TNodeContext Add(NibblePath nibblePath);
 
     TNodeContext Add(byte nibble);
     TNodeContext AddStorage(in ValueHash256 storage);
