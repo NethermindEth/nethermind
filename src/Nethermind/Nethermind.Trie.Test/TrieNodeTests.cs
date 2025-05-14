@@ -73,6 +73,7 @@ public class TrieNodeTests
         catch (TrieException)
         {
         }
+
         resolver.Received().LoadRlp(TreePath.Empty, TestItem.KeccakA, ReadFlags.HintReadAhead);
     }
 
@@ -422,7 +423,9 @@ public class TrieNodeTests
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
         visitor.VisitExtensionReceived[(TreePath.Empty, node)].Should().Be(1);
-        visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+        visitor.VisitLeafReceived[
+            (new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1),
+                ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
     }
 
     [Test]
@@ -445,7 +448,9 @@ public class TrieNodeTests
         for (byte i = 0; i < 16; i++)
         {
             var hex = "0x" + i.ToString("x2")[1] + "000000000000000000000000000000000000000000000000000000000000000";
-            visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+            visitor.VisitLeafReceived[
+                    (new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should()
+                .Be(1);
         }
     }
 
@@ -691,8 +696,7 @@ public class TrieNodeTests
     public void Cannot_change_key_on_sealed()
     {
         TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-        Assert.Throws<InvalidOperationException>(
-            () => trieNode.Key = NibblePath.FromHexString("aaa"));
+        Assert.Throws<InvalidOperationException>(() => trieNode.Key = NibblePath.FromHexString("aaa"));
     }
 
     [Test]
@@ -807,7 +811,8 @@ public class TrieNodeTests
         trieNode.PrunePersistedRecursively(1);
         int count = 0;
         TreePath emptyPath = TreePath.Empty;
-        trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
+        trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, skipPersisted,
+            LimboTraceLogger.Instance);
         count.Should().Be(1);
     }
 
@@ -874,9 +879,11 @@ public class TrieNodeTests
         child.ResolveKey(trieStore, ref emptyPath, false);
         child.IsPersisted = true;
 
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
+        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>())
+            .Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
         trieNode.GetChild(trieStore, ref emptyPath, 0);
-        Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, ref emptyPath, 0).ResolveNode(trieStore, TreePath.Empty));
+        Assert.Throws<TrieException>(() =>
+            trieNode.GetChild(trieStore, ref emptyPath, 0).ResolveNode(trieStore, TreePath.Empty));
     }
 
     [Ignore("This does not fail on the build server")]
@@ -972,7 +979,7 @@ public class TrieNodeTests
         for (int i = 0; i < 16; i++)
         {
             TrieNode randomTrieNode = new(NodeType.Leaf);
-            randomTrieNode.Key = NibblePath.FromNibbles([(byte)i, 2, 3 ]);
+            randomTrieNode.Key = NibblePath.FromNibbles([(byte)i, 2, 3]);
             randomTrieNode.Value = new byte[] { 1, 2, 3 };
             node.SetChild(i, randomTrieNode);
         }
@@ -998,7 +1005,7 @@ public class TrieNodeTests
         public Context()
         {
             TiniestLeaf = new TrieNode(NodeType.Leaf);
-            TiniestLeaf.Key = NibblePath.Single( 5 );
+            TiniestLeaf.Key = NibblePath.Single(5);
             TiniestLeaf.Value = new byte[] { 10 };
 
             HeavyLeaf = new TrieNode(NodeType.Leaf);
@@ -1043,7 +1050,8 @@ public class TrieNodeTests
 
         public void VisitLeaf(in TreePathContext ctx, TrieNode node)
         {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, node.Value.ToArray()), out _) += 1;
+            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, node.Value.ToArray()),
+                out _) += 1;
         }
 
         public void VisitAccount(in TreePathContext ctx, TrieNode node, in AccountStruct account)

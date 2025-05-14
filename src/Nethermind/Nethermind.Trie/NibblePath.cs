@@ -136,7 +136,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             data[0] = (byte)(OddFlag | ((_data[1] >> NibbleShift) & NibbleMask));
 
             var length = Length / 2 - 1;
-            for (var i = 0; i < length ; i++)
+            for (var i = 0; i < length; i++)
             {
                 data[i + 1] = (byte)(((_data[i + 1] & NibbleMask) << NibbleShift) |
                                      ((_data[i + 2] >> NibbleShift) & NibbleMask));
