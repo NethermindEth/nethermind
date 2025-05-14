@@ -116,7 +116,35 @@ public struct TreePath : IEquatable<TreePath>
 
     internal void AppendMut(NibblePath nibbles)
     {
-        throw new NotImplementedException();
+        if (nibbles.Length == 0) return;
+        if (nibbles.Length == 1)
+        {
+            AppendMut(nibbles[0]);
+            return;
+        }
+
+        Span<byte> pathSpan = Span;
+
+        if (Length % 2 == 1)
+        {
+            this[Length] = nibbles[0];
+            Length++;
+            nibbles = nibbles[1..];
+        }
+
+        int byteLength = nibbles.Length / 2;
+        int pathSpanStart = Length / 2;
+        for (int i = 0; i < byteLength; i++)
+        {
+            pathSpan[i + pathSpanStart] = Nibbles.ToByte(nibbles[i * 2], nibbles[i * 2 + 1]);
+            Length += 2;
+        }
+
+        if (nibbles.Length % 2 == 1)
+        {
+            this[Length] = nibbles[^1];
+            Length++;
+        }
     }
 
     internal void AppendMut(ReadOnlySpan<byte> nibbles)
@@ -250,7 +278,10 @@ public struct TreePath : IEquatable<TreePath>
         return (odd ? theNibbles[..Length] : theNibbles).ToArray();
     }
 
-    public NibblePath ToNibblePath(int from) => throw new NotImplementedException();
+    public NibblePath ToNibblePath(int from)
+    {
+        throw new NotImplementedException();
+    }
 
     public readonly string ToHexString()
     {
