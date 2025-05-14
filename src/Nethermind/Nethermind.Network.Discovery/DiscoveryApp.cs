@@ -1,19 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Enr;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -26,46 +22,44 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IMessageSerializationService _messageSerializationService;
-    private readonly INetworkStorage _discoveryStorage;
     private readonly INetworkConfig _networkConfig;
-    private readonly INodeStatsManager _nodeStatsManager;
+    private DiscoveryPersistenceManager? _persistenceManager;
+    /*
+    private readonly INetworkStorage _discoveryStorage;
+       private readonly INodeStatsManager _nodeStatsManager;
     private ILifetimeScope? _kademliaServices;
+    private DiscoveryPersistenceManager? _persistenceManager;
+    private PublicKey _masterNode = null!;
+       private readonly NodeRecord _selfNodeRecorrd;
+    private readonly ILifetimeScope _rootLifetimeScope;
+    */
 
     private readonly List<Node> _bootNodes;
-    private PublicKey _masterNode = null!;
-    private readonly NodeRecord _selfNodeRecorrd;
 
     private IKademliaDiscv4Adapter _discv4Adapter = null!;
     private IKademlia<PublicKey, Node> _kademlia = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
 
-    private readonly ILifetimeScope _rootLifetimeScope;
     private IKademliaNodeSource _kademliaNodeSource = null!;
     private Task? _runningTask;
     private readonly IProcessExitSource _processExitSouce;
 
     public DiscoveryApp(
-        NodeRecord selfNodeRecord,
-        ILifetimeScope lifetimeScope,
-        INodeStatsManager nodeStatsManager,
         IMessageSerializationService? msgSerializationService,
-        INetworkStorage? discoveryStorage,
+        DiscoveryPersistenceManager persistenceManager,
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,
         IProcessExitSource processExitSource,
         ILogManager? logManager)
     {
-        _selfNodeRecorrd = selfNodeRecord;
-        _rootLifetimeScope = lifetimeScope;
-        _nodeStatsManager = nodeStatsManager;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = _logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _messageSerializationService =
             msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
+        _persistenceManager = persistenceManager;
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _processExitSouce = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
@@ -92,7 +86,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     public void Initialize(PublicKey masterPublicKey)
     {
-        _masterNode = masterPublicKey;
+        /*
         _kademliaServices = _rootLifetimeScope
             .BeginLifetimeScope((builder) => builder.AddModule(
                 new DiscV4KademliaModule(_selfNodeRecorrd, _masterNode, _bootNodes)));
@@ -100,6 +94,8 @@ public class DiscoveryApp : IDiscoveryApp
         _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
         _discv4Adapter = _kademliaServices.Resolve<IKademliaDiscv4Adapter>();
         _kademliaNodeSource = _kademliaServices.Resolve<IKademliaNodeSource>();
+        _persistenceManager = _kademliaServices.Resolve<DiscoveryPersistenceManager>();
+        */
     }
 
     public Task StartAsync()
@@ -146,7 +142,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
 
         if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
-        _kademliaServices?.DisposeAsync();
+        // _kademliaServices?.DisposeAsync();
     }
 
     public void AddNodeToDiscovery(Node node)
@@ -208,9 +204,9 @@ public class DiscoveryApp : IDiscoveryApp
         try
         {
             // Step 1 - read nodes and stats from db
-            await AddPersistedNodes(cancellationToken);
+            await _persistenceManager!.AddPersistedNodes(cancellationToken);
 
-            Task persistenceTask = RunDiscoveryPersistenceCommit(cancellationToken);
+            Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 
             try
             {
@@ -231,80 +227,6 @@ public class DiscoveryApp : IDiscoveryApp
             if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
         }
     }
-
-    private async Task AddPersistedNodes(CancellationToken cancellationToken)
-    {
-        NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
-        foreach (NetworkNode networkNode in nodes)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-
-            Node node;
-            try
-            {
-                node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
-            }
-            catch (Exception)
-            {
-                if (_logger.IsDebug)
-                    _logger.Error(
-                        $"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                continue;
-            }
-
-            try
-            {
-                // If when it receive Pong, it should automatically add to routing table if not full.
-                await _discv4Adapter.Ping(node, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                continue;
-            }
-            catch (Exception)
-            {
-                if (_logger.IsDebug)
-                    _logger.Error(
-                        $"ERROR/DEBUG error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                continue;
-            }
-
-            if (_logger.IsTrace)
-                _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");
-    }
-
-    [Todo(Improve.Allocations, "Remove ToArray here - address as a part of the network DB rewrite")]
-    private async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
-    {
-        if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-        PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryPersistenceInterval));
-
-        while (!cancellationToken.IsCancellationRequested
-               && await timer.WaitForNextTickAsync(cancellationToken))
-        {
-            try
-            {
-                _discoveryStorage.StartBatch();
-
-                var nodes = _kademlia.IterateNodes().ToArray();
-                _discoveryStorage.UpdateNodes(nodes.Select(x => new NetworkNode(x.Id, x.Host,
-                    x.Port, _nodeStatsManager.GetNewPersistedReputation(x))).ToArray());
-
-                _discoveryStorage.Commit();
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error during discovery commit: {ex}");
-            }
-        }
-    }
-
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token)
     {
         return _kademliaNodeSource.DiscoverNodes(token);

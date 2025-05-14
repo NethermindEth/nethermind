@@ -34,7 +34,9 @@ public class DiscV4KademliaModule(NodeRecord selfNodeRecord, PublicKey masterNod
             })
             .AddSingleton<KademliaDiscv4Adapter>()
             .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()
-            .AddSingleton<IKademliaMessageSender<PublicKey, Node>>(c => c.Resolve<IKademliaDiscv4Adapter>());
+            .AddSingleton<IKademliaMessageSender<PublicKey, Node>>(c => c.Resolve<IKademliaDiscv4Adapter>())
+            .AddSingleton<DiscoveryPersistenceManager>()
+            .AddSingleton<DiscoveryApp>();
     }
 }
 

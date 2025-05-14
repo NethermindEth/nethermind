@@ -283,6 +283,8 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(INetworkStorage),
+                typeof(NetworkStorage),
                 typeof(string),
             ];
 
