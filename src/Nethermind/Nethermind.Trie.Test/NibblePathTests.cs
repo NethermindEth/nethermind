@@ -104,12 +104,12 @@ public class NibblePathTests
         }
     }
 
-    [TestCase(new byte[] { 1 }, new byte[] { 2, 3 })]
-    [TestCase(new byte[] { 1, 2 }, new byte[] { 3 })]
-    [TestCase(new byte[] { 1, 2, 3, 4 }, new byte[] { 5, 6, 7 })]
-    [TestCase(new byte[] { 1, 2 }, new byte[] { 3, 4 })]
-    [TestCase(new byte[] { 1 }, new byte[] { 2 })]
-    [TestCase(new byte[] { 1, 2, 3 }, new byte[] { 4, 5, 6 })]
+    [TestCase(new byte[] { 0xA }, new byte[] { 2, 3 })]
+    [TestCase(new byte[] { 0xA, 2 }, new byte[] { 3 })]
+    [TestCase(new byte[] { 0xA, 2, 3, 4 }, new byte[] { 5, 6, 7 })]
+    [TestCase(new byte[] { 0xA, 2 }, new byte[] { 3, 4 })]
+    [TestCase(new byte[] { 0xA }, new byte[] { 6 })]
+    [TestCase(new byte[] { 0xA, 2, 3 }, new byte[] { 4, 5, 6 })]
     public void Concat(byte[] a, byte[] b)
     {
         var pathA = NibblePath.FromNibbles(a);
@@ -121,12 +121,21 @@ public class NibblePathTests
 
         for (int i = 0; i < a.Length; i++)
         {
-            concatenated[i].Should().Be(a[i], $"@{i}");
+            concatenated[i].Should().Be(a[i]);
         }
 
         for (int i = 0; i < b.Length; i++)
         {
             concatenated[i + a.Length].Should().Be(b[i]);
         }
+    }
+
+    [TestCase(new byte[] { 1 }, "0x1")]
+    [TestCase(new byte[] { 1, 2 }, "0x12")]
+    [TestCase(new byte[] { 1, 2, 3 }, "0x123")]
+    [TestCase(new byte[] { 1, 2, 3, 4 }, "0x1234")]
+    public void ToHexString(byte[] nibbles, string expected)
+    {
+        NibblePath.FromNibbles(nibbles).ToHexString().Should().Be(expected);
     }
 }

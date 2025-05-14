@@ -97,13 +97,16 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     {
         byte[] data;
 
+        var dLength = _data.Length;
+        var otherLength = other._data.Length;
+
         if (other.IsOdd == false)
         {
             // even, a simple case of appending one to another
-            data = new byte[_data!.Length + other.Length - PreambleLength];
+            data = new byte[_data!.Length + otherLength - PreambleLength];
 
             // Copy other first, so that the first byte is overwritten underneath
-            other._data!.CopyTo(data, _data.Length - PreambleLength);
+            other._data!.CopyTo(data, dLength - PreambleLength);
             _data.CopyTo(data, 0);
             return new NibblePath(data);
         }
@@ -111,28 +114,41 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         Debug.Assert(other.IsOdd, "The other is odd");
 
         var shift = IsOdd ? 0 : 1;
+
         // In both cases: even+odd and odd+odd the following will be used
-        data = new byte[_data.Length + other._data.Length - shift];
+        data = new byte[dLength + otherLength - shift];
 
         // Copy other first, so that the first byte is overwritten underneath
-        other._data!.CopyTo(data, _data.Length - shift);
+        other._data!.CopyTo(data, dLength - shift);
 
         // Mix in the last one
-        ref var last = ref data[_data.Length - shift];
+        ref var last = ref data[dLength - shift];
         last = (byte)((last & NibbleMask) | ((_data[^1] & NibbleMask) << NibbleShift));
 
         // The last one is take care of. It's an even number of nibbles to move. Move byte by byte
-        var length = Length / 2;
-        for (var i = 0; i < length; i++)
-        {
-            data[i + 1] = (byte)(((_data[i] & NibbleMask) << NibbleShift) |
-                                 ((_data[i + 1] >> NibbleShift) & NibbleMask));
-        }
-
         if (IsOdd == false)
         {
             // even & odd, the first byte should be set to odd
             data[0] = (byte)(OddFlag | ((_data[1] >> NibbleShift) & NibbleMask));
+
+            var length = Length / 2 - 1;
+            for (var i = 0; i < length ; i++)
+            {
+                data[i + 1] = (byte)(((_data[i + 1] & NibbleMask) << NibbleShift) |
+                                     ((_data[i + 2] >> NibbleShift) & NibbleMask));
+            }
+
+            // even & odd, the first byte should be set to odd
+            data[0] = (byte)(OddFlag | ((_data[1] >> NibbleShift) & NibbleMask));
+        }
+        else
+        {
+            var length = Length / 2;
+            for (var i = 0; i < length; i++)
+            {
+                data[i + 1] = (byte)(((_data[i] & NibbleMask) << NibbleShift) |
+                                     ((_data[i + 1] >> NibbleShift) & NibbleMask));
+            }
         }
 
         return new NibblePath(data);
@@ -172,9 +188,23 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         throw new NotImplementedException();
     }
 
-    public string ToHexString(bool skipLeadingZeros)
+    public string ToHexString()
     {
-        throw new NotImplementedException("NOT IMPLEMENTED YET");
+        const int prefixLength = 2;
+
+        // TODO: optimize
+        Span<char> chars = stackalloc char[Length + prefixLength];
+
+        chars[0] = '0';
+        chars[1] = 'x';
+
+        for (int i = 0; i < Length; i++)
+        {
+            var v = this[i];
+            chars[i + prefixLength] = (char)(v < 10 ? '0' + v : 'a' + v - 10);
+        }
+
+        return new string(chars);
     }
 
     public byte this[int index]
