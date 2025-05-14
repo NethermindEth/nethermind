@@ -19,8 +19,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Network;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.TxPool;

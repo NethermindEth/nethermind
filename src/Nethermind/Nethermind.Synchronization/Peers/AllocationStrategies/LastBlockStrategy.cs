@@ -22,9 +22,6 @@ public class LastBlockStrategy : IPeerAllocationStrategy
         _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
         _selectionType = selectionType;
     }
-
-    public bool CanBeReplaced => _strategy.CanBeReplaced;
-
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         long? currentBlockOrNull = blockTree.BestSuggestedHeader?.Number;
