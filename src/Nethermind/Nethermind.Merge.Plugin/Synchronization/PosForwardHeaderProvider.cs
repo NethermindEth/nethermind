@@ -67,8 +67,9 @@ public class PosForwardHeaderProvider(
     // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
     protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
     {
-        return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0)
-               && !poSSwitcher.HasEverReachedTerminalBlock();
+        return
+            (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0)) &&
+            !poSSwitcher.HasEverReachedTerminalBlock();
     }
 
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)

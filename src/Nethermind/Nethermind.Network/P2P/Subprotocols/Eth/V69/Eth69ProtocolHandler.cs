@@ -44,8 +44,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    {
-    }
+    { }
 
     public override string Name => "eth69";
 
@@ -56,6 +55,13 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     // For BlockRangeUpdate message
     // TODO: check if CanGossip can be used instead
     public override bool AlwaysNotifyOfNewBlock => true;
+
+    // Explicitly mark as not supported
+    public override UInt256? TotalDifficulty
+    {
+        get => null;
+        set { }
+    }
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 

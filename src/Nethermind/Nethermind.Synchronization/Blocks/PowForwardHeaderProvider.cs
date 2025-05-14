@@ -306,7 +306,8 @@ public class PowForwardHeaderProvider(
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
     {
-        return bestPeer!.TotalDifficulty > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
+        // TODO: is this correct behaviour for PoW?
+        return (bestPeer!.TotalDifficulty ?? 0) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
     }
 
     protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers)

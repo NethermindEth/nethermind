@@ -52,7 +52,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
                     ethProtocolInfo.Version = handler.ProtocolVersion;
                     if (handler is ISyncPeer syncPeer)
                     {
-                        ethProtocolInfo.Difficulty = syncPeer.TotalDifficulty;
+                        // TODO: what should be used in case of null TD?
+                        ethProtocolInfo.Difficulty = syncPeer.TotalDifficulty ?? 0;
                         ethProtocolInfo.HeadHash = syncPeer.HeadHash;
                     }
                 }

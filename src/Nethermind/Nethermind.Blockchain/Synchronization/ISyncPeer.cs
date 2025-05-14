@@ -21,7 +21,13 @@ namespace Nethermind.Blockchain.Synchronization
         string ClientId => Node?.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Hash256 HeadHash { get; set; }
-        UInt256 TotalDifficulty { get; set; }
+
+        /// <summary>
+        /// Total difficulty of the peer.
+        /// <c>null</c> means peer is available post-merge only and does not support/provide TD.
+        /// </summary>
+        UInt256? TotalDifficulty { get; set; }
+
         bool IsInitialized { get; set; }
         bool IsPriority { get; set; }
         byte ProtocolVersion { get; }

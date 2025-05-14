@@ -10,7 +10,6 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 [Rlp.SkipGlobalRegistration] // Created explicitly
-// TODO: do we need to handle RlpBehaviors.SkipTypedWrapping?
 public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
 {
     public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

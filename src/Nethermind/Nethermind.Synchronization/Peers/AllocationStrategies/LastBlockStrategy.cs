@@ -40,15 +40,13 @@ public class LastBlockStrategy : IPeerAllocationStrategy
             case StrategySelectionType.AtLeastTheSame:
                 break;
             case StrategySelectionType.CanBeSlightlyWorse:
-                long lastBlock = blockTree.BestSuggestedHeader?.Number ?? 0;
-                if (currentDiff >= lastBlock)
-                    currentDiff -= lastBlock;
+                currentDiff -= 1;
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
         }
 
-        var selectedPeers = peers.Where(p => p.TotalDifficulty >= currentDiff).ToArray();
+        var selectedPeers = peers.Where(p => p.HeadNumber >= currentDiff).ToArray();
         return _strategy.Allocate(currentPeer, selectedPeers, nodeStatsManager, blockTree);
     }
 }
