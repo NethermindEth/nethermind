@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.CL.L1;
 using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL;
@@ -16,4 +17,30 @@ public class L2Block
     public OptimismPayloadAttributes PayloadAttributes => PayloadAttributesRef.PayloadAttributes;
     public SystemConfig SystemConfig => PayloadAttributesRef.SystemConfig;
     public L1BlockInfo L1BlockInfo => PayloadAttributesRef.L1BlockInfo;
+}
+
+/// <remarks>
+/// Spec: https://specs.optimism.io/protocol/rollup-node.html?utm_source=op-docs&utm_medium=docs#l2blockref
+/// </remarks>
+public sealed record L2BlockRef
+{
+    public required Hash256 Hash { get; init; }
+    public required ulong Number { get; init; }
+    public required Hash256 ParentHash { get; init; }
+    public required ulong Timestamp { get; init; }
+    public required BlockId L1Origin { get; init; }
+    public required ulong SequenceNumber { get; init; }
+
+    public static L2BlockRef From(L2Block block)
+    {
+        return new L2BlockRef
+        {
+            Hash = block.Hash,
+            Number = block.Number,
+            ParentHash = block.ParentHash,
+            Timestamp = block.PayloadAttributes.Timestamp,
+            L1Origin = BlockId.FromL1BlockInfo(block.L1BlockInfo),
+            SequenceNumber = block.L1BlockInfo.SequenceNumber
+        };
+    }
 }

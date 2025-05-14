@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Optimism.CL.Derivation;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 

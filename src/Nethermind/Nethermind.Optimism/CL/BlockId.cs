@@ -3,8 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.CL;
 
