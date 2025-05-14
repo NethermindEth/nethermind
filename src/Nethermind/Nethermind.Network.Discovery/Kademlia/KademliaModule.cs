@@ -29,6 +29,7 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
                 return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
             })
             .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
+            .AddSingleton<KBucketTree<TKey, TNode>>()
             .AddSingleton<IRoutingTable<TNode>, KBucketTree<TKey, TNode>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
     }

@@ -14,20 +14,34 @@ using Prometheus;
 namespace Nethermind.Network.Discovery.Discv4;
 
 // TODO: Unit test, remove metric
-public class KademliaNodeSource(
-    IKademlia<PublicKey, Node> kademlia,
-    IRoutingTable<Node> routingTable,
-    IIteratorNodeLookup lookup2,
-    KademliaDiscv4Adapter discv4Adapter,
-    IDiscoveryConfig discoveryConfig,
-    ILogManager logManager
-)
+public class KademliaNodeSource : IKademliaNodeSource
 {
-    ILogger _logger = logManager.GetClassLogger();
+    private readonly IKademlia<PublicKey, Node> _kademlia;
+    private readonly IRoutingTable<Node> _routingTable;
+    private readonly IIteratorNodeLookup _lookup;
+    private readonly IKademliaDiscv4Adapter _discv4Adapter;
+    private readonly IDiscoveryConfig _discoveryConfig;
+    private readonly ILogger _logger;
 
-    private Counter _discoverRound = Prometheus.Metrics.CreateCounter("kademlia_discover_rounds", "discovery rounds");
-    private Counter _discoverPingResult = Prometheus.Metrics.CreateCounter("kademlia_discover_ping", "discovery rounds", "result");
-    private Gauge _kademliaSize = Prometheus.Metrics.CreateGauge("kademlia_routing_table_size", "discovery rounds", "result");
+    private readonly Counter _discoverRound = Prometheus.Metrics.CreateCounter("kademlia_discover_rounds", "discovery rounds");
+    private readonly Counter _discoverPingResult = Prometheus.Metrics.CreateCounter("kademlia_discover_ping", "discovery rounds", "result");
+    private readonly Gauge _kademliaSize = Prometheus.Metrics.CreateGauge("kademlia_routing_table_size", "discovery rounds", "result");
+
+    public KademliaNodeSource(
+        IKademlia<PublicKey, Node> kademlia,
+        IRoutingTable<Node> routingTable,
+        IIteratorNodeLookup lookup2,
+        IKademliaDiscv4Adapter discv4Adapter,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager)
+    {
+        _kademlia = kademlia;
+        _routingTable = routingTable;
+        _lookup = lookup2;
+        _discv4Adapter = discv4Adapter;
+        _discoveryConfig = discoveryConfig;
+        _logger = logManager.GetClassLogger();
+    }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -44,18 +58,18 @@ public class KademliaNodeSource(
             bool anyFound = false;
             int count = 0;
 
-            await foreach (var node in lookup2.Lookup(target, token))
+            await foreach (var node in _lookup.Lookup(target, token))
             {
-                if (!discv4Adapter.GetSession(node).HasReceivedPong)
+                if (!_discv4Adapter.GetSession(node).HasReceivedPong)
                 {
-                    if (discv4Adapter.GetSession(node).HasTriedPingRecently)
+                    if (_discv4Adapter.GetSession(node).HasTriedPingRecently)
                     {
                         // Tried ping before and did not receive a response
                         continue;
                     }
                     try
                     {
-                        await discv4Adapter.Ping(node, token);
+                        await _discv4Adapter.Ping(node, token);
                         _discoverPingResult.WithLabels("ok").Inc();
                     }
                     catch (OperationCanceledException)
@@ -65,7 +79,7 @@ public class KademliaNodeSource(
                     }
                 }
 
-                _kademliaSize.Set(routingTable.Size);
+                _kademliaSize.Set(_routingTable.Size);
                 anyFound = true;
                 count++;
                 total++;
@@ -87,7 +101,7 @@ public class KademliaNodeSource(
             }
         }
 
-        Task discoverTask = Task.WhenAll(Enumerable.Range(0, discoveryConfig.ConcurrentDiscoveryJob).Select((_) => Task.Run(async () =>
+        Task discoverTask = Task.WhenAll(Enumerable.Range(0, _discoveryConfig.ConcurrentDiscoveryJob).Select((_) => Task.Run(async () =>
         {
             Random random = new();
             byte[] randomBytes = new byte[64];
@@ -119,7 +133,7 @@ public class KademliaNodeSource(
 
         try
         {
-            kademlia.OnNodeAdded += Handler;
+            _kademlia.OnNodeAdded += Handler;
 
             await foreach (Node node in ch.Reader.ReadAllAsync(token))
             {
@@ -129,7 +143,7 @@ public class KademliaNodeSource(
         finally
         {
             await discoverTask;
-            kademlia.OnNodeAdded -= Handler;
+            _kademlia.OnNodeAdded -= Handler;
         }
 
         yield break;

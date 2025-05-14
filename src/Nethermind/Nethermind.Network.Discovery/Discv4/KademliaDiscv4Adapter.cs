@@ -29,7 +29,7 @@ public class KademliaDiscv4Adapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     ILogManager logManager
-): IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
+): IKademliaDiscv4Adapter
 {
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
@@ -53,7 +53,7 @@ public class KademliaDiscv4Adapter(
     public NodeSession GetSession(Node node)
     {
         if (_sessions.TryGet(node.IdHash, out var session)) return session;
-        session = new NodeSession(nodeStatsManager.GetOrAdd(node));
+        session = new NodeSession(nodeStatsManager.GetOrAdd(node), timestamper);
         _sessions.Set(node.IdHash, session);
         return session;
     }

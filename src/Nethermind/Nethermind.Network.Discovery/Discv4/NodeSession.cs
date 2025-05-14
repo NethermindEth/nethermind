@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public record NodeSession(INodeStats NodeStats)
+public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
 {
     private static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     private const int AuthenticatedRequestFailureLimit = 5;
@@ -16,15 +17,15 @@ public record NodeSession(INodeStats NodeStats)
     private DateTimeOffset LastPingReceived { get; set; } = DateTimeOffset.MinValue;
     private DateTimeOffset LastPingSent { get; set; } = DateTimeOffset.MinValue;
 
-    public bool HasReceivedPing => LastPingReceived + BondTimeout > DateTimeOffset.UtcNow;
+    public bool HasReceivedPing => LastPingReceived + BondTimeout > Timestamper.UtcNowOffset;
     public bool NotTooManyFailure => AuthenticatedRequestFailureCount <= AuthenticatedRequestFailureLimit;
-    public bool HasReceivedPong => LastPongReceived + BondTimeout > DateTimeOffset.UtcNow;
-    public bool HasTriedPingRecently => LastPingSent + TimeSpan.FromMinutes(10) > DateTimeOffset.UtcNow;
+    public bool HasReceivedPong => LastPongReceived + BondTimeout > Timestamper.UtcNowOffset;
+    public bool HasTriedPingRecently => LastPingSent + TimeSpan.FromMinutes(10) > Timestamper.UtcNowOffset;
     public void ResetAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount = 0;
     public void OnAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount++;
 
-    public void OnPongReceived() => LastPongReceived = DateTimeOffset.UtcNow;
-    public void OnPingReceived() => LastPingReceived = DateTimeOffset.UtcNow;
+    public void OnPongReceived() => LastPongReceived = Timestamper.UtcNowOffset;
+    public void OnPingReceived() => LastPingReceived = Timestamper.UtcNowOffset;
 
     public void RecordStatsForOutgoingMsg(DiscoveryMsg msg)
     {
@@ -78,6 +79,6 @@ public record NodeSession(INodeStats NodeStats)
 
     public void OnPingSent()
     {
-        LastPingSent = DateTimeOffset.UtcNow;
+        LastPingSent = Timestamper.UtcNowOffset;
     }
 }

@@ -24,7 +24,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 public class IteratorNodeLookup(
     IRoutingTable<Node> routingTable,
     KademliaConfig<Node> kademliaConfig,
-    KademliaDiscv4Adapter discv4Adapter,
+    IKademliaDiscv4Adapter discv4Adapter,
     ILogManager logManager) : IIteratorNodeLookup
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup>();

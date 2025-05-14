@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
@@ -21,16 +22,18 @@ public class KademliaTests
 
     private Kademlia<ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
     {
-        return new ServiceCollection()
-            .ConfigureKademliaComponents<ValueHash256, ValueHash256>()
+        var builder = new ContainerBuilder();
+        builder
+            .AddModule(new KademliaModule<ValueHash256, ValueHash256>())
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton<IKeyOperator<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
-            .AddSingleton<Kademlia<ValueHash256, ValueHash256>>()
-            .BuildServiceProvider()
-            .GetRequiredService<Kademlia<ValueHash256, ValueHash256>>();
+            .AddSingleton<Kademlia<ValueHash256, ValueHash256>>();
+        
+        var container = builder.Build();
+        return container.Resolve<Kademlia<ValueHash256, ValueHash256>>();
     }
 
     [Test]

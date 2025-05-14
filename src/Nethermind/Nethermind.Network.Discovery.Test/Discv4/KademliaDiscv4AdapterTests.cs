@@ -31,9 +31,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     [TestFixture]
     public class KademliaDiscv4AdapterTests
     {
-        private KademliaDiscv4Adapter _adapter = null!;
+        private IKademliaDiscv4Adapter _adapter = null!;
 
         private IKademliaMessageReceiver<PublicKey, Node> _kademliaMessageReceiver = null!;
+        private INodeHealthTracker<Node> _nodeHealthTracker = null!;
         private INetworkConfig _networkConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
         private NodeRecord _selfNodeRecord = null!;
@@ -72,6 +73,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _testNode = new Node(_testPublicKey, "192.168.1.1", 30303);
 
             _kademliaMessageReceiver = Substitute.For<IKademliaMessageReceiver<PublicKey, Node>>();
+            _nodeHealthTracker = Substitute.For<INodeHealthTracker<Node>>();
             _networkConfig = Substitute.For<INetworkConfig>();
             _networkConfig.MaxActivePeers.Returns(25);
             _kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _testNode };
@@ -91,6 +93,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademliaMessageReceiver<PublicKey, Node>>(() => _kademliaMessageReceiver),
+                new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
                 new DiscoveryConfig(),
                 _kademliaConfig,
                 _selfNodeRecord,

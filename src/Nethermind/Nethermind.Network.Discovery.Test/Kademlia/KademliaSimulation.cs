@@ -7,7 +7,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -231,16 +233,16 @@ public class KademliaSimulation
         private int _randomLatency = 2;
         public bool SimulateLatency { get; set; } = false;
 
-        internal ConcurrentDictionary<ValueHash256, IServiceProvider> _nodes = new();
+        internal ConcurrentDictionary<ValueHash256, ILifetimeScope> _nodes = new();
         readonly ValueHashNodeHashProvider _nodeHashProvider = new ValueHashNodeHashProvider();
         private readonly Random _random = new Random(0);
 
         private bool TryGetReceiver(TestNode receiverHash, out IKademliaMessageReceiver<ValueHash256, TestNode> contentKademliaMessageReceiver)
         {
             contentKademliaMessageReceiver = null!;
-            if (_nodes.TryGetValue(receiverHash.Hash, out var serviceProvider))
+            if (_nodes.TryGetValue(receiverHash.Hash, out var container))
             {
-                contentKademliaMessageReceiver = serviceProvider!.GetRequiredService<IKademliaMessageReceiver<ValueHash256, TestNode>>();
+                contentKademliaMessageReceiver = container!.Resolve<IKademliaMessageReceiver<ValueHash256, TestNode>>();
                 return true;
             }
 
@@ -251,8 +253,9 @@ public class KademliaSimulation
         {
             var nodeIDTestNode = new TestNode(nodeID);
 
-            var serviceProvider = new ServiceCollection()
-                .ConfigureKademliaComponents<ValueHash256, TestNode>()
+            var builder = new ContainerBuilder();
+            builder
+                .AddModule(new KademliaModule<ValueHash256, TestNode>())
                 .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error))
                 .AddSingleton<INodeHashProvider<TestNode>>(_nodeHashProvider)
                 .AddSingleton<IKeyOperator<ValueHash256, TestNode>>(_nodeHashProvider)
@@ -266,12 +269,13 @@ public class KademliaSimulation
                     UseNewLookup = config.UseNewLookup
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
-                .AddSingleton<Kademlia<ValueHash256, TestNode>>()
-                .BuildServiceProvider();
+                .AddSingleton<Kademlia<ValueHash256, TestNode>>();
+            
+            var container = builder.Build();
+            
+            _nodes[nodeID] = container;
 
-            _nodes[nodeID] = serviceProvider;
-
-            return serviceProvider.GetRequiredService<Kademlia<ValueHash256, TestNode>>();
+            return container.Resolve<Kademlia<ValueHash256, TestNode>>();
         }
 
         private class SenderForNode(TestNode sender, TestFabric fabric) : IKademliaMessageSender<ValueHash256, TestNode>
@@ -322,9 +326,9 @@ public class KademliaSimulation
 
         public async Task Bootstrap(CancellationToken token)
         {
-            foreach (KeyValuePair<ValueHash256, IServiceProvider> kv in _nodes)
+            foreach (KeyValuePair<ValueHash256, ILifetimeScope> kv in _nodes)
             {
-                await kv.Value.GetRequiredService<IKademlia<ValueHash256, TestNode>>().Bootstrap(token);
+                await kv.Value.Resolve<IKademlia<ValueHash256, TestNode>>().Bootstrap(token);
             }
         }
     }

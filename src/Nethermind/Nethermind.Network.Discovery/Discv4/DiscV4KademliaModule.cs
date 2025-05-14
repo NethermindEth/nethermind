@@ -20,7 +20,7 @@ public class DiscV4KademliaModule(NodeRecord selfNodeRecord, PublicKey masterNod
             .AddSingleton<INodeHashProvider<Node>, NodeNodeHashProvider>()
             .AddSingleton<IKeyOperator<PublicKey, Node>, NodeNodeHashProvider>()
             .AddSingleton(selfNodeRecord)
-            .AddSingleton<KademliaNodeSource>()
+            .AddSingleton<IKademliaNodeSource, KademliaNodeSource>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
                 CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true),
@@ -32,7 +32,9 @@ public class DiscV4KademliaModule(NodeRecord selfNodeRecord, PublicKey masterNod
                 RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PongTimeout),
                 BootNodes = bootNodes
             })
-            .AddSingleton<IKademliaMessageSender<PublicKey, Node>, KademliaDiscv4Adapter>();
+            .AddSingleton<KademliaDiscv4Adapter>()
+            .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()
+            .AddSingleton<IKademliaMessageSender<PublicKey, Node>>(c => c.Resolve<IKademliaDiscv4Adapter>());
     }
 }
 
@@ -62,4 +64,3 @@ public class NodeNodeHashProvider : INodeHashProvider<Node>, IKeyOperator<Public
         return new PublicKey(randomBytes);
     }
 }
-

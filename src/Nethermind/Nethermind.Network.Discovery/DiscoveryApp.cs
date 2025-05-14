@@ -35,13 +35,13 @@ public class DiscoveryApp : IDiscoveryApp
     private PublicKey _masterNode = null!;
     private readonly NodeRecord _selfNodeRecorrd;
 
-    private KademliaDiscv4Adapter _discv4Adapter = null!;
+    private IKademliaDiscv4Adapter _discv4Adapter = null!;
     private IKademlia<PublicKey, Node> _kademlia = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
 
     private readonly ILifetimeScope _rootLifetimeScope;
-    private KademliaNodeSource _kademliaNodeSource = null!;
+    private IKademliaNodeSource _kademliaNodeSource = null!;
     private Task? _runningTask;
     private readonly IProcessExitSource _processExitSouce;
 
@@ -98,8 +98,8 @@ public class DiscoveryApp : IDiscoveryApp
                 new DiscV4KademliaModule(_selfNodeRecorrd, _masterNode, _bootNodes)));
 
         _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
-        _discv4Adapter = _kademliaServices.Resolve<KademliaDiscv4Adapter>();
-        _kademliaNodeSource = _kademliaServices.Resolve<KademliaNodeSource>();
+        _discv4Adapter = _kademliaServices.Resolve<IKademliaDiscv4Adapter>();
+        _kademliaNodeSource = _kademliaServices.Resolve<IKademliaNodeSource>();
     }
 
     public Task StartAsync()
