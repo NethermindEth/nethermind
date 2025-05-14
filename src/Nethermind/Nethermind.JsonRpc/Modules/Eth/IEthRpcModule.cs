@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = false, Description = "Signs a transaction", IsSharable = true)]
-        ResultWrapper<Memory<byte>> eth_sign(Address addressData, byte[] message);
+        ResultWrapper<string> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Send a transaction to the tx pool and broadcasting",
