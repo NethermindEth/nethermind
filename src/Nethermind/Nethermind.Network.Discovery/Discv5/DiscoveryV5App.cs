@@ -44,7 +44,7 @@ public class DiscoveryV5App : IDiscoveryApp
         IIPResolver? ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        [KeyFilter(DbNames.DiscV5Db)] IDb discoveryDb,
+        [KeyFilter(DbNames.DiscoveryNodes)] IDb discoveryDb,
         ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);

@@ -13,6 +13,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -46,7 +47,7 @@ public class DiscoveryApp : IDiscoveryApp
         INodeTable? nodeTable,
         IMessageSerializationService? msgSerializationService,
         ICryptoRandom? cryptoRandom,
-        [KeyFilter(INetworkStorage.DiscV4)] INetworkStorage? discoveryStorage,
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,

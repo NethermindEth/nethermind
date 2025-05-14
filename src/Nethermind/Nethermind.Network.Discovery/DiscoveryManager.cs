@@ -8,6 +8,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -37,7 +38,7 @@ public class DiscoveryManager : IDiscoveryManager
     public DiscoveryManager(
         INodeLifecycleManagerFactory? nodeLifecycleManagerFactory,
         INodeTable? nodeTable,
-        [KeyFilter(INetworkStorage.DiscV4)] INetworkStorage? discoveryStorage,
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
         INetworkConfig? networkConfig,
         ILogManager? logManager)

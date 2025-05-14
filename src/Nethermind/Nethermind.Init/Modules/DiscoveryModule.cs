@@ -26,8 +26,6 @@ namespace Nethermind.Init.Modules;
 
 public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
-    private const string DiscoveryNodesDbPath = "discoveryNodes";
-
     protected override void Load(ContainerBuilder builder)
     {
         builder
@@ -55,18 +53,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .Bind<INodeSource, IStaticNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
-            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-
-                // ToDo: PeersDB is registered outside dbProvider
-                string dbName = INetworkStorage.PeerDb;
-                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                    ? new MemDb(dbName)
-                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
-                        logManager);
-                return new NetworkStorage(peersDb, logManager);
-            })
+            .AddNetworkStorage(DbNames.PeersDb)
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -128,29 +115,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
-                .AddKeyedSingleton<IDb>(DbNames.DiscV5Db, (ctx) => new SimpleFilePublicKeyDb (
-                    "EnrDiscoveryDB",
-                    DiscoveryNodesDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
-                    ctx.Resolve<ILogManager>()))
+                .AddNetworkStorage(DbNames.DiscoveryNodes)
                 .AddSingleton<DiscoveryV5App>()
 
                 .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
                 .AddSingleton<INodeTable, NodeTable>()
                 .AddSingleton<IEvictionManager, EvictionManager>()
                 .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
-                .AddKeyedSingleton<INetworkStorage>(INetworkStorage.DiscV4, (ctx) =>
-                {
-                    ILogManager logManager = ctx.Resolve<ILogManager>();
-                    SimpleFilePublicKeyDb discoveryDb = new(
-                        "DiscoveryDB",
-                        DiscoveryNodesDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
-                        logManager);
-
-                    NetworkStorage discoveryStorage = new(
-                        discoveryDb,
-                        logManager);
-                    return discoveryStorage;
-                })
                 .AddSingleton<IDiscoveryManager, DiscoveryManager>()
                 .AddSingleton<INodesLocator, NodesLocator>()
                 .AddSingleton<DiscoveryApp>()
