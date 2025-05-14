@@ -806,7 +806,7 @@ namespace Nethermind.Trie
 
                     if (nextNode.IsLeaf)
                     {
-                        byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
+                        NibblePath newKey = node.Key.Concat(nextNode.Key);
                         TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
@@ -840,7 +840,7 @@ namespace Nethermind.Trie
                            B B B B B B B B B B B B B B B B
                            L L - - - - - - - - - - - - - - */
 
-                        byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
+                        NibblePath newKey = node.Key.Concat(nextNode.Key);
                         TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
@@ -1109,7 +1109,8 @@ namespace Nethermind.Trie
 
             if (pathBeforeUpdate.Length - extensionLength > 1)
             {
-                byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
+                NibblePath extensionPath = NibblePath.FromNibbles(pathBeforeUpdate.Slice(extensionLength + 1,
+                    pathBeforeUpdate.Length - extensionLength - 1));
                 TrieNode secondExtension
                     = TrieNodeFactory.CreateExtension(extensionPath, originalNodeChild);
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
@@ -1142,8 +1143,7 @@ namespace Nethermind.Trie
             }
 
             int currentIndex = traverseContext.CurrentIndex + 1;
-            byte[] leafPath = traverseContext.UpdatePath[
-                currentIndex..].ToArray();
+            NibblePath leafPath = NibblePath.FromNibbles(traverseContext.UpdatePath[currentIndex..]);
             TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, in traverseContext.UpdateValue);
             ConnectNodes(leaf, in traverseContext);
 

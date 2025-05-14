@@ -856,7 +856,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(NibblePath key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
