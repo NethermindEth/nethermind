@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -10,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 using NonBlocking;
-using Prometheus;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
@@ -180,8 +178,6 @@ public class IteratorNodeLookup(
         }
     }
 
-    private Counter _findNeighbourRate = Prometheus.Metrics.CreateCounter("lookup_find_neighbour_status", "", "status");
-
     async Task<Node[]?> FindNeighbour(Node node, PublicKey target, CancellationToken token)
     {
         try
@@ -192,20 +188,15 @@ public class IteratorNodeLookup(
                 return [];
             }
 
-            Node[]? ret = await discv4Adapter.FindNeighbours(node, target, token);
-            _findNeighbourRate.WithLabels("ok").Inc();
-
-            return ret;
+            return await discv4Adapter.FindNeighbours(node, target, token);
         }
         catch (OperationCanceledException)
         {
             _unreacheableNodes.Set(node.IdHash, DateTimeOffset.Now);
-            _findNeighbourRate.WithLabels("timout").Inc();
             return null;
         }
         catch (Exception e)
         {
-            _findNeighbourRate.WithLabels("failed").Inc();
             if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
             return null;
         }

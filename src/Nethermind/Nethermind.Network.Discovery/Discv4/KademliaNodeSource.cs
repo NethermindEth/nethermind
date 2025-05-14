@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
-using Prometheus;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
@@ -17,26 +16,19 @@ namespace Nethermind.Network.Discovery.Discv4;
 public class KademliaNodeSource : IKademliaNodeSource
 {
     private readonly IKademlia<PublicKey, Node> _kademlia;
-    private readonly IRoutingTable<Node> _routingTable;
     private readonly IIteratorNodeLookup _lookup;
     private readonly IKademliaDiscv4Adapter _discv4Adapter;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ILogger _logger;
 
-    private readonly Counter _discoverRound = Prometheus.Metrics.CreateCounter("kademlia_discover_rounds", "discovery rounds");
-    private readonly Counter _discoverPingResult = Prometheus.Metrics.CreateCounter("kademlia_discover_ping", "discovery rounds", "result");
-    private readonly Gauge _kademliaSize = Prometheus.Metrics.CreateGauge("kademlia_routing_table_size", "discovery rounds", "result");
-
     public KademliaNodeSource(
         IKademlia<PublicKey, Node> kademlia,
-        IRoutingTable<Node> routingTable,
         IIteratorNodeLookup lookup2,
         IKademliaDiscv4Adapter discv4Adapter,
         IDiscoveryConfig discoveryConfig,
         ILogManager logManager)
     {
         _kademlia = kademlia;
-        _routingTable = routingTable;
         _lookup = lookup2;
         _discv4Adapter = discv4Adapter;
         _discoveryConfig = discoveryConfig;
@@ -53,7 +45,6 @@ public class KademliaNodeSource : IKademliaNodeSource
 
         async Task DiscoverAsync(PublicKey target)
         {
-            _discoverRound.Inc();
             if (_logger.IsDebug) _logger.Debug($"Looking up {target}");
             bool anyFound = false;
             int count = 0;
@@ -70,16 +61,13 @@ public class KademliaNodeSource : IKademliaNodeSource
                     try
                     {
                         await _discv4Adapter.Ping(node, token);
-                        _discoverPingResult.WithLabels("ok").Inc();
                     }
                     catch (OperationCanceledException)
                     {
-                        _discoverPingResult.WithLabels("timeout").Inc();
                         continue;
                     }
                 }
 
-                _kademliaSize.Set(_routingTable.Size);
                 anyFound = true;
                 count++;
                 total++;

@@ -26,7 +26,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     public class KademliaNodeSourceTests
     {
         private IKademlia<PublicKey, Node> _kademlia = null!;
-        private IRoutingTable<Node> _routingTable = null!;
         private IIteratorNodeLookup _lookup = null!;
         private IKademliaDiscv4Adapter _discv4Adapter = null!;
         private KademliaNodeSource _nodeSource = null!;
@@ -39,7 +38,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public void Setup()
         {
             _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
-            _routingTable = Substitute.For<IRoutingTable<Node>>();
             _lookup = Substitute.For<IIteratorNodeLookup>();
             _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
 
@@ -57,7 +55,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _nodeSource = new KademliaNodeSource(
                 _kademlia,
-                _routingTable,
                 _lookup,
                 _discv4Adapter,
                 _discoveryConfig,

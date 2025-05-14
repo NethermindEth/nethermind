@@ -14,7 +14,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
-using Prometheus;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
@@ -202,14 +201,10 @@ public class KademliaDiscv4Adapter(
         }, token);
     }
 
-    private Counter _rejectedIncomingMessage =
-        Prometheus.Metrics.CreateCounter("rejected_incoming_message", "Unhaandled", "type");
-
     private async Task HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
         if (!session.HasReceivedPong)
         {
-            _rejectedIncomingMessage.WithLabels(msg.MsgType.ToString()).Inc();
             if (_logger.IsDebug) _logger.Debug($"Rejecting enr request from unbonded peer {node}");
             return;
         }
@@ -222,7 +217,6 @@ public class KademliaDiscv4Adapter(
     {
         if (!session.HasReceivedPong)
         {
-            _rejectedIncomingMessage.WithLabels(msg.MsgType.ToString()).Inc();
             if (_logger.IsDebug) _logger.Debug($"Rejecting findNode request from unbonded peer {node}");
             return;
         }
@@ -254,9 +248,6 @@ public class KademliaDiscv4Adapter(
             await Ping(node, token);
         }
     }
-
-    private Counter _unhandledDiscoveryMesssage =
-        Prometheus.Metrics.CreateCounter("unhandled_disc_message", "Unhaandled", "type");
 
     public async Task OnIncomingMsg(DiscoveryMsg msg)
     {
@@ -294,7 +285,6 @@ public class KademliaDiscv4Adapter(
                 case MsgType.Neighbors:
                 case MsgType.Pong:
                 case MsgType.EnrResponse:
-                    _unhandledDiscoveryMesssage.WithLabels(msgType.ToString()).Inc();
                     break;
                 default:
                     if (_logger.IsError) _logger.Error($"Unsupported msgType: {msgType}");
