@@ -8,6 +8,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -88,9 +89,9 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     LogEntry log = logEntries[j];
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
-                        Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
+                        byte[] depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer.ToArray());
+                        depositRequests.AddRange(depositRequestBuffer);
                     }
                 }
             }
@@ -102,26 +103,42 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private void DecodeDepositRequest(LogEntry log, Span<byte> buffer)
     {
-        object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
-        int offset = 0;
+        const int chunk = 32;
+        const int pubkeyOffset = 0;
+        const int pubkeyLength = 48;
+        const int withdrawalCredOffset = pubkeyOffset + pubkeyLength;
+        const int amountOffset = withdrawalCredOffset + chunk;
+        const int numberLength = 8;
+        const int signatureOffset = amountOffset + numberLength;
+        const int signatureLength = 96;
+        const int indexOffset = signatureOffset + signatureLength;
 
-        foreach (var item in result)
+        if (log.Data.Length != 576)
         {
-            if (item is byte[] byteArray)
-            {
-                byteArray.CopyTo(buffer.Slice(offset, byteArray.Length));
-                offset += byteArray.Length;
-            }
-            else
-            {
-                throw new InvalidOperationException("Decoded ABI result contains non-byte array elements.");
-            }
+            throw new InvalidOperationException($"Deposit wrong length: want 576, have {log.Data.Length}");
         }
 
-        // make sure the flattened result is of the correct size
-        if (offset != ExecutionRequestExtensions.DepositRequestsBytesSize)
+        Span<byte> span = log.Data.AsSpan();
+
+        // PublicKey is the first element
+        span.Slice(6 * chunk, pubkeyLength).CopyTo(buffer.Slice(pubkeyOffset));
+
+        // WithdrawalCredentials is 32 bytes
+        span.Slice(9 * chunk, chunk).CopyTo(buffer.Slice(withdrawalCredOffset));
+
+        // Amount is 8 bytes
+        span.Slice(11 * chunk, numberLength).CopyTo(buffer.Slice(amountOffset));
+
+        // Signature is 96 bytes
+        span.Slice(13 * chunk, signatureLength).CopyTo(buffer.Slice(signatureOffset));
+
+        // Index is 8 bytes
+        span.Slice(17 * chunk, numberLength).CopyTo(buffer.Slice(indexOffset));
+
+        // Make sure the flattened result is of the correct size
+        if (buffer.Length != ExecutionRequestExtensions.DepositRequestsBytesSize)
         {
-            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes.");
+            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {buffer.Length} bytes.");
         }
     }
 
