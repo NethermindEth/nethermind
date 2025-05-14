@@ -5,10 +5,12 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Optimism.CL;
+using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.Cl.Rpc;
 
 public class OptimismOptimismRpcModule(
+    IEthApi l1Api,
     IL2Api l2Api,
     IExecutionEngineManager executionEngineManager
 ) : IOptimismOptimismRpcModule
@@ -25,7 +27,10 @@ public class OptimismOptimismRpcModule(
 
     public async Task<ResultWrapper<OptimismSyncStatus>> optimism_syncStatus()
     {
-        // var currentL1Block =
+        // TODO: We need to use `fullTxs` due to serialization issues
+        var headL1 = l1Api.GetHead(true);
+        var safeL1 = l1Api.GetSafe(true);
+        var finalizedL1 = l1Api.GetFinalized(true);
 
         // TODO: From `executionEngineManager` or `l2Api`?
         var currentL2Blocks = await executionEngineManager.GetCurrentBlocks();
@@ -35,14 +40,22 @@ public class OptimismOptimismRpcModule(
 
         var syncStatus = new OptimismSyncStatus
         {
+            // L1
+            // TODO: Nullables
+            HeadL1 = L1BlockRef.From((await headL1).Value),
+            SafeL1 = L1BlockRef.From((await safeL1).Value),
+            FinalizedL1 = L1BlockRef.From((await finalizedL1).Value),
+            // L2
             UnsafeL2 = L2BlockRef.From(await unsafeL2),
             SafeL2 = L2BlockRef.From(await safeL2),
             FinalizedL2 = L2BlockRef.From(await finalizedL2),
-            // TODO L2
+            // TODO
+            CurrentL1 = null!,
+            CurrentL1Finalized = null!,
             PendingSafeL2 = null!,
             QueuedUnsafeL2 = null!,
         };
-        return ResultWrapper<OptimismSyncStatus>.Success(null!);
+        return ResultWrapper<OptimismSyncStatus>.Success(syncStatus);
     }
 
     public Task<ResultWrapper<string>> optimism_version()
