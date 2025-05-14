@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Memory<byte>> personal_sign(byte[] message, Address address, string passphrase = null)
+        public ResultWrapper<string> personal_sign(byte[] message, Address address, string passphrase = null)
         {
             if (!_wallet.IsUnlocked(address))
             {
@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
 
             message = ToEthSignedMessage(message);
-            return ResultWrapper<Memory<byte>>.Success(_wallet.Sign(Keccak.Compute(message), address).Memory);
+            return ResultWrapper<string>.Success(_wallet.Sign(Keccak.Compute(message), address).ToString());
         }
     }
 }

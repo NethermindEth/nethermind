@@ -12,15 +12,9 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 
-public class EthereumEthApi : IEthApi
+public class EthereumEthApi(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager) : IEthApi
 {
-    private readonly IJsonRpcClient _ethRpcClient;
-
-    public EthereumEthApi(ICLConfig config, IJsonSerializer jsonSerializer, ILogManager logManager)
-    {
-        ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
-        _ethRpcClient = new BasicJsonRpcClient(new Uri(config.L1EthApiEndpoint), jsonSerializer, logManager);
-    }
+    private readonly IJsonRpcClient _ethRpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
 
     public Task<ReceiptForRpc[]?> GetReceiptsByHash(Hash256 blockHash)
     {

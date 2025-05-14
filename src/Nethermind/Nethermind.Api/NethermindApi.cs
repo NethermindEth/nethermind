@@ -145,6 +145,7 @@ namespace Nethermind.Api
         public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
+        public IEngineRequestsTracker? EngineRequestsTracker { get; set; }
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();

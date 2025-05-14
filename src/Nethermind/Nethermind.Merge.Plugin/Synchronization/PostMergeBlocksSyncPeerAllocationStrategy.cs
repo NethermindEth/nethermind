@@ -26,8 +26,6 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
         _beaconPivot = beaconPivot;
     }
 
-    public bool CanBeReplaced => true;
-
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager,
         IBlockTree blockTree)
     {
