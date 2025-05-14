@@ -82,7 +82,7 @@ public class JsonConfigSource : IConfigSource
                 var value = configItem.Value;
                 if (value.ValueKind == JsonValueKind.Number)
                 {
-                    itemsDict[key] = value.GetInt64().ToString();
+                    itemsDict[key] = ParseNumber(value);
                 }
                 else if (value.ValueKind == JsonValueKind.True)
                 {
@@ -157,5 +157,21 @@ public class JsonConfigSource : IConfigSource
     public IEnumerable<(string Category, string Name)> GetConfigKeys()
     {
         return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
+    }
+
+    private string ParseNumber(JsonElement value)
+    {
+        if (value.TryGetInt64(out long result))
+        {
+            return result.ToString();
+        }
+        else if (value.TryGetDouble(out double doubleResult))
+        {
+            return result.ToString();
+        }
+        else
+        {
+            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
+        }
     }
 }
