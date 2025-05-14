@@ -950,7 +950,7 @@ namespace Nethermind.Trie
 
             ref readonly CappedArray<byte> shorterPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
             ref readonly CappedArray<byte> longerPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
-            if (node.Key.Equals(shorterPath))
+            if (shorterPath.Equals(node.Key))
             {
                 shorterPathValue = ref node.ValueRef;
                 longerPathValue = ref traverseContext.UpdateValue;

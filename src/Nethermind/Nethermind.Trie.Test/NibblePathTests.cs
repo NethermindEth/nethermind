@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using FluentAssertions;
 using NUnit.Framework;
 
@@ -195,5 +196,30 @@ public class NibblePathTests
         var parsed = NibblePath.FromHexString(parse);
 
         parsed.Equals(expected).Should().BeTrue();
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(5)]
+    [TestCase(6)]
+    [TestCase(7)]
+    [TestCase(8)]
+    [TestCase(9)]
+    [TestCase(10)]
+    [TestCase(11)]
+    [TestCase(12)]
+    public void Ref_FromNibbles(int count)
+    {
+        var nibbles = Enumerable.Range(1, count).Select(i=>(byte)i).ToArray();
+
+        var path = NibblePath.ByRef.FromNibbles(nibbles, stackalloc byte[5]);
+
+        path.Length.Should().Be(nibbles.Length);
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            path[i].Should().Be(nibbles[i]);
+        }
     }
 }

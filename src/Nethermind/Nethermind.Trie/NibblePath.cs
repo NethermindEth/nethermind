@@ -362,7 +362,15 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
     {
-        throw new NotImplementedException();
+        var max = Math.Min(Length, remaining.Length);
+
+        for (int i = 0; i < max; i++)
+        {
+            if (this[i] != remaining[i])
+                return i;
+        }
+
+        return max;
     }
 
     public readonly ref struct ByRef
@@ -376,22 +384,128 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             _data = ref data;
         }
 
-        public static implicit operator ByRef(NibblePath d) => default;
+        public static implicit operator ByRef(NibblePath d)
+        {
+            return new ByRef(ref MemoryMarshal.GetArrayDataReference(d._data!), (byte)d.Length);
+        }
+
         public int Length => _length;
 
         public static ByRef FromNibbles(scoped ReadOnlySpan<byte> nibbles, Span<byte> span)
         {
             ref var r = ref MemoryMarshal.GetReference(span);
+            int length = (byte)nibbles.Length;
 
-            return new ByRef(ref r, (byte)nibbles.Length);
+            // nibbles index
+            int at = 0;
+
+            // odd
+            if (length % 2 == 1)
+            {
+                r = (byte)(OddFlag | nibbles[at]);
+
+                at++;
+                length--;
+            }
+
+            // Whether odd or not, move next
+            r = ref Unsafe.Add(ref r, 1);
+
+            Debug.Assert(length % 2 == 0);
+
+            // even but not divisible by 4
+            if (length % 4 == 2)
+            {
+                r = (byte)((nibbles[at] << NibbleShift) | nibbles[at + 1]);
+                r = ref Unsafe.Add(ref r, 1);
+
+                at += 2;
+                length -= 2;
+            }
+
+            // even but not divisible by 8
+            if (length % 8 == 4)
+            {
+                r = (byte)((nibbles[at] << NibbleShift) | nibbles[at + 1]);
+                Unsafe.Add(ref r, 1) = (byte)((nibbles[at + 2] << NibbleShift) | nibbles[at + 3]);
+
+                r = ref Unsafe.Add(ref r, 2);
+
+                at += 4;
+                length -= 4;
+            }
+
+            while (length > 0)
+            {
+                Debug.Assert(length % 8 == 0);
+
+                r = (byte)((nibbles[at] << NibbleShift) | nibbles[at + 1]);
+                Unsafe.Add(ref r, 1) = (byte)((nibbles[at + 2] << NibbleShift) | nibbles[at + 3]);
+                Unsafe.Add(ref r, 2) = (byte)((nibbles[at + 4] << NibbleShift) | nibbles[at + 5]);
+                Unsafe.Add(ref r, 3) = (byte)((nibbles[at + 6] << NibbleShift) | nibbles[at + 7]);
+
+                r = ref Unsafe.Add(ref r, 4);
+
+                at += 8;
+                length -= 8;
+            }
+
+            return new ByRef(ref MemoryMarshal.GetReference(span), (byte)nibbles.Length);
         }
 
-        public int CommonPrefixLength(scoped in ByRef longerPath)
+        public int CommonPrefixLength(scoped in ByRef other)
         {
-            throw new NotImplementedException();
+            var max = Math.Min(Length, other.Length);
+
+            if (max == 0)
+                return 0;
+
+            if ((_data & OddFlag) == (other._data & OddFlag))
+            {
+                // aligned oddity or not
+            }
+
+            // slow case of misaligned
+            int i = 0;
+            for (; i < max; i++)
+            {
+                if (this[i] != other[i])
+                    break;
+            }
+
+            return i;
         }
 
-        public NibblePath Slice(int start, int length) => throw new NotImplementedException();
+        public NibblePath Slice(int start, int length)
+        {
+            var size = GetRequiredArraySize(Length);
+            var sliceSize = GetRequiredArraySize(length);
+            var data = GC.AllocateArray<byte>(sliceSize);
+
+            if (start % 2 == 0)
+            {
+                // The slice is aligned the same way as this path.
+                ReadOnlySpan<byte> toCopy = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _data, size - sliceSize), sliceSize);
+                toCopy.CopyTo(data);
+
+                if (length % 2 == 0)
+                {
+                    // even, clean the first byte
+                    data[0] = 0;
+                }
+                else
+                {
+                    // odd, clean the half of it and set the flag
+                    data[0] = (byte)((data[0] & 0xF) | OddFlag);
+                }
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
+
+            return new NibblePath(data);
+        }
 
         public byte this [int index]
         {
@@ -412,11 +526,15 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 return (byte)((b >> (h * NibbleShift)) & NibbleMask);
             }
         }
-    }
 
-    public bool Equals(scoped in ByRef shorterPath)
-    {
-        throw new NotImplementedException();
+        public bool Equals(NibblePath other)
+        {
+            if (other.Length != Length)
+                return false;
+
+            return MemoryMarshal.CreateReadOnlySpan(in _data, other.Length)
+                .SequenceEqual(other._data);
+        }
     }
 
     public void WriteNibblesTo(Span<byte> destination)
