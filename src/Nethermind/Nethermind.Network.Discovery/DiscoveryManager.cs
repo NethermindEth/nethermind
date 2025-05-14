@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,7 +37,7 @@ public class DiscoveryManager : IDiscoveryManager
     public DiscoveryManager(
         INodeLifecycleManagerFactory? nodeLifecycleManagerFactory,
         INodeTable? nodeTable,
-        INetworkStorage? discoveryStorage,
+        [KeyFilter(INetworkStorage.DiscV4)] INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
         INetworkConfig? networkConfig,
         ILogManager? logManager)

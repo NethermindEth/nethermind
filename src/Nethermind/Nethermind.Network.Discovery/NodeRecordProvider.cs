@@ -9,7 +9,7 @@ namespace Nethermind.Network.Discovery;
 
 public class NodeRecordProvider(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-    IPResolver ipResolver,
+    IIPResolver ipResolver,
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig
 ): INodeRecordProvider {

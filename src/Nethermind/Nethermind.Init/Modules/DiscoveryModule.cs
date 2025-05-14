@@ -13,7 +13,9 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
@@ -124,11 +126,35 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         {
             builder
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
+                .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
+
                 .AddKeyedSingleton<IDb>(DbNames.DiscV5Db, (ctx) => new SimpleFilePublicKeyDb (
                     "EnrDiscoveryDB",
                     DiscoveryNodesDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
                     ctx.Resolve<ILogManager>()))
                 .AddSingleton<DiscoveryV5App>()
+
+                .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
+                .AddSingleton<INodeTable, NodeTable>()
+                .AddSingleton<IEvictionManager, EvictionManager>()
+                .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
+                .AddKeyedSingleton<INetworkStorage>(INetworkStorage.DiscV4, (ctx) =>
+                {
+                    ILogManager logManager = ctx.Resolve<ILogManager>();
+                    SimpleFilePublicKeyDb discoveryDb = new(
+                        "DiscoveryDB",
+                        DiscoveryNodesDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                        logManager);
+
+                    NetworkStorage discoveryStorage = new(
+                        discoveryDb,
+                        logManager);
+                    return discoveryStorage;
+                })
+                .AddSingleton<IDiscoveryManager, DiscoveryManager>()
+                .AddSingleton<INodesLocator, NodesLocator>()
+                .AddSingleton<DiscoveryApp>()
+
                 ;
         }
 

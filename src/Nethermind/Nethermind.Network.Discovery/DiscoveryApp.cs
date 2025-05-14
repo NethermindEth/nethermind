@@ -46,7 +46,7 @@ public class DiscoveryApp : IDiscoveryApp
         INodeTable? nodeTable,
         IMessageSerializationService? msgSerializationService,
         ICryptoRandom? cryptoRandom,
-        INetworkStorage? discoveryStorage,
+        [KeyFilter(INetworkStorage.DiscV4)] INetworkStorage? discoveryStorage,
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,
