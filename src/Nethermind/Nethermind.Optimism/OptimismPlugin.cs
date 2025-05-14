@@ -35,6 +35,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
+using Nethermind.Optimism.Cl.Rpc;
 
 namespace Nethermind.Optimism;
 
@@ -277,6 +278,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
+
+            IOptimismOptimismRpcModule optimismRpcModule = new OptimismOptimismRpcModule();
+            _api.RpcModuleProvider.RegisterSingle(optimismRpcModule);
+
             _cl = new OptimismCL(
                 _api.SpecProvider,
                 chainSpecEngineParameters,
