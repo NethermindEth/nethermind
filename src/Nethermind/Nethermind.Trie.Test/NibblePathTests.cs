@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using FluentAssertions;
-using Lantern.Discv5.WireProtocol.Packet.Handlers;
-using Nethermind.Core.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -184,40 +181,6 @@ public class NibblePathTests
     {
         var expected = NibblePath.FromNibbles(nibbles.AsSpan(start, length));
         var actual = NibblePath.FromNibbles(nibbles).Slice(start, length);
-
-        actual.Equals(expected).Should().BeTrue();
-    }
-
-    [TestCase(0, 6, 6)]
-    [TestCase(0, 6, 5)]
-    [TestCase(1, 5, 5)]
-    [TestCase(1, 5, 4)]
-    [TestCase(1, 5, 3)]
-    [TestCase(2, 4, 4)]
-    [TestCase(2, 4, 3)]
-    public void ToExtensionPath(int start, int length, int extensionLength)
-    {
-        ReadOnlySpan<byte> raw = [0xAB, 0xCD, 0xCD];
-
-        var expected = NibblePath.FromRaw(raw).Slice(start, extensionLength);
-        var actual = new NibblePath.Ref(raw).Slice(start, length)
-            .ToExtensionPath(extensionLength);
-
-        actual.Equals(expected).Should().BeTrue();
-    }
-
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    public void ToLeafPath(int start)
-    {
-        ReadOnlySpan<byte> raw = [0xAB, 0xCD, 0xCD];
-
-        var expected = NibblePath.FromRaw(raw)[start..];
-        var actual = new NibblePath.Ref(raw).ToLeafPath(start);
 
         actual.Equals(expected).Should().BeTrue();
     }

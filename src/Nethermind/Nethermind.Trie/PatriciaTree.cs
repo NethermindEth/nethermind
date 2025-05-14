@@ -933,9 +933,10 @@ namespace Nethermind.Trie
                 ThrowMissingPrefixException();
             }
 
-            ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
-            ReadOnlySpan<byte> shorterPath;
-            ReadOnlySpan<byte> longerPath;
+            ReadOnlySpan<byte> r = traverseContext.GetRemainingUpdatePath();
+            scoped NibblePath.ByRef remaining = NibblePath.ByRef.FromNibbles(r, stackalloc byte[33]);
+            scoped NibblePath.ByRef shorterPath;
+            scoped NibblePath.ByRef longerPath;
             if (traverseContext.RemainingUpdatePathLength - node.Key.Length < 0)
             {
                 shorterPath = remaining;
@@ -1005,7 +1006,7 @@ namespace Nethermind.Trie
 
             if (extensionLength != 0)
             {
-                NibblePath extensionPath = NibblePath.FromNibbles(longerPath[..extensionLength]);
+                NibblePath extensionPath = longerPath[..extensionLength];
                 TrieNode extension = TrieNodeFactory.CreateExtension(extensionPath);
                 PushToNodeStack(extension, traverseContext.CurrentIndex, 0);
             }
@@ -1017,12 +1018,12 @@ namespace Nethermind.Trie
             }
             else
             {
-                NibblePath shortLeafPath = NibblePath.FromNibbles(shorterPath[(extensionLength + 1)..]);
+                NibblePath shortLeafPath = shorterPath[(extensionLength + 1)..];
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(shortLeafPath, shorterPathValue);
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
-            NibblePath leafPath = NibblePath.FromNibbles(longerPath[(extensionLength + 1)..]);
+            NibblePath leafPath = longerPath[(extensionLength + 1)..];
             TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(leafPath, longerPathValue);
 
             PushToNodeStack(branch, traverseContext.CurrentIndex, longerPath[extensionLength]);

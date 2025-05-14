@@ -360,186 +360,6 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public override string ToString() => ToHexString();
 
-    public readonly ref struct Ref
-    {
-        private readonly ref byte _span;
-        private readonly byte _odd;
-        public readonly byte Length;
-
-        private const int OddBit = 1;
-
-        public static Ref Empty => default;
-
-        public Ref(in ReadOnlySpan<byte> rawKey) : this(rawKey, 0, rawKey.Length * 2)
-        {
-        }
-
-        public static implicit operator Ref(NibblePath path)
-        {
-            byte odd = path.Odd;
-            // If odd, do not add the offset, on even, add 1.
-            return new Ref(ref Unsafe.Add(ref path._data[0], 1 - odd), odd, (byte)path.Length);
-        }
-
-        [DebuggerStepThrough]
-        private Ref(ReadOnlySpan<byte> key, int nibbleFrom, int length)
-        {
-            _span = ref Unsafe.Add(ref MemoryMarshal.GetReference(key), nibbleFrom / 2);
-            _odd = (byte)(nibbleFrom & OddBit);
-            Length = (byte)length;
-        }
-
-        private Ref(ref byte span, byte odd, byte length)
-        {
-            _span = ref span;
-            _odd = odd;
-            Length = length;
-        }
-
-        public byte this[int nibble] => GetAt(nibble);
-
-        public byte GetAt(int nibble) => (byte)((GetRefAt(nibble) >> GetShift(nibble)) & NibbleMask);
-
-        private int GetShift(int nibble) => (1 - ((nibble + _odd) & OddBit)) * NibbleShift;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ref byte GetRefAt(int nibble) => ref Unsafe.Add(ref _span, (nibble + _odd) / 2);
-
-        public Ref Slice(int start)
-        {
-            Debug.Assert(Length - start >= 0, "Path out of boundary");
-
-            if (Length - start == 0)
-                return Empty;
-
-            return new(ref Unsafe.Add(ref _span, (_odd + start) / 2), (byte)((start & 1) ^ _odd),
-                (byte)(Length - start));
-        }
-
-        public Ref Slice(int start, int length)
-        {
-            Debug.Assert(start + length <= Length, "Cannot slice the NibblePath beyond its Length");
-            return new(ref Unsafe.Add(ref _span, (_odd + start) / 2),
-                (byte)((start & 1) ^ _odd), (byte)length);
-        }
-
-        public string ToHexString()
-        {
-            const int prefixLength = 2;
-
-            // TODO: optimize
-            Span<char> chars = stackalloc char[Length + prefixLength];
-
-            chars[0] = '0';
-            chars[1] = 'x';
-
-            for (int i = 0; i < Length; i++)
-            {
-                var v = this[i];
-                chars[i + prefixLength] = (char)(v < 10 ? '0' + v : 'a' + v - 10);
-            }
-
-            return new string(chars);
-        }
-
-        public NibblePath ToLeafPath()
-        {
-            Debug.Assert((_odd + Length) % 2 == 0, "Odd leaf path should have odd length, even -> even.");
-
-            var data = GC.AllocateArray<byte>(GetRequiredArraySize(Length));
-            var span = MemoryMarshal.CreateReadOnlySpan(in _span, (Length + 1) / 2);
-
-            if (_odd == 1)
-            {
-                span.CopyTo(data);
-                data[0] = (byte)(OddFlag | (data[0] & 0x0F));
-            }
-            else
-            {
-                span.CopyTo(data.AsSpan(PreambleLength));
-            }
-
-            return new NibblePath(data);
-        }
-
-        public NibblePath ToLeafPath(int start) => Slice(start).ToLeafPath();
-
-        public int CommonPrefixLength(in Ref other)
-        {
-            var min = Math.Min(other.Length, Length);
-            var i = 0;
-
-            for (; i < min; i++)
-            {
-                if (GetAt(i) != other.GetAt(i))
-                    break;
-            }
-
-            return i;
-        }
-
-        public int CommonPrefixLength(NibblePath other)
-        {
-            var min = Math.Min(other.Length, Length);
-            var i = 0;
-
-            for (; i < min; i++)
-            {
-                if (GetAt(i) != other[i])
-                    break;
-            }
-
-            return i;
-        }
-
-        public static Ref FromCompact(byte[] bytes) => FromRlpBytes(bytes).key;
-
-
-        public NibblePath ToExtensionPath(int extensionLength)
-        {
-            if (extensionLength == 1)
-                return Singles[this[0]];
-
-            var size = GetRequiredArraySize(extensionLength);
-            byte[] data = GC.AllocateUninitializedArray<byte>(size);
-
-            int from = 0;
-
-            if (extensionLength % 2 != 0)
-            {
-                // odd
-                data[0] = (byte)(OddFlag | this[0]);
-                extensionLength--;
-                from++;
-            }
-
-            // This part should be really unlikely to happen. Extensions are not long.
-            Debug.Assert(extensionLength % 2 == 0);
-
-            for (int i = 0; i < extensionLength; i += 2)
-            {
-                data[i / 2 + PreambleLength] = (byte)((this[from + i] << 4) + this[from + i + 1]);
-            }
-
-            return new NibblePath(data);
-        }
-
-        public bool Equals(NibblePath other)
-        {
-            if (other.Length != Length)
-                return false;
-
-            // TODO: potentially optimize
-            for (int i = 0; i < Length; i++)
-            {
-                if (this[0] != other[0])
-                    return false;
-            }
-
-            return true;
-        }
-    }
-
     public bool Equals(ReadOnlySpan<byte> nibbles)
     {
         // TODO: optimize
@@ -547,6 +367,42 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     }
 
     public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
+    {
+        throw new NotImplementedException();
+    }
+
+    public readonly ref struct ByRef
+    {
+        private readonly ref byte _data;
+        private readonly byte _length;
+
+        private ByRef(ref byte data, byte length)
+        {
+            _length = length;
+            _data = ref data;
+        }
+
+        public static implicit operator ByRef(NibblePath d) => default;
+        public int Length { get; }
+
+        public static ByRef FromNibbles(scoped ReadOnlySpan<byte> nibbles, Span<byte> span)
+        {
+            ref var r = ref MemoryMarshal.GetReference(span);
+
+            return new ByRef(ref r, (byte)nibbles.Length);
+        }
+
+        public int CommonPrefixLength(scoped in ByRef longerPath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public NibblePath Slice(int start, int length) => throw new NotImplementedException();
+
+        public byte this [int index] => throw new NotImplementedException();
+    }
+
+    public bool Equals(scoped in ByRef shorterPath)
     {
         throw new NotImplementedException();
     }

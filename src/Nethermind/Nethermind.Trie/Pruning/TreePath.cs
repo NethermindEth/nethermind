@@ -454,6 +454,11 @@ public struct TreePath : IEquatable<TreePath>
     {
         return Truncate(otherPath.Length) == otherPath;
     }
+
+    public NibblePath ToNibblePath(int from)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 public static class TreePathExtensions
