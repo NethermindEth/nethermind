@@ -5,8 +5,12 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie;
 
@@ -324,10 +328,37 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public static NibblePath FromHexString(string hex)
     {
+        int start = hex is ['0', 'x', ..] ? 2 : 0;
+        ReadOnlySpan<char> chars = hex.AsSpan(start);
 
-        throw new NotImplementedException();
-        // Bytes.FromHexString(hex)
+        if (chars.Length == 0)
+        {
+            return Empty;
+        }
+
+        int oddMod = hex.Length % 2;
+        byte[] data = GC.AllocateUninitializedArray<byte>(GetRequiredArraySize(chars.Length));
+
+        bool isSuccess;
+        if (oddMod == 0 &&
+            BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+            chars.Length >= Vector128<ushort>.Count * 2)
+        {
+            isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, data.AsSpan(PreambleLength));
+        }
+        else
+        {
+            isSuccess = HexConverter.TryDecodeFromUtf16(chars, data.AsSpan(1 - oddMod), oddMod == 1);
+            if (oddMod == 1)
+            {
+                data[0] |= OddFlag;
+            }
+        }
+
+        return isSuccess ? new NibblePath(data) : throw new FormatException("Incorrect hex string");
     }
+
+    public override string ToString() => ToHexString();
 
     public readonly ref struct Ref
     {
@@ -411,10 +442,27 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             return new string(chars);
         }
 
-        public NibblePath ToPath()
+        public NibblePath ToLeafPath()
         {
-            throw new NotImplementedException();
+            Debug.Assert((_odd + Length) % 2 == 0, "Odd leaf path should have odd length, even -> even.");
+
+            var data = GC.AllocateArray<byte>(GetRequiredArraySize(Length));
+            var span = MemoryMarshal.CreateReadOnlySpan(in _span, (Length + 1) / 2);
+
+            if (_odd == 1)
+            {
+                span.CopyTo(data);
+                data[0] = (byte)(OddFlag | (data[0] & 0x0F));
+            }
+            else
+            {
+                span.CopyTo(data.AsSpan(PreambleLength));
+            }
+
+            return new NibblePath(data);
         }
+
+        public NibblePath ToLeafPath(int start) => Slice(start).ToLeafPath();
 
         public int CommonPrefixLength(in Ref other)
         {
@@ -446,24 +494,49 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public static Ref FromCompact(byte[] bytes) => FromRlpBytes(bytes).key;
 
-        public NibblePath ToNibblePath()
-        {
-            throw new NotImplementedException();
-        }
 
-        public NibblePath ToNibblePathFrom(int start)
+        public NibblePath ToExtensionPath(int extensionLength)
         {
-            throw new NotImplementedException();
-        }
+            if (extensionLength == 1)
+                return Singles[this[0]];
 
-        public NibblePath ToNibblePathTo(int extensionLength)
-        {
-            throw new NotImplementedException();
+            var size = GetRequiredArraySize(extensionLength);
+            byte[] data = GC.AllocateUninitializedArray<byte>(size);
+
+            int from = 0;
+
+            if (extensionLength % 2 != 0)
+            {
+                // odd
+                data[0] = (byte)(OddFlag | this[0]);
+                extensionLength--;
+                from++;
+            }
+
+            // This part should be really unlikely to happen. Extensions are not long.
+            Debug.Assert(extensionLength % 2 == 0);
+
+            for (int i = 0; i < extensionLength; i += 2)
+            {
+                data[i / 2 + PreambleLength] = (byte)((this[from + i] << 4) + this[from + i + 1]);
+            }
+
+            return new NibblePath(data);
         }
 
         public bool Equals(NibblePath other)
         {
-            throw new NotImplementedException();
+            if (other.Odd != _odd || other.Length != Length)
+                return false;
+
+            // TODO: potentially optimize
+            for (int i = 0; i < Length; i++)
+            {
+                if (this[0] != other[0])
+                    return false;
+            }
+
+            return true;
         }
     }
 }

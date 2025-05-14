@@ -187,4 +187,50 @@ public class NibblePathTests
 
         actual.Equals(expected).Should().BeTrue();
     }
+
+    [TestCase(0, 6, 6)]
+    [TestCase(0, 6, 5)]
+    [TestCase(1, 5, 5)]
+    [TestCase(1, 5, 4)]
+    [TestCase(1, 5, 3)]
+    [TestCase(2, 4, 4)]
+    [TestCase(2, 4, 3)]
+    public void ToExtensionPath(int start, int length, int extensionLength)
+    {
+        ReadOnlySpan<byte> raw = [0xAB, 0xCD, 0xCD];
+
+        var expected = NibblePath.FromRaw(raw).Slice(start, extensionLength);
+        var actual = new NibblePath.Ref(raw).Slice(start, length)
+            .ToExtensionPath(extensionLength);
+
+        actual.Equals(expected).Should().BeTrue();
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(5)]
+    public void ToLeafPath(int start)
+    {
+        ReadOnlySpan<byte> raw = [0xAB, 0xCD, 0xCD];
+
+        var expected = NibblePath.FromRaw(raw)[start..];
+        var actual = new NibblePath.Ref(raw).ToLeafPath(start);
+
+        actual.Equals(expected).Should().BeTrue();
+    }
+
+    [TestCase("0x1", new byte[] { 1 })]
+    [TestCase("0x12", new byte[] { 1, 2 })]
+    [TestCase("0xABC", new byte[] { 0xA, 0xB, 0xC })]
+    [TestCase("0xABCD", new byte[] { 0xA, 0xB, 0xC, 0xD })]
+    public void FromHexString(string parse, byte[] nibbles)
+    {
+        var expected = NibblePath.FromNibbles(nibbles);
+        var parsed = NibblePath.FromHexString(parse);
+
+        parsed.Equals(expected).Should().BeTrue();
+    }
 }
