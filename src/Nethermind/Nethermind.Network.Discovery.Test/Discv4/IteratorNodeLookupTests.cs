@@ -160,7 +160,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
-        public void Lookup_should_respect_cancellation_token(CancellationToken token)
+        public async Task Lookup_should_respect_cancellation_token(CancellationToken token)
         {
             Node initialNode = new Node(TestItem.PublicKeyC, "192.168.1.3", 30303);
 
@@ -170,8 +170,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             using CancellationTokenSource cts = new CancellationTokenSource();
             cts.Cancel();
 
-            Assert.ThrowsAsync<OperationCanceledException>(async () =>
-                await _lookup.Lookup(_targetKey, cts.Token).ToListAsync());
+            Func<Task> act = async () => await _lookup.Lookup(_targetKey, cts.Token).ToListAsync();
+            await act.Should().ThrowAsync<OperationCanceledException>();
         }
 
         [Test]

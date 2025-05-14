@@ -193,7 +193,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             // Continue iterating
             await enumerator.MoveNextAsync();
 
-            Assert.That(enumerator.Current, Is.EqualTo(node2));
+            enumerator.Current.Should().Be(node2);
         }
 
         [Test]

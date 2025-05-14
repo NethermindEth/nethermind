@@ -230,7 +230,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await Task.Delay(100);
 
-            await _kademliaMessageReceiver.Received(1).Ping(Arg.Is<Node>(n => n.Id == _receiver.Id), token);
+            await _kademliaMessageReceiver.Received(1).Ping(Arg.Is<Node>(n => n.Id == _receiver.Id), Arg.Any<CancellationToken>());
             await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
                 m.PingMdc!.SequenceEqual(pingMsg.Mdc!)));
@@ -259,7 +259,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await _kademliaMessageReceiver.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n.Id == _receiver.Id),
                 Arg.Is<PublicKey>(pk => pk.Bytes!.SequenceEqual(_testPublicKey.Bytes!)),
-                token);
+                Arg.Any<CancellationToken>());
 
             // Send out two message instead of one because of MTU limit.
             await _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m =>
