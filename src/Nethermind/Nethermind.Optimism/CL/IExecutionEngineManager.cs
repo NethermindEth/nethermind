@@ -10,7 +10,7 @@ namespace Nethermind.Optimism.CL;
 public interface IExecutionEngineManager
 {
     Task Initialize();
-    Task<ulong?> GetCurrentFinalizedBlockNumber();
+    Task<(BlockId Head, BlockId Finalized, BlockId Safe)> GetCurrentBlocks();
     Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes);
     Task<P2PPayloadStatus> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3);
     Task OnELSynced { get; }

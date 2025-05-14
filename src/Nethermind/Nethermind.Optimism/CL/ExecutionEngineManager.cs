@@ -215,12 +215,13 @@ public class ExecutionEngineManager(
 
         return true;
     }
-    public async Task<ulong?> GetCurrentFinalizedBlockNumber()
+
+    public async Task<(BlockId Head, BlockId Finalized, BlockId Safe)> GetCurrentBlocks()
     {
         await _semaphore.WaitAsync();
         try
         {
-            return _currentFinalizedHead.Number != 0 ? _currentFinalizedHead.Number : (ulong?)null;
+            return (_currentHead, _currentFinalizedHead, _currentSafeHead);
         }
         finally
         {

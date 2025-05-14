@@ -188,7 +188,10 @@ public class OptimismCLP2P : IDisposable
 
     private async Task UpdateHead()
     {
-        ulong? currentFinalized = await _executionEngineManager.GetCurrentFinalizedBlockNumber();
+        // TODO: Remove nullable annotations if possible
+        (_, BlockId finalized, _) = await _executionEngineManager.GetCurrentBlocks();
+        var currentFinalized = finalized.Number != 0 ? finalized.Number : (ulong?)null;
+
         if (_headNumber is not null && currentFinalized > _headNumber)
         {
             _headNumber = (ulong)currentFinalized;
