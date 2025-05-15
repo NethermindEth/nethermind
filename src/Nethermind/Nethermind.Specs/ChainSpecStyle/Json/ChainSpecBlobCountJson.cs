@@ -5,6 +5,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 
 public class ChainSpecBlobCountJson
 {
+    public ulong? Timestamp { get; set; }
+
     public ulong Target { get; set; }
     public ulong Max { get; set; }
 
