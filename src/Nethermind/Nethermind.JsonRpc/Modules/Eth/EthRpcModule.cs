@@ -385,18 +385,40 @@ public partial class EthRpcModule(
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
 
+    private enum Stage {Start, BeforeGetTransaction, GetTransaction, TransactionIsNull, RecoverTxSenderIfNeeded, FromTransaction, Success}
+
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-        if (transaction is null)
+        Stage stage = Stage.Start;
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) x = new();
+        try
         {
-            return ResultWrapper<TransactionForRpc?>.Success(null);
-        }
+            stage = Stage.BeforeGetTransaction;
+            x = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+            if (x.transaction is null)
+            {
+                stage = Stage.TransactionIsNull;
+                return ResultWrapper<TransactionForRpc?>.Success(null);
+            }
 
-        RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee, _specProvider.ChainId);
-        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-        return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
+            stage = Stage.GetTransaction;
+            RecoverTxSenderIfNeeded(x.transaction);
+            stage = Stage.RecoverTxSenderIfNeeded;
+            TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(x.transaction, x.receipt?.BlockHash,
+                x.receipt?.BlockNumber, x.receipt?.Index, x.baseFee, _specProvider.ChainId);
+            stage = Stage.FromTransaction;
+            if (_logger.IsTrace)
+                _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+
+            var result = ResultWrapper<TransactionForRpc?>.Success(transactionModel);
+            stage = Stage.Success;
+            return result;
+        }
+        catch (NullReferenceException)
+        {
+            _logger.Error($"NullReferenceException: stage: {stage}, transaction: {x.transaction is null}, receipt: {x.receipt is null}, baseFee: {x.baseFee is null}, blockchainBridge: {_blockchainBridge is null}");
+            throw;
+        }
     }
 
     public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
