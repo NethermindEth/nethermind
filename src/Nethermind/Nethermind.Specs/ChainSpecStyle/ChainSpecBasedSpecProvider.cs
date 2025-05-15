@@ -274,6 +274,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     releaseSpec.TargetBlobCount = blobSchedule.Target;
                     releaseSpec.MaxBlobCount = blobSchedule.Max;
+                    if (blobSchedule.MaxPerTx is not null) releaseSpec.MaxBlobCountPerTx = blobSchedule.MaxPerTx.Value;
                     releaseSpec.BlobBaseFeeUpdateFraction = blobSchedule.BaseFeeUpdateFraction;
                 }
                 else if (releaseSpec.Eip4844TransitionTimestamp <= releaseStartTimestamp)
@@ -283,7 +284,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                     releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
                 }
             }
-
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

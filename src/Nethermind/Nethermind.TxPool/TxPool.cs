@@ -668,7 +668,7 @@ namespace Nethermind.TxPool
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
 
-                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost) || spec.MaxBlobCount < (ulong)tx.BlobVersionedHashes!.Length)
+                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost) || spec.MaxBlobCountPerTx < (ulong)tx.BlobVersionedHashes!.Length)
                         {
                             // balance too low, remove tx from the pool
                             _broadcaster.StopBroadcast(tx.Hash!);
