@@ -36,6 +36,14 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
+using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
+using Nethermind.Crypto;
+using System.Net;
+using Nethermind.Optimism.CL.Decoding;
+using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.CL.P2P;
 
 namespace Nethermind.Optimism;
 
@@ -276,26 +284,49 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IOptimismConfig config = _api.Config<IOptimismConfig>();
         if (config.ClEnabled)
         {
-            CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
+            ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
+            ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
+
+            CLChainSpecEngineParameters clParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
 
-            IOptimismOptimismRpcModule optimismRpcModule = new OptimismOptimismRpcModule();
-            _api.RpcModuleProvider.RegisterSingle(optimismRpcModule);
+            ArgumentNullException.ThrowIfNull(clParameters.UnsafeBlockSigner);
+            ArgumentNullException.ThrowIfNull(clParameters.Nodes);
+            ArgumentNullException.ThrowIfNull(clParameters.SystemConfigProxy);
+            ArgumentNullException.ThrowIfNull(clParameters.L2BlockTime);
+
+            IEthApi ethApi = new EthereumEthApi(config.L1EthApiEndpoint, _api.EthereumJsonSerializer, _api.LogManager);
+            IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), _api.EthereumJsonSerializer, _api.EthereumEcdsa, _logger);
+
+            IDecodingPipeline decodingPipeline = new DecodingPipeline(_logger);
+            IL1Bridge l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, clParameters, decodingPipeline, _logger);
+            IL1ConfigValidator l1ConfigValidator = new L1ConfigValidator(ethApi, _api.LogManager);
+
+            ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);
+            IL2Api l2Api = new L2Api(_api.OptimismEthRpcModule, opEngine, systemConfigDeriver, _logger);
+            IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _logger);
 
             _cl = new OptimismCL(
-                _api.SpecProvider,
-                chainSpecEngineParameters,
-                config,
-                _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa,
+                decodingPipeline,
+                l1Bridge,
+                l1ConfigValidator,
+                l2Api,
+                executionEngineManager,
                 _api.Timestamper,
-                _api.ChainSpec.Genesis.Timestamp,
-                _api!.LogManager,
-                _api.OptimismEthRpcModule,
+                // Configs
+                config,
+                clParameters,
                 _api.IpResolver.ExternalIp,
-                opEngine);
+                _api.SpecProvider.ChainId,
+                _api.ChainSpec.Genesis.Timestamp,
+                // Logging
+                _api.LogManager
+            );
             _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
             _api.DisposeStack.Push(_cl);
+
+            IOptimismOptimismRpcModule optimismRpcModule = new OptimismOptimismRpcModule(ethApi, l2Api, executionEngineManager, decodingPipeline);
+            _api.RpcModuleProvider.RegisterSingle(optimismRpcModule);
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
