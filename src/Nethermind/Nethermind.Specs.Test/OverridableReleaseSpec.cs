@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -196,5 +196,7 @@ namespace Nethermind.Specs.Test
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }
+
+        public ulong MaxBlobCountPerTx => _spec.MaxBlobCountPerTx;
     }
 }

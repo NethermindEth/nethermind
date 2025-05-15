@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -145,4 +145,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
+
+    public ulong MaxBlobCountPerTx => spec.MaxBlobCountPerTx;
 }
