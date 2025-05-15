@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -106,6 +107,18 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         // Needed for generating spam state.
         spec.Genesis.Header.GasLimit = 1_000_000_000;
         spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether());
+
+        spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
+        {
+            Code = Eip7002TestConstants.Code,
+            Nonce = Eip7002TestConstants.Nonce
+        };
+
+        spec.Allocations[Eip7251Constants.ConsolidationRequestPredeployAddress] = new ChainSpecAllocation
+        {
+            Code = Eip7251TestConstants.Code,
+            Nonce = Eip7251TestConstants.Nonce
+        };
 
         // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
         // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
