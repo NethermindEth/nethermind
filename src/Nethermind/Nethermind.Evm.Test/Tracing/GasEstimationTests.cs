@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -387,7 +388,7 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 _specProvider = MainnetSpecProvider.Instance;
                 MemDb stateDb = new();
-                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+                TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
                 _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);

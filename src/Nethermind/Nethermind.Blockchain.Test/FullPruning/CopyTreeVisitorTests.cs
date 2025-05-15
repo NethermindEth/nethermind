@@ -84,7 +84,7 @@ public class CopyTreeVisitorTests
     {
         LimboLogs logManager = LimboLogs.Instance;
         PatriciaTree trie = Build.A.Trie(new NodeStorage(trieDb, _keyScheme)).WithAccountsByIndex(0, 100).TestObject;
-        IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
+        IStateReader stateReader = new StateReader(TestTrieStoreFactory.Build(trieDb, logManager), new MemDb(), logManager);
 
         if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {
