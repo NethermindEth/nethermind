@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -45,6 +44,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
+            AddBlobScheduleTransitions(transitionTimestamps, _chainSpec.Parameters.BlobSchedule, _chainSpec.Genesis?.Timestamp ?? 0);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -84,6 +84,21 @@ namespace Nethermind.Specs.ChainSpecStyle
                             }
                         }
                     }
+                }
+            }
+
+            static void AddBlobScheduleTransitions(
+                SortedSet<ulong> transitions,
+                Dictionary<string, ChainSpecBlobCountJson> blobSchedule, ulong minValueExclusive)
+            {
+                foreach (ChainSpecBlobCountJson settings in blobSchedule.Values)
+                {
+                    if (settings.Timestamp <= minValueExclusive)
+                    {
+                        continue;
+                    }
+
+                    transitions.Add(settings.Timestamp.Value);
                 }
             }
 
@@ -249,46 +264,27 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
             }
 
-            SetMaxAndTargetBlobCount();
+            SetBlobScheduleParameters();
 
             return releaseSpec;
 
-            void SetMaxAndTargetBlobCount()
+            void SetBlobScheduleParameters()
             {
-                (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork();
-                if (fork is null) return;
+                ChainSpecBlobCountJson blobSchedule = chainSpec.Parameters.BlobSchedule.Values.OrderByDescending(x => x.Timestamp).FirstOrDefault(x => x.Timestamp <= releaseStartTimestamp);
 
-                if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name, out ChainSpecBlobCountJson blobCount) ||
-                    chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name, out blobCount))
+                if (blobSchedule is not null)
                 {
-                    releaseSpec.TargetBlobCount = blobCount.Target;
-                    releaseSpec.MaxBlobCount = blobCount.Max;
-                    releaseSpec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
+                    releaseSpec.TargetBlobCount = blobSchedule.Target;
+                    releaseSpec.MaxBlobCount = blobSchedule.Max;
+                    releaseSpec.BlobBaseFeeUpdateFraction = blobSchedule.BaseFeeUpdateFraction;
                 }
-                else
+                else if (releaseSpec.Eip4844TransitionTimestamp <= releaseStartTimestamp)
                 {
                     releaseSpec.TargetBlobCount = 3;
                     releaseSpec.MaxBlobCount = 6;
                     releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
                 }
             }
-            (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork()
-            {
-                if ((chainSpec.OsakaTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
-                {
-                    return (Osaka.Instance, Prague.Instance);
-                }
-
-                if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
-                {
-                    return (Prague.Instance, Cancun.Instance);
-                }
-
-                return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
-                    ? (Cancun.Instance, Shanghai.Instance)
-                    : (null, null);
-            }
-
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

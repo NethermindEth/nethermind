@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
@@ -19,6 +21,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -818,6 +822,199 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(3, 19), true, true, false);
             yield return new TestCaseData(new ForkActivation(3, 20), true, true, true);
             yield return new TestCaseData(new ForkActivation(3, 21), true, true, true);
+        }
+    }
+
+    [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
+    public void Test_BlobScheduleActivations((string fork, ulong timestamp, ulong? blobSetting)[] settings, ulong[] expectedActivationSettings)
+    {
+        ChainSpecBasedSpecProvider provider = new(new ChainSpec
+        {
+            Parameters = new ChainParameters
+            {
+                Eip3651TransitionTimestamp = 0,
+                Eip4844TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Cancun.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
+                Eip7002TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Prague.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
+                BlobSchedule = settings
+                        .Where(s => s.blobSetting is not null)
+                        .ToDictionary(x => x.fork, x => new ChainSpecBlobCountJson { Max = x.blobSetting!.Value, Timestamp = x.timestamp })
+            },
+            EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
+        });
+
+        ulong expectedGenesisSetting = expectedActivationSettings[0];
+        expectedActivationSettings = expectedActivationSettings[1..];
+
+        Assert.That(provider.TransitionActivations, Has.Length.EqualTo(expectedActivationSettings.Length));
+
+        IReleaseSpec spec = provider.GenesisSpec;
+        Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedGenesisSetting));
+
+        for (int i = 0; i < expectedActivationSettings.Length; i++)
+        {
+            spec = provider.GetSpec(new ForkActivation(0, provider.TransitionActivations[i].Timestamp));
+            Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[i]));
+        }
+    }
+
+    public static IEnumerable BlobScheduleActivationsTestCaseSource
+    {
+        get
+        {
+            const int NoneAllowed = 0;
+            const int Default = 6;
+            // Given fork cancun, prague or a bpo one, defines settings.
+            // For named forks blobSetting can be null, meaning fork happened with a change in blob schedule.
+            // Expected settings start with genesis setting followed by the settings for each activation.
+            static TestCaseData MakeData(string testName, (string fork, ulong timestamp, ulong? blobSetting)[] settings, ulong[] expectedActivationSettings)
+                => new([settings, expectedActivationSettings]) { TestName = $"BlobScheduleActivations: {testName}" };
+
+            yield return MakeData("Default", [
+                ("cancun", 1, 9),
+                ("prague", 2, 10)],
+                [NoneAllowed, 9, 10]);
+
+            yield return MakeData("Named only from genesis", [
+                ("cancun", 0, 10),
+                ("prague", 0, 10)],
+                [10]);
+
+            yield return MakeData("Default from genesis", [
+                ("cancun", 0, null),
+                ("prague", 0, null)],
+                [Default]);
+
+            yield return MakeData("Default from genesis + BPO", [
+                ("cancun", 0, null),
+                ("prague", 0, null),
+                ("bpo", 1, 7)],
+                [Default, 7]);
+
+            yield return MakeData("BPO from genesis", [
+                ("cancun", 0, null),
+                ("prague", 0, null),
+                ("bpo", 0, 7)],
+                [7]);
+
+            yield return MakeData("Default names are case ignored", [
+                ("Cancun", 1, 9),
+                ("PRAGUE", 2, 10)],
+                [NoneAllowed, 9, 10]);
+
+            yield return MakeData("A named fork has no change in settings", [
+                ("cancun", 1, 9),
+                ("prague", 2, null),
+                ("bpo", 3, 10)],
+                [NoneAllowed, 9, 9, 10]);
+
+            yield return MakeData("Cancun and Prague has default settings", [
+                ("cancun", 1, null),
+                ("prague", 2, null),
+                ("bpo", 3, 10)],
+                [NoneAllowed, Default, Default, 10]);
+
+            yield return MakeData("Multiple BPOs", [
+                ("cancun", 1, 5),
+                ("prague", 2, 6),
+                ("bpo1", 3, 10),
+                ("bpo2", 4, 12),
+                ("bpo3", 5, 10),
+                ("bpo4", 6, 10)],
+                [NoneAllowed, 5, 6, 10, 12, 10, 10]);
+
+            yield return MakeData("Multiple BPOs only", [
+                ("cancun", 1, null),
+                ("prague", 2, null),
+                ("bpo1", 3, 1),
+                ("bpo2", 4, 2),
+                ("bpo3", 5, 3),
+                ("bpo4", 6, 4)],
+                [NoneAllowed, Default, Default, 1, 2, 3, 4]);
+
+            yield return MakeData("BPOs between forks with settings not changed for a named fork", [
+                ("cancun", 1, null),
+                ("bpo", 2, 10),
+                ("prague", 3, null)],
+                [NoneAllowed, Default, 10, 10]);
+
+            yield return MakeData("BPOs between forks", [
+                ("cancun", 1, null),
+                ("bpo", 2, 10),
+                ("prague", 3, 11)],
+                [NoneAllowed, Default, 10, 11]);
+
+            yield return MakeData("BPOs between forks with lowered value", [
+                ("cancun", 1, null),
+                ("bpo", 2, 10),
+                ("prague", 3, 3)],
+                [NoneAllowed, Default, 10, 3]);
+
+            yield return MakeData("BPOs between forks with lowered value", [
+                ("cancun", 1, null),
+                ("bpo1", 2, 10),
+                ("bpo2", 3, 7),
+                ("prague", 4, 11)],
+                [NoneAllowed, Default, 10, 7, 11]);
+        }
+    }
+
+
+    [TestCaseSource(nameof(UnorderedBlobScheduleActivationsTestCaseSource))]
+    public void Test_BlobScheduleActivations_Declined((string fork, ulong timestamp, ulong? blobSetting)[] settings)
+    {
+        EthereumJsonSerializer serializer = new();
+        ChainSpecLoader loader = new(serializer);
+
+        ChainSpecJson chainSpecJson = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip3651TransitionTimestamp = 0,
+                Eip4844TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Cancun.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
+                Eip7002TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Prague.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
+                BlobSchedule = settings
+                         .Where(s => s.blobSetting is not null)
+                         .ToDictionary(x => x.fork, x => new ChainSpecBlobCountJson { Max = x.blobSetting!.Value, Timestamp = x.timestamp })
+            },
+            Engine = new ChainSpecJson.EngineJson
+            {
+                CustomEngineData = new Dictionary<string, JsonElement> { { "NethDev", serializer.Deserialize<JsonElement>("{}") } }
+            }
+        };
+
+        MemoryStream data = new(Encoding.UTF8.GetBytes(serializer.Serialize(chainSpecJson)));
+
+        Assert.Throws<InvalidDataException>(() => loader.Load(data), "Blob schedule should be ordered by timestamp");
+    }
+
+    public static IEnumerable UnorderedBlobScheduleActivationsTestCaseSource
+    {
+        get
+        {
+            // Given fork cancun, prague or a bpo one, defines settings.
+            // For named forks blobSetting can be null, meaning fork happened with a change in blob schedule.
+            static TestCaseData MakeData(string testName, params (string fork, ulong timestamp, ulong? blobSetting)[] settings)
+                => new([settings]) { TestName = $"UnorderedBlobScheduleActivations: {testName}" };
+
+            yield return MakeData("Default unsorted",
+                ("prague", 2, 10),
+                ("cancun", 1, 9));
+
+            yield return MakeData("Multiple BPOs unsorted",
+                ("bpo4", 6, 10),
+                ("bpo1", 3, 10),
+                ("cancun", 1, 5),
+                ("bpo2", 4, 12),
+                ("prague", 2, 6),
+                ("bpo3", 5, 10));
+
+            yield return MakeData("Multiple BPOs unsorted, with named fork settings omitted",
+                ("bpo4", 6, 10),
+                ("bpo1", 3, 10),
+                ("cancun", 1, null),
+                ("bpo2", 4, 12),
+                ("prague", 2, null),
+                ("bpo3", 5, 10));
         }
     }
 
