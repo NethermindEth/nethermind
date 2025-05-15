@@ -23,6 +23,9 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerGas { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public override UInt256? GasPrice { get; set; }
+
     [JsonConstructor]
     public EIP1559TransactionForRpc() { }
 
