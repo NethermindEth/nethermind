@@ -7,6 +7,7 @@ namespace Nethermind.Optimism.Cl.Rpc;
 
 /// <summary>
 /// Represents a snapshot of the rollup driver.
+/// Values may be zeroed if not yet initialized.
 /// </summary>
 /// <remarks>
 /// Spec: https://specs.optimism.io/protocol/rollup-node.html?utm_source=op-docs&utm_medium=docs#syncstatus

@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Optimism.CL.L1;
 using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL;
@@ -31,9 +30,19 @@ public sealed record L2BlockRef
     public required BlockId L1Origin { get; init; }
     public required ulong SequenceNumber { get; init; }
 
-    public static L2BlockRef From(L2Block block)
+    public static L2BlockRef Zero => new()
     {
-        return new L2BlockRef
+        Hash = Hash256.Zero,
+        Number = 0,
+        ParentHash = Hash256.Zero,
+        Timestamp = 0,
+        L1Origin = BlockId.Zero,
+        SequenceNumber = 0
+    };
+
+    public static L2BlockRef From(L2Block? block)
+    {
+        return block is null ? Zero : new L2BlockRef
         {
             Hash = block.Hash,
             Number = block.Number,

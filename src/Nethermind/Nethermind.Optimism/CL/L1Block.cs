@@ -42,6 +42,14 @@ public sealed record L1BlockRef
     public required Hash256 ParentHash { get; init; }
     public required ulong Timestamp { get; init; }
 
+    public static L1BlockRef Zero => new()
+    {
+        Hash = Hash256.Zero,
+        Number = 0,
+        ParentHash = Hash256.Zero,
+        Timestamp = 0
+    };
+
     public static L1BlockRef From(L1BlockInfo blockInfo)
     {
         return new L1BlockRef
@@ -53,14 +61,14 @@ public sealed record L1BlockRef
         };
     }
 
-    public static L1BlockRef From(L1Block block)
+    public static L1BlockRef From(L1Block? block)
     {
-        return new L1BlockRef
+        return block is null ? Zero : new L1BlockRef
         {
-            Hash = block.Hash,
-            Number = block.Number,
-            ParentHash = block.ParentHash,
-            Timestamp = (ulong)block.Timestamp // TODO: Potential unsafe cast
+            Hash = block.Value.Hash,
+            Number = block.Value.Number,
+            ParentHash = block.Value.ParentHash,
+            Timestamp = (ulong)block.Value.Timestamp // TODO: Potential unsafe cast
         };
     }
 }

@@ -14,6 +14,8 @@ public readonly record struct BlockId
     public ulong Number { get; private init; }
     public Hash256 Hash { get; private init; }
 
+    public static BlockId Zero => new() { Number = 0, Hash = Hash256.Zero };
+
     public static BlockId FromL2Block(L2Block? block) => block is null
         ? new() { Number = 0, Hash = Hash256.Zero }
         : new() { Number = block.Number, Hash = block.Hash };
