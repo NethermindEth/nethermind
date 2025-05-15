@@ -313,7 +313,7 @@ public class Startup
             }
         }));
 
-        if (healthChecksConfig.Enabled)
+        //if (healthChecksConfig.Enabled)
         {
             app.UseDefaultFiles();
             app.UseStaticFiles();

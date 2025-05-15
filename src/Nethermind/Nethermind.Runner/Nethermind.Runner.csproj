@@ -26,6 +26,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+    <PackageReference Include="Nethermind.UI" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="Pyroscope" />
     <PackageReference Include="System.CommandLine" />
@@ -73,6 +74,23 @@
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="wwwroot2\css\app.css" />
+    <Content Include="wwwroot2\favicon.webp" />
+    <Content Include="wwwroot2\fonts\dm-mono-latin-ext.woff2" />
+    <Content Include="wwwroot2\fonts\dm-mono-latin.woff2" />
+    <Content Include="wwwroot2\fonts\dm-sans-latin-ext.woff2" />
+    <Content Include="wwwroot2\fonts\dm-sans-latin.woff2" />
+    <Content Include="wwwroot2\fonts\exo-latin-ext.woff2" />
+    <Content Include="wwwroot2\fonts\exo-latin.woff2" />
+    <Content Include="wwwroot2\index.html" />
+    <Content Include="wwwroot2\js\bundle.js" />
+    <Content Include="wwwroot2\logos\base-logo.svg" />
+    <Content Include="wwwroot2\logos\ethereum-logo.svg" />
+    <Content Include="wwwroot2\logos\gnosis.png" />
+    <Content Include="wwwroot2\logos\perfnet.png" />
+    <Content Include="wwwroot2\logos\unknown.png" />
+    <Content Include="wwwroot2\logos\world-logo.svg" />
+    <Content Include="wwwroot2\nethermind.svg" />
     <None Include="configs\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
@@ -92,16 +110,12 @@
     <None Remove="scripts\utilities.ts" />
     <None Include="package.json" />
     <None Include="tsconfig.json" />
-    <Content Update="wwwroot\**">
+    <Content Update="wwwroot2\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="wwwroot\js\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -115,11 +129,11 @@
     <TypeScriptCompile Include="scripts\utilities.ts" />
   </ItemGroup>
 
-  <Target Name="JsBuild" BeforeTargets="PreBuildEvent">
+  <!--<Target Name="JsBuild" BeforeTargets="PreBuildEvent">
     <Exec Command="npm install" />
     <Exec Command="npm run build:dev" Condition="'$(Configuration)'=='Debug'" />
     <Exec Command="npm run build:release" Condition="'$(Configuration)'=='Release'" />
-  </Target>
+  </Target>-->
   
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
