@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;
 using System.Configuration;
 using Nethermind.Wallet;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.ExternalSigner.Plugin;
 
@@ -42,7 +43,9 @@ public class ClefSignerPlugin : INethermindPlugin
 
             string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
 
-            BasicJsonRpcClient rpcClient = new(uri, _nethermindApi!.EthereumJsonSerializer, _nethermindApi.LogManager, TimeSpan.FromSeconds(10));
+            IJsonSerializer ethereumJsonSerializer = new EthereumJsonSerializer(new[] { new ChecksumAddressConverter() });
+
+            BasicJsonRpcClient rpcClient = new(uri, ethereumJsonSerializer, _nethermindApi.LogManager, TimeSpan.FromSeconds(10));
             _nethermindApi.DisposeStack.Push(rpcClient);
 
             ClefWallet clefWallet = new(rpcClient);
