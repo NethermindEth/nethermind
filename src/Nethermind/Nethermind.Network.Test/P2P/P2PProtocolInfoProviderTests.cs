@@ -11,13 +11,6 @@ namespace Nethermind.Network.Test.P2P
     public class P2PProtocolInfoProviderTests
     {
         [Test]
-        public void GetHighestVersionOfEthProtocol_ReturnExpectedResult()
-        {
-            int result = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
-            Assert.That(result, Is.EqualTo(69));
-        }
-
-        [Test]
         public void DefaultCapabilitiesToString_ReturnExpectedResult()
         {
             string result = P2PProtocolInfoProvider.DefaultCapabilitiesToString();

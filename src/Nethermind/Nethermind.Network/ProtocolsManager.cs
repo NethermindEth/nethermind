@@ -44,7 +44,6 @@ namespace Nethermind.Network
             new(Protocol.Eth, 66),
             new(Protocol.Eth, 67),
             new(Protocol.Eth, 68),
-            new(Protocol.Eth, 69),
             new(Protocol.NodeData, 1)
         };
 
@@ -443,6 +442,27 @@ namespace Nethermind.Network
                     message.Dispose();
                 }
             }
+        }
+
+        public IEnumerable<Capability> GetCapabilities(string protocol)
+        {
+            foreach (Capability capability in _capabilities)
+            {
+                if (capability.ProtocolCode == protocol)
+                    yield return capability;
+            }
+        }
+
+        public int GetHighestProtocolVersion(string protocol)
+        {
+            int highestVersion = 0;
+            foreach (Capability capability in GetCapabilities(protocol))
+            {
+                if (highestVersion < capability.Version)
+                    highestVersion = capability.Version;
+            }
+
+            return highestVersion;
         }
     }
 }

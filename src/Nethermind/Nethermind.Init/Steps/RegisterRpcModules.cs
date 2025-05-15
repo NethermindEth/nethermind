@@ -191,6 +191,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
+        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
@@ -212,6 +213,7 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ProtocolsManager,
             secondsPerSlot);
     }
 
