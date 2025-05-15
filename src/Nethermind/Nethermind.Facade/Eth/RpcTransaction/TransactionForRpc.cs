@@ -65,7 +65,7 @@ public abstract class TransactionForRpc
     public abstract void EnsureDefaults(long? gasCap);
     public abstract bool ShouldSetBaseFee();
 
-    internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
+    internal class TransactionJsonConverter : JsonConverter<TransactionForRpc?>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
@@ -143,9 +143,10 @@ public abstract class TransactionForRpc
             return (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc? value, JsonSerializerOptions options)
         {
-            JsonSerializer.Serialize(writer, value, value.GetType(), options);
+            if (value is null) writer.WriteNullValue();
+            else JsonSerializer.Serialize(writer, value, value.GetType(), options);
         }
 
         public static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
