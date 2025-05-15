@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,7 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
@@ -48,15 +47,14 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
+        var (block, txHash) = ResolveBlockAndTxHash(blockHash, txIndex);
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options);
+        return TraceImpl(block, txHash, cancellationToken, options);
     }
 
     public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        return TraceBlockImpl(GetBlockToTrace(blockRlp), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
+        return TraceBlockImpl(ResolveBlock(blockRlp), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
     }
 
     public GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
@@ -66,31 +64,14 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        Block block = _blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
-        tx.Hash ??= tx.CalculateHash();
-        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
-        transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
+        var (block, txHash) = ResolveBlockAndTxHash(blockParameter, tx);
 
-        try
-        {
-            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
-        }
-        finally
-        {
-            transactionProcessorAdapter.CurrentAdapter = currentAdapter;
-        }
+        return TraceImpl(block, txHash, cancellationToken, options, ProcessingOptions.TraceTransactions);
     }
 
     public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)
     {
-        Hash256? blockHash = _receiptStorage.FindBlockHash(txHash);
-        if (blockHash is null)
-        {
-            return null;
-        }
-
-        Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+        var (block, _) = ResolveBlockAndTxHash(txHash);
         if (block is null)
         {
             return null;
@@ -101,42 +82,26 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
-        if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
+        var (block, txHash) = ResolveBlockAndTxHash(blockNumber, txIndex);
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options);
+        return TraceImpl(block, txHash, cancellationToken, options);
     }
 
     public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
-        if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
+        var (block, txHash) = ResolveBlockAndTxHash(blockNumber, tx);
 
-        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, worldState, specProvider);
-        try
-        {
-            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken), cancellationToken);
-            return blockTracer.BuildResult().SingleOrDefault();
-        }
-        catch
-        {
-            blockTracer.TryDispose();
-            throw;
-        }
+        return TraceImpl(block, txHash, cancellationToken, options);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        var block = _blockTree.FindBlock(blockParameter);
-
-        return TraceBlockImpl(block, options, cancellationToken);
+        return TraceBlockImpl(ResolveBlock(blockParameter), options, cancellationToken);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        return TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken);
+        return TraceBlockImpl(ResolveBlock(blockRlp), options, cancellationToken);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken)
@@ -149,7 +114,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        var block = _blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+        var block = ResolveBlock(blockHash);
 
         if (!block.IsGenesis)
         {
@@ -171,11 +136,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        var block = _badBlockStore
-                        .GetAll()
-                        .FirstOrDefault(b => b.Hash == blockHash)
-                    ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-
+        var block = ResolveBadBlock(blockHash);
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
@@ -191,6 +152,13 @@ public class GethStyleTracer(
         using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, worldState, specProvider);
 
+        ITransactionProcessorAdapter? currentAdapter = null;
+        if (processingOptions.HasFlag(ProcessingOptions.TraceTransactions))
+        {
+            currentAdapter = transactionProcessorAdapter.CurrentAdapter;
+            transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
+        }
+
         try
         {
             _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
@@ -200,6 +168,13 @@ public class GethStyleTracer(
         {
             tracer.TryDispose();
             throw;
+        }
+        finally
+        {
+            if (currentAdapter is not null)
+            {
+                transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+            }
         }
     }
 
@@ -240,14 +215,89 @@ public class GethStyleTracer(
         }
     }
 
-    private static Block GetBlockToTrace(Rlp blockRlp)
+    private (Block? block, Hash256 txHash) ResolveBlockAndTxHash(Hash256 txHash)
+    {
+        Hash256? blockHash = _receiptStorage.FindBlockHash(txHash);
+        if (blockHash is null)
+        {
+            return (null, default);
+        }
+
+        return (_blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical), blockHash);
+    }
+
+    private (Block block, Hash256 txHash) ResolveBlockAndTxHash(Hash256 blockHash, int txIndex)
+    {
+        Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)
+                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+
+        if (txIndex > block.Transactions.Length - 1)
+            throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
+
+        return (block, block.Transactions[txIndex].Hash);
+    }
+
+    private (Block block, Hash256 txHash) ResolveBlockAndTxHash(long blockNumber, int txIndex)
+    {
+        Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical)
+                     ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
+
+        if (txIndex > block.Transactions.Length - 1)
+            throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
+
+        return (block, block.Transactions[txIndex].Hash);
+    }
+
+    private (Block block, Hash256 txHash) ResolveBlockAndTxHash(BlockParameter blockParameter, Transaction tx)
+    {
+        Block block = _blockTree.FindBlock(blockParameter)
+                     ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
+
+        tx.Hash ??= tx.CalculateHash();
+        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
+
+        return (block, tx.Hash);
+    }
+
+    private (Block block, Hash256 txHash) ResolveBlockAndTxHash(long blockNumber, Transaction tx)
+    {
+        Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical)
+                     ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
+
+        if (tx.Hash is null)
+            throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
+
+        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
+
+        return (block, tx.Hash);
+    }
+
+    private Block ResolveBlock(Hash256 blockHash)
+    {
+        return _blockTree.FindBlock(blockHash)
+               ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+    }
+
+    private Block? ResolveBlock(BlockParameter parameter)
+    {
+        return _blockTree.FindBlock(parameter);
+    }
+
+    private static Block ResolveBlock(Rlp blockRlp)
     {
         Block block = Rlp.Decode<Block>(blockRlp);
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;
         }
-
         return block;
+    }
+
+    private Block ResolveBadBlock(Hash256 blockHash)
+    {
+        return _badBlockStore
+                .GetAll()
+                .FirstOrDefault(b => b.Hash == blockHash)
+            ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
     }
 }
