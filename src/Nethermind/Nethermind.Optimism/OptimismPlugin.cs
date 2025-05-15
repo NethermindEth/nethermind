@@ -289,6 +289,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
             CLChainSpecEngineParameters clParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
+            OptimismChainSpecEngineParameters engineParameters = chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
 
             ArgumentNullException.ThrowIfNull(clParameters.UnsafeBlockSigner);
             ArgumentNullException.ThrowIfNull(clParameters.Nodes);
@@ -325,7 +327,14 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
             _api.DisposeStack.Push(_cl);
 
-            IOptimismOptimismRpcModule optimismRpcModule = new OptimismOptimismRpcModule(ethApi, l2Api, executionEngineManager, decodingPipeline);
+            IOptimismOptimismRpcModule optimismRpcModule = new OptimismOptimismRpcModule(
+                ethApi,
+                l2Api,
+                executionEngineManager,
+                decodingPipeline,
+                clParameters,
+                engineParameters,
+                _api.ChainSpec);
             _api.RpcModuleProvider.RegisterSingle(optimismRpcModule);
         }
 

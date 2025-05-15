@@ -8,6 +8,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism.Cl.Rpc;
 
@@ -15,7 +16,10 @@ public class OptimismOptimismRpcModule(
     IEthApi l1Api,
     IL2Api l2Api,
     IExecutionEngineManager executionEngineManager,
-    IDecodingPipeline decodingPipeline
+    IDecodingPipeline decodingPipeline,
+    CLChainSpecEngineParameters clParameters,
+    OptimismChainSpecEngineParameters engineParameters,
+    ChainSpec chainSpec
 ) : IOptimismOptimismRpcModule
 {
     public Task<ResultWrapper<int>> optimism_outputAtBlock()
@@ -23,9 +27,10 @@ public class OptimismOptimismRpcModule(
         return ResultWrapper<int>.Success(0);
     }
 
-    public Task<ResultWrapper<int>> optimism_rollupConfig()
+    public Task<ResultWrapper<OptimismRollupConfig>> optimism_rollupConfig()
     {
-        return ResultWrapper<int>.Success(0);
+        var config = OptimismRollupConfig.Build(clParameters, engineParameters, chainSpec);
+        return ResultWrapper<OptimismRollupConfig>.Success(config);
     }
 
     public async Task<ResultWrapper<OptimismSyncStatus>> optimism_syncStatus()

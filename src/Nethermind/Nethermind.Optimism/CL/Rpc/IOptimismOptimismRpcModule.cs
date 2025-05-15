@@ -124,11 +124,43 @@ public interface IOptimismOptimismRpcModule : IRpcModule
     public Task<ResultWrapper<OptimismSyncStatus>> optimism_syncStatus();
 
     [JsonRpcMethod(
-        IsImplemented = false,
-        Description = "TODO",
+        IsImplemented = true,
+        Description = "Get the rollup configuration parameters.",
         IsSharable = true,
-        ExampleResponse = "TODO")]
-    public Task<ResultWrapper<int>> optimism_rollupConfig();
+        ExampleResponse = """
+        {
+            "genesis": {
+                "l1": {
+                    "hash": "0x48f520cf4ddaf34c8336e6e490632ea3cf1e5e93b0b2bc6e917557e31845371b",
+                    "number": 4071408
+                },
+                "l2": {
+                    "hash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
+                    "number": 0
+                },
+                "l2_time": 1691802540,
+                "system_config": {
+                    "batcherAddr": "0x8f23bb38f531600e5d8fddaaec41f13fab46e98c",
+                    "overhead": "0x00000000000000000000000000000000000000000000000000000000000000bc",
+                    "scalar": "0x00000000000000000000000000000000000000000000000000000000000a6fe0",
+                    "gasLimit": 30000000
+                }
+            },
+            "block_time": 2,
+            "max_sequencer_drift": 600,
+            "seq_window_size": 3600,
+            "channel_timeout": 300,
+            "l1_chain_id": 11155111,
+            "l2_chain_id": 11155420,
+            "regolith_time": 0,
+            "canyon_time": 1699981200,
+            "batch_inbox_address": "0xff00000000000000000000000000000011155420",
+            "deposit_contract_address": "0x16fc5058f25648194471939df75cf27a2fdc48bc",
+            "l1_system_config_address": "0x034edd2a225f7f429a63e0f1d2084b9e0a93b538",
+            "protocol_versions_address": "0x79add5713b383daa0a138d3c4780c7a1804a8090"
+        }
+        """)]
+    public Task<ResultWrapper<OptimismRollupConfig>> optimism_rollupConfig();
 
     [JsonRpcMethod(
         IsImplemented = true,
