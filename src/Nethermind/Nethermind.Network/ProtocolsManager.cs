@@ -11,6 +11,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
@@ -85,7 +86,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
-            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
+            [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,

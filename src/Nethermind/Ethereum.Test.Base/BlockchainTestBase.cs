@@ -74,9 +74,9 @@ public abstract class BlockchainTestBase
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
     {
-        TestContext.Out.WriteLine($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+        _logger.Info($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
-            TestContext.Out.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
+            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
