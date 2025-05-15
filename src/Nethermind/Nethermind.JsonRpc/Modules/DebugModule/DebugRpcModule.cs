@@ -539,6 +539,11 @@ public class DebugRpcModule : IDebugRpcModule
                 error = GetRlpDecodingFailureResult<TResult>(blockRlp);
                 return null;
             }
+
+            if (block.TotalDifficulty is null)
+            {
+                block.Header.TotalDifficulty = 1;
+            }
         }
         catch (RlpException)
         {
