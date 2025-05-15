@@ -263,8 +263,6 @@ namespace Nethermind.TxPool
                             // Sequential block, just remove changed accounts from cache
                             _accountCache.RemoveAccounts(accountChanges);
                         }
-                        args.Block.AccountChanges = null;
-                        accountChanges?.Dispose();
 
                         _lastBlockNumber = args.Block.Number;
                         _lastBlockHash = args.Block.Hash;
@@ -288,6 +286,12 @@ namespace Nethermind.TxPool
                     }
                     finally
                     {
+                        if (args.Block is {} block)
+                        {
+                            block.AccountChanges?.Dispose();
+                            block.AccountChanges = null;
+                        }
+
                         _newHeadLock.ExitWriteLock();
                     }
                 }
