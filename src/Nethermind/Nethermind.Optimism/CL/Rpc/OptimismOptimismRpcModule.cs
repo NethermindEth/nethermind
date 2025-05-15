@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Optimism.CL;
+using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.Cl.Rpc;
@@ -12,7 +14,8 @@ namespace Nethermind.Optimism.Cl.Rpc;
 public class OptimismOptimismRpcModule(
     IEthApi l1Api,
     IL2Api l2Api,
-    IExecutionEngineManager executionEngineManager
+    IExecutionEngineManager executionEngineManager,
+    IDecodingPipeline decodingPipeline
 ) : IOptimismOptimismRpcModule
 {
     public Task<ResultWrapper<int>> optimism_outputAtBlock()
@@ -28,6 +31,16 @@ public class OptimismOptimismRpcModule(
     public async Task<ResultWrapper<OptimismSyncStatus>> optimism_syncStatus()
     {
         // TODO: We need to use `fullTxs` due to serialization issues
+
+        var currentL1 = L1BlockRef.Zero;
+        if (decodingPipeline.DecodedBatchesReader.TryPeek(out var pendingBatch))
+        {
+            var currentL1Block = await l1Api.GetBlockByNumber(pendingBatch.L1OriginNum, fullTxs: true);
+            // NOTE: If we got a batch from this block, then the L1 client must have it
+            ArgumentNullException.ThrowIfNull(currentL1Block);
+            currentL1 = L1BlockRef.From(currentL1Block.Value);
+        }
+
         var headL1 = l1Api.GetHead(true);
         var safeL1 = l1Api.GetSafe(true);
         var finalizedL1 = l1Api.GetFinalized(true);
@@ -41,19 +54,17 @@ public class OptimismOptimismRpcModule(
         var syncStatus = new OptimismSyncStatus
         {
             // L1
-            // TODO: Nullables
-            HeadL1 = L1BlockRef.From((await headL1).Value),
-            SafeL1 = L1BlockRef.From((await safeL1).Value),
-            FinalizedL1 = L1BlockRef.From((await finalizedL1).Value),
+            CurrentL1 = currentL1,
+            HeadL1 = L1BlockRef.From(await headL1),
+            SafeL1 = L1BlockRef.From(await safeL1),
+            FinalizedL1 = L1BlockRef.From(await finalizedL1),
             // L2
             UnsafeL2 = L2BlockRef.From(await unsafeL2),
             SafeL2 = L2BlockRef.From(await safeL2),
             FinalizedL2 = L2BlockRef.From(await finalizedL2),
             // TODO
-            CurrentL1 = null!,
-            CurrentL1Finalized = null!,
-            PendingSafeL2 = null!,
-            QueuedUnsafeL2 = null!,
+            PendingSafeL2 = L2BlockRef.Zero,
+            QueuedUnsafeL2 = L2BlockRef.Zero,
         };
         return ResultWrapper<OptimismSyncStatus>.Success(syncStatus);
     }
