@@ -212,7 +212,7 @@ public class NibblePathTests
     [TestCase(12)]
     public void Ref_FromNibbles(int count)
     {
-        var nibbles = Enumerable.Range(1, count).Select(i=>(byte)i).ToArray();
+        var nibbles = Enumerable.Range(1, count).Select(i => (byte)i).ToArray();
 
         var path = NibblePath.ByRef.FromNibbles(nibbles, stackalloc byte[5]);
 
@@ -260,5 +260,26 @@ public class NibblePathTests
         NibblePath actual = path.Slice(from, length);
 
         actual.Equals(expected).Should().BeTrue();
+    }
+
+    [TestCase(new byte[] { 1 })]
+    [TestCase(new byte[] { 1, 2 })]
+    [TestCase(new byte[] { 0xA, 0xB, 0xC })]
+    [TestCase(new byte[] { 0xA, 0xB, 0xC, 0xD })]
+    public void Equals(byte[] nibbles)
+    {
+        var pathRef = NibblePath.ByRef.FromNibbles(nibbles, stackalloc byte[12]);
+        var path = NibblePath.FromNibbles(nibbles);
+
+        pathRef.Equals(path).Should().BeTrue();
+    }
+
+    [Test(Description = "A sanity check for equals not returning just true.")]
+    public void Equals_not()
+    {
+        var pathRef = NibblePath.ByRef.FromNibbles([1, 2], stackalloc byte[12]);
+        var path = NibblePath.Single(3);
+
+        pathRef.Equals(path).Should().BeFalse();
     }
 }

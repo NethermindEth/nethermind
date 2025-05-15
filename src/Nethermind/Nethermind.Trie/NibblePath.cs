@@ -260,18 +260,11 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public bool Equals(NibblePath other)
     {
+        // TODO: consider optimizing?
         return other._data.AsSpan().SequenceEqual(_data.AsSpan());
     }
 
-    public override bool Equals(object? obj)
-    {
-        if (obj is NibblePath other)
-        {
-            return Equals(other);
-        }
-
-        return false;
-    }
+    public override bool Equals(object? obj) => obj is NibblePath other && Equals(other);
 
     public override int GetHashCode()
     {
@@ -287,6 +280,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public static readonly NibblePath Empty = new([0]);
 
+    // TODO: optimize: unroll, use Unsafe and refs, length split, and potentially vectorized shuffling.
     public static NibblePath FromNibbles(ReadOnlySpan<byte> nibbles)
     {
         var bytes = new byte[GetRequiredArraySize(nibbles.Length)];
@@ -382,6 +376,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     public override string ToString() => ToHexString();
 
+
+    // TODO: optimize, either by packing the remaining first, or unrolling the loop heaviy + vectors
     public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
     {
         var max = Math.Min(Length, remaining.Length);
@@ -484,7 +480,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
             if ((_data & OddFlag) == (other._data & OddFlag))
             {
-                // aligned oddity or not
+                // TODO: optimize
             }
 
             // slow case of misaligned
@@ -575,8 +571,11 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             if (other.Length != Length)
                 return false;
 
-            return MemoryMarshal.CreateReadOnlySpan(in _data, other.Length)
-                .SequenceEqual(other._data);
+            // TODO: consider not using sequence equal here?
+
+            // We use the fact that the length is the same, so that the NibblePath.Ref can use it to create a span.
+            var d = other._data;
+            return MemoryMarshal.CreateReadOnlySpan(in _data, d.Length).SequenceEqual(d);
         }
     }
 
