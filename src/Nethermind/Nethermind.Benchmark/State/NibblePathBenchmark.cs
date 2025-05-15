@@ -8,6 +8,8 @@ using Nethermind.Trie;
 
 namespace Nethermind.Benchmarks.State;
 
+[DisassemblyDiagnoser]
+[MemoryDiagnoser]
 public class NibblePathBenchmark
 {
     private static readonly byte[][] Nibbles =
