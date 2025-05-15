@@ -11,8 +11,8 @@ namespace Nethermind.Optimism.CL;
 /// </summary>
 public readonly record struct BlockId
 {
-    public ulong Number { get; private init; }
-    public Hash256 Hash { get; private init; }
+    public ulong Number { get; init; }
+    public Hash256 Hash { get; init; }
 
     public static BlockId Zero => new() { Number = 0, Hash = Hash256.Zero };
 
