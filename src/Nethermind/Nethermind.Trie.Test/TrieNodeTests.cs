@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -424,9 +425,14 @@ public class TrieNodeTests
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
         visitor.VisitExtensionReceived[(TreePath.Empty, node)].Should().Be(1);
-        visitor.VisitLeafReceived[
-            (new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1),
-                ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+        (TreePath path, TrieNode, byte[]) expected = (new(new(Bytes.FromHexString("0xaa00000000000000000000000000000000000000000000000000000000000000")), 2),
+            ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray());
+
+        (TreePath path, TrieNode, byte[]) actual = visitor.VisitLeafReceived.Keys.Single();
+
+        actual.Should().BeEquivalentTo(expected);
+
+        visitor.VisitLeafReceived[expected].Should().Be(1);
     }
 
     [Test]
