@@ -12,9 +12,15 @@ namespace Nethermind.Init.Modules;
 
 public static class ContainerBuilderExtensions
 {
-    // Register some set of component that is meant to expose `INetworkStorage`.
-    // These are stored outside of rocksdb using `SimpleFilePublicKeyDb`.
-    public static ContainerBuilder AddNetworkStorage(this ContainerBuilder builder, string dbName)
+    /// <summary>
+    /// Register some set of component that is meant to expose `INetworkStorage`.
+    /// These are stored outside of rocksdb using `SimpleFilePublicKeyDb`.
+    /// </summary>
+    /// <param name="builder">The container builder</param>
+    /// <param name="dbName">Service key</param>
+    /// <param name="storePath">Path relative to BaseDbPath to store db</param>
+    /// <returns></returns>
+    public static ContainerBuilder AddNetworkStorage(this ContainerBuilder builder, string dbName, string storePath)
     {
         return builder
             .AddKeyedSingleton<IFullDb>(dbName, ctx =>
@@ -24,7 +30,7 @@ public static class ContainerBuilderExtensions
 
                 return initConfig.DiagnosticMode == DiagnosticMode.MemDb
                     ? new MemDb(dbName)
-                    : new SimpleFilePublicKeyDb(dbName, dbName.GetApplicationResourcePath(initConfig.BaseDbPath),
+                    : new SimpleFilePublicKeyDb(dbName, storePath.GetApplicationResourcePath(initConfig.BaseDbPath),
                         logManager);
             })
             .AddKeyedSingleton<IDb>(dbName, ctx => ctx.ResolveKeyed<IFullDb>(dbName))
