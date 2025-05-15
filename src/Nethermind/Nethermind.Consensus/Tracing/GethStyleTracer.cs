@@ -45,70 +45,6 @@ public class GethStyleTracer(
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     private readonly IOverridableTxProcessorSource _env = env ?? throw new ArgumentNullException(nameof(env));
 
-    public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        var (block, txHash) = ResolveBlockAndTxHash(blockHash, txIndex);
-
-        return TraceImpl(block, txHash, cancellationToken, options);
-    }
-
-    public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(ResolveBlock(blockRlp), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
-    }
-
-    public GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(block, options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
-    }
-
-    public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        var (block, txHash) = ResolveBlockAndTxHash(blockParameter, tx);
-
-        return TraceImpl(block, txHash, cancellationToken, options, ProcessingOptions.TraceTransactions);
-    }
-
-    public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)
-    {
-        var (block, _) = ResolveBlockAndTxHash(txHash);
-        if (block is null)
-        {
-            return null;
-        }
-
-        return TraceImpl(block, txHash, cancellationToken, traceOptions);
-    }
-
-    public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        var (block, txHash) = ResolveBlockAndTxHash(blockNumber, txIndex);
-
-        return TraceImpl(block, txHash, cancellationToken, options);
-    }
-
-    public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        var (block, txHash) = ResolveBlockAndTxHash(blockNumber, tx);
-
-        return TraceImpl(block, txHash, cancellationToken, options);
-    }
-
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(ResolveBlock(blockParameter), options, cancellationToken);
-    }
-
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(ResolveBlock(blockRlp), options, cancellationToken);
-    }
-
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(block, options, cancellationToken);
-    }
-
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(blockHash);
@@ -144,16 +80,16 @@ public class GethStyleTracer(
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
-        ProcessingOptions processingOptions = ProcessingOptions.Trace)
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(GethStyleTracerRequest request, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(txHash);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Block);
 
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, worldState, specProvider);
+        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(request.Block.Header, request.Options.StateOverrides);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(request.Block.Header, request.Options, worldState, specProvider);
 
         ITransactionProcessorAdapter? currentAdapter = null;
-        if (processingOptions.HasFlag(ProcessingOptions.TraceTransactions))
+        if (request.ProcessingOptions.HasFlag(ProcessingOptions.TraceTransactions))
         {
             currentAdapter = transactionProcessorAdapter.CurrentAdapter;
             transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
@@ -161,8 +97,8 @@ public class GethStyleTracer(
 
         try
         {
-            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
-            return tracer.BuildResult().SingleOrDefault();
+            _processor.Process(request.Block, request.ProcessingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
+            return tracer.BuildResult();
         }
         catch
         {
@@ -178,17 +114,66 @@ public class GethStyleTracer(
         }
     }
 
-    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
-        options switch
-        {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
-            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
-            _ => new GethLikeBlockMemoryTracer(options),
-        };
-
-    private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace Trace(GethStyleTracerRequest request, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(block);
+        ArgumentNullException.ThrowIfNull(request.TxHash);
+
+        return TraceBlock(request, cancellationToken).SingleOrDefault();
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(Hash256 txHash, GethTraceOptions options)
+    {
+        var (block, resolvedTxHash) = ResolveBlockAndTxHash(txHash);
+        if (block is null)
+        {
+            return null;
+        }
+
+        return new GethStyleTracerRequest(block, resolvedTxHash, options);
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(long blockNumber, Transaction transaction, GethTraceOptions options)
+    {
+        var (block, txHash) = ResolveBlockAndTxHash(blockNumber, transaction);
+        return new GethStyleTracerRequest(block, txHash, options);
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(long blockNumber, int txIndex, GethTraceOptions options)
+    {
+        var (block, txHash) = ResolveBlockAndTxHash(blockNumber, txIndex);
+        return new GethStyleTracerRequest(block, txHash, options);
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(Hash256 blockHash, int txIndex, GethTraceOptions options)
+    {
+        var (block, txHash) = ResolveBlockAndTxHash(blockHash, txIndex);
+        return new GethStyleTracerRequest(block, txHash, options);
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(Rlp blockRlp, Hash256 txHash, GethTraceOptions options)
+    {
+        Block block = ResolveBlock(blockRlp);
+        return new GethStyleTracerRequest(block, txHash, options with { TxHash = txHash });
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(Block block, Hash256 txHash, GethTraceOptions options)
+    {
+        return new GethStyleTracerRequest(block, txHash, options with { TxHash = txHash });
+    }
+
+    public GethStyleTracerRequest? ResolveTraceRequest(BlockParameter blockParameter, Transaction tx, GethTraceOptions options)
+    {
+        var (block, txHash) = ResolveBlockAndTxHash(blockParameter, tx);
+        return new GethStyleTracerRequest(block, txHash, options, ProcessingOptions.TraceTransactions);
+    }
+
+    public GethStyleTracerRequest? ResolveTraceBlockRequest(BlockParameter blockParameter, GethTraceOptions options)
+    {
+        Block? block = ResolveBlock(blockParameter);
+        if (block is null)
+        {
+            return null;
+        }
 
         if (!block.IsGenesis)
         {
@@ -201,19 +186,37 @@ public class GethStyleTracer(
             if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
         }
 
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, worldState, specProvider);
-        try
-        {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
-            return new GethLikeTxTraceCollection(tracer.BuildResult());
-        }
-        catch
-        {
-            tracer.TryDispose();
-            throw;
-        }
+        return new GethStyleTracerRequest(block, null, options);
     }
+
+    public GethStyleTracerRequest? ResolveTraceBlockRequest(Rlp blockRlp, GethTraceOptions options)
+    {
+        return ResolveTraceBlockRequest(ResolveBlock(blockRlp), options);
+    }
+
+    public GethStyleTracerRequest? ResolveTraceBlockRequest(Block block, GethTraceOptions options)
+    {
+        if (!block.IsGenesis)
+        {
+            BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+            if (parent?.Hash is null)
+            {
+                throw new InvalidOperationException("Cannot trace blocks with invalid parents");
+            }
+
+            if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
+        }
+
+        return new GethStyleTracerRequest(block, null, options);
+    }
+
+    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
+        options switch
+        {
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
+            _ => new GethLikeBlockMemoryTracer(options),
+        };
 
     private (Block? block, Hash256 txHash) ResolveBlockAndTxHash(Hash256 txHash)
     {
@@ -223,7 +226,7 @@ public class GethStyleTracer(
             return (null, default);
         }
 
-        return (_blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical), blockHash);
+        return (_blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical), txHash);
     }
 
     private (Block block, Hash256 txHash) ResolveBlockAndTxHash(Hash256 blockHash, int txIndex)
