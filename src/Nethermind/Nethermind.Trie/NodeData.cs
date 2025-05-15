@@ -79,7 +79,10 @@ public class ExtensionData : INodeWithKey
         }
     }
 
-    public ExtensionData() { }
+    public ExtensionData()
+    {
+        Key = NibblePath.Empty;
+    }
 
     internal ExtensionData(NibblePath key)
     {
@@ -116,7 +119,10 @@ public class LeafData : INodeWithKey
     public ref readonly CappedArray<byte> Value => ref _value;
     public TrieNode? StorageRoot { get; set; }
 
-    public LeafData() { }
+    public LeafData()
+    {
+        Key = NibblePath.Empty;
+    }
 
     internal LeafData(NibblePath key, in CappedArray<byte> value)
     {

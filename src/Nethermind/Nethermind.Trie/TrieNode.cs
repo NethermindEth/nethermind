@@ -316,7 +316,6 @@ namespace Nethermind.Trie
                 _blockAndFlags |= _dirtyMask;
             }
             _nodeData = CreateNodeData(nodeType);
-
             _rlp = rlp.AsRlpFactory();
         }
 

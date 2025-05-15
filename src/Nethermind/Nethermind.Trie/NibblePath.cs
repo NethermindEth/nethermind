@@ -41,8 +41,9 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         _data = data;
     }
 
-    public int MemorySize =>
-        _data is not null ? (int)MemorySizes.Align(_data.Length + MemorySizes.ArrayOverhead) : 0;
+    public int MemorySize => _data is null || ReferenceEquals(_data, EmptyBytes)
+        ? 0
+        : (int)MemorySizes.Align(_data.Length + MemorySizes.ArrayOverhead);
 
     /// <summary>
     /// The number of bytes needed to encode the nibble path.
@@ -278,7 +279,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         };
     }
 
-    public static readonly NibblePath Empty = new([0]);
+    private static readonly byte[] EmptyBytes = [0];
+    public static readonly NibblePath Empty = new(EmptyBytes);
 
     // TODO: optimize: unroll, use Unsafe and refs, length split, and potentially vectorized shuffling.
     public static NibblePath FromNibbles(ReadOnlySpan<byte> nibbles)
