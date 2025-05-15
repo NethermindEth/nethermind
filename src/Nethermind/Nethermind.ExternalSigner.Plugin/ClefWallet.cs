@@ -127,7 +127,7 @@ namespace Nethermind.ExternalSigner.Plugin
                 transactionForRpc).GetAwaiter().GetResult();
             if (signed is null || signed.Tx is null) ThrowInvalidOperationSignFailed();
 
-            transaction.Signature = new Signature(signed.Tx.R!.Value, signed.Tx.S!.Value, (ulong)(signed.Tx.V! + Signature.VOffset));
+            transaction.Signature = new Signature(signed.Tx.R!.Value, signed.Tx.S!.Value, signed.Tx.V != 0 ? (ulong)(signed.Tx.V!) : (ulong)(signed.Tx.V!) + Signature.VOffset);
         }
 
         public Signature SignMessage(byte[] message, Address address)
