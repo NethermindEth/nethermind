@@ -90,7 +90,7 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
-                if (node.Key.IsNull)
+                if (node.Key.IsNullOrEmpty)
                 {
                     ThrowNullKey(node);
                 }

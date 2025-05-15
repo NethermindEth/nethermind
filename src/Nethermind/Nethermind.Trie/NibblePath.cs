@@ -53,6 +53,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     public int Length => (_data!.Length - PreambleLength) * NibblesPerByte + ((_data[0] & OddFlag) >> OddFlagShift);
 
     public bool IsNull => _data is null;
+    public bool IsNullOrEmpty => _data is null || ReferenceEquals(_data, EmptyBytes);
 
     /// <summary>
     /// The odd flag of the Ethereum encoding, used for oddity of in memory representation as well.
