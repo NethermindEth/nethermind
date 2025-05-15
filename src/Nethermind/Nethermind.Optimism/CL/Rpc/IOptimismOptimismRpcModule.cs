@@ -59,8 +59,8 @@ public interface IOptimismOptimismRpcModule : IRpcModule
                 "parentHash": "0x935b94ec0bac0e63c67a870b1a97d79e3fa84dda86d31996516cb2f940753f53",
                 "timestamp": 1696478728,
                 "l1origin": {
-                "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
-                "number": 4427339
+                    "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
+                    "number": 4427339
                 },
                 "sequenceNumber": 3
             },
@@ -70,8 +70,8 @@ public interface IOptimismOptimismRpcModule : IRpcModule
                 "parentHash": "0x935b94ec0bac0e63c67a870b1a97d79e3fa84dda86d31996516cb2f940753f53",
                 "timestamp": 1696478728,
                 "l1origin": {
-                "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
-                "number": 4427339
+                    "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
+                    "number": 4427339
                 },
                 "sequenceNumber": 3
             },
@@ -81,8 +81,8 @@ public interface IOptimismOptimismRpcModule : IRpcModule
                 "parentHash": "0x7e7f36cba1fd1ccdcdaa81577a1732776a01c0108ab5f98986cf997724eb48ac",
                 "timestamp": 1696478424,
                 "l1origin": {
-                "hash": "0x983309dadf7e0ab8447f3050f2a85b179e9acde1cd884f883fb331908c356412",
-                "number": 4427314
+                    "hash": "0x983309dadf7e0ab8447f3050f2a85b179e9acde1cd884f883fb331908c356412",
+                    "number": 4427314
                 },
                 "sequenceNumber": 7
             },
@@ -92,8 +92,8 @@ public interface IOptimismOptimismRpcModule : IRpcModule
                 "parentHash": "0x935b94ec0bac0e63c67a870b1a97d79e3fa84dda86d31996516cb2f940753f53",
                 "timestamp": 1696478728,
                 "l1origin": {
-                "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
-                "number": 4427339
+                    "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
+                    "number": 4427339
                 },
                 "sequenceNumber": 3
             },
@@ -103,8 +103,8 @@ public interface IOptimismOptimismRpcModule : IRpcModule
                 "parentHash": "0x284b7dc92bac97be8ec3b2cf548e75208eb288704de381f2557938ecdf86539d",
                 "timestamp": 1699912130,
                 "l1origin": {
-                "hash": "0x1490a63c372090a0331e05e63ec6a7a6e84835f91776306531f28b4217394d76",
-                "number": 4688196
+                    "hash": "0x1490a63c372090a0331e05e63ec6a7a6e84835f91776306531f28b4217394d76",
+                    "number": 4688196
                 },
                 "sequenceNumber": 2
             },
@@ -114,12 +114,12 @@ public interface IOptimismOptimismRpcModule : IRpcModule
                 "parentHash": "0x935b94ec0bac0e63c67a870b1a97d79e3fa84dda86d31996516cb2f940753f53",
                 "timestamp": 1696478728,
                 "l1origin": {
-                "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
-                "number": 4427339
+                    "hash": "0x38731e0a6eeb40091f0c4a00650e911c57d054aaeb5b158f55cd5705fa6a3ebf",
+                    "number": 4427339
                 },
                 "sequenceNumber": 3
             }
-            }
+        }
         """)]
     public Task<ResultWrapper<OptimismSyncStatus>> optimism_syncStatus();
 
