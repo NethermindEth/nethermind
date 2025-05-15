@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Kademlia;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
@@ -40,19 +36,19 @@ namespace Nethermind.Network.Discovery
         /// <param name="logManager">Log manager for logging events.</param>
         /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
         public DiscoveryPersistenceManager(
-            INetworkStorage discoveryStorage,
+            [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
             INodeStatsManager nodeStatsManager,
             IKademliaDiscv4Adapter discv4Adapter,
             IKademlia<PublicKey, Node> kademlia,
             IDiscoveryConfig discoveryConfig,
             ILogManager logManager)
         {
-            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
-            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _discv4Adapter = discv4Adapter ?? throw new ArgumentNullException(nameof(discv4Adapter));
+            _discoveryStorage = discoveryStorage;
+            _nodeStatsManager = nodeStatsManager;
+            _discv4Adapter = discv4Adapter;
             _kademlia = kademlia;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _persistenceInterval = discoveryConfig?.DiscoveryPersistenceInterval ?? throw new ArgumentNullException(nameof(discoveryConfig));
+            _logger = logManager.GetClassLogger();
+            _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
         }
 
         /// <summary>

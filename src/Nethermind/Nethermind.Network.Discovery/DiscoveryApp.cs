@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
@@ -15,52 +18,49 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
 
-public class DiscoveryApp : IDiscoveryApp
+public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 {
-    private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly INetworkConfig _networkConfig;
-    private DiscoveryPersistenceManager? _persistenceManager;
-
-    private readonly List<Node> _bootNodes;
-
-    private IKademliaDiscv4Adapter _discv4Adapter = null!;
-    private IKademlia<PublicKey, Node> _kademlia = null!;
 
     private NettyDiscoveryHandler? _discoveryHandler;
 
-    private IKademliaNodeSource _kademliaNodeSource = null!;
+    private IKademliaNodeSource _kademliaNodeSource;
+    private DiscoveryPersistenceManager _persistenceManager;
+    private IKademliaDiscv4Adapter _discv4Adapter;
+    private IKademlia<PublicKey, Node> _kademlia;
+    private readonly ILifetimeScope _discv4Services;
+
     private Task? _runningTask;
     private readonly IProcessExitSource _processExitSouce;
 
     public DiscoveryApp(
-        IMessageSerializationService? msgSerializationService,
-        DiscoveryPersistenceManager persistenceManager,
-        INetworkConfig? networkConfig,
-        IDiscoveryConfig? discoveryConfig,
-        ITimestamper? timestamper,
+        ILifetimeScope rootScope,
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IMessageSerializationService msgSerializationService,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        ITimestamper timestamper,
         IProcessExitSource processExitSource,
-        ILogManager? logManager)
+        ILogManager logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = _logManager.GetClassLogger();
-        _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
+        IDiscoveryConfig discoveryConfig1 = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _messageSerializationService =
             msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _persistenceManager = persistenceManager;
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _processExitSouce = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
 
-        _bootNodes = new List<Node>();
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        var bootNodes = new List<Node>();
+        NetworkNode[] bootnodes = NetworkNode.ParseNodes(discoveryConfig1.Bootnodes, _logger);
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
-            return;
         }
 
         for (int i = 0; i < bootnodes.Length; i++)
@@ -71,8 +71,28 @@ public class DiscoveryApp : IDiscoveryApp
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
             }
 
-            _bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
+            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
         }
+
+        _discv4Services = rootScope.BeginLifetimeScope(
+            (builder) => builder
+                .AddModule(new DiscV4KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddSingleton<DiscoveryPersistenceManager>()
+                .AddSingleton<DiscV4Services>()
+        );
+
+        (_kademliaNodeSource, _persistenceManager, _discv4Adapter, _kademlia) = _discv4Services.Resolve<DiscV4Services>();
+    }
+
+    /// <summary>
+    /// Just a small class to make resolve easier
+    /// </summary>
+    private record DiscV4Services(
+        IKademliaNodeSource NodeSource,
+        DiscoveryPersistenceManager PersistenceManager,
+        IKademliaDiscv4Adapter Discv4Adapter,
+        IKademlia<PublicKey, Node> Kademlia)
+    {
     }
 
     public Task StartAsync()
@@ -210,4 +230,8 @@ public class DiscoveryApp : IDiscoveryApp
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
+    public ValueTask DisposeAsync()
+    {
+        return _discv4Services.DisposeAsync();
+    }
 }

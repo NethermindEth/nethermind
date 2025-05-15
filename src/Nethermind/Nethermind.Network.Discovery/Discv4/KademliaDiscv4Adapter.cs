@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -23,7 +22,7 @@ public class KademliaDiscv4Adapter(
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
-    NodeRecord selfNodeRecord,
+    INodeRecordProvider nodeRecordProvider,
     INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
@@ -163,7 +162,7 @@ public class KademliaDiscv4Adapter(
         token = cts.Token;
 
         PingMsg msg = new PingMsg(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address);
-        msg.EnrSequence = selfNodeRecord.EnrSequence; // optional and does not seems to be used anywhere.
+        msg.EnrSequence = nodeRecordProvider.Current.EnrSequence; // optional and does not seems to be used anywhere.
 
         NodeSession session = GetSession(receiver);
 
@@ -210,7 +209,7 @@ public class KademliaDiscv4Adapter(
         }
 
         Rlp requestRlp = Rlp.Encode(Rlp.Encode(msg.ExpirationTime));
-        await SendMessage(session, new EnrResponseMsg(node.Address, selfNodeRecord, Keccak.Compute(requestRlp.Bytes)), token);
+        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, Keccak.Compute(requestRlp.Bytes)), token);
     }
 
     private async Task HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)

@@ -11,7 +11,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
 
-public class DiscV4KademliaModule(NodeRecord selfNodeRecord, PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
+public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -19,7 +19,6 @@ public class DiscV4KademliaModule(NodeRecord selfNodeRecord, PublicKey masterNod
             .AddModule(new KademliaModule<PublicKey, Node>())
             .AddSingleton<INodeHashProvider<Node>, NodeNodeHashProvider>()
             .AddSingleton<IKeyOperator<PublicKey, Node>, NodeNodeHashProvider>()
-            .AddSingleton(selfNodeRecord)
             .AddSingleton<IKademliaNodeSource, KademliaNodeSource>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
