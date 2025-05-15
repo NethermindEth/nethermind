@@ -296,15 +296,15 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             ArgumentNullException.ThrowIfNull(clParameters.L2BlockTime);
 
             IEthApi ethApi = new EthereumEthApi(config.L1EthApiEndpoint, _api.EthereumJsonSerializer, _api.LogManager);
-            IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), _api.EthereumJsonSerializer, _api.EthereumEcdsa, _logger);
+            IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), _api.EthereumJsonSerializer, _api.EthereumEcdsa, _api.LogManager);
 
-            IDecodingPipeline decodingPipeline = new DecodingPipeline(_logger);
-            IL1Bridge l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, clParameters, decodingPipeline, _logger);
+            IDecodingPipeline decodingPipeline = new DecodingPipeline(_api.LogManager);
+            IL1Bridge l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, decodingPipeline, clParameters, _api.LogManager);
             IL1ConfigValidator l1ConfigValidator = new L1ConfigValidator(ethApi, _api.LogManager);
 
             ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);
-            IL2Api l2Api = new L2Api(_api.OptimismEthRpcModule, opEngine, systemConfigDeriver, _logger);
-            IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _logger);
+            IL2Api l2Api = new L2Api(_api.OptimismEthRpcModule, opEngine, systemConfigDeriver, _api.LogManager);
+            IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _api.LogManager);
 
             _cl = new OptimismCL(
                 decodingPipeline,

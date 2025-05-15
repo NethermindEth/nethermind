@@ -10,11 +10,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class DecodingPipeline(ILogger logger) : IDecodingPipeline
+public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
 {
     private readonly Channel<DaDataSource> _inputChannel = Channel.CreateBounded<DaDataSource>(9);
     private readonly Channel<BatchV1> _outputChannel = Channel.CreateBounded<BatchV1>(3);
-    private readonly IFrameQueue _frameQueue = new FrameQueue(logger);
+    private readonly FrameQueue _frameQueue = new(logManager);
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<BatchV1> DecodedBatchesReader => _outputChannel.Reader;
@@ -60,13 +61,13 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
                 }
                 catch (Exception e)
                 {
-                    if (logger.IsWarn) logger.Warn($"Unhandled exception in decoding pipeline: {e}");
+                    if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
                 }
             }
         }
         finally
         {
-            if (logger.IsInfo) logger.Info($"Decoding pipeline is shutting down.");
+            if (_logger.IsInfo) _logger.Info($"Decoding pipeline is shutting down.");
         }
     }
 }

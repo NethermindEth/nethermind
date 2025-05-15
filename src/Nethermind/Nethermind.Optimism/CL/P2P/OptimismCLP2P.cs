@@ -54,27 +54,27 @@ public class OptimismCLP2P : IDisposable
     private ulong? _headNumber = null;
 
     public OptimismCLP2P(
+        IExecutionEngineManager executionEngineManager,
         ulong chainId,
         string[] staticPeerList,
         IOptimismConfig config,
         Address sequencerP2PAddress,
         ITimestamper timestamper,
         IPAddress externalIp,
-        ILogManager logManager,
-        IExecutionEngineManager executionEngineManager)
+        ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         _config = config;
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
-        _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
+        _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _externalIp = externalIp;
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
-            .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, _logger))
+            .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
             .AddLibp2p(builder => builder.WithPubsub().AddAppLayerProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {

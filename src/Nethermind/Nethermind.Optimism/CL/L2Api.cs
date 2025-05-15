@@ -22,9 +22,10 @@ public class L2Api(
     IOptimismEthRpcModule l2EthRpc,
     IOptimismEngineRpcModule l2EngineRpc,
     ISystemConfigDeriver systemConfigDeriver,
-    ILogger logger) : IL2Api
+    ILogManager logManager) : IL2Api
 {
     private const int L2ApiRetryDelayMilliseconds = 1000;
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task<L2Block> GetBlockByNumber(ulong number)
     {
@@ -139,7 +140,7 @@ public class L2Api(
         var getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
         while (getPayloadResult.Result.ResultType != ResultType.Success)
         {
-            if (logger.IsWarn) logger.Warn($"GetPayload request error: {getPayloadResult.Result.Error}");
+            if (_logger.IsWarn) _logger.Warn($"GetPayload request error: {getPayloadResult.Result.Error}");
             await Task.Delay(L2ApiRetryDelayMilliseconds);
             getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
         }
@@ -156,7 +157,7 @@ public class L2Api(
         var result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
         while (result?.Result.ResultType != ResultType.Success && result?.ErrorCode != ErrorCodes.UnknownBlockError)
         {
-            if (logger.IsWarn) logger.Warn($"Unable to get L2 block by parameter: {blockParameter}. Error: {result?.Result.Error}");
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L2 block by parameter: {blockParameter}. Error: {result?.Result.Error}");
             await Task.Delay(L2ApiRetryDelayMilliseconds);
             result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
         }
@@ -173,7 +174,7 @@ public class L2Api(
         var result = await rpcCall();
         while (result?.Result.ResultType != ResultType.Success)
         {
-            if (logger.IsWarn) logger.Warn(getErrorMessage(result!.Result.Error));
+            if (_logger.IsWarn) _logger.Warn(getErrorMessage(result!.Result.Error));
             await Task.Delay(L2ApiRetryDelayMilliseconds);
             result = await rpcCall();
         }

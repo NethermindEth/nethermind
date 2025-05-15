@@ -75,16 +75,16 @@ public sealed class OptimismCL : IDisposable
             _l2Api,
             chainId,
             l2GenesisTimestamp,
-            _logger);
+            logManager);
         _p2p = new OptimismCLP2P(
+            _executionEngineManager,
             chainId,
             engineParameters.Nodes,
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
             externalIp,
-            logManager,
-            _executionEngineManager);
+            logManager);
     }
 
     public async Task Start()

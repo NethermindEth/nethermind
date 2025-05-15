@@ -21,29 +21,35 @@ public class Driver : IDisposable
     private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly ulong _l2BlockTime;
 
-    public Driver(IL1Bridge l1Bridge,
+    public Driver(
+        IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
         CLChainSpecEngineParameters engineParameters,
         IExecutionEngineManager executionEngineManager,
         IL2Api l2Api,
         ulong chainId,
         ulong l2GenesisTimestamp,
-        ILogger logger)
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+
         _l2BlockTime = engineParameters.L2BlockTime.Value;
-        _logger = logger;
+        _logger = logManager.GetClassLogger();
         _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _executionEngineManager = executionEngineManager;
-        var payloadAttributesDeriver = new PayloadAttributesDeriver(
-            _systemConfigDeriver,
-            new DepositTransactionBuilder(chainId, engineParameters),
-            logger);
-        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge,
-            l2GenesisTimestamp, _l2BlockTime, chainId, _logger);
+
+        _derivationPipeline = new DerivationPipeline(
+            new PayloadAttributesDeriver(
+                _systemConfigDeriver,
+                new DepositTransactionBuilder(chainId, engineParameters)),
+            l1Bridge,
+            l2GenesisTimestamp,
+            _l2BlockTime,
+            chainId,
+            logManager);
     }
 
     private ulong _currentDerivedBlock;

@@ -34,21 +34,21 @@ public class EthereumL1Bridge : IL1Bridge
     public EthereumL1Bridge(
         IEthApi ethL1Rpc,
         IBeaconApi beaconApi,
-        CLChainSpecEngineParameters engineParameters,
         IDecodingPipeline decodingPipeline,
-        ILogger logger)
+        CLChainSpecEngineParameters engineParameters,
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L1BeaconGenesisSlotTime);
         ArgumentNullException.ThrowIfNull(engineParameters.BatcherInboxAddress);
         ArgumentNullException.ThrowIfNull(engineParameters.BatchSubmitter);
-        _logger = logger;
+
         _decodingPipeline = decodingPipeline;
         _ethL1Api = ethL1Rpc;
         _beaconApi = beaconApi;
-
         _batchSubmitter = engineParameters.BatchSubmitter;
         _batcherInboxAddress = engineParameters.BatcherInboxAddress;
         _l1BeaconGenesisSlotTime = engineParameters.L1BeaconGenesisSlotTime.Value;
+        _logger = logManager.GetClassLogger();
     }
 
     public async Task Run(CancellationToken token)
