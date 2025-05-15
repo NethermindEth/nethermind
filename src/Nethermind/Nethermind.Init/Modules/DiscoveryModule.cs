@@ -12,7 +12,10 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
@@ -50,18 +53,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .Bind<INodeSource, IStaticNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
-            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-
-                // ToDo: PeersDB is registered outside dbProvider
-                string dbName = INetworkStorage.PeerDb;
-                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                    ? new MemDb(dbName)
-                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
-                        logManager);
-                return new NetworkStorage(peersDb, logManager);
-            })
+            .AddNetworkStorage(DbNames.PeersDb, "peers")
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -118,7 +110,25 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         if (!initConfig.DiscoveryEnabled)
             builder.AddSingleton<IDiscoveryApp, NullDiscoveryApp>();
         else
-            builder.AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>();
+        {
+            builder
+                .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
+                .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
+
+                .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
+                .AddSingleton<DiscoveryV5App>()
+
+                .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
+                .AddSingleton<INodeTable, NodeTable>()
+                .AddSingleton<IEvictionManager, EvictionManager>()
+                .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
+                .AddSingleton<IDiscoveryManager, DiscoveryManager>()
+                .AddSingleton<INodesLocator, NodesLocator>()
+                .AddSingleton<DiscoveryApp>()
+
+                ;
+        }
+
 
         if (!networkConfig.OnlyStaticPeers)
         {

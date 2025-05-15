@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading.Tasks;
 using Autofac;
 using NUnit.Framework;
 using Nethermind.Config;
@@ -38,15 +37,13 @@ namespace Ethereum.Test.Base
         {
             _logManager ??= LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
+            KzgPolynomialCommitments.InitializeAsync().Wait();
         }
 
         [SetUp]
         public void Setup()
         {
         }
-
-        [OneTimeSetUp]
-        public Task OneTimeSetUp() => KzgPolynomialCommitments.InitializeAsync();
 
         protected static void Setup(ILogManager logManager)
         {

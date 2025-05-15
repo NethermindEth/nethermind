@@ -24,15 +24,6 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly INetworkConfig _networkConfig;
     private DiscoveryPersistenceManager? _persistenceManager;
-    /*
-    private readonly INetworkStorage _discoveryStorage;
-       private readonly INodeStatsManager _nodeStatsManager;
-    private ILifetimeScope? _kademliaServices;
-    private DiscoveryPersistenceManager? _persistenceManager;
-    private PublicKey _masterNode = null!;
-       private readonly NodeRecord _selfNodeRecorrd;
-    private readonly ILifetimeScope _rootLifetimeScope;
-    */
 
     private readonly List<Node> _bootNodes;
 
@@ -82,20 +73,6 @@ public class DiscoveryApp : IDiscoveryApp
 
             _bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
         }
-    }
-
-    public void Initialize(PublicKey masterPublicKey)
-    {
-        /*
-        _kademliaServices = _rootLifetimeScope
-            .BeginLifetimeScope((builder) => builder.AddModule(
-                new DiscV4KademliaModule(_selfNodeRecorrd, _masterNode, _bootNodes)));
-
-        _kademlia = _kademliaServices.Resolve<IKademlia<PublicKey, Node>>();
-        _discv4Adapter = _kademliaServices.Resolve<IKademliaDiscv4Adapter>();
-        _kademliaNodeSource = _kademliaServices.Resolve<IKademliaNodeSource>();
-        _persistenceManager = _kademliaServices.Resolve<DiscoveryPersistenceManager>();
-        */
     }
 
     public Task StartAsync()
