@@ -270,22 +270,24 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
+        StepDependencyException.ThrowIfNull(_api.IpResolver);
 
-        ICLConfig clConfig = _api.Config<ICLConfig>();
-        if (clConfig.Enabled)
+        IOptimismConfig config = _api.Config<IOptimismConfig>();
+        if (config.ClEnabled)
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(
                 _api.SpecProvider,
                 chainSpecEngineParameters,
-                clConfig,
+                config,
                 _api.EthereumJsonSerializer,
                 _api.EthereumEcdsa,
                 _api.Timestamper,
                 _api.ChainSpec.Genesis.Timestamp,
                 _api!.LogManager,
                 _api.OptimismEthRpcModule,
+                _api.IpResolver.ExternalIp,
                 opEngine);
             _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
             _api.DisposeStack.Push(_cl);
