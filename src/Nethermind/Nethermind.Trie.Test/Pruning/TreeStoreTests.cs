@@ -931,7 +931,12 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
                 pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: No.Persistence);
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackPastKeys = true
+                });
 
             TreePath emptyPath = TreePath.Empty;
 
@@ -965,7 +970,12 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
                 pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: No.Persistence);
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    Enabled = true
+                });
 
             long reorgBoundary = 0;
             fullTrieStore.ReorgBoundaryReached += (sender, reached) => reorgBoundary = reached.BlockNumber;
@@ -1004,7 +1014,12 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
                 pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: isPruningPersistenceStrategy);
+                persistenceStrategy: isPruningPersistenceStrategy,
+                pruningConfig: new PruningConfig()
+                {
+                    TrackPastKeys = true,
+                    PruningBoundary = 2
+                });
 
             TreePath emptyPath = TreePath.Empty;
             TaskCompletionSource tcs = new TaskCompletionSource();
@@ -1036,7 +1051,12 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
                 pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: No.Persistence);
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackPastKeys = true
+                });
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
