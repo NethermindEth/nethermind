@@ -528,7 +528,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     private void TryGetBlock<TResult>(Rlp blockRlp, out Block? block, out ResultWrapper<TResult>? error)
     {
-        try {
+        try
+        {
             block = _blockDecoder.Decode(blockRlp.Bytes);
             if (block is null)
             {
