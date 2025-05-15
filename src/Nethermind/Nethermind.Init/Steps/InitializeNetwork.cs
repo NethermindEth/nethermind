@@ -12,6 +12,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -57,8 +58,6 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    public const string PeersDbPath = "peers";
-
     private readonly IApiWithNetwork _api;
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly ISynchronizer _synchronizer;
@@ -83,7 +82,7 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
+        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
