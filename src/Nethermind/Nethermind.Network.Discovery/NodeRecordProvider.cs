@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using Nethermind.Crypto;using Nethermind.Network.Config;
+using Nethermind.Crypto;
+using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery;
@@ -12,7 +13,8 @@ public class NodeRecordProvider(
     IIPResolver ipResolver,
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig
-): INodeRecordProvider {
+) : INodeRecordProvider
+{
 
     NodeRecord? _nodeRecord = null;
     public NodeRecord Current => _nodeRecord ??= PrepareNodeRecord();
