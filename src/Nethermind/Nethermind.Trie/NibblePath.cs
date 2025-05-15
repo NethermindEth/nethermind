@@ -513,7 +513,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 // TODO: more cases can be handed that way, as long as there's the alignments of the oddity of the paths
 
                 // The slice is aligned the same way as this path, ending at the same place
-                ReadOnlySpan<byte> toCopy = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _data, size - sliceSize), sliceSize);
+                ReadOnlySpan<byte> toCopy =
+                    MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _data, size - sliceSize), sliceSize);
                 toCopy.CopyTo(data);
 
                 if (length % 2 == 0)
@@ -549,7 +550,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             return new NibblePath(data);
         }
 
-        public byte this [int index]
+        public byte this[int index]
         {
             get
             {
