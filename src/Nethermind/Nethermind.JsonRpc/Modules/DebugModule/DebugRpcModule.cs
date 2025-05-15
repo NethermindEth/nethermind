@@ -76,7 +76,7 @@ public class DebugRpcModule : IDebugRpcModule
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find block hash for transaction {transactionHash}", ErrorCodes.ResourceNotFound);
         }
 
-        TryGetHeader<GethLikeTxTrace>(blockHash!, out var header, out var headerError);
+        var header = TryGetHeader<GethLikeTxTrace>(blockHash!, out var headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -98,7 +98,7 @@ public class DebugRpcModule : IDebugRpcModule
     {
         blockParameter ??= BlockParameter.Latest;
 
-        TryGetHeader<GethLikeTxTrace>(blockParameter, out var header, out var headerError);
+        var header = TryGetHeader<GethLikeTxTrace>(blockParameter, out var headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -126,7 +126,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        TryGetHeader<GethLikeTxTrace>(blockhash, out var header, out var headerError);
+        var header = TryGetHeader<GethLikeTxTrace>(blockhash, out var headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -146,7 +146,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        TryGetHeader<GethLikeTxTrace>(blockParameter, out var header, out var headerError);
+        var header = TryGetHeader<GethLikeTxTrace>(blockParameter, out var headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -172,7 +172,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
-        TryGetBlock<GethLikeTxTrace>(new Rlp(blockRlp), out var block, out var blockError);
+        var block = TryGetBlock<GethLikeTxTrace>(new Rlp(blockRlp), out var blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -191,7 +191,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
-        TryGetBlock<GethLikeTxTrace>(new Rlp(blockRlp), out var block, out var blockError);
+        var block = TryGetBlock<GethLikeTxTrace>(new Rlp(blockRlp), out var blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -220,7 +220,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
-        TryGetBlock<IReadOnlyCollection<GethLikeTxTrace>>(new Rlp(blockRlp), out var block, out var blockError);
+        var block = TryGetBlock<IReadOnlyCollection<GethLikeTxTrace>>(new Rlp(blockRlp), out var blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -251,7 +251,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
-        TryGetHeader<IReadOnlyCollection<GethLikeTxTrace>>(blockNumber, out var header, out var headerError);
+        var header = TryGetHeader<IReadOnlyCollection<GethLikeTxTrace>>(blockNumber, out var headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -279,7 +279,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        TryGetHeader<IReadOnlyCollection<GethLikeTxTrace>>(blockHash, out var header, out var headerError);
+        var header = TryGetHeader<IReadOnlyCollection<GethLikeTxTrace>>(blockHash, out var headerError);
         if (headerError is not null)
         {
             return headerError;
@@ -486,70 +486,73 @@ public class DebugRpcModule : IDebugRpcModule
     private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(Rlp blockRlp) =>
         ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.Bytes.ToHexString()}", ErrorCodes.InvalidInput);
 
-    private void TryGetHeader<TResult>(BlockParameter blockParameter, out BlockHeader? header, out ResultWrapper<TResult>? error)
+    private BlockHeader? TryGetHeader<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        header = searchResult.Object;
+        BlockHeader? header = searchResult.Object;
 
         if (searchResult.IsError)
         {
             error = GetFailureResult<TResult, BlockHeader>(searchResult, _debugBridge.HaveNotSyncedHeadersYet());
-            return;
+            return null;
         }
         if (!HasStateForBlock(_blockchainBridge, header))
         {
             error = GetStateFailureResult<TResult>(header);
-            return;
+            return null;
         }
 
         error = default!;
+        return header;
     }
 
-    private void TryGetHeader<TResult>(Hash256 blockHash, out BlockHeader? header, out ResultWrapper<TResult>? error)
+    private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
     {
-        BlockHeader? foundHeader = _blockFinder.FindHeader(blockHash);
-        header = foundHeader;
+        BlockHeader? header = _blockFinder.FindHeader(blockHash);
 
-        if (foundHeader is null)
+        if (header is null)
         {
             error = GetFailureResult<TResult, BlockHeader>(
                 new SearchResult<BlockHeader>($"Cannot find header for block hash: {blockHash}", ErrorCodes.ResourceNotFound),
                 _debugBridge.HaveNotSyncedHeadersYet());
-            return;
+            return null;
         }
         if (!HasStateForBlock(_blockchainBridge, header))
         {
             error = GetStateFailureResult<TResult>(header);
-            return;
+            return null;
         }
 
         error = default!;
+        return header;
     }
 
-    private void TryGetBlock<TResult>(Rlp blockRlp, out Block? block, out ResultWrapper<TResult>? error)
+    private Block? TryGetBlock<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error)
     {
+        Block? block;
+
         try
         {
             block = _blockDecoder.Decode(blockRlp.Bytes);
             if (block is null)
             {
                 error = GetRlpDecodingFailureResult<TResult>(blockRlp);
-                return;
+                return null;
             }
         }
         catch (RlpException)
         {
-            block = null;
             error = GetRlpDecodingFailureResult<TResult>(blockRlp);
-            return;
+            return null;
         }
 
         if (!HasStateForBlock(_blockchainBridge, block.Header))
         {
             error = GetStateFailureResult<TResult>(block.Header);
-            return;
+            return null;
         }
 
         error = default!;
+        return block;
     }
 }
