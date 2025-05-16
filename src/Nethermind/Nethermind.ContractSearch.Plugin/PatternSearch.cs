@@ -8,7 +8,12 @@ public static class PatternSearch
 
     const int WindowSizeAvx2 = 32;
 
-    //todo SymanticPatternSearch(ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern)
+    public static unsafe List<int> SemanticPatternSearch(ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern)
+    {
+        //todo;
+        List<int> matchIndices = [];
+        return matchIndices;
+    }
 
     public static unsafe List<int> SyntacticPatternSearch(ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern)
     {

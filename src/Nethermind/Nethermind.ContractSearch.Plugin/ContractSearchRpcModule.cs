@@ -104,6 +104,7 @@ public class ContractBytecodeSearchVisitor(
         {
 
             var match = PatternSearch.SyntacticPatternSearch(code, searchCode);
+            if (match.Count == 0) match = PatternSearch.SemanticPatternSearch(code, searchCode);
             if (match.Count > 0)
             {
                 if (_logger.IsInfo) _logger.Info($"Found matching contract at {_currentAddress}");
