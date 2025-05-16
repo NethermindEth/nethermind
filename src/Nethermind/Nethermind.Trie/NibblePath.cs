@@ -295,8 +295,15 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         ref byte dest = ref bytes[0];
         ref byte source = ref MemoryMarshal.GetReference(nibbles);
-        int length = nibbles.Length;
 
+        FromNibblesImpl(ref source, ref dest, nibbles.Length);
+
+        return new NibblePath(bytes);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void FromNibblesImpl(ref byte source, ref byte dest, int length)
+    {
         if (length % 2 == 1)
         {
             dest = (byte)(OddFlag | source);
@@ -315,7 +322,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
             if (length < chunk)
             {
-                // Handle cases where there's less nibbles than the vector with a few iffs.
+                // Handle cases where there is fewer nibbles than the vector with a few iffs.
                 if (length % 4 == 2)
                 {
                     dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
@@ -357,7 +364,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 for (int i = 0; i < length; i += chunk)
                 {
                     // load 16 bytes
-                    Vector128<byte> vec = Vector128.LoadUnsafe(in source);
+                    Vector128<byte> vec = Vector128.LoadUnsafe(in source, (UIntPtr)i);
 
                     // shift each 4-bit value into the high nibble (<<4)
                     Vector128<byte> highNibbles = Vector128.Multiply(vec, vMul16);
@@ -370,21 +377,13 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                     Vector128<byte> packed = Vector128.BitwiseOr(hiShuf, loShuf);
 
                     // store the low 8 bytes of 'packed' into the destination
-                    packed.GetLower().StoreUnsafe(ref dest);
+                    packed.GetLower().StoreUnsafe(ref Unsafe.Add(ref dest, i /2));
 
                     if (i == 0 && length % chunk != 0)
                     {
                         // Ensure alignment
                         int shift = length & (chunk - 1);
-
-                        dest = ref Unsafe.Add(ref dest, shift / 2);
-                        source = ref Unsafe.Add(ref source, shift);
                         i -= chunk - shift;
-                    }
-                    else
-                    {
-                        dest = ref Unsafe.Add(ref dest, chunk / 2);
-                        source = ref Unsafe.Add(ref source, chunk);
                     }
                 }
             }
@@ -423,8 +422,6 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 source = ref Unsafe.Add(ref source, chunk);
             }
         }
-
-        return new NibblePath(bytes);
     }
 
     private static int GetRequiredArraySize(int nibbleCount) => nibbleCount / 2 + PreambleLength;
@@ -539,64 +536,13 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public static ByRef FromNibbles(scoped ReadOnlySpan<byte> nibbles, Span<byte> span)
         {
-            ref byte r = ref MemoryMarshal.GetReference(span);
-            int length = (byte)nibbles.Length;
+            ref byte source = ref MemoryMarshal.GetReference(nibbles);
+            ref byte dest = ref MemoryMarshal.GetReference(span);
+            var length = nibbles.Length;
 
-            // nibbles index
-            int at = 0;
+            FromNibblesImpl(ref source, ref dest, length);
 
-            // odd
-            if (length % 2 == 1)
-            {
-                r = (byte)(OddFlag | nibbles[at]);
-
-                at++;
-                length--;
-            }
-
-            // Whether odd or not, move next
-            r = ref Unsafe.Add(ref r, 1);
-
-            Debug.Assert(length % 2 == 0);
-
-            // even but not divisible by 4
-            if (length % 4 == 2)
-            {
-                r = (byte)((nibbles[at] << NibbleShift) | nibbles[at + 1]);
-                r = ref Unsafe.Add(ref r, 1);
-
-                at += 2;
-                length -= 2;
-            }
-
-            // even but not divisible by 8
-            if (length % 8 == 4)
-            {
-                r = (byte)((nibbles[at] << NibbleShift) | nibbles[at + 1]);
-                Unsafe.Add(ref r, 1) = (byte)((nibbles[at + 2] << NibbleShift) | nibbles[at + 3]);
-
-                r = ref Unsafe.Add(ref r, 2);
-
-                at += 4;
-                length -= 4;
-            }
-
-            while (length > 0)
-            {
-                Debug.Assert(length % 8 == 0);
-
-                r = (byte)((nibbles[at] << NibbleShift) | nibbles[at + 1]);
-                Unsafe.Add(ref r, 1) = (byte)((nibbles[at + 2] << NibbleShift) | nibbles[at + 3]);
-                Unsafe.Add(ref r, 2) = (byte)((nibbles[at + 4] << NibbleShift) | nibbles[at + 5]);
-                Unsafe.Add(ref r, 3) = (byte)((nibbles[at + 6] << NibbleShift) | nibbles[at + 7]);
-
-                r = ref Unsafe.Add(ref r, 4);
-
-                at += 8;
-                length -= 8;
-            }
-
-            return new ByRef(ref MemoryMarshal.GetReference(span), (byte)nibbles.Length);
+            return new ByRef(ref MemoryMarshal.GetReference(span), (byte)length);
         }
 
         public int CommonPrefixLength(scoped in ByRef other)
