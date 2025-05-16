@@ -167,7 +167,7 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        StateTree stree = new StateTree(new TrieStore(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree stree = new StateTree(TestTrieStoreFactory.Build(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
                 stree,
                 0,
@@ -190,7 +190,7 @@ public class SnapProviderTests
     private static (SnapServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
         TestMemDb stateDb = new TestMemDb();
-        TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         StateTree st = new StateTree(trieStore, LimboLogs.Instance);
         foreach (var entry in entries)
         {

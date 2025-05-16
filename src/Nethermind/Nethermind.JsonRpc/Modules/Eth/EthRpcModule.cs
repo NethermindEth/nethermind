@@ -269,28 +269,24 @@ public partial class EthRpcModule(
                     : []);
     }
 
-    public ResultWrapper<Memory<byte>> eth_sign(Address addressData, byte[] message)
+    public ResultWrapper<string> eth_sign(Address addressData, byte[] message)
     {
         Signature sig;
         try
         {
-            Address address = addressData;
-            string messageText = _messageEncoding.GetString(message);
-            const string signatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
-            string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
-            sig = _wallet.Sign(Keccak.Compute(signatureText), address);
+            sig = _wallet.SignMessage(message, addressData);
         }
         catch (SecurityException e)
         {
-            return ResultWrapper<Memory<byte>>.Fail(e.Message, ErrorCodes.AccountLocked);
+            return ResultWrapper<string>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception)
         {
-            return ResultWrapper<Memory<byte>>.Fail($"Unable to sign as {addressData}");
+            return ResultWrapper<string>.Fail($"Unable to sign as {addressData}");
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
-        return ResultWrapper<Memory<byte>>.Success(sig.Memory);
+        return ResultWrapper<string>.Success(sig.ToString());
     }
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)

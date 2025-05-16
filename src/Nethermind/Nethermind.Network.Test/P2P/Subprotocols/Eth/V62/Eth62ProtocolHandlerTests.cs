@@ -12,6 +12,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -399,6 +400,43 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        }
+
+        private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
+        {
+            internal int ScheduledTasks = 0;
+            public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            {
+                CancellationTokenSource cts = new CancellationTokenSource();
+                cts.Cancel();
+                fulfillFunc(request, cts.Token);
+                ScheduledTasks++;
+            }
+        }
+
+        [Test]
+        public void Will_Not_Reschedule_SubmitTx_When_Queue_Is_Full()
+        {
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+
+            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new AlwaysTimeoutBackgroundTaskScheduler();
+            _handler = new Eth62ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                taskScheduler,
+                _transactionPool,
+                _gossipPolicy,
+                LimboLogs.Instance,
+                _txGossipPolicy);
+            _handler.Init();
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+
+            taskScheduler.ScheduledTasks.Should().Be(1);
         }
 
         [Test]

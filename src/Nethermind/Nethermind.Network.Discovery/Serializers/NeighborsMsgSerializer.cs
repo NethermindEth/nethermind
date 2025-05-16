@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -30,7 +31,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     };
 
     public NeighborsMsgSerializer(IEcdsa ecdsa,
-        IPrivateKeyGenerator nodeKey,
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey,
         INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }

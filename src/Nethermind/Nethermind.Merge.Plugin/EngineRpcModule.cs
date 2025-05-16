@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Api;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -34,6 +35,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>> getBlobsHandlerV2,
+        IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager)
@@ -51,6 +53,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _getBlobsHandler = getBlobsHandler;
         _getBlobsHandlerV2 = getBlobsHandlerV2;
+        _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;
         _logger = logManager.GetClassLogger();

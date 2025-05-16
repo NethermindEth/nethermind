@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -334,6 +334,13 @@ namespace Nethermind.Core
     public class SystemTransaction : Transaction
     {
         private new const long GasLimit = 30_000_000L;
+    }
+
+    /// <summary>
+    /// System call like transaction that is to be executed by the node without including in the block.
+    /// </summary>
+    public class SystemCall : Transaction
+    {
     }
 
     /// <summary>

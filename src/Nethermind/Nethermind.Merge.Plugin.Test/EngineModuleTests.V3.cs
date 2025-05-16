@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Producers;
@@ -386,6 +387,7 @@ public partial class EngineModuleTests
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>>>(),
+                 Substitute.For<IEngineRequestsTracker>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                  Substitute.For<ILogManager>()));
@@ -692,7 +694,6 @@ public partial class EngineModuleTests
 
         SyncPeerMock chainAPeer = new SyncPeerMock(chainA.BlockTree);
         SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(chainAPeer), AllocationContexts.All);
-        alloc.AllocateBestPeer(new[] { new PeerInfo(chainAPeer) }, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chainC.SyncPeerPool!.Allocate(
             Arg.Any<IPeerAllocationStrategy>(),
             Arg.Any<AllocationContexts>(),

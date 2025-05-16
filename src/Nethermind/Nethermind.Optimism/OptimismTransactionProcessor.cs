@@ -17,7 +17,7 @@ public class OptimismTransactionProcessor(
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
@@ -63,7 +63,7 @@ public class OptimismTransactionProcessor(
         return result;
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas(Transaction tx, in BlockExecutionContext blkContext, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
@@ -81,7 +81,7 @@ public class OptimismTransactionProcessor(
 
         if (validate && !tx.IsDeposit())
         {
-            if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
+            if (!tx.TryCalculatePremiumPerGas(blkContext.Header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -93,8 +93,10 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-            if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
+            UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, blkContext.Header, WorldState);
+            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, blkContext.Header, WorldState);
+
+            if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                 return TransactionResult.InsufficientSenderBalance;
@@ -145,8 +147,23 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsBedrock(header))
             {
-                UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+                UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
                 WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
+            }
+
+            if (opSpecHelper.IsIsthmus(header))
+            {
+                UInt256 operatorCostMax = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+                UInt256 operatorCostUsed = costHelper.ComputeOperatorCost(spentGas, header, WorldState);
+
+                if (operatorCostMax > operatorCostUsed)
+                {
+                    // Refund the rest
+                    WorldState.AddToBalance(tx.SenderAddress!, operatorCostMax - operatorCostUsed, spec);
+                }
+
+                // Transfer to fee recipient
+                WorldState.AddToBalance(PreDeploys.OperatorFeeRecipient, operatorCostUsed, spec);
             }
         }
     }
