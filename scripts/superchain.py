@@ -129,6 +129,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "BatcherInboxAddress": lookup(config, ["batch_inbox_addr"]),
                     "L2BlockTime": lookup(config, ["block_time"]),
                     "SeqWindowSize": lookup(config, ["seq_window_size"]),
+                    "ChannelTimeoutBedrock": 300,
                     "MaxSequencerDrift": lookup(config, ["max_sequencer_drift"]),
                     "SystemTransactionSender": "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001",
                     "SystemTransactionTo": "0x4200000000000000000000000000000000000015",

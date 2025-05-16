@@ -17,7 +17,7 @@ public sealed record OptimismRollupConfig
     public required ulong BlockTime { get; init; }
     public required ulong MaxSequencerDrift { get; init; }
     public required ulong SeqWindowSize { get; init; }
-    public required ulong ChannelTimeoutBedrock { get; init; }
+    public required ulong ChannelTimeout { get; init; }
     public required ulong L1ChainID { get; init; }
     public required ulong L2ChainID { get; init; }
 
@@ -87,7 +87,7 @@ public sealed record OptimismRollupConfig
             BlockTime = clParameters.L2BlockTime!.Value,
             MaxSequencerDrift = clParameters.MaxSequencerDrift!.Value,
             SeqWindowSize = clParameters.SeqWindowSize!.Value,
-            ChannelTimeoutBedrock = 0, // TODO: Figure out
+            ChannelTimeout = clParameters.ChannelTimeoutBedrock!.Value,
             L1ChainID = clParameters.L1ChainId!.Value,
             L2ChainID = chainSpec.ChainId,
 
