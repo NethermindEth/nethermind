@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
@@ -33,7 +34,7 @@ public class StateProviderTests
     public void Eip_158_zero_value_transfer_deletes()
     {
         var codeDb = new MemDb();
-        var trieStore = new TrieStore(new MemDb(), Logger);
+        var trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
         WorldState frontierProvider = new(trieStore, codeDb, Logger);
         frontierProvider.CreateAccount(_address1, 0);
         frontierProvider.Commit(Frontier.Instance);
@@ -51,7 +52,7 @@ public class StateProviderTests
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
         var codeDb = new MemDb();
-        TrieStore trieStore = new(new MemDb(), Logger);
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
         WorldState provider = new(trieStore, codeDb, Logger);
         var systemUser = Address.SystemUser;
 
@@ -68,7 +69,7 @@ public class StateProviderTests
     [Test]
     public void Can_dump_state()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(TestItem.AddressA, 1.Ether());
         provider.Commit(MuirGlacier.Instance);
         provider.CommitTree(0);
@@ -80,7 +81,7 @@ public class StateProviderTests
     [Test]
     public void Can_accepts_visitors()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
         provider.CreateAccount(TestItem.AddressA, 1.Ether());
         provider.Commit(MuirGlacier.Instance);
         provider.CommitTree(0);
@@ -92,7 +93,7 @@ public class StateProviderTests
     [Test]
     public void Empty_commit_restore()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
     }
@@ -100,14 +101,14 @@ public class StateProviderTests
     [Test]
     public void Update_balance_on_non_existing_account_throws()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
     }
 
     [Test]
     public void Is_empty_account()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         Assert.That(provider.IsEmptyAccount(_address1), Is.True);
@@ -116,7 +117,7 @@ public class StateProviderTests
     [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         byte[] code = provider.GetCode(TestItem.AddressA);
         code.Should().BeEmpty();
     }
@@ -124,7 +125,7 @@ public class StateProviderTests
     [Test]
     public void Restore_update_restore()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -150,7 +151,7 @@ public class StateProviderTests
     [Test]
     public void Keep_in_cache()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         provider.GetBalance(_address1);
@@ -168,7 +169,7 @@ public class StateProviderTests
     {
         byte[] code = [1];
 
-        IWorldState provider = new WorldState(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        IWorldState provider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.IncrementNonce(_address1);
@@ -207,7 +208,7 @@ public class StateProviderTests
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(_address1, 0);
         Account account = provider.GetAccount(_address1);
         Assert.That(account.IsEmpty, Is.True);
@@ -224,7 +225,7 @@ public class StateProviderTests
     [Test]
     public void Does_not_require_recalculation_after_reset()
     {
-        WorldState provider = new(new TrieStore(new MemDb(), Logger), new MemDb(), Logger);
+        WorldState provider = new(TestTrieStoreFactory.Build(new MemDb(), Logger), new MemDb(), Logger);
         provider.CreateAccount(TestItem.AddressA, 5);
 
         Action action = () => { _ = provider.StateRoot; };

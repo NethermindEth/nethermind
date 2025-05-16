@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
             peerManager.MaxActivePeers.Returns(15);
 
-            WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            WorldState stateProvider = new(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead

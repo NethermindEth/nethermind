@@ -12,6 +12,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -57,8 +58,6 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    public const string PeersDbPath = "peers";
-
     private readonly IApiWithNetwork _api;
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly ISynchronizer _synchronizer;
@@ -83,7 +82,7 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
+        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -268,15 +267,7 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        /* rlpx */
         EciesCipher eciesCipher = new(_api.CryptoRandom);
-        Eip8MessagePad eip8Pad = new(_api.CryptoRandom);
-        _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-        _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-        _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
-        ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
-        _api.MessageSerializationService.Register(receiptsMessageSerializer);
-        _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
 
         HandshakeService encryptionHandshakeServiceA = new(
             _api.MessageSerializationService,

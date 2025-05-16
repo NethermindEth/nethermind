@@ -6,6 +6,7 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -36,7 +37,7 @@ public class TransactionProcessorFeeTests
         _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());

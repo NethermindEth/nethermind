@@ -20,6 +20,7 @@ namespace Ethereum.Trie.Test
     public class TrieTests
     {
         private MemDb _db;
+        private ILogger _logger = new TestLogManager().GetClassLogger();
 
         [SetUp]
         public void Setup()
@@ -155,8 +156,7 @@ namespace Ethereum.Trie.Test
                     ? Bytes.FromHexString(valueString)
                     : Encoding.ASCII.GetBytes(valueString);
 
-                TestContext.Out.WriteLine();
-                TestContext.Out.WriteLine($"Setting {keyString} -> {valueString}");
+                _logger.Info($"\nSetting {keyString} -> {valueString}");
                 patriciaTree.Set(key.ToPackedByteArray(), value);
             }
 

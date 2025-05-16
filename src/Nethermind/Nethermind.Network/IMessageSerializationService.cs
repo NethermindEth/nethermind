@@ -12,7 +12,5 @@ namespace Nethermind.Network
         IByteBuffer ZeroSerialize<T>(T message, AbstractByteBufferAllocator? allocator = null) where T : MessageBase;
         T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
         T Deserialize<T>(IByteBuffer buffer) where T : MessageBase;
-        void Register(Assembly assembly);
-        void Register<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase;
     }
 }

@@ -28,10 +28,10 @@ public class DerivationPipeline(
     public async IAsyncEnumerable<PayloadAttributesRef> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch,
         [EnumeratorCancellation] CancellationToken token)
     {
-        if (logger.IsInfo) logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
-        ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
-        if (expectedParentNumber != l2Parent.Number)
+        ulong firstBlockNumber = batch.RelTimestamp / l2BlockTime;
+        if (logger.IsInfo) logger.Info($"Processing batch. Block numbers from {firstBlockNumber} to {firstBlockNumber + batch.BlockCount - 1}");
+        if (firstBlockNumber - 1 != l2Parent.Number)
         {
             throw new ArgumentException("Old batch");
         }
@@ -70,8 +70,6 @@ public class DerivationPipeline(
 
             l2ParentPayloadAttributes = payloadAttributes;
         }
-
-        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}");
     }
 
     private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch, CancellationToken token)

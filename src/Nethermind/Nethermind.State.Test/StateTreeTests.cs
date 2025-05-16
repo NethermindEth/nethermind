@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -32,7 +33,7 @@ public class StateTreeTests
     public void No_reads_when_setting_on_empty()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
@@ -44,7 +45,7 @@ public class StateTreeTests
     public void Minimal_writes_when_setting_on_empty()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
@@ -56,7 +57,7 @@ public class StateTreeTests
     public void Minimal_writes_when_setting_on_empty_scenario_2()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -70,7 +71,7 @@ public class StateTreeTests
     public void Minimal_writes_when_setting_on_empty_scenario_3()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -85,7 +86,7 @@ public class StateTreeTests
     public void Minimal_writes_when_setting_on_empty_scenario_4()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -101,7 +102,7 @@ public class StateTreeTests
     public void Minimal_writes_when_setting_on_empty_scenario_5()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -118,7 +119,7 @@ public class StateTreeTests
     public void Scenario_traverse_extension_read_full_match()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
         Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
@@ -135,7 +136,7 @@ public class StateTreeTests
     public void Scenario_traverse_extension_read_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
         Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
@@ -151,7 +152,7 @@ public class StateTreeTests
     public void Scenario_traverse_extension_new_branching()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), _account2);
@@ -166,7 +167,7 @@ public class StateTreeTests
     public void Scenario_traverse_extension_delete_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
@@ -182,7 +183,7 @@ public class StateTreeTests
     public void Scenario_traverse_extension_create_new_extension()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), _account2);
@@ -199,7 +200,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_update_new_value()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account1);
         tree.UpdateRootHash();
@@ -213,7 +214,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_update_no_change()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         tree.UpdateRootHash();
@@ -227,7 +228,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_read_matching_leaf()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), null);
         tree.UpdateRootHash();
@@ -241,7 +242,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_delete_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         tree.Set(new Hash256("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
         tree.UpdateRootHash();
@@ -255,7 +256,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_update_with_extension()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), _account1);
         tree.UpdateRootHash();
@@ -269,7 +270,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_delete_matching_leaf()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         Account account = tree.Get(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"));
         Assert.That(account, Is.Not.Null);
@@ -284,7 +285,7 @@ public class StateTreeTests
     public void Scenario_traverse_leaf_read_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
         Account account = tree.Get(new Hash256("111111111111111111111111111111111111111111111111111111111ddddddd"));
         Assert.That(account, Is.Null);
@@ -299,7 +300,7 @@ public class StateTreeTests
     public void Scenario_traverse_branch_update_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), _account2);
@@ -314,7 +315,7 @@ public class StateTreeTests
     public void Scenario_traverse_branch_read_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
         Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
@@ -330,7 +331,7 @@ public class StateTreeTests
     public void Scenario_traverse_branch_delete_missing()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
@@ -345,7 +346,7 @@ public class StateTreeTests
     public void Minimal_hashes_when_setting_on_empty()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
@@ -357,7 +358,7 @@ public class StateTreeTests
     public void Minimal_encodings_when_setting_on_empty()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
@@ -369,7 +370,7 @@ public class StateTreeTests
     public void Zero_decodings_when_setting_on_empty()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
@@ -381,7 +382,7 @@ public class StateTreeTests
     public void No_writes_on_continues_update()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressA, _account1);
         tree.Set(TestItem.AddressA, _account2);
@@ -395,7 +396,7 @@ public class StateTreeTests
     public void No_writes_on_reverted_update()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(1), "writes before"); // extension, branch, two leaves
@@ -409,7 +410,7 @@ public class StateTreeTests
     public void No_writes_without_commit()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         Assert.That(db.WritesCount, Is.EqualTo(0), "writes");
     }
@@ -418,7 +419,7 @@ public class StateTreeTests
     public void Can_ask_about_root_hash_without_commiting()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
         tree.UpdateRootHash();
         Assert.That(tree.RootHash.ToString(true), Is.EqualTo("0x545a417202afcb10925b2afddb70a698710bb1cf4ab32942c42e9f019d564fdc"));
@@ -428,7 +429,7 @@ public class StateTreeTests
     public void Can_ask_about_root_hash_without_when_emptied()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.UpdateRootHash();
         Assert.That(tree.RootHash, Is.Not.EqualTo(PatriciaTree.EmptyTreeHash));
@@ -455,7 +456,7 @@ public class StateTreeTests
     public void hash_empty_tree_root_hash_initially()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         Assert.That(tree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
     }
 
@@ -463,7 +464,7 @@ public class StateTreeTests
     public void Can_save_null()
     {
         MemDb db = new();
-        StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+        StateTree tree = new(TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, null);
     }
 }

@@ -61,9 +61,10 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRentBuffer(totalLength);
-                RlpStream rlpStream = data.AsRlpStream();
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
+                Span<byte> destination = data.AsSpan();
+                int position = Rlp.StartSequence(destination, 0, contentLength);
+                position = Rlp.Encode(destination, position, keyBytes);
+
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
@@ -76,11 +77,11 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    rlpStream.Write(nodeRef.FullRlp.AsSpan());
+                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
                 }
                 else
                 {
-                    rlpStream.Encode(nodeRef.Keccak);
+                    Rlp.Encode(destination, position, nodeRef.Keccak);
                 }
 
                 return data;
@@ -111,14 +112,17 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = pool.SafeRentBuffer(totalLength);
-                RlpStream rlpStream = data.AsRlpStream();
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
+                Span<byte> destination = data.AsSpan();
+                int position = Rlp.StartSequence(destination, 0, contentLength);
+                position = Rlp.Encode(destination, position, keyBytes);
+
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                rlpStream.Encode(node.Value.AsSpan());
+
+                Rlp.Encode(destination, position, node.Value);
+
                 return data;
             }
 

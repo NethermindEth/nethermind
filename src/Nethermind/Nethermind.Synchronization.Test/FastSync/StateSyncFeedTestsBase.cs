@@ -221,10 +221,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalNodeStorage = new NodeStorage(LocalDb);
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
-                RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
+                RemoteTrieStore = TestTrieStoreFactory.Build(RemoteStateDb, logManager);
 
                 RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
+                LocalStateTree = new StateTree(TestTrieStoreFactory.Build(LocalStateDb, logManager), logManager);
             }
 
             public MemDb RemoteCodeDb { get; }
@@ -299,11 +299,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
                 alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
-                IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
-                    Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
+                TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
+                    Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
                 _stateDb = trieStore.TrieNodeRlpStore;
                 _snapServer = new SnapServer(
-                    trieStore,
+                    trieStore.AsReadOnly(),
                     codeDb,
                     alwaysAvailableRootTracker,
                     LimboLogs.Instance);

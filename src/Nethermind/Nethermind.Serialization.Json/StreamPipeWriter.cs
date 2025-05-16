@@ -244,6 +244,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     private void ReturnSegmentUnsynchronized(BufferSegment segment)
     {
         segment.Reset();
+        Interlocked.MemoryBarrier();
         if (_bufferSegmentPool.Count < MaxSegmentPoolSize)
         {
             _bufferSegmentPool.Push(segment);

@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.Test
             if (!Inited)
             {
                 // this setup is just for finding the storage root
-                StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
+                StorageTree remoteStorageTree = SetStorage(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
                 Hash256 storageRoot = remoteStorageTree.RootHash;
 
                 Empty = Build.An.Account.WithBalance(0).TestObject;

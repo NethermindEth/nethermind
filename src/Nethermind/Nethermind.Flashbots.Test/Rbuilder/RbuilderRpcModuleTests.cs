@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Flashbots.Modules.Rbuilder;
@@ -30,7 +31,7 @@ public class RbuilderRpcModuleTests
     [SetUp]
     public async Task Setup()
     {
-        _worldStateManager = WorldStateManager.CreateForTest(await TestMemDbProvider.InitAsync(), LimboLogs.Instance);
+        _worldStateManager = TestWorldStateFactory.CreateForTest(await TestMemDbProvider.InitAsync(), LimboLogs.Instance);
         IBlockTree blockTree = Build.A.BlockTree()
             .OfChainLength(10)
             .TestObject;

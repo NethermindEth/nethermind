@@ -17,5 +17,4 @@ internal class NullCommitter : ICommitter, IBlockCommitter
     public void Dispose() { }
 
     public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
-    public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => this;
 }

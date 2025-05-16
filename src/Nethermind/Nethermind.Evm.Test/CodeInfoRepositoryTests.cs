@@ -16,6 +16,7 @@ using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Trie.Pruning;
 
@@ -65,7 +66,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -95,7 +96,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -109,7 +110,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -126,7 +127,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -145,7 +146,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -160,7 +161,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -179,7 +180,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());

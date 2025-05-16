@@ -18,6 +18,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
+using Nethermind.Api;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
@@ -78,6 +79,7 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+            Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<ILogManager>(),

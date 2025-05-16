@@ -51,8 +51,6 @@ public class PreCachedTrieStore : ITrieStore
         return rlp is not null;
     }
 
-    public IReadOnlyKeyValueStore TrieNodeRlpStore => _inner.TrieNodeRlpStore;
-
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);

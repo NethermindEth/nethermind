@@ -10,7 +10,6 @@ namespace Nethermind.Network
 {
     public interface IDiscoveryApp : INodeSource
     {
-        void Initialize(PublicKey masterPublicKey);
         void InitializeChannel(IChannel channel);
         Task StartAsync();
         Task StopAsync();

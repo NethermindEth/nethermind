@@ -37,6 +37,6 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [JsonRpcMethod(Description = "The sign method calculates an Ethereum specific signature with: sign(keccack256(\"\x19Ethereum Signed Message:\n\" + len(message) + message))).",
             IsImplemented = false,
             ExampleResponse = "0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee1b")]
-        ResultWrapper<Memory<byte>> personal_sign([JsonRpcParameter(ExampleValue = "[\"0xdeadbeaf\", \"0x9b2055d370f73ec7d8a03e965129118dc8f5bf83\"]")] byte[] message, Address address, string passphrase = null);
+        ResultWrapper<string> personal_sign([JsonRpcParameter(ExampleValue = "[\"0xdeadbeaf\", \"0x9b2055d370f73ec7d8a03e965129118dc8f5bf83\"]")] byte[] message, Address address, string passphrase = null);
     }
 }

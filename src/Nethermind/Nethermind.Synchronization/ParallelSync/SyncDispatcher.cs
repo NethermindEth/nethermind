@@ -184,6 +184,10 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
             }
+            catch (TimeoutException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer}");
+            }
             catch (OperationCanceledException)
             {
                 if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
@@ -242,15 +246,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void Free(SyncPeerAllocation allocation)
         {
-            Downloader.BeforeFree(allocation);
             SyncPeerPool.Free(allocation);
         }
 
         protected async Task<SyncPeerAllocation> Allocate(T request, CancellationToken cancellationToken)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
-            Downloader.OnAllocate(allocation);
-            return allocation;
+            return await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
         }
 
         private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)

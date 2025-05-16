@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -38,6 +38,8 @@ public class DebugModuleTests
     private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
     private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+    private readonly IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+    private readonly IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
     private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge)
@@ -47,9 +49,9 @@ public class DebugModuleTests
             customDebugBridge,
             jsonRpcConfig,
             specProvider,
-            Substitute.For<IBlockchainBridge>(),
+            blockchainBridge,
             new BlocksConfig().SecondsPerSlot,
-            Substitute.For<IBlockFinder>()
+            blockFinder
         );
     }
 
@@ -263,6 +265,10 @@ public class DebugModuleTests
         TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(transaction);
 
         debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
+        blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
+        blockchainBridge.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);

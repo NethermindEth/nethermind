@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -11,7 +12,7 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrRequestMsg>
 {
-    public EnrRequestMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
+    public EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
         : base(ecdsa, nodeKey, nodeIdResolver) { }
 
     public void Serialize(IByteBuffer byteBuffer, EnrRequestMsg msg)

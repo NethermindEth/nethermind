@@ -41,6 +41,8 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class ForwardHeaderProviderTests
 {
+    private const int SyncBatchSizeMax = 128;
+
     [TestCase(1L, 0, 64, 0, 1)]
     [TestCase(1L, 32, 64, 0, 0)]
     [TestCase(2L, 0, 64, 0, 2)]
@@ -51,10 +53,10 @@ public partial class ForwardHeaderProviderTests
     [TestCase(32L, 0, 16, 0, 15)]
     [TestCase(3L, 0, 64, 0, 3)]
     [TestCase(3L, 32, 64, 0, 0)]
-    [TestCase(SyncBatchSize.Max * 8, 0, 64, 0, 63)]
-    [TestCase(SyncBatchSize.Max * 8, 0, 64, 0, 63)]
-    [TestCase(SyncBatchSize.Max * 8, 32, 64, 0, 63)]
-    [TestCase(SyncBatchSize.Max * 8, 32, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 0, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 0, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 32, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 32, 64, 0, 63)]
     public async Task Happy_path(long headNumber, int skipLastN, int maxHeader, int expectedStartNumber, int expectedEndNumber)
     {
         long chainLength = headNumber + 1;
@@ -458,13 +460,7 @@ public partial class ForwardHeaderProviderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
-            IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-            peerAllocationStrategy
-                .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-                .Returns(peerInfo);
-            SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
-            peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), BlockTree);
+            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -554,7 +550,7 @@ public partial class ForwardHeaderProviderTests
             bool justFirst = _flags.HasFlag(Response.JustFirst);
             bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
 
-            if (timeoutOnFullBatch && number == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && number == SyncBatchSizeMax)
             {
                 throw new TimeoutException();
             }
@@ -646,7 +642,7 @@ public partial class ForwardHeaderProviderTests
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool withTransaction = flags.HasFlag(Response.WithTransactions);
 
-            if (timeoutOnFullBatch && number == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && number == SyncBatchSizeMax)
             {
                 throw new TimeoutException();
             }
@@ -705,7 +701,7 @@ public partial class ForwardHeaderProviderTests
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool withTransactions = flags.HasFlag(Response.WithTransactions);
 
-            if (timeoutOnFullBatch && blockHashes.Count == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && blockHashes.Count == SyncBatchSizeMax)
             {
                 throw new TimeoutException();
             }

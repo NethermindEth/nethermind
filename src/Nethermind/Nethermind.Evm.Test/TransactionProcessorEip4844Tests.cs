@@ -17,6 +17,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Evm.Test;
 
@@ -33,7 +34,7 @@ internal class TransactionProcessorEip4844Tests
     {
         MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);

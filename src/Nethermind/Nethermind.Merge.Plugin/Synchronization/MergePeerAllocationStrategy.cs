@@ -19,7 +19,6 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
     private readonly IPeerAllocationStrategy _postMergeAllocationStrategy;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly ILogger _logger;
-    public bool CanBeReplaced => true;
 
     public MergePeerAllocationStrategy(
         IPeerAllocationStrategy preMergeAllocationStrategy,

@@ -145,6 +145,7 @@ namespace Nethermind.Api
         public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
+        public IEngineRequestsTracker? EngineRequestsTracker { get; set; }
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
@@ -154,7 +155,7 @@ namespace Nethermind.Api
         public IKeyStore? KeyStore { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
-        public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
+        public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IPeerPool? PeerPool => Context.Resolve<IPeerPool>();

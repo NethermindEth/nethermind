@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -137,7 +138,7 @@ namespace Nethermind.Store.Test
             memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlp.ToArray();
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return new TrieStore(memDb, NullLogManager.Instance).GetTrieStore(null);
+            return TestTrieStoreFactory.Build(memDb, NullLogManager.Instance).GetTrieStore(null);
         }
     }
 }

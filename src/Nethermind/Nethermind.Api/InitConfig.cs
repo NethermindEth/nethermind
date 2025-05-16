@@ -37,7 +37,7 @@ namespace Nethermind.Api
         public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
         public long? ExitOnBlockNumber { get; set; } = null;
         public int BackgroundTaskConcurrency { get; set; } = 1;
-        public int BackgroundTaskMaxNumber { get; set; } = 65536;
+        public int BackgroundTaskMaxNumber { get; set; } = 1024;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

@@ -37,6 +37,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization;
@@ -61,7 +62,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            var trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());

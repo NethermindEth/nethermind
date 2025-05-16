@@ -3,30 +3,26 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc.Client;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.ExternalSigner.Plugin;
 
 public class ClefSigner : IHeaderSigner, ISignerStore
 {
-    private readonly IJsonRpcClient _rpcClient;
-    private readonly HeaderDecoder _headerDecoder = new();
 
-    private ClefSigner(IJsonRpcClient rpcClient, Address author)
+    private readonly ClefWallet _clefWallet;
+
+    private ClefSigner(ClefWallet clefWallet, Address author)
     {
-        _rpcClient = rpcClient;
         Address = author;
+        _clefWallet = clefWallet;
     }
 
-    public static async Task<ClefSigner> Create(IJsonRpcClient jsonRpcClient, Address? blockAuthorAccount = null) =>
-        new(jsonRpcClient, await GetSignerAddress(jsonRpcClient, blockAuthorAccount));
+    public static ClefSigner Create(ClefWallet clefWallet, Address? blockAuthorAccount = null) =>
+        new(clefWallet, GetSignerAddress(clefWallet, blockAuthorAccount));
 
     public Address Address { get; }
 
@@ -44,15 +40,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// <returns><see cref="Signature"/> of <paramref name="message"/>.</returns>
     public Signature Sign(Hash256 message)
     {
-        var signed = _rpcClient.Post<string>(
-            "account_signData",
-            "text/plain",
-            Address.ToString(),
-            message)
-            .GetAwaiter().GetResult();
-        if (signed is null) ThrowInvalidOperationSignFailed();
-        byte[] bytes = Bytes.FromHexString(signed);
-        return new Signature(bytes);
+        return _clefWallet.Sign(message, Address);
     }
 
     /// <summary>
@@ -63,55 +51,26 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// <returns><see cref="Signature"/> of the hash of the clique header.</returns>
     public Signature Sign(BlockHeader header)
     {
-        ArgumentNullException.ThrowIfNull(header);
-        int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None);
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(contentLength);
-        try
-        {
-            RlpStream rlpStream = new NettyRlpStream(buffer);
-            rlpStream.Encode(header);
-            string? signed = _rpcClient.Post<string>(
-                "account_signData",
-                "application/x-clique-header",
-                Address.ToString(),
-                buffer.AsSpan().ToHexString(true))
-                .GetAwaiter().GetResult();
-            if (signed is null) ThrowInvalidOperationSignFailed();
-            byte[] bytes = Bytes.FromHexString(signed);
-
-            //Clef will set recid to 0/1, without the VOffset
-            return bytes.Length == 65 && (bytes[64] == 0 || bytes[64] == 1)
-                ? new Signature(bytes.AsSpan(0, 64), bytes[64])
-                : new Signature(bytes);
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        return _clefWallet.Sign(header, Address);
     }
 
     public ValueTask Sign(Transaction tx) =>
         throw new NotImplementedException("Remote signing of transactions is not supported.");
 
-    private static async Task<Address> GetSignerAddress(IJsonRpcClient rpcClient, Address? blockAuthorAccount)
+    private static Address GetSignerAddress(ClefWallet clefWallet, Address? blockAuthorAccount)
     {
-        var accounts = await rpcClient.Post<string[]>("account_list") ?? throw new InvalidOperationException("Remote signer 'account_list' response is invalid.");
+        Address[] accounts = clefWallet.GetAccounts();
         if (accounts.Length == 0) throw new InvalidOperationException("Remote signer has not been configured with any signers.");
         return blockAuthorAccount is not null
-            ? accounts.Any(a => new Address(a).Bytes.SequenceEqual(blockAuthorAccount.Bytes))
+            ? accounts.Any(a => a == blockAuthorAccount)
                 ? blockAuthorAccount
                 : throw new InvalidOperationException($"Remote signer cannot sign for {blockAuthorAccount}.")
-            : new Address(accounts[0]);
+            : accounts[0];
     }
 
     public void SetSigner(PrivateKey key) => ThrowInvalidOperationSetSigner();
 
     public void SetSigner(IProtectedPrivateKey key) => ThrowInvalidOperationSetSigner();
-
-    [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowInvalidOperationSignFailed() =>
-        throw new InvalidOperationException("Remote signer failed to sign the request.");
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -27,8 +27,6 @@ public class ClientTypeStrategy : IPeerAllocationStrategy
         _supportedClientTypes = new HashSet<NodeClientType>(supportedClientTypes);
     }
 
-    public bool CanBeReplaced => _strategy.CanBeReplaced;
-
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         IEnumerable<PeerInfo> originalPeers = peers;

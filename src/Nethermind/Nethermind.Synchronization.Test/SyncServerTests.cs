@@ -675,7 +675,7 @@ public class SyncServerTests
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
 
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);

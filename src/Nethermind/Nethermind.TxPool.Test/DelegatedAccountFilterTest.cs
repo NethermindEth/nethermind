@@ -18,6 +18,7 @@ using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Test;
 
 namespace Nethermind.TxPool.Test;
 internal class DelegatedAccountFilterTest
@@ -43,7 +44,7 @@ internal class DelegatedAccountFilterTest
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
@@ -73,7 +74,7 @@ internal class DelegatedAccountFilterTest
         standardPool.TryInsert(inPool.Hash, inPool);
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
@@ -99,7 +100,7 @@ internal class DelegatedAccountFilterTest
         standardPool.TryInsert(inPool.Hash, inPool);
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
@@ -130,7 +131,7 @@ internal class DelegatedAccountFilterTest
         standardPool.TryInsert(inPool.Hash, inPool);
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         CodeInfoRepository codeInfoRepository = new();
@@ -165,7 +166,7 @@ internal class DelegatedAccountFilterTest
         Transaction transaction = Build.A.Transaction.WithNonce((UInt256)nonce).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0, 1);
         TxFilteringState state = new(transaction, stateProvider);

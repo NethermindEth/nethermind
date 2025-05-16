@@ -407,7 +407,7 @@ namespace Nethermind.Serialization.Rlp
                 int lengthOfLength = LengthOfLength(input.Length);
                 byte prefix = (byte)(183 + lengthOfLength);
                 buffer[position++] = prefix;
-                SerializeLength(input.Length, buffer[position..]);
+                position += SerializeLength(input.Length, buffer[position..]);
             }
 
             input.CopyTo(buffer.Slice(position, input.Length));

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using NonBlocking;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Filters
         private readonly ConcurrentDictionary<int, List<Hash256>> _pendingTransactions =
             new();
 
-        private Hash256 _lastBlockHash;
+        private Hash256? _lastBlockHash;
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
         private long _logIndex;
@@ -50,12 +50,10 @@ namespace Nethermind.Blockchain.Filters
 
         private void OnFilterRemoved(object sender, FilterEventArgs e)
         {
-            if (_blockHashes.TryRemove(e.FilterId, out _))
-            {
-                return;
-            }
-
-            _logs.TryRemove(e.FilterId, out _);
+            int id = e.FilterId;
+            if (_blockHashes.TryRemove(id, out _)) return;
+            if (_logs.TryRemove(id, out _)) return;
+            _pendingTransactions.TryRemove(id, out _);
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -99,12 +97,14 @@ namespace Nethermind.Blockchain.Filters
 
         public FilterLog[] GetLogs(int filterId)
         {
+            _filterStore.RefreshFilter(filterId);
             _logs.TryGetValue(filterId, out List<FilterLog> logs);
             return logs?.ToArray() ?? [];
         }
 
         public Hash256[] GetBlocksHashes(int filterId)
         {
+            _filterStore.RefreshFilter(filterId);
             _blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes);
             return blockHashes?.ToArray() ?? [];
         }
@@ -112,6 +112,7 @@ namespace Nethermind.Blockchain.Filters
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
         public Hash256[] PollBlockHashes(int filterId)
         {
+            _filterStore.RefreshFilter(filterId);
             if (!_blockHashes.TryGetValue(filterId, out var blockHashes))
             {
                 if (_lastBlockHash is not null)
@@ -132,6 +133,7 @@ namespace Nethermind.Blockchain.Filters
 
         public FilterLog[] PollLogs(int filterId)
         {
+            _filterStore.RefreshFilter(filterId);
             if (!_logs.TryGetValue(filterId, out var logs))
             {
                 return [];
@@ -145,6 +147,8 @@ namespace Nethermind.Blockchain.Filters
 
         public Hash256[] PollPendingTransactionHashes(int filterId)
         {
+            _filterStore.RefreshFilter(filterId);
+
             if (!_pendingTransactions.TryGetValue(filterId, out var pendingTransactions))
             {
                 return [];

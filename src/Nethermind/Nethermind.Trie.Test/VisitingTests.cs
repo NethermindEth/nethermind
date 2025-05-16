@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -26,7 +27,7 @@ public class VisitingTests
     {
         MemDb memDb = new();
 
-        using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
+        using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
         PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
@@ -65,7 +66,7 @@ public class VisitingTests
     {
         MemDb memDb = new();
 
-        using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
+        using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
 
         byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;

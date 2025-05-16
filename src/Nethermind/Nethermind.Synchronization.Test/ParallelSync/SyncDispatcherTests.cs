@@ -48,7 +48,6 @@ public class SyncDispatcherTests
             await _peerSemaphore.WaitAsync(cancellationToken);
             ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
             SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
-            allocation.AllocateBestPeer([], Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
             return allocation;
         }
 
@@ -123,7 +122,6 @@ public class SyncDispatcherTests
         }
 
         public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
-        public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = static delegate { };
 
         public ValueTask DisposeAsync()
         {

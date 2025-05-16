@@ -21,7 +21,6 @@ public class OverridableWorldState(
     /// </summary>
     public void ResetOverrides()
     {
-        trieStore.ResetOverrides();
         dbProvider.ClearTempChanges();
     }
 }

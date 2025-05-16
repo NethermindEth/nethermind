@@ -27,6 +27,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -39,7 +40,7 @@ public class BlockProcessorTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(
@@ -70,7 +71,7 @@ public class BlockProcessorTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(

@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
                 case 1 when firstByteLessThan128:
                     // the single byte of content will be written without any prefix
                     break;
-                case < 56:
+                case < SmallPrefixBarrier:
                     {
                         byte smallPrefix = (byte)(contentLength + 128);
                         WriteByte(smallPrefix);
@@ -130,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
         public void StartSequence(int contentLength)
         {
             byte prefix;
-            if (contentLength < 56)
+            if (contentLength < SmallPrefixBarrier)
             {
                 prefix = (byte)(192 + contentLength);
                 WriteByte(prefix);
@@ -571,7 +571,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 WriteByte(input[0]);
             }
-            else if (input.Length < 56)
+            else if (input.Length < SmallPrefixBarrier)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
                 WriteByte(smallPrefix);
@@ -621,7 +621,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     int lengthOfLength = prefix - 183;
                     int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
+                    if (length < SmallPrefixBarrier)
                     {
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
@@ -686,7 +686,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = PeekDeserializeLength(1, lengthOfLength);
-                if (length < 56)
+                if (length < SmallPrefixBarrier)
                 {
                     throw new RlpException($"Expected length greater or equal 56 and was {length}");
                 }
@@ -701,7 +701,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int lengthOfContentLength = prefix - 247;
                 int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-                if (contentLength < 56)
+                if (contentLength < SmallPrefixBarrier)
                 {
                     throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
                 }
@@ -729,7 +729,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lengthOfContentLength = prefix - 247;
             int contentLength = DeserializeLength(lengthOfContentLength);
-            if (contentLength < 56)
+            if (contentLength < SmallPrefixBarrier)
             {
                 throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
             }
@@ -1079,7 +1079,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < SmallPrefixBarrier)
                 {
                     throw new RlpException("Expected length greater or equal 56 and was {length}");
                 }
@@ -1363,7 +1363,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < SmallPrefixBarrier)
                 {
                     ThrowUnexpectedLength(length);
                 }
@@ -1418,8 +1418,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private const byte EmptyArrayByte = 128;
-
         private const byte EmptySequenceByte = 192;
+        private const int SmallPrefixBarrier = 56;
 
         public override string ToString()
         {

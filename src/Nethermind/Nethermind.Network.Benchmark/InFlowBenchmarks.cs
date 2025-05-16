@@ -73,8 +73,9 @@ namespace Nethermind.Network.Benchmarks
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
-            _serializationService = new MessageSerializationService();
-            _serializationService.Register(_newBlockMessageSerializer);
+            _serializationService = new MessageSerializationService(
+                SerializerInfo.Create(_newBlockMessageSerializer)
+                );
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 

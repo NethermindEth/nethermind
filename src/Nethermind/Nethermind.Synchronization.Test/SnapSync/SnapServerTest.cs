@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -37,7 +38,7 @@ public class SnapServerTest
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
-        TrieStore store = new(stateDbServer, LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
 
@@ -262,7 +263,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
@@ -302,7 +303,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
 
@@ -352,7 +353,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         StateTree stateTree = new(store, LimboLogs.Instance);
 
