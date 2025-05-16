@@ -41,17 +41,7 @@ public sealed record OptimismRollupConfig
         public required BlockId L1 { get; init; }
         public required BlockId L2 { get; init; }
         public required ulong L2Time { get; init; }
-        public required OptimismGenesisSystemConfig SystemConfig { get; init; }
-
-        public sealed record OptimismGenesisSystemConfig
-        {
-            public required Address BatcherAddr { get; init; }
-            public required byte[] Overhead { get; init; }
-            public required byte[] Scalar { get; init; }
-            public required ulong GasLimit { get; init; }
-            public required byte[] EIP1559Params { get; init; }
-            public required byte[] OperatorFeeParams { get; init; }
-        }
+        public required OptimismSystemConfig SystemConfig { get; init; }
     }
 
     public sealed record OptimismChainConfig
@@ -73,16 +63,7 @@ public sealed record OptimismRollupConfig
                 L1 = new BlockId { Number = clParameters.L1ChainId!.Value, Hash = clParameters.L1GenesisHash! },
                 L2 = new BlockId { Number = (ulong)chainSpec.Genesis.Number, Hash = chainSpec.Genesis.GetOrCalculateHash() },
                 L2Time = chainSpec.Genesis.Timestamp,
-                SystemConfig = new OptimismGenesis.OptimismGenesisSystemConfig
-                {
-                    // TODO: Extract from superchain-registry
-                    BatcherAddr = clParameters.BatcherInboxAddress!,
-                    Overhead = new byte[32],
-                    Scalar = new byte[32],
-                    GasLimit = 0,
-                    EIP1559Params = new byte[8],
-                    OperatorFeeParams = new byte[32]
-                }
+                SystemConfig = clParameters.GenesisSystemConfig!
             },
             BlockTime = clParameters.L2BlockTime!.Value,
             MaxSequencerDrift = clParameters.MaxSequencerDrift!.Value,

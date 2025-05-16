@@ -122,6 +122,14 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             },
             "OptimismCL": merge_all(
                 {
+                    "GenesisSystemConfig": {
+                        "BatcherAddr": lookup(config, ["genesis", "system_config", "batcherAddress"]),
+                        "Overhead": lookup(config, ["genesis", "system_config", "overhead"]),
+                        "Scalar": lookup(config, ["genesis", "system_config", "scalar"]),
+                        "GasLimit": lookup(config, ["genesis", "system_config", "gasLimit"]),
+                        "EIP1559Params": "0x0000000000000000",
+                        "OperatorFeeParams": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    },
                     "L1BeaconGenesisSlotTime": lookup(constants, ["L1BeaconGenesisSlotTime", l1]),
                     "L1ChainId": lookup(constants, ["L1ChainId", l1]),
                     "L1GenesisNumber": lookup(config, ["genesis", "l1", "number"]),
