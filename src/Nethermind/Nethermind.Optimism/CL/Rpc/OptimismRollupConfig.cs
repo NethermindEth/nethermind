@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Optimism.CL;
@@ -13,41 +14,65 @@ namespace Nethermind.Optimism.Cl.Rpc;
 /// </remarks>
 public sealed record OptimismRollupConfig
 {
+    [JsonPropertyName("genesis")]
     public required OptimismGenesis Genesis { get; init; }
+    [JsonPropertyName("block_time")]
     public required ulong BlockTime { get; init; }
+    [JsonPropertyName("max_sequencer_drift")]
     public required ulong MaxSequencerDrift { get; init; }
+    [JsonPropertyName("seq_window_size")]
     public required ulong SeqWindowSize { get; init; }
+    [JsonPropertyName("channel_timeout")]
     public required ulong ChannelTimeout { get; init; }
+    [JsonPropertyName("l1_chain_id")]
     public required ulong L1ChainID { get; init; }
+    [JsonPropertyName("l2_chain_id")]
     public required ulong L2ChainID { get; init; }
 
+    [JsonPropertyName("regolith_time")]
     public required ulong? RegolithTime { get; init; }
+    [JsonPropertyName("canyon_time")]
     public required ulong? CanyonTime { get; init; }
+    [JsonPropertyName("delta_time")]
     public required ulong? DeltaTime { get; init; }
+    [JsonPropertyName("ecotone_time")]
     public required ulong? EcotoneTime { get; init; }
+    [JsonPropertyName("fjord_time")]
     public required ulong? FjordTime { get; init; }
+    [JsonPropertyName("granite_time")]
     public required ulong? GraniteTime { get; init; }
+    [JsonPropertyName("holocene_time")]
     public required ulong? HoloceneTime { get; init; }
+    [JsonPropertyName("isthmus_time")]
     public required ulong? IsthmusTime { get; init; }
-
+    [JsonPropertyName("batch_inbox_address")]
     public required Address BatchInboxAddress { get; init; }
+    [JsonPropertyName("deposit_contract_address")]
     public required Address DepositContractAddress { get; init; }
+    [JsonPropertyName("l1_system_config_address")]
     public required Address L1SystemConfigAddress { get; init; }
-
+    [JsonPropertyName("chain_op_config")]
     public required OptimismChainConfig ChainOpConfig { get; init; }
 
     public sealed record OptimismGenesis
     {
+        [JsonPropertyName("l1")]
         public required BlockId L1 { get; init; }
+        [JsonPropertyName("l2")]
         public required BlockId L2 { get; init; }
+        [JsonPropertyName("l2_time")]
         public required ulong L2Time { get; init; }
+        [JsonPropertyName("system_config")]
         public required OptimismSystemConfig SystemConfig { get; init; }
     }
 
     public sealed record OptimismChainConfig
     {
+        [JsonPropertyName("eip1559Elasticity")]
         public required ulong EIP1559Elasticity { get; init; }
+        [JsonPropertyName("eip1559Denominator")]
         public required ulong EIP1559Denominator { get; init; }
+        [JsonPropertyName("eip1559DenominatorCanyon")]
         public required ulong? EIP1559DenominatorCanyon { get; init; }
     }
 
