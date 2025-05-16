@@ -1037,5 +1037,60 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(nonce)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
         }
+
+        [Test]
+        public async Task Test_eviction()
+        {
+            ChainSpecBasedSpecProvider provider = new(new ChainSpec
+            {
+                Parameters = new ChainParameters
+                {
+                    Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
+                    Eip7002TransitionTimestamp = _blockTree.Head.Timestamp + 1,
+                    BlobSchedule = {
+                        { "cancun", new ChainSpecBlobCountJson { Max = 5, Timestamp = _blockTree.Head.Timestamp } },
+                        { "prague", new ChainSpecBlobCountJson { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1 } },
+                    },
+                },
+                EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
+            });
+
+            Block head = _blockTree.Head;
+            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
+            _txPool = CreatePool(txPoolConfig, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction txOk = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(3)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(2.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction txToRemove1 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(5)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(2.GWei())
+                .WithNonce(txOk.Nonce + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction txToRemove2 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(3)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(2.GWei())
+                .WithNonce(txOk.Nonce + 2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(txOk, TxHandlingOptions.None);
+            _txPool.SubmitTx(txToRemove1, TxHandlingOptions.None);
+            _txPool.SubmitTx(txToRemove2, TxHandlingOptions.None);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(3));
+
+            await AddBlock();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        }
     }
 }

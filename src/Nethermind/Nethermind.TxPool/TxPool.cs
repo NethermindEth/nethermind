@@ -676,19 +676,21 @@ namespace Nethermind.TxPool
             UInt256? previousTxBottleneck = null;
             int i = 0;
             UInt256 cumulativeCost = 0;
+            bool cancelTheRest = false;
 
             foreach (Transaction tx in transactions)
             {
                 UInt256 gasBottleneck = 0;
 
-                if (tx.Nonce < currentNonce)
+                if (tx.Nonce < currentNonce || cancelTheRest)
                 {
                     _broadcaster.StopBroadcast(tx.Hash!);
                     updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                 }
                 else
                 {
-                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                    var spec = _specProvider.GetCurrentHeadSpec();
+                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null so check is skipped
@@ -702,11 +704,15 @@ namespace Nethermind.TxPool
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
 
-                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
+                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost) || spec.MaxBlobCount < (ulong)(tx.BlobVersionedHashes?.Length ?? 0))
                         {
                             // balance too low, remove tx from the pool
                             _broadcaster.StopBroadcast(tx.Hash!);
                             updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
+                            if (tx.SupportsBlobs)
+                            {
+                                cancelTheRest = true;
+                            }
                         }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
