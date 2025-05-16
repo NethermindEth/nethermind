@@ -355,10 +355,10 @@ public class BlockValidator(
         return true;
     }
 
-    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateBodyAgainstHeader(header, toBeValidated, out _);
 
-    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
@@ -382,22 +382,22 @@ public class BlockValidator(
         return true;
     }
 
-    public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
+    protected static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
-    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
+    protected static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
         (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
 
-    public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
+    protected static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
         ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
 
-    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
+    protected static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
         (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
 
-    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
+    protected static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
         ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
 
-    public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
+    protected static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
         if (body.Withdrawals is null)
         {
