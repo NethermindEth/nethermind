@@ -260,7 +260,7 @@ public class BlockValidator(
 
         if (block.Withdrawals is not null)
         {
-            if (!ValidateWithdrawalsRoot(block, out Hash256 withdrawalsRoot))
+            if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
             {
                 error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
@@ -358,7 +358,7 @@ public class BlockValidator(
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateBodyAgainstHeader(header, toBeValidated, out _);
 
-    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
@@ -372,7 +372,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (!ValidateWithdrawalsRoot(header, toBeValidated, out Hash256? withdrawalsRoot))
+        if (!ValidateWithdrawalsHashMatches(header, toBeValidated, out Hash256? withdrawalsRoot))
         {
             errorMessage = BlockErrorMessages.InvalidWithdrawalsRoot(header.WithdrawalsRoot, withdrawalsRoot);
             return false;
@@ -394,22 +394,18 @@ public class BlockValidator(
     private static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
         (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
 
-    public bool ValidateWithdrawalsRoot(Block block, out Hash256? withdrawalsRoot) =>
-        ValidateWithdrawalsRoot(block.Header, block.Body, out withdrawalsRoot);
+    protected static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
+        ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
 
-    public virtual bool ValidateWithdrawalsRoot(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
+    protected static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
         if (body.Withdrawals is null)
         {
             withdrawalsRoot = null;
-        }
-        else
-        {
-            var trie = new WithdrawalTrie(body.Withdrawals);
-            withdrawalsRoot = trie.RootHash;
+            return header.WithdrawalsRoot is null;
         }
 
-        return withdrawalsRoot == header.WithdrawalsRoot;
+        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
     private static string Invalid(Block block) =>
