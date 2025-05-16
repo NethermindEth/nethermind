@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -11,6 +12,12 @@ public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256
     where TVersionedExecutionPayload : ExecutionPayloadV3, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
     public BlobsBundleV1 BlobsBundle { get; } = blobsBundle;
+
+    public override bool ValidateFork(ISpecProvider specProvider)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp));
+        return spec.IsEip4844Enabled && !spec.IsEip7623Enabled;
+    }
 
     public bool ShouldOverrideBuilder { get; init; }
     public override string ToString() =>
