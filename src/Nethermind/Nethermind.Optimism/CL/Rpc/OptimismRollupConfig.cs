@@ -29,7 +29,6 @@ public sealed record OptimismRollupConfig
     public required ulong? GraniteTime { get; init; }
     public required ulong? HoloceneTime { get; init; }
     public required ulong? IsthmusTime { get; init; }
-    public required ulong? InteropTime { get; init; }
 
     public required Address BatchInboxAddress { get; init; }
     public required Address DepositContractAddress { get; init; }
@@ -99,7 +98,6 @@ public sealed record OptimismRollupConfig
             GraniteTime = engineParameters.GraniteTimestamp,
             HoloceneTime = engineParameters.HoloceneTimestamp,
             IsthmusTime = engineParameters.IsthmusTimestamp,
-            InteropTime = null, // TODO: Figure out
 
             BatchInboxAddress = clParameters.BatchSubmitter!,
             DepositContractAddress = chainSpec.Parameters.DepositContractAddress,
