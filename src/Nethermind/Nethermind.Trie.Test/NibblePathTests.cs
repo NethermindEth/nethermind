@@ -282,4 +282,18 @@ public class NibblePathTests
 
         pathRef.Equals(path).Should().BeFalse();
     }
+
+    [Test]
+    public void FromNibbles([Range(1, 64)] int length)
+    {
+        var array = Enumerable.Range(1, length).Select(i => (byte)(i & 15)).ToArray();
+
+        var fromNibbles = NibblePath.FromNibbles(array);
+        fromNibbles.Length.Should().Be(length);
+
+        for (int i = 0; i < length; i++)
+        {
+            fromNibbles[i].Should().Be(array[i]);
+        }
+    }
 }

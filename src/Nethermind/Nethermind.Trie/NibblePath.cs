@@ -103,8 +103,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     {
         byte[] data;
 
-        var dLength = _data.Length;
-        var otherLength = other._data.Length;
+        int dLength = _data.Length;
+        int otherLength = other._data.Length;
 
         if (other.IsOdd == false)
         {
@@ -119,7 +119,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         Debug.Assert(other.IsOdd, "The other is odd");
 
-        var shift = IsOdd ? 0 : 1;
+        int shift = IsOdd ? 0 : 1;
 
         // In both cases: even+odd and odd+odd the following will be used
         data = new byte[dLength + otherLength - shift];
@@ -128,7 +128,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         other._data!.CopyTo(data, dLength - shift);
 
         // Mix in the last one
-        ref var last = ref data[dLength - shift];
+        ref byte last = ref data[dLength - shift];
         last = (byte)((last & NibbleMask) | ((_data[^1] & NibbleMask) << NibbleShift));
 
         // The last one is take care of. It's an even number of nibbles to move. Move byte by byte
@@ -137,8 +137,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             // even & odd, the first byte should be set to odd
             data[0] = (byte)(OddFlag | ((_data[1] >> NibbleShift) & NibbleMask));
 
-            var length = Length / 2 - 1;
-            for (var i = 0; i < length; i++)
+            int length = Length / 2 - 1;
+            for (int i = 0; i < length; i++)
             {
                 data[i + 1] = (byte)(((_data[i + 1] & NibbleMask) << NibbleShift) |
                                      ((_data[i + 2] >> NibbleShift) & NibbleMask));
@@ -149,8 +149,8 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         }
         else
         {
-            var length = Length / 2;
-            for (var i = 0; i < length; i++)
+            int length = Length / 2;
+            for (int i = 0; i < length; i++)
             {
                 data[i + 1] = (byte)(((_data[i] & NibbleMask) << NibbleShift) |
                                      ((_data[i + 1] >> NibbleShift) & NibbleMask));
@@ -196,7 +196,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             return Single(this[from]);
         }
 
-        var size = GetRequiredArraySize(length);
+        int size = GetRequiredArraySize(length);
         byte[] data = GC.AllocateUninitializedArray<byte>(size);
 
         if (length % 2 != 0)
@@ -230,7 +230,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         for (int i = 0; i < Length; i++)
         {
-            var v = this[i];
+            byte v = this[i];
             chars[i + prefixLength] = (char)(v < 10 ? '0' + v : 'a' + v - 10);
         }
 
@@ -249,7 +249,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             // for an odd path, and an even index, take lower nibble
             // for an even path, and an even index, take higher nibble
             // for an even path, and an odd index, take lower nibble
-            var h = 1 - ((index & 1) ^ odd);
+            int h = 1 - ((index & 1) ^ odd);
             return (byte)((b >> (h * NibbleShift)) & NibbleMask);
         }
     }
@@ -291,7 +291,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         if (nibbles.Length == 1)
             return Singles[nibbles[0]];
 
-        var bytes = new byte[GetRequiredArraySize(nibbles.Length)];
+        byte[] bytes = new byte[GetRequiredArraySize(nibbles.Length)];
 
         ref byte dest = ref bytes[0];
         ref byte source = ref MemoryMarshal.GetReference(nibbles);
@@ -309,67 +309,108 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         Debug.Assert(length % 2 == 0);
 
-        if (length % 4 == 2)
-        {
-            dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
-            dest = ref Unsafe.Add(ref dest, 1);
-            source = ref Unsafe.Add(ref source, 2);
-            length -= 2;
-        }
-
-        if (length % 8 == 4)
-        {
-            dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
-            Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
-            dest = ref Unsafe.Add(ref dest, 2);
-            source = ref Unsafe.Add(ref source, 4);
-            length -= 4;
-        }
-
-        Debug.Assert(length % 8 == 0);
-
         if (Vector128.IsHardwareAccelerated)
         {
             const int chunk = 16;
-            if (length % chunk != 0)
+
+            if (length < chunk)
             {
-                dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
-                Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
-                Unsafe.Add(ref dest, 2) = (byte)((Unsafe.Add(ref source, 4) << NibbleShift) | Unsafe.Add(ref source, 5));
-                Unsafe.Add(ref dest, 3) = (byte)((Unsafe.Add(ref source, 6) << NibbleShift) | Unsafe.Add(ref source, 7));
-                dest = ref Unsafe.Add(ref dest, 4);
-                source = ref Unsafe.Add(ref source, 8);
+                // Handle cases where there's less nibbles than the vector with a few iffs.
+                if (length % 4 == 2)
+                {
+                    dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+                    dest = ref Unsafe.Add(ref dest, 1);
+                    source = ref Unsafe.Add(ref source, 2);
+                    length -= 2;
+                }
+
+                if (length % 8 == 4)
+                {
+                    dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+                    Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
+                    dest = ref Unsafe.Add(ref dest, 2);
+                    source = ref Unsafe.Add(ref source, 4);
+                    length -= 4;
+                }
+
+                if (length % chunk != 0)
+                {
+                    dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+                    Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
+                    Unsafe.Add(ref dest, 2) = (byte)((Unsafe.Add(ref source, 4) << NibbleShift) | Unsafe.Add(ref source, 5));
+                    Unsafe.Add(ref dest, 3) = (byte)((Unsafe.Add(ref source, 6) << NibbleShift) | Unsafe.Add(ref source, 7));
+                    dest = ref Unsafe.Add(ref dest, 4);
+                    source = ref Unsafe.Add(ref source, 8);
+                    length -= 8;
+                }
+
+                Debug.Assert(length == 0);
             }
-
-            Debug.Assert(length % chunk == 0);
-
-            // Prepare the “multiply by 16” vector for <<4
-            Vector128<byte> vMul16 = Vector128.Create((byte)16);
-
-            for (int i = 0; i < length; i += chunk)
+            else
             {
-                // load 16 bytes
-                var vec = Vector128.LoadUnsafe(in source);
+                // There's more than a chunk nibbles.
+                // Align the vector by running it through the loop but handling the first run with alignment.
 
-                // shift each 4-bit value into the high nibble (<<4)
-                var highNibbles = Vector128.Multiply(vec, vMul16);
+                // Prepare the “multiply by 16” vector for <<4
+                Vector128<byte> vMul16 = Vector128.Create((byte)16);
 
-                // shuffle high and low nibbles into interleaved positions
-                var hiShuf = Vector128.Shuffle(highNibbles, HighMask);
-                var loShuf = Vector128.Shuffle(vec, LowMask);
+                for (int i = 0; i < length; i += chunk)
+                {
+                    // load 16 bytes
+                    Vector128<byte> vec = Vector128.LoadUnsafe(in source);
 
-                // combine them
-                var packed = Vector128.BitwiseOr(hiShuf, loShuf);
+                    // shift each 4-bit value into the high nibble (<<4)
+                    Vector128<byte> highNibbles = Vector128.Multiply(vec, vMul16);
 
-                // store the low 8 bytes of 'packed' into the destination
-                Unsafe.WriteUnaligned(ref dest, packed.AsUInt64()[0]);
+                    // shuffle high and low nibbles into interleaved positions
+                    Vector128<byte> hiShuf = Vector128.Shuffle(highNibbles, HighMask);
+                    Vector128<byte> loShuf = Vector128.Shuffle(vec, LowMask);
 
-                dest = ref Unsafe.Add(ref dest, chunk / 2);
-                source = ref Unsafe.Add(ref source, chunk);
+                    // combine them
+                    Vector128<byte> packed = Vector128.BitwiseOr(hiShuf, loShuf);
+
+                    // store the low 8 bytes of 'packed' into the destination
+                    packed.GetLower().StoreUnsafe(ref dest);
+
+                    if (i == 0 && length % chunk != 0)
+                    {
+                        // Ensure alignment
+                        int shift = length & (chunk - 1);
+
+                        dest = ref Unsafe.Add(ref dest, shift / 2);
+                        source = ref Unsafe.Add(ref source, shift);
+                        i -= chunk - shift;
+                    }
+                    else
+                    {
+                        dest = ref Unsafe.Add(ref dest, chunk / 2);
+                        source = ref Unsafe.Add(ref source, chunk);
+                    }
+                }
             }
         }
         else
         {
+            // first align to length of 8
+            if (length % 4 == 2)
+            {
+                dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+                dest = ref Unsafe.Add(ref dest, 1);
+                source = ref Unsafe.Add(ref source, 2);
+                length -= 2;
+            }
+
+            if (length % 8 == 4)
+            {
+                dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+                Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
+                dest = ref Unsafe.Add(ref dest, 2);
+                source = ref Unsafe.Add(ref source, 4);
+                length -= 4;
+            }
+
+            Debug.Assert(length % 8 == 0);
+
             // unroll by 8
             const int chunk = 8;
             for (int i = 0; i < length; i += chunk)
@@ -467,7 +508,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     // TODO: optimize, either by packing the remaining first, or unrolling the loop heaviy + vectors
     public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
     {
-        var max = Math.Min(Length, remaining.Length);
+        int max = Math.Min(Length, remaining.Length);
 
         for (int i = 0; i < max; i++)
         {
@@ -498,7 +539,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public static ByRef FromNibbles(scoped ReadOnlySpan<byte> nibbles, Span<byte> span)
         {
-            ref var r = ref MemoryMarshal.GetReference(span);
+            ref byte r = ref MemoryMarshal.GetReference(span);
             int length = (byte)nibbles.Length;
 
             // nibbles index
@@ -560,7 +601,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
         public int CommonPrefixLength(scoped in ByRef other)
         {
-            var max = Math.Min(Length, other.Length);
+            int max = Math.Min(Length, other.Length);
 
             if (max == 0)
                 return 0;
@@ -588,9 +629,9 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 return Singles[this[start]];
             }
 
-            var size = GetRequiredArraySize(Length);
-            var sliceSize = GetRequiredArraySize(length);
-            var data = GC.AllocateArray<byte>(sliceSize);
+            int size = GetRequiredArraySize(Length);
+            int sliceSize = GetRequiredArraySize(length);
+            byte[] data = GC.AllocateArray<byte>(sliceSize);
 
             if (start + length == Length)
             {
@@ -638,7 +679,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
         {
             get
             {
-                ref var d = ref _data;
+                ref byte d = ref _data;
 
                 int odd = (d & OddFlag) >> OddFlagShift;
 
@@ -649,7 +690,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
                 // for an odd path, and an even index, take lower nibble
                 // for an even path, and an even index, take higher nibble
                 // for an even path, and an odd index, take lower nibble
-                var h = 1 - ((index & 1) ^ odd);
+                int h = 1 - ((index & 1) ^ odd);
                 return (byte)((b >> (h * NibbleShift)) & NibbleMask);
             }
         }
@@ -662,7 +703,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             // TODO: consider not using sequence equal here?
 
             // We use the fact that the length is the same, so that the NibblePath.Ref can use it to create a span.
-            var d = other._data;
+            byte[] d = other._data;
             return MemoryMarshal.CreateReadOnlySpan(in _data, d.Length).SequenceEqual(d);
         }
     }
@@ -674,7 +715,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
 
     // PSHUFB mask to pick bytes [1,3,5,…,15] then zero
     private static readonly Vector128<byte> LowMask = Vector128.Create(
-        1, 3, 5, 7, 9, 11, 3, 15, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
+        1, 3, 5, 7, 9, 11, 13, 15, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
     );
 
     public void WriteNibblesTo(Span<byte> destination)
