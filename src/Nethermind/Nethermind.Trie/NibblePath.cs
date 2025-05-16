@@ -552,12 +552,12 @@ public readonly struct NibblePath : IEquatable<NibblePath>
             if (max == 0)
                 return 0;
 
-            if ((_data & OddFlag) == (other._data & OddFlag))
-            {
-                // TODO: optimize
-            }
+            // TODO: a potential optimization of the aligned case
+            // if ((_data & OddFlag) == (other._data & OddFlag))
+            // {
+            //     // TODO: optimize
+            // }
 
-            // slow case of misaligned
             int i = 0;
             for (; i < max; i++)
             {
