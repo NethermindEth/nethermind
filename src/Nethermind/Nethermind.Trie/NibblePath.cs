@@ -286,17 +286,54 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     // TODO: optimize: unroll, use Unsafe and refs, length split, and potentially vectorized shuffling.
     public static NibblePath FromNibbles(ReadOnlySpan<byte> nibbles)
     {
+        if (nibbles.Length == 0)
+            return Empty;
+
+        if (nibbles.Length == 1)
+            return Singles[nibbles[0]];
+
         var bytes = new byte[GetRequiredArraySize(nibbles.Length)];
 
-        if (nibbles.Length % 2 != 0)
+        ref byte dest = ref bytes[0];
+        ref byte source = ref MemoryMarshal.GetReference(nibbles);
+        int length = nibbles.Length;
+
+        if (length % 2 == 1)
         {
-            bytes[0] = (byte)(OddFlag | nibbles[0]);
-            nibbles = nibbles[1..];
+            dest = (byte)(OddFlag | source);
+            source = ref Unsafe.Add(ref source, 1);
+            length--;
         }
 
-        for (int i = 0; i < nibbles.Length; i += 2)
+        // Always move, even if it's even or odd
+        dest = ref Unsafe.Add(ref dest, 1);
+
+        if (length % 4 == 2)
         {
-            bytes[i / 2 + 1] = (byte)(16 * nibbles[i] + nibbles[i + 1]);
+            dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+            dest = ref Unsafe.Add(ref dest, 1);
+            source = ref Unsafe.Add(ref source, 2);
+            length -= 2;
+        }
+
+        if (length % 8 == 4)
+        {
+            dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+            Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
+            dest = ref Unsafe.Add(ref dest, 2);
+            source = ref Unsafe.Add(ref source, 4);
+            length -= 4;
+        }
+
+        // unroll by 8
+        for (int i = 0; i < length; i += 8)
+        {
+            dest = (byte)((source << NibbleShift) | Unsafe.Add(ref source, 1));
+            Unsafe.Add(ref dest, 1) = (byte)((Unsafe.Add(ref source, 2) << NibbleShift) | Unsafe.Add(ref source, 3));
+            Unsafe.Add(ref dest, 2) = (byte)((Unsafe.Add(ref source, 4) << NibbleShift) | Unsafe.Add(ref source, 5));
+            Unsafe.Add(ref dest, 3) = (byte)((Unsafe.Add(ref source, 6) << NibbleShift) | Unsafe.Add(ref source, 7));
+            dest = ref Unsafe.Add(ref dest, 4);
+            source = ref Unsafe.Add(ref source, 8);
         }
 
         return new NibblePath(bytes);
