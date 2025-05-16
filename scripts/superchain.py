@@ -107,6 +107,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "regolithTimestamp": "0x0",
                     "bedrockBlockNumber": hex(lookup(config, ["genesis", "l2", "number"])),
                     "canyonTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+                    "deltaTimestamp": fmap(hex, (lookup(config, ["hardforks", "delta_time"]))),
                     "ecotoneTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
                     "fjordTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
                     "graniteTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),

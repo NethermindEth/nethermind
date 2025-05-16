@@ -93,7 +93,7 @@ public sealed record OptimismRollupConfig
 
             RegolithTime = engineParameters.RegolithTimestamp,
             CanyonTime = engineParameters.CanyonTimestamp,
-            DeltaTime = engineParameters.CanyonTimestamp, // TODO: Delta
+            DeltaTime = engineParameters.DeltaTimestamp,
             EcotoneTime = engineParameters.EcotoneTimestamp,
             FjordTime = engineParameters.FjordTimestamp,
             GraniteTime = engineParameters.GraniteTimestamp,
